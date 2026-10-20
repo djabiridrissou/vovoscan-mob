@@ -93,6 +93,8 @@ class ReaderViewModelTest {
         ) = "<p>Section $index</p>"
 
         override suspend fun clearLocal() = Unit
+
+        override suspend fun clearSource(sourceKey: String) = Unit
     }
 
     @BeforeTest

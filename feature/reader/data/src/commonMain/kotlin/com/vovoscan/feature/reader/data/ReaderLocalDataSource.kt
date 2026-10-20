@@ -55,6 +55,9 @@ interface ReaderLocalDataSource {
     ): String?
 
     suspend fun clear()
+
+    /** Erases one source's chapters, pages and book sections (the source was removed). */
+    suspend fun clearSource(sourceKey: String)
 }
 
 class SqlReaderLocalDataSource(
@@ -173,6 +176,15 @@ class SqlReaderLocalDataSource(
                 queries.clearPages()
                 queries.clearSections()
                 queries.clearChapters()
+            }
+        }
+
+    override suspend fun clearSource(sourceKey: String) =
+        withContext(io) {
+            queries.transaction {
+                queries.clearPagesOf(sourceKey)
+                queries.clearSectionsOf(sourceKey)
+                queries.clearChaptersOf(sourceKey)
             }
         }
 }

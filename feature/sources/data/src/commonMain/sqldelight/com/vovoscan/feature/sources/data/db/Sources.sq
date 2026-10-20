@@ -1,5 +1,7 @@
 -- My sources, kept on the device: list, order, visibility; manifest and settings of sources read on
--- the device (so they can be read offline too).
+-- the device (so they can be read offline too). Official sources come from the server; third-party ones
+-- (user plugins) are also written here as soon as they are installed, then synced through `plugin_outbox`.
+-- SQLite 3.18 (Android 8, minSdk 26): no ON CONFLICT … DO UPDATE.
 CREATE TABLE source (
     key TEXT NOT NULL PRIMARY KEY,
     name TEXT NOT NULL,
@@ -10,7 +12,12 @@ CREATE TABLE source (
     enabled INTEGER NOT NULL,
     position INTEGER NOT NULL,
     manifest TEXT,
-    settings TEXT
+    settings TEXT,
+    -- official | repository | link | file
+    origin TEXT NOT NULL DEFAULT 'official',
+    origin_url TEXT,
+    repository_id TEXT,
+    summary TEXT NOT NULL DEFAULT ''
 );
 
 -- Latest choice (visible ones, order) not sent yet: a single row, the most recent replaces the previous one.
@@ -19,18 +26,69 @@ CREATE TABLE pending_choices (
     payload TEXT NOT NULL
 );
 
+-- The user's plugin repositories (synced); `source_count` is local, from the last index read on this device.
+CREATE TABLE plugin_repository (
+    id TEXT NOT NULL PRIMARY KEY,
+    url TEXT NOT NULL,
+    name TEXT NOT NULL,
+    source_count INTEGER
+);
+
+-- Device-only data of a third-party source: its icon and the newer version found by the last check
+-- (manifest already fetched and verified, so the update can be applied offline).
+CREATE TABLE plugin_extra (
+    key TEXT NOT NULL PRIMARY KEY,
+    icon_url TEXT,
+    update_version TEXT,
+    update_changes TEXT,
+    update_manifest TEXT
+);
+
+-- Plugin and repository writes not sent yet: one operation per item, the most recent replaces earlier ones.
+CREATE TABLE plugin_outbox (
+    target TEXT NOT NULL, -- plugin | repository
+    id TEXT NOT NULL,
+    kind TEXT NOT NULL, -- put | delete
+    payload TEXT,
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY (target, id)
+);
+
+CREATE TABLE plugin_state (
+    slot INTEGER NOT NULL PRIMARY KEY CHECK (slot = 1),
+    last_update_check INTEGER
+);
+
 all:
 SELECT * FROM source ORDER BY position, name;
+
+byKey:
+SELECT * FROM source WHERE key = ?;
+
+keys:
+SELECT key FROM source;
+
+userPlugins:
+SELECT * FROM source WHERE origin <> 'official' ORDER BY position, name;
+
+maxPosition:
+SELECT MAX(position) AS max_position FROM source;
 
 manifest:
 SELECT manifest, settings FROM source WHERE key = ? AND manifest IS NOT NULL;
 
 put:
-INSERT OR REPLACE INTO source (key, name, engine, version, kinds, langs, enabled, position, manifest, settings)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+INSERT OR REPLACE INTO source (key, name, engine, version, kinds, langs, enabled, position, manifest, settings, origin, origin_url, repository_id, summary)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 setChoice:
 UPDATE source SET enabled = ?, position = ? WHERE key = ?;
+
+setSettings:
+UPDATE source SET settings = ? WHERE key = ?;
+
+deleteSource:
+DELETE FROM source WHERE key = ?;
 
 clearSources:
 DELETE FROM source;
@@ -43,3 +101,66 @@ INSERT OR REPLACE INTO pending_choices (slot, payload) VALUES (1, ?);
 
 clearPending:
 DELETE FROM pending_choices;
+
+repositories:
+SELECT * FROM plugin_repository ORDER BY name, id;
+
+repository:
+SELECT * FROM plugin_repository WHERE id = ?;
+
+insertRepository:
+INSERT OR IGNORE INTO plugin_repository (id, url, name, source_count) VALUES (?, ?, ?, NULL);
+
+updateRepository:
+UPDATE plugin_repository SET url = ?, name = ? WHERE id = ?;
+
+setRepositoryCount:
+UPDATE plugin_repository SET source_count = ? WHERE id = ?;
+
+deleteRepository:
+DELETE FROM plugin_repository WHERE id = ?;
+
+clearRepositories:
+DELETE FROM plugin_repository;
+
+extras:
+SELECT * FROM plugin_extra;
+
+extra:
+SELECT * FROM plugin_extra WHERE key = ?;
+
+insertExtra:
+INSERT OR IGNORE INTO plugin_extra (key) VALUES (?);
+
+setIcon:
+UPDATE plugin_extra SET icon_url = ? WHERE key = ?;
+
+setUpdate:
+UPDATE plugin_extra SET update_version = ?, update_changes = ?, update_manifest = ? WHERE key = ?;
+
+deleteExtra:
+DELETE FROM plugin_extra WHERE key = ?;
+
+clearExtras:
+DELETE FROM plugin_extra;
+
+enqueue:
+INSERT OR REPLACE INTO plugin_outbox (target, id, kind, payload, updated_at) VALUES (?, ?, ?, ?, ?);
+
+outbox:
+SELECT * FROM plugin_outbox ORDER BY updated_at, target DESC;
+
+dequeue:
+DELETE FROM plugin_outbox WHERE target = ? AND id = ? AND updated_at = ?;
+
+clearOutbox:
+DELETE FROM plugin_outbox;
+
+lastUpdateCheck:
+SELECT last_update_check FROM plugin_state WHERE slot = 1;
+
+putLastUpdateCheck:
+INSERT OR REPLACE INTO plugin_state (slot, last_update_check) VALUES (1, ?);
+
+clearState:
+DELETE FROM plugin_state;

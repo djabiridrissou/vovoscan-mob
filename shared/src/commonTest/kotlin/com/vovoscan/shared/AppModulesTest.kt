@@ -1,8 +1,10 @@
 package com.vovoscan.shared
 
 import com.vovoscan.core.security.SecureStore
+import com.vovoscan.core.sources.PluginLinkPolicy
 import com.vovoscan.core.testing.MemorySecureStore
 import com.vovoscan.feature.auth.di.SignOutCleanup
+import com.vovoscan.feature.sources.domain.SourceRemovedListener
 import io.ktor.client.HttpClient
 import org.koin.core.context.startKoin
 import org.koin.core.context.stopKoin
@@ -23,5 +25,7 @@ class AppModulesTest {
             }.koin
         assertNotNull(koin.get<HttpClient>())
         assertNotNull(koin.get<SignOutCleanup>())
+        assertNotNull(koin.get<SourceRemovedListener>())
+        assertNotNull(koin.get<PluginLinkPolicy>())
     }
 }

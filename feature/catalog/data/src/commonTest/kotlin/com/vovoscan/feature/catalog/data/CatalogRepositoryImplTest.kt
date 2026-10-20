@@ -137,4 +137,18 @@ class CatalogRepositoryImplTest {
             // Searching "books" never sees the vovoscan titles.
             assertTrue(repo.search("books", "ink").titles.all { it.sourceKey == "books" && it.id != "t1" })
         }
+
+    @Test
+    fun clearSourceErasesOnlyThatSource() =
+        runTest {
+            val local =
+                SqlCatalogLocalDataSource(CatalogDatabase(inMemoryDriver(CatalogDatabase.Schema)), StandardTestDispatcher(testScheduler))
+            val title = TitleSummaryDto("t1", "Ink Road", null, "comic", "webtoon", "ongoing")
+            local.saveCatalogPage("demo", TitlesPage(1, listOf(title), hasNext = true))
+            local.saveCatalogPage("vovoscan", TitlesPage(1, listOf(title), hasNext = false))
+            local.clearSource("demo")
+            assertEquals(0, local.searchLocal("demo", "Ink").size)
+            assertEquals(null, local.nextPage("demo"))
+            assertEquals(1, local.searchLocal("vovoscan", "Ink").size)
+        }
 }

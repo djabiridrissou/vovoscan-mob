@@ -68,3 +68,12 @@ DELETE FROM reader_page;
 
 clearSections:
 DELETE FROM book_section;
+
+clearPagesOf:
+DELETE FROM reader_page WHERE chapter_key IN (SELECT chapter_key FROM reader_chapter WHERE source_key = ?);
+
+clearSectionsOf:
+DELETE FROM book_section WHERE chapter_key IN (SELECT chapter_key FROM reader_chapter WHERE source_key = ?);
+
+clearChaptersOf:
+DELETE FROM reader_chapter WHERE source_key = ?;

@@ -42,12 +42,19 @@ struct BrandField: View {
     var error: String?
     var secret = false
     var keyboard: UIKeyboardType = .default
+    var placeholder: String?
+    var help: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(label).font(.brandBody(13)).foregroundStyle(Color.brandMuted)
             Group {
-                if secret { SecureField("", text: $text) } else { TextField("", text: $text).keyboardType(keyboard) }
+                if secret {
+                    SecureField("", text: $text)
+                } else {
+                    TextField("", text: $text, prompt: placeholder.map { Text($0).foregroundColor(Color.brandMuted) })
+                        .keyboardType(keyboard)
+                }
             }
             .textInputAutocapitalization(.never)
             .autocorrectionDisabled()
@@ -57,6 +64,7 @@ struct BrandField: View {
             .padding(.vertical, 10)
             .background(Color.brandInputBg, in: RoundedRectangle(cornerRadius: 8))
             .overlay(RoundedRectangle(cornerRadius: 8).stroke(error == nil ? Color.brandLine : Color.brandDanger, lineWidth: 1))
+            if let help { Text(help).font(.brandBody(13)).foregroundStyle(Color.brandMuted) }
             if let error { ErrorText(text: error) }
         }
     }
@@ -122,10 +130,12 @@ struct IntentField: View {
     var error: String?
     var secret = false
     var keyboard: UIKeyboardType = .default
+    var placeholder: String?
+    var help: String?
     let onChange: (String) -> Void
 
     var body: some View {
-        BrandField(label: label, text: $text, error: error, secret: secret, keyboard: keyboard)
+        BrandField(label: label, text: $text, error: error, secret: secret, keyboard: keyboard, placeholder: placeholder, help: help)
             .onAppear { if text.isEmpty { text = value } }
             .onChange(of: text) { onChange($0) }
             .onChange(of: value) { if $0.isEmpty && !text.isEmpty { text = "" } }
@@ -135,8 +145,21 @@ struct IntentField: View {
 /// Submits a form after dismissing the keyboard: iOS only commits the pending input (last composed character)
 /// to the field when it loses focus. Without this detour, the last typed character would arrive after the submit.
 /// The form then resends the exact value of each field before submitting: no race is possible.
+/// It waits for the keyboard to be gone (the field has handed over its text by then), with a safety delay: a fixed
+/// 0.1 s was sometimes too short and the last characters were lost.
 @MainActor
 func submitAfterCommittingInput(_ submit: @escaping () -> Void) {
-    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
-    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { submit() }
+    let center = NotificationCenter.default
+    var token: NSObjectProtocol?
+    var done = false
+    let fire = {
+        guard !done else { return }
+        done = true
+        if let token { center.removeObserver(token) }
+        // One more turn of the run loop: the field's last onChange runs before the submit.
+        DispatchQueue.main.async { submit() }
+    }
+    token = center.addObserver(forName: UIResponder.keyboardDidHideNotification, object: nil, queue: .main) { _ in fire() }
+    let hadFocus = UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+    DispatchQueue.main.asyncAfter(deadline: .now() + (hadFocus ? 0.8 : 0.05)) { fire() }
 }

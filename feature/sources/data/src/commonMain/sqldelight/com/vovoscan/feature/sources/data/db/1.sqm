@@ -1,0 +1,34 @@
+-- v1 → v2: third-party sources (user plugins) and their repositories.
+ALTER TABLE source ADD COLUMN origin TEXT NOT NULL DEFAULT 'official';
+ALTER TABLE source ADD COLUMN origin_url TEXT;
+ALTER TABLE source ADD COLUMN repository_id TEXT;
+ALTER TABLE source ADD COLUMN summary TEXT NOT NULL DEFAULT '';
+
+CREATE TABLE plugin_repository (
+    id TEXT NOT NULL PRIMARY KEY,
+    url TEXT NOT NULL,
+    name TEXT NOT NULL,
+    source_count INTEGER
+);
+
+CREATE TABLE plugin_extra (
+    key TEXT NOT NULL PRIMARY KEY,
+    icon_url TEXT,
+    update_version TEXT,
+    update_changes TEXT,
+    update_manifest TEXT
+);
+
+CREATE TABLE plugin_outbox (
+    target TEXT NOT NULL,
+    id TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    payload TEXT,
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY (target, id)
+);
+
+CREATE TABLE plugin_state (
+    slot INTEGER NOT NULL PRIMARY KEY CHECK (slot = 1),
+    last_update_check INTEGER
+);

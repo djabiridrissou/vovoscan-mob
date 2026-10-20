@@ -103,6 +103,9 @@ interface ReaderRepository {
     ): String?
 
     suspend fun clearLocal()
+
+    /** Erases what is kept on the device for one source (it left the user's list). */
+    suspend fun clearSource(sourceKey: String)
 }
 
 /**

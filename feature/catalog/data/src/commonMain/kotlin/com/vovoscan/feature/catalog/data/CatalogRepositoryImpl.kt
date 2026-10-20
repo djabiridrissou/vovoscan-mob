@@ -52,6 +52,8 @@ class CatalogRepositoryImpl(
 
     override suspend fun clearLocal() = local.clear()
 
+    override suspend fun clearSource(sourceKey: String) = local.clearSource(sourceKey)
+
     private suspend fun fetchPage(
         sourceKey: String,
         page: Int,

@@ -60,6 +60,13 @@ Another address: `./gradlew :androidApp:assembleDebug -Pvovoscan.apiBaseUrl=http
 - Catalog, title pages and chapters are keyed by `(sourceKey, id)`: two sources never mix.
   The catalog follows the first visible source until the reader picks another one (`SourcesChanged`).
 - Tests: `core/sources/src/commonTest/.../Fixtures.kt` copies the manifests (change them with `vovo-plugin`).
+- Third-party sources (user plugins, spec v1): added from a link (single manifest or `repo.json`, GitHub pages
+  resolved to raw files) or a `.vovo` file, private to the user, not reviewed by vovoscan. `core/sources` has the
+  pure parts (`PluginLinks`, `PluginFetcher`: https only, no session, ≤ 3 redirects, byte limits; `RepositoryIndex`,
+  `ManifestCheck`, `Semver`, `VovoPackageReader`, `sha256Hex`). `feature/sources` stores them in the same `source`
+  table (so `ManifestProvider` serves them), queues writes in `plugin_outbox` (`PUT/DELETE api/v1/plugins`,
+  `api/v1/plugin-repositories`), keeps verified updates in `plugin_extra`. Removal goes through the
+  `SourceRemovedListener` port, wired in `shared` to the catalog and reader caches.
 
 ## Reader
 
@@ -79,9 +86,14 @@ Another address: `./gradlew :androidApp:assembleDebug -Pvovoscan.apiBaseUrl=http
 
 - Text fields: `IntentField` keeps the text on the Swift side and sends each keystroke as an intent; reading back
   the Kotlin state (asynchronous) would overwrite the input. Submit with `submitAfterCommittingInput`: iOS only
-  hands over the last composed character when focus is lost.
+  hands over the last typed characters when focus is lost, so it dismisses the keyboard and waits for it to be gone
+  (safety delay 0.8 s) before submitting; a fixed 0.1 s sometimes lost the end of a field.
 - Sign-in: when submitting, resend the exact field values (intents) before `Submit`, otherwise the last
   keystroke may be missing on the Kotlin side.
+- Source settings forms (fields known only at runtime): each `SettingInput` keeps its own text (`@State`, never a
+  binding computed from a dictionary), copies every keystroke into the form's `[name: text]` record, does not resend
+  a value Kotlin already has (a field filled on appear would mark the form edited), and Save / Confirm resend every
+  recorded value before the intent.
 - No Kotlin property named `description` in an exported state: on iOS it is `toString()` (NSObject).
 - Simulator: build signed (`CODE_SIGN_IDENTITY="-"`, which Xcode does by default), otherwise the Keychain
   refuses to write and the session does not persist.

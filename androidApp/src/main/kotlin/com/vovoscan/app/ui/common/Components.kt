@@ -106,6 +106,8 @@ fun BrandField(
     error: String? = null,
     keyboard: KeyboardType = KeyboardType.Text,
     secret: Boolean = false,
+    placeholder: String? = null,
+    help: String? = null,
 ) {
     Column(Modifier.fillMaxWidth()) {
         Text(label, style = MaterialTheme.typography.bodySmall)
@@ -114,6 +116,7 @@ fun BrandField(
             value = value,
             onValueChange = onValueChange,
             singleLine = true,
+            placeholder = placeholder?.let { { Text(it, style = MaterialTheme.typography.bodyMedium.copy(color = Brand.Muted)) } },
             isError = error != null,
             visualTransformation = if (secret) PasswordVisualTransformation() else VisualTransformation.None,
             keyboardOptions = KeyboardOptions(keyboardType = keyboard),
@@ -129,6 +132,7 @@ fun BrandField(
                 ),
             modifier = Modifier.fillMaxWidth(),
         )
+        if (help != null) Text(help, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 6.dp))
         if (error != null) ErrorText(error)
     }
 }

@@ -12,7 +12,12 @@ kotlin {
             api(libs.ktor.client.core)
             api(libs.kotlinx.serialization.json)
             api(libs.ksoup)
+            // .vovo packages (zip) and SHA-256 of plugin manifests.
+            api(libs.okio)
         }
-        commonTest.dependencies { implementation(libs.ktor.client.mock) }
+        commonTest.dependencies {
+            implementation(libs.ktor.client.mock)
+            implementation(project(":core:testing"))
+        }
     }
 }

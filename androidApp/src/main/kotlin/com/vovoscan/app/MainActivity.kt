@@ -27,6 +27,8 @@ import com.vovoscan.app.ui.catalog.CatalogScreen
 import com.vovoscan.app.ui.library.LibraryScreen
 import com.vovoscan.app.ui.reader.ReaderScreen
 import com.vovoscan.app.ui.signin.SignInScreen
+import com.vovoscan.app.ui.sources.AddSourceScreen
+import com.vovoscan.app.ui.sources.SourceDetailScreen
 import com.vovoscan.app.ui.sources.SourcesScreen
 import com.vovoscan.app.ui.theme.Brand
 import com.vovoscan.app.ui.theme.VovoscanTheme
@@ -53,13 +55,15 @@ private enum class Tab(
     Sources("Sources"),
 }
 
-/** Root: sign-in, or the Catalog / Library / Sources tabs, with the title page and the reader on top. */
+/** Root: sign-in, or the Catalog / Library / Sources tabs, with the title page, the source screens and the reader on top. */
 @Composable
 private fun Root(session: SessionViewModel = koinViewModel()) {
     val user by session.session.collectAsStateWithLifecycle()
     var tab by rememberSaveable { mutableStateOf(Tab.Catalog) }
     // Open title page: "source|title".
     var openTitle by rememberSaveable { mutableStateOf<String?>(null) }
+    // Open sources screen (Sources tab): "add-source", "add-source|repository id" or "source-detail|source key".
+    var openSource by rememberSaveable { mutableStateOf<String?>(null) }
     // Open reader: "source|title|chapter|start page".
     var openReader by rememberSaveable { mutableStateOf<String?>(null) }
     Column(
@@ -88,6 +92,7 @@ private fun Root(session: SessionViewModel = koinViewModel()) {
         }
         Column(Modifier.weight(1f)) {
             val title = openTitle?.split("|")
+            val source = openSource?.split("|", limit = 2)
             if (title != null) {
                 BackHandler { openTitle = null }
                 TitleScreen(
@@ -96,17 +101,32 @@ private fun Root(session: SessionViewModel = koinViewModel()) {
                     onBack = { openTitle = null },
                     onRead = { chapter, page -> openReader = "${title[0]}|${title[1]}|$chapter|$page" },
                 )
+            } else if (tab == Tab.Sources && source != null) {
+                BackHandler { openSource = null }
+                when (source[0]) {
+                    "add-source" ->
+                        AddSourceScreen(
+                            repositoryId = source.getOrNull(1),
+                            onBack = { openSource = null },
+                            onOpenSource = { openSource = "source-detail|$it" },
+                        )
+                    else -> SourceDetailScreen(sourceKey = source[1], onBack = { openSource = null })
+                }
             } else {
                 when (tab) {
                     Tab.Catalog -> CatalogScreen(onOpenTitle = { source, id -> openTitle = "$source|$id" })
                     Tab.Library -> LibraryScreen(onOpenTitle = { source, id -> openTitle = "$source|$id" }, onSignOut = session::signOut)
-                    Tab.Sources -> SourcesScreen()
+                    Tab.Sources ->
+                        SourcesScreen(
+                            onAdd = { repository -> openSource = if (repository == null) "add-source" else "add-source|$repository" },
+                            onOpenSource = { openSource = "source-detail|$it" },
+                        )
                 }
             }
         }
         Row(Modifier.fillMaxWidth().background(Brand.Ink2)) {
             Tab.entries.forEach { entry ->
-                val selected = entry == tab && openTitle == null
+                val selected = entry == tab && openTitle == null && (entry != Tab.Sources || openSource == null)
                 Text(
                     entry.label,
                     style = MaterialTheme.typography.labelLarge.copy(color = if (selected) Brand.Red else Brand.Muted),
@@ -116,6 +136,7 @@ private fun Root(session: SessionViewModel = koinViewModel()) {
                             .clickable {
                                 tab = entry
                                 openTitle = null
+                                openSource = null
                             }.padding(vertical = 16.dp)
                             .padding(start = 24.dp),
                 )

@@ -15,7 +15,8 @@ class VovoscanApplication : Application() {
         super.onCreate()
         startKoin {
             androidContext(this@VovoscanApplication)
-            modules(appModules(AppConfig(BuildConfig.API_BASE_URL), androidPlatformModule(this@VovoscanApplication)))
+            val config = AppConfig(BuildConfig.API_BASE_URL, allowLocalPlugins = BuildConfig.DEBUG)
+            modules(appModules(config, androidPlatformModule(this@VovoscanApplication)))
         }
         // Session stored on the device, before the first screen; the network check follows, without blocking offline.
         runBlocking { GlobalContext.get().get<AuthRepository>().restore() }

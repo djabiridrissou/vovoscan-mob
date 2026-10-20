@@ -65,6 +65,8 @@ class CatalogViewModelTest {
         ) = AppResult.Ok(Unit)
 
         override suspend fun clearLocal() = Unit
+
+        override suspend fun clearSource(sourceKey: String) = Unit
     }
 
     @BeforeTest

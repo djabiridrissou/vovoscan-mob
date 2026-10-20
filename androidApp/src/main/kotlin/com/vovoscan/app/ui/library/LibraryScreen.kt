@@ -20,9 +20,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
@@ -35,6 +37,7 @@ import com.vovoscan.app.ui.common.OfflineNotice
 import com.vovoscan.app.ui.theme.Brand
 import com.vovoscan.feature.library.presentation.LibraryIntent
 import com.vovoscan.feature.library.presentation.LibraryViewModel
+import com.vovoscan.feature.sources.presentation.SourcesViewModel
 import org.koin.compose.viewmodel.koinViewModel
 
 @Composable
@@ -42,8 +45,13 @@ fun LibraryScreen(
     onOpenTitle: (sourceKey: String, titleId: String) -> Unit,
     onSignOut: () -> Unit,
     viewModel: LibraryViewModel = koinViewModel(),
+    sources: SourcesViewModel = koinViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    // Two features side by side, unaware of each other: titles of a source no longer listed show "Source removed".
+    val sourcesState by sources.state.collectAsStateWithLifecycle()
+    val sourceKeys = sourcesState.sourceKeys
+    LaunchedEffect(sourceKeys) { viewModel.onIntent(LibraryIntent.SourcesChanged(sourceKeys)) }
     LazyColumn(
         Modifier.fillMaxSize(),
         contentPadding = PaddingValues(20.dp),
@@ -62,10 +70,11 @@ fun LibraryScreen(
             Row(
                 Modifier
                     .fillMaxWidth()
+                    .alpha(if (row.sourceRemoved) 0.5f else 1f)
                     .clip(RoundedCornerShape(12.dp))
                     .background(Brand.Ink2)
                     .border(1.dp, Brand.Line, RoundedCornerShape(12.dp))
-                    .clickable { onOpenTitle(row.sourceKey, row.titleId) },
+                    .clickable(enabled = !row.sourceRemoved) { onOpenTitle(row.sourceKey, row.titleId) },
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 AsyncImage(row.coverUrl, null, contentScale = ContentScale.Crop, modifier = Modifier.size(64.dp).background(Brand.Line))
@@ -73,6 +82,7 @@ fun LibraryScreen(
                 Column(Modifier.weight(1f)) {
                     Text(row.name, style = MaterialTheme.typography.bodyMedium)
                     Text(row.progress, style = MaterialTheme.typography.bodySmall)
+                    row.sourceNotice?.let { Text(it, style = MaterialTheme.typography.bodySmall.copy(color = Brand.Danger)) }
                 }
                 // Cyan: action waiting to be sent (the brand reserves cyan for work in progress).
                 if (row.pendingSync) Box(Modifier.size(10.dp).background(Brand.Cyan, CircleShape))

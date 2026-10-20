@@ -48,6 +48,9 @@ interface CatalogLocalDataSource {
     )
 
     suspend fun clear()
+
+    /** Erases one source's catalog, titles and chapters (the source was removed). */
+    suspend fun clearSource(sourceKey: String)
 }
 
 class SqlCatalogLocalDataSource(
@@ -133,6 +136,15 @@ class SqlCatalogLocalDataSource(
                 queries.clearChapters()
                 queries.clearTitles()
                 queries.clearCursor()
+            }
+        }
+
+    override suspend fun clearSource(sourceKey: String) =
+        withContext(io) {
+            queries.transaction {
+                queries.clearChaptersOfSource(sourceKey)
+                queries.clearTitlesOf(sourceKey)
+                queries.clearCursorOf(sourceKey)
             }
         }
 

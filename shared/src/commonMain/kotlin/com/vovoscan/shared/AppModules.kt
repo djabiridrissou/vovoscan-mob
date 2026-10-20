@@ -6,6 +6,7 @@ import com.vovoscan.core.network.createHttpClient
 import com.vovoscan.core.network.platformHttpEngine
 import com.vovoscan.core.security.SecureKeys
 import com.vovoscan.core.security.SecureStore
+import com.vovoscan.core.sources.PluginLinkPolicy
 import com.vovoscan.core.sources.RulesHttp
 import com.vovoscan.core.sources.createRulesHttpClient
 import com.vovoscan.feature.auth.di.SignOutCleanup
@@ -18,6 +19,7 @@ import com.vovoscan.feature.reader.di.readerModule
 import com.vovoscan.feature.reader.domain.ReaderRepository
 import com.vovoscan.feature.reader.domain.ReadingProgressSink
 import com.vovoscan.feature.sources.di.sourcesModule
+import com.vovoscan.feature.sources.domain.SourceRemovedListener
 import com.vovoscan.feature.sources.domain.SourcesRepository
 import io.ktor.client.HttpClient
 import kotlinx.coroutines.CoroutineScope
@@ -26,9 +28,13 @@ import kotlinx.coroutines.launch
 import org.koin.core.module.Module
 import org.koin.dsl.module
 
-/** `apiBaseUrl` ends with "/" ("https://api.vovoscan.app/"). */
+/**
+ * `apiBaseUrl` ends with "/" ("https://api.vovoscan.app/"). `allowLocalPlugins`: debug builds may add sources from a
+ * local server (`http://localhost`, `http://127.0.0.1`, `http://10.0.2.2`).
+ */
 data class AppConfig(
     val apiBaseUrl: String,
+    val allowLocalPlugins: Boolean = false,
 )
 
 /**
@@ -47,6 +53,7 @@ fun appModules(
             single { CoroutineScope(SupervisorJob() + get<AppDispatchers>().io) }
             // Sources read on the device: a separate client, without the vovoscan session or automatic redirects.
             single { RulesHttp(createRulesHttpClient(platformHttpEngine())) }
+            single { PluginLinkPolicy(config.allowLocalPlugins) }
             single<HttpClient> {
                 val store = get<SecureStore>()
                 createHttpClient(platformHttpEngine(), ApiConfig(config.apiBaseUrl)) { store.get(SecureKeys.SESSION_TOKEN) }
@@ -58,6 +65,14 @@ fun appModules(
                     get<LibraryRepository>().clearLocal()
                     get<ReaderRepository>().clearLocal()
                     get<SourcesRepository>().clearLocal()
+                }
+            }
+            // A source left the list (third-party source removed, here or on another device): its catalog and
+            // reader caches go; library entries stay ("Source removed").
+            single {
+                SourceRemovedListener { key ->
+                    get<CatalogRepository>().clearSource(key)
+                    get<ReaderRepository>().clearSource(key)
                 }
             }
             // The reader saves progress in the library without knowing that feature.

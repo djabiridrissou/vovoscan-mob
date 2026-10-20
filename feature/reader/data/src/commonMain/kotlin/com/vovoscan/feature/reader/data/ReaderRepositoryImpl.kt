@@ -65,4 +65,6 @@ class ReaderRepositoryImpl(
     ): String? = local.sectionHtml(sourceKey, chapterId, index)
 
     override suspend fun clearLocal() = local.clear()
+
+    override suspend fun clearSource(sourceKey: String) = local.clearSource(sourceKey)
 }

@@ -4,6 +4,7 @@ import SwiftUI
 struct LibraryView: View {
     let onSignOut: () -> Void
     @StateObject private var model = LibraryModel()
+    @StateObject private var sources = SourcesModel()
 
     var body: some View {
         ScrollView {
@@ -26,6 +27,9 @@ struct LibraryView: View {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(row.name).font(.brandBody(15)).foregroundStyle(Color.brandPaper)
                                 Text(row.progress).font(.brandBody(13)).foregroundStyle(Color.brandMuted)
+                                if let notice = row.sourceNotice {
+                                    Text(notice).font(.brandBody(13)).foregroundStyle(Color.brandDanger)
+                                }
                             }
                             Spacer()
                             // Cyan: action waiting to be sent (the brand reserves cyan for work in progress).
@@ -35,8 +39,10 @@ struct LibraryView: View {
                         .background(Color.brandInk2)
                         .clipShape(RoundedRectangle(cornerRadius: 12))
                         .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.brandLine, lineWidth: 1))
+                        .opacity(row.sourceRemoved ? 0.5 : 1)
                     }
                     .buttonStyle(.plain)
+                    .disabled(row.sourceRemoved)
                 }
                 Button("Sync now") { model.send(LibraryIntentSync.shared) }.buttonStyle(GhostButtonStyle())
                 Button("Sign out", action: onSignOut).buttonStyle(GhostButtonStyle())
@@ -47,6 +53,10 @@ struct LibraryView: View {
         .refreshable { model.send(LibraryIntentSync.shared) }
         .navigationDestination(for: TitleRoute.self) { TitleView(route: $0) }
         .navigationDestination(for: ReaderRoute.self) { ReaderContainer(route: $0) }
+        // Two features side by side, unaware of each other: titles of a source no longer listed show "Source removed".
+        .onAppear { model.send(LibraryIntentSourcesChanged(keys: sources.state.sourceKeys)) }
+        .onChange(of: sources.state.sourceKeys) { model.send(LibraryIntentSourcesChanged(keys: $0)) }
         .task { await model.observe() }
+        .task { await sources.observe() }
     }
 }

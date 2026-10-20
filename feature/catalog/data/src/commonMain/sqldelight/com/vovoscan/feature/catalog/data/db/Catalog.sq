@@ -88,3 +88,12 @@ DELETE FROM chapter;
 
 clearCursor:
 DELETE FROM catalog_cursor;
+
+clearTitlesOf:
+DELETE FROM title WHERE source_key = ?;
+
+clearChaptersOfSource:
+DELETE FROM chapter WHERE source_key = ?;
+
+clearCursorOf:
+DELETE FROM catalog_cursor WHERE source_key = ?;

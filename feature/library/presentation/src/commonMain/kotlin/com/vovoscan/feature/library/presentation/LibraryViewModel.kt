@@ -25,6 +25,10 @@ data class LibraryRow(
     val progress: String,
     /** Changed offline, not sent yet: small badge. */
     val pendingSync: Boolean,
+    /** Its source is no longer in the user's list: greyed out (readable again if the source comes back). */
+    val sourceRemoved: Boolean = false,
+    /** "Source removed", or null. */
+    val sourceNotice: String? = null,
 )
 
 data class LibraryUiState(
@@ -54,6 +58,11 @@ sealed interface LibraryIntent {
         val sourceKey: String,
         val titleId: String,
     ) : LibraryIntent
+
+    /** Every source of the user's list (visible or not), sent by the app from the sources feature. */
+    data class SourcesChanged(
+        val keys: List<String>,
+    ) : LibraryIntent
 }
 
 class LibraryViewModel(
@@ -61,19 +70,32 @@ class LibraryViewModel(
 ) : ViewModel() {
     private val mutableState = MutableStateFlow(LibraryUiState())
     val state: StateFlow<LibraryUiState> = mutableState.asStateFlow()
+    private var entries: List<LibraryEntry> = emptyList()
+
+    /** Sources of the user's list; null until the app sends them (nothing is flagged before). */
+    private var sourceKeys: Set<String>? = null
 
     init {
         repository
             .observe()
-            .onEach { entries -> mutableState.update { it.copy(rows = entries.map(::row)) } }
-            .launchIn(viewModelScope)
+            .onEach { list ->
+                entries = list
+                render()
+            }.launchIn(viewModelScope)
         sync()
     }
+
+    private fun render() = mutableState.update { it.copy(rows = entries.map(::row)) }
 
     fun onIntent(intent: LibraryIntent) {
         when (intent) {
             LibraryIntent.Sync -> sync()
             is LibraryIntent.Unfollow -> viewModelScope.launch { repository.unfollow(intent.sourceKey, intent.titleId) }
+            is LibraryIntent.SourcesChanged -> {
+                // An empty list means the sources are not loaded yet, not that they were all removed.
+                sourceKeys = intent.keys.toSet().takeIf { it.isNotEmpty() }
+                render()
+            }
         }
     }
 
@@ -94,13 +116,17 @@ class LibraryViewModel(
         }
     }
 
-    private fun row(entry: LibraryEntry) =
-        LibraryRow(
+    private fun row(entry: LibraryEntry): LibraryRow {
+        val removed = sourceKeys?.let { entry.sourceKey !in it } ?: false
+        return LibraryRow(
             sourceKey = entry.sourceKey,
             titleId = entry.titleRef,
             name = entry.titleName,
             coverUrl = entry.coverUrl,
             progress = if (entry.lastChapterRef == null) "Not started" else "Page ${entry.lastPage + 1}",
             pendingSync = entry.pendingSync,
+            sourceRemoved = removed,
+            sourceNotice = if (removed) "Source removed" else null,
         )
+    }
 }

@@ -153,3 +153,43 @@ final class SourcesModel: ObservableObject {
 
     deinit { owner.clear() }
 }
+
+@MainActor
+final class AddSourceModel: ObservableObject {
+    @Published private(set) var state: AddSourceUiState
+    private let owner = ViewModels()
+    private let viewModel: AddSourceViewModel
+
+    init() {
+        viewModel = owner.addSource()
+        state = viewModel.state.value
+    }
+
+    func observe() async {
+        for await next in viewModel.state { state = next }
+    }
+
+    func send(_ intent: AddSourceIntent) { viewModel.onIntent(intent: intent) }
+
+    deinit { owner.clear() }
+}
+
+@MainActor
+final class SourceDetailModel: ObservableObject {
+    @Published private(set) var state: SourceDetailUiState
+    private let owner = ViewModels()
+    private let viewModel: SourceDetailViewModel
+
+    init(key: String) {
+        viewModel = owner.sourceDetail(key: key)
+        state = viewModel.state.value
+    }
+
+    func observe() async {
+        for await next in viewModel.state { state = next }
+    }
+
+    func send(_ intent: SourceDetailIntent) { viewModel.onIntent(intent: intent) }
+
+    deinit { owner.clear() }
+}

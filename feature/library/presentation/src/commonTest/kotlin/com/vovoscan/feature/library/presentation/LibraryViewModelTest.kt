@@ -20,6 +20,7 @@ import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class LibraryViewModelTest {
@@ -79,5 +80,33 @@ class LibraryViewModelTest {
             assertEquals("1 change waiting to sync.", vm.state.value.pendingNotice)
             assertEquals(Freshness.Offline, vm.state.value.freshness)
             assertNull(vm.state.value.error)
+        }
+
+    @Test
+    fun titlesOfARemovedSourceAreFlagged() =
+        runTest {
+            val library = FakeLibrary()
+            library.entries.value =
+                listOf(
+                    LibraryEntry("vovoscan", "1", "Kept", null, null, 0, 2L, false),
+                    LibraryEntry("demo", "7", "From a plugin", null, null, 0, 1L, false),
+                )
+            val vm = LibraryViewModel(library)
+            // Before the sources are known, nothing is flagged.
+            vm.onIntent(LibraryIntent.SourcesChanged(emptyList()))
+            assertTrue(
+                vm.state.value.rows
+                    .none { it.sourceRemoved },
+            )
+            vm.onIntent(LibraryIntent.SourcesChanged(listOf("vovoscan", "gutenberg")))
+            val (kept, removed) = vm.state.value.rows
+            assertEquals(false to null, kept.sourceRemoved to kept.sourceNotice)
+            assertEquals(true to "Source removed", removed.sourceRemoved to removed.sourceNotice)
+            // The plugin comes back: readable again.
+            vm.onIntent(LibraryIntent.SourcesChanged(listOf("vovoscan", "demo")))
+            assertTrue(
+                vm.state.value.rows
+                    .none { it.sourceRemoved },
+            )
         }
 }
