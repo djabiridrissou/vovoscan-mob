@@ -21,9 +21,9 @@ data class LibraryRow(
     val titleId: String,
     val name: String,
     val coverUrl: String?,
-    /** « Page 12 » ou « Not started ». */
+    /** "Page 12" or "Not started". */
     val progress: String,
-    /** Modifiée hors ligne, pas encore envoyée : petite pastille. */
+    /** Changed offline, not sent yet: small badge. */
     val pendingSync: Boolean,
 )
 

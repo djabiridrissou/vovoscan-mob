@@ -1,5 +1,5 @@
-// Charge le classpath de build-logic à la racine : les modules appliquent ensuite les plugins
-// (sérialisation, SQLDelight, SKIE…) par leur id, sans version, à celle du catalogue.
+// Loads the build-logic classpath at the root: modules then apply the plugins
+// (serialization, SQLDelight, SKIE…) by id, without a version, at the catalog's version.
 plugins {
     id("vovoscan.kmp-library") apply false
 }

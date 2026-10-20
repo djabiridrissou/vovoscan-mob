@@ -47,14 +47,14 @@ data class TitleDetailDto(
     val chapters: List<ChapterDto> = emptyList(),
 )
 
-/** Une page de catalogue, quelle que soit la source. */
+/** A catalog page, whatever the source. */
 data class TitlesPage(
     val page: Int,
     val items: List<TitleSummaryDto>,
     val hasNext: Boolean,
 )
 
-/** Source distante d'un catalogue : l'API vovoscan pour la source interne, la source elle-même pour les autres. */
+/** Remote source of a catalog: the vovoscan API for the internal source, the source itself for the others. */
 interface CatalogRemoteDataSource {
     suspend fun titles(
         sourceKey: String,
@@ -72,7 +72,7 @@ interface CatalogRemoteDataSource {
     ): AppResult<TitleDetailDto>
 }
 
-/** `api/v1/catalog/…` : la source interne (nos titres publiés). */
+/** `api/v1/catalog/…`: the internal source (our published titles). */
 class ApiCatalogRemoteDataSource(
     private val http: HttpClient,
 ) : CatalogRemoteDataSource {
@@ -110,7 +110,7 @@ class ApiCatalogRemoteDataSource(
     }
 }
 
-/** Sources lues sur l'appareil : le manifeste interprété ici, les requêtes faites d'ici, jamais par vovoscan. */
+/** Sources read on the device: the manifest is interpreted here and requests are made from here, never through vovoscan. */
 class OnDeviceCatalogRemoteDataSource(
     private val manifests: ManifestProvider,
     private val http: RulesHttp,
@@ -142,7 +142,7 @@ class OnDeviceCatalogRemoteDataSource(
                 description = title.description,
                 authors = title.authors,
                 genres = title.genres,
-                // Du plus récent au plus ancien, comme l'API.
+                // Newest to oldest, like the API.
                 chapters = title.units.reversed().map { ChapterDto(it.id, it.number, it.name) },
             )
         } ?: unknown()
@@ -156,7 +156,7 @@ class OnDeviceCatalogRemoteDataSource(
         )
 }
 
-/** Aiguillage : une source qui a un manifeste se lit sur l'appareil ; sinon c'est la source interne, par l'API. */
+/** Routing: a source with a manifest is read on the device; otherwise it is the internal source, through the API. */
 class RoutingCatalogRemoteDataSource(
     private val manifests: ManifestProvider,
     private val api: CatalogRemoteDataSource,

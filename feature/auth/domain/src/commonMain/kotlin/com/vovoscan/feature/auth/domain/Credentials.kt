@@ -1,6 +1,6 @@
 package com.vovoscan.feature.auth.domain
 
-/** Règles de saisie, vérifiées avant tout appel réseau ; le serveur reste juge. */
+/** Input rules, checked before any network call; the server has the final say. */
 object Credentials {
     private val email = Regex("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$")
     private val inviteCode = Regex("^VOVO(-[A-Z0-9]{4}){2}$")
@@ -11,7 +11,7 @@ object Credentials {
 
     fun passwordError(value: String): String? = if (value.length >= MIN_PASSWORD) null else "Use at least $MIN_PASSWORD characters."
 
-    /** Codes d'invitation : « VOVO-7K2D-QX9P » (voir `new_invite_code` côté API). */
+    /** Invite codes: "VOVO-7K2D-QX9P" (see `new_invite_code` in the API). */
     fun normalizeInvite(value: String): String = value.trim().uppercase()
 
     fun inviteError(value: String): String? =

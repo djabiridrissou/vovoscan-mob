@@ -35,7 +35,7 @@ import com.vovoscan.feature.sources.presentation.SourcesIntent
 import com.vovoscan.feature.sources.presentation.SourcesViewModel
 import org.koin.compose.viewmodel.koinViewModel
 
-/** Écran « Sources » : afficher ou masquer chaque source, et la ranger. Aucune logique ici (SourcesViewModel). */
+/** "Sources" screen: show or hide each source, and reorder it. No logic here (SourcesViewModel). */
 @Composable
 fun SourcesScreen(viewModel: SourcesViewModel = koinViewModel()) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -91,7 +91,7 @@ private fun Arrow(
     )
 }
 
-/** Sélecteur de source en tête du catalogue : les sources visibles, dans l'ordre choisi. */
+/** Source picker at the top of the catalog: the visible sources, in the chosen order. */
 @Composable
 fun SourcePicker(
     chips: List<SourceChip>,

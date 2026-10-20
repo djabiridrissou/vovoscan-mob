@@ -8,12 +8,12 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
-/** Version du contrat des sources que ce moteur sait lire (schéma du dépôt vovo-plugin). */
+/** Version of the source contract this engine can read (schema from the vovo-plugin repository). */
 const val RULES_CONTRACT_VERSION = 1
 
 /**
- * Une source à règles telle que le serveur la distribue : son manifeste (contrat v1) et les valeurs effectives de ses
- * réglages, fixées par un admin. L'appareil l'interprète ; son contenu ne passe jamais par vovoscan.
+ * A rule-based source as the server distributes it: its manifest (contract v1) and the effective values of its
+ * settings, set by an admin. The device interprets it; its content never goes through vovoscan.
  */
 data class SourceManifest(
     val key: String,
@@ -30,7 +30,7 @@ data class SourceManifest(
             ?.jsonPrimitive
             ?.int ?: 30
 
-    /** Hôtes que l'appareil a le droit de contacter : ceux du manifeste et ceux des réglages de type url. */
+    /** Hosts the device may contact: those in the manifest and those from url-type settings. */
     val allowedHosts: Set<String>
         get() {
             val fixed = json["hosts"]?.jsonArray?.mapNotNull { it.jsonPrimitive.contentOrNull?.lowercase() }.orEmpty()
@@ -43,7 +43,7 @@ data class SourceManifest(
         }
 }
 
-/** Fournit le manifeste d'une source à règles active ; null pour la source interne (lue par l'API vovoscan). */
+/** Provides the manifest of an active rule-based source; null for the internal source (read through the vovoscan API). */
 fun interface ManifestProvider {
     suspend fun manifest(key: String): SourceManifest?
 }

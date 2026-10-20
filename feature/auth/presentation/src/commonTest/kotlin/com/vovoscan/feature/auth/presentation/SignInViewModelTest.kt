@@ -51,7 +51,7 @@ class SignInViewModelTest {
     fun tearDown() = Dispatchers.resetMain()
 
     @Test
-    fun saisieInvalideNAppellePasLeServeur() =
+    fun invalidInputDoesNotCallTheServer() =
         runTest {
             val auth = FakeAuth(AppResult.Err(AppError.Network))
             val vm = SignInViewModel(auth)
@@ -62,7 +62,7 @@ class SignInViewModelTest {
         }
 
     @Test
-    fun refusDuServeurAfficheSonMessage() =
+    fun serverRejectionShowsItsMessage() =
         runTest {
             val vm = SignInViewModel(FakeAuth(AppResult.Err(AppError.Rejected("INVITE_INVALID", "Invite already used."))))
             vm.onIntent(SignInIntent.SwitchMode)
@@ -74,7 +74,7 @@ class SignInViewModelTest {
         }
 
     @Test
-    fun succesEffaceLeMotDePasse() =
+    fun successClearsThePassword() =
         runTest {
             val vm = SignInViewModel(FakeAuth(AppResult.Ok(Session("u1", "r@v.app", "R", emptyList(), emptySet()))))
             vm.onIntent(SignInIntent.Email("r@v.app"))

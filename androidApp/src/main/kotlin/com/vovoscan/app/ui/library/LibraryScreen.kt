@@ -74,7 +74,7 @@ fun LibraryScreen(
                     Text(row.name, style = MaterialTheme.typography.bodyMedium)
                     Text(row.progress, style = MaterialTheme.typography.bodySmall)
                 }
-                // Cyan : action en attente d'envoi (la marque réserve le cyan au travail en cours).
+                // Cyan: action waiting to be sent (the brand reserves cyan for work in progress).
                 if (row.pendingSync) Box(Modifier.size(10.dp).background(Brand.Cyan, CircleShape))
                 Spacer(Modifier.width(14.dp))
             }

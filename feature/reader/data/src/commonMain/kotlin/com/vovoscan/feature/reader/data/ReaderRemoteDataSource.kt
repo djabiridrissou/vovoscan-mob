@@ -44,7 +44,7 @@ data class ReaderChapterDto(
     val document: DocumentDto? = null,
 )
 
-/** Source distante d'une unité : l'API vovoscan (source interne) ou la source elle-même (lue sur l'appareil). */
+/** Remote source for a unit: the vovoscan API (internal source) or the source itself (read on the device). */
 interface ReaderRemoteDataSource {
     suspend fun chapter(
         sourceKey: String,
@@ -52,14 +52,14 @@ interface ReaderRemoteDataSource {
         chapterId: String,
     ): AppResult<ReaderChapterDto>
 
-    /** Fichier d'un livre. */
+    /** A book's file. */
     suspend fun download(
         sourceKey: String,
         url: String,
     ): AppResult<ByteArray>
 }
 
-/** `GET api/v1/catalog/chapters/{id}` ; le fichier d'un livre est une URL signée de vovoscan. */
+/** `GET api/v1/catalog/chapters/{id}`; a book's file is a signed vovoscan URL. */
 class ApiReaderRemoteDataSource(
     private val http: HttpClient,
 ) : ReaderRemoteDataSource {
@@ -89,7 +89,7 @@ class ApiReaderRemoteDataSource(
         }
 }
 
-/** Sources lues sur l'appareil : fiche, pages ou livre demandés à la source elle-même, jamais à vovoscan. */
+/** Sources read on the device: title, pages or book are requested from the source itself, never from vovoscan. */
 class OnDeviceReaderRemoteDataSource(
     private val manifests: ManifestProvider,
     private val http: RulesHttp,
@@ -138,7 +138,7 @@ class OnDeviceReaderRemoteDataSource(
         AppResult.Err(AppError.Rejected("SOURCE_NOT_FOUND", "This source isn't available on this device yet."))
 }
 
-/** Aiguillage : une source qui a un manifeste se lit sur l'appareil ; sinon c'est la source interne, par l'API. */
+/** Routing: a source with a manifest is read on the device; otherwise it is the internal source, through the API. */
 class RoutingReaderRemoteDataSource(
     private val manifests: ManifestProvider,
     private val api: ReaderRemoteDataSource,

@@ -20,9 +20,9 @@ import kotlinx.coroutines.launch
 
 data class ChapterRow(
     val id: String,
-    /** « Chapter 98 » ou « Chapter 98 · The last gate ». */
+    /** "Chapter 98" or "Chapter 98 · The last gate". */
     val label: String,
-    /** « 19 pages ». */
+    /** "19 pages". */
     val meta: String,
 )
 
@@ -31,19 +31,19 @@ data class TitleDetailUiState(
     val isBook: Boolean = false,
     val name: String = "",
     val coverUrl: String? = null,
-    /** Pas « description » : sur iOS, ce nom est celui de `toString()` (NSObject) et serait renommé. */
+    /** Not "description": on iOS that name is `toString()` (NSObject) and would be renamed. */
     val synopsis: String = "",
-    /** « WEBTOON ✦ Ongoing ✦ A. Author ». */
+    /** "WEBTOON ✦ Ongoing ✦ A. Author". */
     val meta: String = "",
     val genres: List<String> = emptyList(),
     val chapters: List<ChapterRow> = emptyList(),
     val freshness: Freshness = Freshness.Refreshing,
-    /** Titre jamais ouvert et réseau absent : rien à montrer. */
+    /** Title never opened and no network: nothing to show. */
     val unavailable: Boolean = false,
     val error: String? = null,
 )
 
-/** Fiche d'un titre : nom, description, chapitres. Lisible hors ligne dès qu'elle a été ouverte une fois. */
+/** Title page: name, description, chapters. Readable offline once it has been opened. */
 class TitleDetailViewModel(
     private val sourceKey: String,
     private val titleId: String,

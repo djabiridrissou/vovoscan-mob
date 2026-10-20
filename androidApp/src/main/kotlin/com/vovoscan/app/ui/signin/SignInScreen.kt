@@ -30,7 +30,7 @@ import com.vovoscan.feature.auth.presentation.SignInMode
 import com.vovoscan.feature.auth.presentation.SignInViewModel
 import org.koin.compose.viewmodel.koinViewModel
 
-/** Connexion ou invitation. Aucune logique ici : tout vient de `SignInViewModel` (partagé avec iOS). */
+/** Sign-in or invite. No logic here: everything comes from `SignInViewModel` (shared with iOS). */
 @Composable
 fun SignInScreen(viewModel: SignInViewModel = koinViewModel()) {
     val state by viewModel.state.collectAsStateWithLifecycle()

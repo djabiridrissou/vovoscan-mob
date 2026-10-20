@@ -21,7 +21,7 @@ class RulesTest {
     }
 
     @Test
-    fun reglesHtml() {
+    fun htmlRules() {
         val page =
             Ksoup.parse(
                 """<div><a href="/series/ink-road">x</a><h3> Ink Road </h3><img src="c/1.jpg"></div>""",
@@ -55,7 +55,7 @@ class RulesTest {
     }
 
     @Test
-    fun hotesAutorises() {
+    fun allowedHosts() {
         val manifest =
             SourceManifest(
                 "gutenberg",

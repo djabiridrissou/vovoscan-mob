@@ -4,31 +4,31 @@ import kotlin.test.assertNull
 
 class ModuleGraphTest {
     @Test
-    fun `une feature ne dépend pas d'une autre`() {
+    fun `a feature does not depend on another`() {
         assertNotNull(ModuleGraph.violations(":feature:library:data", ":feature:catalog:domain"))
     }
 
     @Test
-    fun `domain reste du Kotlin pur`() {
+    fun `domain stays pure Kotlin`() {
         assertNull(ModuleGraph.violations(":feature:catalog:domain", ":core:common"))
         assertNotNull(ModuleGraph.violations(":feature:catalog:domain", ":core:network"))
     }
 
     @Test
-    fun `data voit son domain et core, pas sa presentation`() {
+    fun `data sees its domain and core, not its presentation`() {
         assertNull(ModuleGraph.violations(":feature:catalog:data", ":feature:catalog:domain"))
         assertNull(ModuleGraph.violations(":feature:catalog:data", ":core:database"))
         assertNotNull(ModuleGraph.violations(":feature:catalog:data", ":feature:catalog:presentation"))
     }
 
     @Test
-    fun `presentation ne voit que son domain`() {
+    fun `presentation sees only its domain`() {
         assertNull(ModuleGraph.violations(":feature:catalog:presentation", ":feature:catalog:domain"))
         assertNotNull(ModuleGraph.violations(":feature:catalog:presentation", ":feature:catalog:data"))
     }
 
     @Test
-    fun `core ne dépend d'aucune feature`() {
+    fun `core depends on no feature`() {
         assertNotNull(ModuleGraph.violations(":core:network", ":feature:auth:domain"))
     }
 }

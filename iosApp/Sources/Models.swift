@@ -1,8 +1,8 @@
 import Combine
 import Shared
 
-/// Ponts SwiftUI vers les ViewModels Kotlin partagés. Aucune logique ici : état publié et intentions transmises.
-/// Chaque modèle garde son propre `ViewModels` et le libère en disparaissant (coroutines annulées).
+/// SwiftUI bridges to the shared Kotlin ViewModels. No logic here: published state and forwarded intents.
+/// Each model holds its own `ViewModels` and releases it when it goes away (coroutines cancelled).
 
 @MainActor
 final class SessionModel: ObservableObject {

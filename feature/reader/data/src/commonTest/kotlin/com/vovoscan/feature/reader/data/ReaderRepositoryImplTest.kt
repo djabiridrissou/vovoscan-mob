@@ -59,7 +59,7 @@ class ReaderRepositoryImplTest {
     }
 
     @Test
-    fun unChapitreOuvertSeRelitHorsLigne() =
+    fun openedChapterCanBeReadAgainOffline() =
         runTest {
             var online = true
             val repo = repository { if (online) respondJson(comic) else error("offline") }
@@ -76,7 +76,7 @@ class ReaderRepositoryImplTest {
         }
 
     @Test
-    fun unLivreEstTelechargeUneFoisPuisLuSansReseau() =
+    fun bookIsDownloadedOnceThenReadOffline() =
         runTest {
             var downloads = 0
             var online = true
@@ -103,7 +103,7 @@ class ReaderRepositoryImplTest {
         }
 
     @Test
-    fun unFichierQuiNEstPasUnLivre() =
+    fun fileThatIsNotABook() =
         runTest {
             val repo =
                 repository { request ->

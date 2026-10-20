@@ -7,7 +7,7 @@ import androidx.security.crypto.MasterKey
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-/** Préférences chiffrées par une clé du Keystore Android (AES-256). */
+/** Preferences encrypted with an Android Keystore key (AES-256). */
 @Suppress("DEPRECATION")
 class AndroidSecureStore(
     context: Context,

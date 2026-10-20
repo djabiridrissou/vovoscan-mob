@@ -28,13 +28,13 @@ class ApiCallTest {
     ) { "token" }
 
     @Test
-    fun succesDecode() =
+    fun successIsDecoded() =
         runTest {
             assertEquals(AppResult.Ok(Pong(true)), client(HttpStatusCode.OK, """{"ok":true}""").apiCall<Pong> { get("ping") })
         }
 
     @Test
-    fun refusMetierGardeLeCode() =
+    fun businessRejectionKeepsItsCode() =
         runTest {
             val result =
                 client(HttpStatusCode.Conflict, """{"code":409,"message":"Invite already used.","data":{"error":"INVITE_INVALID"}}""")
@@ -43,13 +43,13 @@ class ApiCallTest {
         }
 
     @Test
-    fun interditDevientForbidden() =
+    fun http403BecomesForbidden() =
         runTest {
             assertEquals(AppResult.Err(AppError.Forbidden), client(HttpStatusCode.Forbidden, "{}").apiCall<Pong> { get("ping") })
         }
 
     @Test
-    fun mauvaisIdentifiantsGardentLeMessageDuServeur() =
+    fun wrongCredentialsKeepTheServerMessage() =
         runTest {
             val body = """{"code":401,"message":"Wrong email or password.","data":{"error":"INVALID_CREDENTIALS"}}"""
             val result = client(HttpStatusCode.Unauthorized, body).apiCall<Pong> { get("ping") }
@@ -57,7 +57,7 @@ class ApiCallTest {
         }
 
     @Test
-    fun sessionFinie() =
+    fun endedSessionBecomesUnauthorized() =
         runTest {
             val body = """{"code":401,"message":"Sign in to continue.","data":{"error":"UNAUTHORIZED"}}"""
             assertEquals(AppResult.Err(AppError.Unauthorized), client(HttpStatusCode.Unauthorized, body).apiCall<Pong> { get("ping") })

@@ -1,6 +1,6 @@
 package com.vovoscan.feature.reader.data
 
-/** Petit EPUB écrit pour les tests (texte original) : deux sections, une image, et de quoi vérifier le nettoyage. */
+/** Small EPUB written for the tests (original text): two sections, one image, and content to check sanitizing. */
 internal object EpubFixture {
     val base64 =
         "UEsDBBQAAAAAAAAAIQBvYassFAAAABQAAAAIAAAAbWltZXR5cGVhcHBsaWNhdGlvbi9lcHViK3ppcFBLAwQUAAAACAAph1RdHgvXyZkAAADdAAAAFgAAAE1F" +

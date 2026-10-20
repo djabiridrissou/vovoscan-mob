@@ -51,7 +51,7 @@ class RulesSourceTest {
             """"bookshelves":["Best Books"],"formats":{}}"""
 
     @Test
-    fun gutenbergSurLAppareil() =
+    fun gutenbergRunsOnTheDevice() =
         runTest {
             val gutenberg =
                 source(
@@ -82,7 +82,7 @@ class RulesSourceTest {
         }
 
     @Test
-    fun comicEnHtml() =
+    fun htmlComic() =
         runTest {
             val base = "https://comics.inkwell.example"
             val inkwell =
@@ -117,7 +117,7 @@ class RulesSourceTest {
         }
 
     @Test
-    fun hoteNonDeclareRefuse() =
+    fun undeclaredHostIsRejected() =
         runTest {
             val gutenberg =
                 source(
@@ -129,7 +129,7 @@ class RulesSourceTest {
             val result = gutenberg.catalog(1)
             assertIs<AppResult.Err>(result)
             assertEquals("HOST_NOT_ALLOWED", (result.error as AppError.Rejected).code)
-            // La redirection vers un hôte non déclaré n'a jamais été suivie.
+            // The redirect to an undeclared host was never followed.
             assertTrue(sent.none { it.startsWith("https://evil.example") })
         }
 }

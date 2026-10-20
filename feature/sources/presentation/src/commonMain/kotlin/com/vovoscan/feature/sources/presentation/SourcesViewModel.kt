@@ -20,16 +20,16 @@ import kotlinx.coroutines.launch
 data class SourceRow(
     val key: String,
     val name: String,
-    /** « Manga · Books ». */
+    /** "Manga · Books". */
     val kindsLabel: String,
-    /** « vovoscan » ou « Read on your device ». */
+    /** "vovoscan" or "Read on your device". */
     val engineLabel: String,
     val enabled: Boolean,
     val canMoveUp: Boolean,
     val canMoveDown: Boolean,
 )
 
-/** Une source dans le sélecteur du catalogue. */
+/** A source in the catalog picker. */
 data class SourceChip(
     val key: String,
     val name: String,
@@ -41,7 +41,7 @@ data class SourcesUiState(
     val pendingNotice: String? = null,
     val error: String? = null,
 ) {
-    /** Sources visibles, dans l'ordre choisi : le sélecteur du catalogue. */
+    /** Visible sources, in the chosen order: the catalog picker. */
     val chips: List<SourceChip> get() = rows.filter { it.enabled }.map { SourceChip(it.key, it.name) }
 
     val empty: Boolean get() = rows.isEmpty() && freshness != Freshness.Refreshing
@@ -63,7 +63,7 @@ sealed interface SourcesIntent {
     ) : SourcesIntent
 }
 
-/** Écran « Sources » : afficher ou masquer chaque source, la ranger. Au moins une source reste visible. */
+/** "Sources" screen: show or hide each source, reorder it. At least one source stays visible. */
 class SourcesViewModel(
     private val repository: SourcesRepository,
 ) : ViewModel() {
@@ -91,7 +91,7 @@ class SourcesViewModel(
             SourcesIntent.Refresh -> refresh()
             is SourcesIntent.Toggle -> {
                 val target = items.firstOrNull { it.key == intent.key } ?: return
-                // On ne masque pas la dernière source visible : le catalogue resterait vide.
+                // The last visible source cannot be hidden: the catalog would be empty.
                 if (target.enabled && items.count { it.enabled } == 1) {
                     mutableState.update { it.copy(error = "Keep at least one source visible.") }
                     return

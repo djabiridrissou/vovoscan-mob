@@ -35,7 +35,7 @@ struct SignInView: View {
                 if let error = model.state.error { ErrorText(text: error) }
                 Button(model.state.submitLabel) {
                     submitAfterCommittingInput {
-                        // La valeur exacte de chaque champ, puis l'envoi : le ViewModel traite les intentions dans l'ordre.
+                        // The exact value of each field, then the submit: the ViewModel handles intents in order.
                         model.send(SignInIntentEmail(value: email))
                         model.send(SignInIntentPassword(value: password))
                         if model.state.mode == .invite {

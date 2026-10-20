@@ -11,7 +11,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 
-/** Stale-while-revalidate pour les unités ; un livre est téléchargé une fois, ouvert ici, puis gardé en sections. */
+/** Stale-while-revalidate for units; a book is downloaded once, opened here, then kept as sections. */
 class ReaderRepositoryImpl(
     private val remote: ReaderRemoteDataSource,
     private val local: ReaderLocalDataSource,

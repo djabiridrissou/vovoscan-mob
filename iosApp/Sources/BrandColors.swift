@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Couleurs de la marque (`brand/tokens.json`), seules autorisées dans l'interface.
+/// Brand colors (`brand/tokens.json`), the only ones allowed in the UI.
 extension Color {
     static let brandInk = Color(hex: 0x0B0B0E)
     static let brandInk2 = Color(hex: 0x15151B)
@@ -23,7 +23,7 @@ extension Color {
     }
 }
 
-/// Dela Gothic One (titres) et Space Grotesk (texte) ; sans les fichiers, la police du système prend le relais.
+/// Dela Gothic One (headings) and Space Grotesk (body); without the files, the system font is used instead.
 extension Font {
     static func brandDisplay(_ size: CGFloat) -> Font { .custom("DelaGothicOne-Regular", size: size) }
     static func brandBody(_ size: CGFloat, weight: Font.Weight = .regular) -> Font {

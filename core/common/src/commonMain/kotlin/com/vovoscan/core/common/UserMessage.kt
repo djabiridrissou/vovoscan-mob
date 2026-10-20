@@ -1,8 +1,8 @@
 package com.vovoscan.core.common
 
 /**
- * Message affiché pour une erreur. Ton de la marque : calme, précis, sans « Oops ».
- * Un refus de l'API garde son propre message, le plus précis.
+ * Message shown for an error. Brand tone: calm, precise, no "Oops".
+ * An API rejection keeps its own message, which is the most precise.
  */
 fun AppError.userMessage(): String =
     when (this) {

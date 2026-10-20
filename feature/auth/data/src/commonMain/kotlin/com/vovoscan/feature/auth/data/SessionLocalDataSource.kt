@@ -4,7 +4,7 @@ import com.vovoscan.core.network.ApiJson
 import com.vovoscan.core.security.SecureKeys
 import com.vovoscan.core.security.SecureStore
 
-/** Source locale : jeton et profil gardés dans le coffre de l'appareil (Keystore / Keychain). */
+/** Local source: token and profile kept in the device's secure store (Keystore / Keychain). */
 interface SessionLocalDataSource {
     suspend fun token(): String?
 

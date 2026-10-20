@@ -1,4 +1,4 @@
--- v1 → v2 : un catalogue par source. La base n'est qu'une copie : on repart de zéro, la source la remplira.
+-- v1 → v2: one catalog per source. The database is only a copy: start from scratch, the source will refill it.
 DROP TABLE IF EXISTS chapter;
 DROP TABLE IF EXISTS catalog_cursor;
 DROP INDEX IF EXISTS title_rank;

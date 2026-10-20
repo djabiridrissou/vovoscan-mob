@@ -1,4 +1,4 @@
-// Faux partagés pour les tests : MockEngine, base SQLDelight en mémoire, coffre en mémoire, Turbine.
+// Shared test fakes: MockEngine, in-memory SQLDelight database, in-memory secure store, Turbine.
 plugins {
     id("vovoscan.kmp-library")
 }

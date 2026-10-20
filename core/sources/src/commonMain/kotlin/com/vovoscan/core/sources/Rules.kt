@@ -13,14 +13,14 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.jsonPrimitive
 
-/** Une règle ou une réponse que le moteur ne sait pas lire. */
+/** A rule or a response the engine cannot read. */
 class RuleException(
     message: String,
 ) : Exception(message)
 
 /**
- * Ce qu'une règle voit : le nœud courant (élément JSON ou élément HTML), l'URL de la page (pour `absUrl`) et les
- * variables des modèles. Aucune règle n'exécute de code : chaque transformation est écrite ici.
+ * What a rule sees: the current node (JSON element or HTML element), the page URL (for `absUrl`) and the
+ * template variables. No rule runs code: every transform is written here.
  */
 class RuleContext(
     val node: Any,
@@ -49,7 +49,7 @@ object Rules {
             else -> throw RuleException("Unknown response type: $type")
         }
 
-    /** Nœuds d'une liste : un JSONPath (chaîne) ou un sélecteur CSS (`{"css": …}`). */
+    /** Nodes of a list: a JSONPath (string) or a CSS selector (`{"css": …}`). */
     fun nodes(
         ctx: RuleContext,
         selector: JsonElement,
@@ -60,7 +60,7 @@ object Rules {
         return element.select(css).toList()
     }
 
-    /** Valeur d'une règle : chaîne JSONPath, ou objet path / css / const / template, puis `then`, puis `default`. */
+    /** Value of a rule: a JSONPath string, or a path / css / const / template object, then `then`, then `default`. */
     fun evaluate(
         ctx: RuleContext,
         rule: JsonElement?,
@@ -104,7 +104,7 @@ object Rules {
             else -> element.attr(attr).ifEmpty { null }
         }
 
-    /** Élément JSON → valeur Kotlin (chaîne, nombre, booléen) ; objets et tableaux restent JSON (pour `pluck`). */
+    /** JSON element → Kotlin value (string, number, boolean); objects and arrays stay JSON (for `pluck`). */
     fun plain(element: JsonElement): Any? =
         when (element) {
             is JsonNull -> null
@@ -194,7 +194,7 @@ object Rules {
     }
 }
 
-/** URL absolue d'un lien relatif (RFC 3986, cas courants : schéma, //hôte, /chemin, chemin relatif). */
+/** Absolute URL of a relative link (RFC 3986, common cases: scheme, //host, /path, relative path). */
 internal fun absoluteUrl(
     base: String,
     link: String,

@@ -5,8 +5,8 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 
 /**
- * Sous-ensemble de JSONPath, le même que le contrat : `$`, `.clé`, `['clé avec / ou .']`, `[n]`, `[*]`.
- * Pas de filtres ni d'expressions : rien qui ressemble à du code.
+ * Subset of JSONPath, the same as the contract's: `$`, `.key`, `['key with / or .']`, `[n]`, `[*]`.
+ * No filters or expressions: nothing that looks like code.
  */
 object JsonPath {
     private val token = Regex("""\.([A-Za-z_][A-Za-z0-9_-]*)|\[\*]|\[(-?\d+)]|\['((?:[^'\\]|\\.)*)']|\["((?:[^"\\]|\\.)*)"]""")

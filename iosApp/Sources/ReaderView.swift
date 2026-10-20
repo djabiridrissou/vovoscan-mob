@@ -2,7 +2,7 @@ import Shared
 import SwiftUI
 import WebKit
 
-/// Ouvre un chapitre ; « chapitre suivant » remplace le lecteur sur place (pas d'empilement sans fin).
+/// Opens a chapter; "next chapter" replaces the reader in place (no endless stacking).
 struct ReaderRoute: Hashable {
     let sourceKey: String
     let titleId: String
@@ -19,8 +19,8 @@ struct ReaderContainer: View {
     }
 }
 
-/// Lecteur : bande verticale continue (webtoon) ou pages de droite à gauche (manga). Toucher masque les barres.
-/// Aucune logique ici : page courante, reprise et progression sont dans `ReaderViewModel` (Kotlin partagé).
+/// Reader: continuous vertical strip (webtoon) or right-to-left pages (manga). Tapping hides the bars.
+/// No logic here: current page, resume and progress live in `ReaderViewModel` (shared Kotlin).
 struct ReaderView: View {
     @StateObject private var model: ReaderModel
     @Environment(\.dismiss) private var dismiss
@@ -46,7 +46,7 @@ struct ReaderView: View {
             } else if !model.state.pages.isEmpty {
                 if model.state.mode == .vertical { VerticalStrip(model: model, onOpenChapter: onOpenChapter) } else { RightToLeftPages(model: model) }
             }
-            // Un livre garde ses barres : la vue web reçoit les touchers (défilement du texte).
+            // A book keeps its bars: the web view receives the taps (text scrolling).
             if model.state.chromeVisible || model.state.isBook { chrome }
         }
         .toolbar(.hidden, for: .navigationBar)
@@ -96,7 +96,7 @@ struct ReaderView: View {
     }
 }
 
-/// Bande verticale : chaque page signale sa position ; la page courante est celle qui couvre le tiers haut de l'écran.
+/// Vertical strip: each page reports its position; the current page is the one covering the top third of the screen.
 private struct VerticalStrip: View {
     @ObservedObject var model: ReaderModel
     let onOpenChapter: (String) -> Void
@@ -133,7 +133,7 @@ private struct VerticalStrip: View {
                     }
                 }
                 .onAppear {
-                    // Reprise : une seule fois, sur la page enregistrée.
+                    // Resume: once, at the saved page.
                     guard !positioned else { return }
                     positioned = true
                     proxy.scrollTo(Int(model.state.currentIndex), anchor: .top)
@@ -150,7 +150,7 @@ private struct PageTops: PreferenceKey {
     }
 }
 
-/// Pages de droite à gauche : la mise en page RTL inverse le sens du balayage, comme dans un manga.
+/// Right-to-left pages: the RTL layout reverses the swipe direction, as in a manga.
 private struct RightToLeftPages: View {
     @ObservedObject var model: ReaderModel
 
@@ -172,7 +172,7 @@ private struct RightToLeftPages: View {
     }
 }
 
-/// La place est réservée d'après les dimensions connues : pas de saut quand l'image arrive.
+/// Space is reserved from the known dimensions: no jump when the image arrives.
 private struct PageImage: View {
     let page: ReaderPage
     var fit = false
@@ -190,8 +190,8 @@ private struct PageImage: View {
 }
 
 
-/// Livre : une section à la fois, dans une vue web JavaScript coupé, sans navigation. Le HTML est déjà nettoyé
-/// et mis en forme (BookStyle, Kotlin partagé) ; les images sont intégrées, rien n'est chargé du web.
+/// Book: one section at a time, in a web view with JavaScript off and no navigation. The HTML is already sanitised
+/// and styled (BookStyle, shared Kotlin); images are embedded, nothing is loaded from the web.
 private struct BookReader: View {
     @ObservedObject var model: ReaderModel
     let onOpenChapter: (String) -> Void
@@ -241,7 +241,7 @@ private struct BookWebView: UIViewRepresentable {
     final class Coordinator: NSObject, WKNavigationDelegate {
         var loaded: String?
 
-        /// Aucun lien ne quitte le livre : seul le chargement initial de la section est permis.
+        /// No link leaves the book: only the initial load of the section is allowed.
         func webView(
             _ webView: WKWebView,
             decidePolicyFor action: WKNavigationAction,

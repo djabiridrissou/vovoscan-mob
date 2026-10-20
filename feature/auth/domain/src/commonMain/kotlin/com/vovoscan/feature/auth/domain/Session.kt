@@ -4,8 +4,8 @@ import com.vovoscan.core.common.AppResult
 import kotlinx.coroutines.flow.StateFlow
 
 /**
- * Utilisateur connecté. [permissions] vient du serveur (« module:action », « * » pour un super-admin) :
- * l'interface s'en sert seulement pour masquer ce qui serait refusé ; le serveur revérifie chaque appel.
+ * Signed-in user. [permissions] comes from the server ("module:action", "*" for a super-admin):
+ * the UI only uses it to hide what would be refused; the server checks every call again.
  */
 data class Session(
     val userId: String,
@@ -23,10 +23,10 @@ data class Session(
 }
 
 interface AuthRepository {
-    /** Session courante : restaurée du coffre au lancement, même hors ligne. */
+    /** Current session: restored from the secure store at launch, even offline. */
     val session: StateFlow<Session?>
 
-    /** Relit la session gardée sur l'appareil, puis la confirme auprès du serveur si le réseau répond. */
+    /** Reads the session kept on the device, then confirms it with the server if the network answers. */
     suspend fun restore()
 
     suspend fun signIn(
@@ -34,7 +34,7 @@ interface AuthRepository {
         password: String,
     ): AppResult<Session>
 
-    /** Inscription sur invitation, à usage unique (marque : « invite-only »). */
+    /** Sign-up with a single-use invite (brand: "invite-only"). */
     suspend fun redeemInvite(
         code: String,
         email: String,
@@ -42,6 +42,6 @@ interface AuthRepository {
         displayName: String,
     ): AppResult<Session>
 
-    /** Révoque la session côté serveur si possible, et efface tout ce qui est sur l'appareil. */
+    /** Revokes the session on the server if possible, and erases everything on the device. */
     suspend fun signOut()
 }

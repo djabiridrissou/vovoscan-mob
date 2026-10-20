@@ -1,6 +1,6 @@
 package com.vovoscan.core.sources
 
-/** Modèles « {{nom}} » et « {{settings.nom}} » : substitution simple, sans logique. */
+/** "{{name}}" and "{{settings.name}}" templates: plain substitution, no logic. */
 object Template {
     private val placeholder = Regex("""\{\{\s*([A-Za-z_][A-Za-z0-9_.]*)\s*}}""")
 

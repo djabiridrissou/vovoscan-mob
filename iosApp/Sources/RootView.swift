@@ -1,7 +1,7 @@
 import Shared
 import SwiftUI
 
-/// Racine : connexion, ou onglets Catalogue / Bibliothèque / Sources. La session vient du Kotlin partagé.
+/// Root: sign-in, or the Catalog / Library / Sources tabs. The session comes from shared Kotlin.
 struct RootView: View {
     @StateObject private var session = SessionModel()
 

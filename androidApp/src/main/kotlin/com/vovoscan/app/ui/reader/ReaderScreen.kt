@@ -54,8 +54,8 @@ import org.koin.compose.viewmodel.koinViewModel
 import org.koin.core.parameter.parametersOf
 
 /**
- * Lecteur : bande verticale continue (webtoon) ou pages de droite à gauche (manga). Toucher le centre masque les
- * barres. L'écran ne fait qu'afficher : page courante, reprise et progression sont dans `ReaderViewModel`.
+ * Reader: continuous vertical strip (webtoon) or right-to-left pages (manga). Tapping the centre hides the
+ * bars. The screen only displays: current page, resume and progress live in `ReaderViewModel`.
  */
 @Composable
 fun ReaderScreen(
@@ -82,7 +82,7 @@ fun ReaderScreen(
             state.mode == ReadingMode.Vertical -> VerticalStrip(state, viewModel::onIntent, onOpenChapter)
             else -> RightToLeftPages(state, viewModel::onIntent)
         }
-        // Un livre garde ses barres : la vue web reçoit les touchers (défilement du texte).
+        // A book keeps its bars: the web view receives the taps (text scrolling).
         if (state.chromeVisible || state.isBook) {
             TopBar(state, onBack, Modifier.align(Alignment.TopCenter))
             BottomBar(state, viewModel::onIntent, onOpenChapter, Modifier.align(Alignment.BottomCenter))
@@ -98,7 +98,7 @@ private fun VerticalStrip(
 ) {
     val list = rememberLazyListState()
     var positioned by remember { mutableStateOf(false) }
-    // Reprise : on se place une seule fois sur la page enregistrée, dès que les pages sont là.
+    // Resume: scroll to the saved page once, as soon as the pages are available.
     LaunchedEffect(state.pages.size) {
         if (!positioned && state.pages.isNotEmpty()) {
             list.scrollToItem(state.currentIndex)
@@ -128,7 +128,7 @@ private fun RightToLeftPages(
 ) {
     val pager = rememberPagerState(initialPage = state.currentIndex) { state.pages.size }
     LaunchedEffect(pager) { snapshotFlow { pager.settledPage }.collect { onIntent(ReaderIntent.PageVisible(it)) } }
-    // reverseLayout : la première page est à droite, on avance en tirant vers la droite (sens manga).
+    // reverseLayout: the first page is on the right, swiping right moves forward (manga direction).
     HorizontalPager(
         state = pager,
         reverseLayout = true,
@@ -147,7 +147,7 @@ private fun PageImage(
     modifier: Modifier,
     scale: ContentScale = ContentScale.FillWidth,
 ) {
-    // La place est réservée d'après les dimensions connues : pas de saut quand l'image arrive.
+    // Space is reserved from the known dimensions: no jump when the image arrives.
     AsyncImage(
         model = page.url,
         contentDescription = "Page ${page.index + 1}",
@@ -216,8 +216,8 @@ private fun BottomBar(
 }
 
 /**
- * Livre : une section à la fois, dans une vue web JavaScript coupé, sans réseau ni navigation. Le HTML est déjà
- * nettoyé et mis en forme (BookStyle) ; les images sont intégrées.
+ * Book: one section at a time, in a web view with JavaScript off, no network and no navigation. The HTML is
+ * already sanitised and styled (BookStyle); images are embedded.
  */
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
@@ -245,7 +245,7 @@ private fun BookReader(
                             settings.blockNetworkLoads = true
                             settings.allowFileAccess = false
                             settings.allowContentAccess = false
-                            // Aucun lien ne quitte le livre.
+                            // No link leaves the book.
                             webViewClient =
                                 object : WebViewClient() {
                                     override fun shouldOverrideUrlLoading(

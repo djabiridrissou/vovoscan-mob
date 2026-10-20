@@ -11,12 +11,12 @@ import com.vovoscan.feature.auth.presentation.SignInViewModel
 import org.koin.core.module.dsl.viewModelOf
 import org.koin.dsl.module
 
-/** Effacement des données locales des autres features à la déconnexion (assemblé dans `shared`). */
+/** Erases the other features' local data on sign-out (wired in `shared`). */
 fun interface SignOutCleanup {
     suspend fun run()
 }
 
-/** Module Koin de la feature. Attend de l'application : `HttpClient`, `SecureStore` et `SignOutCleanup`. */
+/** Koin module of the feature. Expects from the app: `HttpClient`, `SecureStore` and `SignOutCleanup`. */
 val authModule =
     module {
         single<AuthRemoteDataSource> { KtorAuthRemoteDataSource(get()) }

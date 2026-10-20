@@ -14,7 +14,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 
-/** Couleurs de la marque (`brand/tokens.json`), seules autorisées dans l'interface. */
+/** Brand colors (`brand/tokens.json`), the only ones allowed in the UI. */
 object Brand {
     val Ink = Color(0xFF0B0B0E)
     val Ink2 = Color(0xFF15151B)
@@ -36,8 +36,8 @@ class BrandFonts(
 )
 
 /**
- * Dela Gothic One (titres) et Space Grotesk (texte), copiées dans `res/font` par `scripts/fetch-fonts.sh`.
- * Absentes, la police du système prend le relais : l'application reste utilisable.
+ * Dela Gothic One (headings) and Space Grotesk (body), copied into `res/font` by `scripts/fetch-fonts.sh`.
+ * If missing, the system font is used instead: the app stays usable.
  */
 @SuppressLint("DiscouragedApi")
 @Composable

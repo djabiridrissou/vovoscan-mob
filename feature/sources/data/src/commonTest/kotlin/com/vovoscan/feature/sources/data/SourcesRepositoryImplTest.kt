@@ -25,7 +25,7 @@ class SourcesRepositoryImplTest {
             """"settings":{"catalogBaseUrl":{"label":"x","type":"url"}}},"settings":{"catalogBaseUrl":"https://gutendex.example"}}]}"""
 
     @Test
-    fun lesManifestesRestentSurLAppareil() =
+    fun manifestsStayOnTheDevice() =
         runTest {
             var online = true
             val local =
@@ -51,7 +51,7 @@ class SourcesRepositoryImplTest {
         }
 
     @Test
-    fun unChoixHorsLigneEstEnvoyeEnPremier() =
+    fun offlineChoiceIsSentFirst() =
         runTest {
             var online = false
             val sentBodies = mutableListOf<String>()

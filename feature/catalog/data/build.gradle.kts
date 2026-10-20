@@ -17,7 +17,7 @@ kotlin {
     }
 }
 
-// Tables et migrations propres à la feature ; `verifySqlDelightMigration` (dans check) les vérifie.
+// The feature's own tables and migrations; `verifySqlDelightMigration` (part of check) verifies them.
 sqldelight {
     databases {
         create("CatalogDatabase") {

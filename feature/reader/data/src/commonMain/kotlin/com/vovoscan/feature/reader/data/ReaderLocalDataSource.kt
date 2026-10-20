@@ -20,7 +20,7 @@ internal fun chapterKey(
     chapterId: String,
 ) = "$sourceKey/$chapterId"
 
-/** Source locale : unités déjà ouvertes, leurs pages et les sections des livres. */
+/** Local source: units already opened, their pages, and book sections. */
 interface ReaderLocalDataSource {
     fun observe(
         sourceKey: String,

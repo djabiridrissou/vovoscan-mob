@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Sombre uniquement (marque) : fond encre, barre d'état en texte clair. -->
+    <!-- Dark only (brand): ink background, light status bar text. -->
     <style name="Theme.Vovoscan" parent="android:Theme.Material.NoActionBar">
         <item name="android:windowBackground">@color/ink</item>
         <item name="android:statusBarColor">@color/ink</item>

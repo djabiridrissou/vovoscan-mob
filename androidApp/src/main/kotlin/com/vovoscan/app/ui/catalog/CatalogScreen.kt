@@ -63,7 +63,7 @@ fun CatalogScreen(
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Kicker("Catalog")
                 Text("Pick a title.", style = MaterialTheme.typography.headlineSmall)
-                // Deux features côte à côte sans se connaître : les sources (sélecteur) et le catalogue.
+                // Two features side by side, unaware of each other: sources (picker) and catalog.
                 SourcePicker(sourcesState.chips, state.sourceKey) { viewModel.onIntent(CatalogIntent.SelectSource(it)) }
                 BrandField("Search", state.query, { viewModel.onIntent(CatalogIntent.Query(it)) })
                 state.offlineNotice?.let { OfflineNotice(it) }
@@ -80,7 +80,7 @@ fun CatalogScreen(
     }
 }
 
-/** Tuile d'un titre : couverture, pastille de format, nom. */
+/** Title tile: cover, format badge, name. */
 @Composable
 private fun TitleTile(
     card: TitleCard,

@@ -10,13 +10,13 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 /**
- * Hors ligne d'abord : la session du coffre est rendue tout de suite, puis confirmée par `GET /auth/me`.
- * Seul un 401 la retire (session révoquée) ; une coupure réseau la garde.
+ * Offline first: the session from the secure store is returned at once, then confirmed by `GET /auth/me`.
+ * Only a 401 removes it (session revoked); a network failure keeps it.
  */
 class AuthRepositoryImpl(
     private val remote: AuthRemoteDataSource,
     private val local: SessionLocalDataSource,
-    /** Appelé à la déconnexion : les autres features effacent leurs données locales. */
+    /** Called on sign-out: the other features erase their local data. */
     private val onSignedOut: suspend () -> Unit = {},
 ) : AuthRepository {
     private val current = MutableStateFlow<Session?>(null)

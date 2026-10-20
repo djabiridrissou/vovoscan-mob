@@ -13,17 +13,17 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.withContext
 
-/** Source locale : la base SQLDelight de la feature, lue par les écrans ; un catalogue par source. */
+/** Local source: the feature's SQLDelight database, read by the screens; one catalog per source. */
 interface CatalogLocalDataSource {
     fun observeCatalog(sourceKey: String): Flow<List<TitleSummary>>
 
-    /** Range une page du catalogue d'une source ; la page 1 repart de zéro. */
+    /** Stores a page of a source's catalog; page 1 starts over from scratch. */
     suspend fun saveCatalogPage(
         sourceKey: String,
         page: TitlesPage,
     )
 
-    /** Prochaine page à demander, null si tout est déjà là. */
+    /** Next page to request, null if everything is already here. */
     suspend fun nextPage(sourceKey: String): Int?
 
     suspend fun searchLocal(
@@ -31,7 +31,7 @@ interface CatalogLocalDataSource {
         query: String,
     ): List<TitleSummary>
 
-    /** Garde aussi les résultats de recherche : la fiche s'ouvre ensuite hors ligne. */
+    /** Also keeps search results: the title page then opens offline. */
     suspend fun saveSummaries(
         sourceKey: String,
         items: List<TitleSummaryDto>,

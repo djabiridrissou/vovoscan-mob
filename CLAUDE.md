@@ -1,99 +1,99 @@
 # vovoscan — mobile
 
-Applications Android et iOS de vovoscan en Kotlin Multiplatform : logique partagée en Kotlin, interfaces natives
-(Jetpack Compose sur Android, SwiftUI sur iOS). L'API (`../backend`) est la source de vérité ; l'appareil garde
-une copie locale pour fonctionner hors ligne. Marque : `brand/BRAND.md` (copie du dossier de marque commun) (sombre uniquement).
+vovoscan's Android and iOS apps in Kotlin Multiplatform: shared logic in Kotlin, native UIs
+(Jetpack Compose on Android, SwiftUI on iOS). The API (`../backend`) is the source of truth; the device keeps
+a local copy so it works offline. Brand: `brand/BRAND.md` (copy of the shared brand folder) (dark only).
 
-## Démarrer et vérifier
+## Run and verify
 
 ```bash
 ./gradlew check :androidApp:assembleDebug
 ./gradlew -p build-logic test
-scripts/fetch-fonts.sh                     # polices de la marque (sinon, police du système)
+scripts/fetch-fonts.sh                     # brand fonts (otherwise, the system font)
 cd iosApp && xcodegen && open Vovoscan.xcodeproj
 ```
 
-API locale : `http://10.0.2.2:8000/` (émulateur Android), `http://localhost:8000/` (simulateur iOS).
-Autre adresse : `./gradlew :androidApp:assembleDebug -Pvovoscan.apiBaseUrl=https://…/`.
+Local API: `http://10.0.2.2:8000/` (Android emulator), `http://localhost:8000/` (iOS simulator).
+Another address: `./gradlew :androidApp:assembleDebug -Pvovoscan.apiBaseUrl=https://…/`.
 
 ## Architecture
 
-- Une feature = une tranche verticale en quatre modules : `feature/<nom>/{domain,data,presentation,di}`.
-  - `domain` : Kotlin commun pur (entités, interface du dépôt, règles). Ni Ktor, ni SQLDelight, ni Koin.
-  - `data` : une source distante (`…RemoteDataSource`, Ktor) et une source locale (`…LocalDataSource`, SQLDelight),
-    toutes deux derrière une interface, injectées dans `…RepositoryImpl`.
-  - `presentation` : ViewModels partagés (état + intentions). Toute la logique d'écran est ici.
-  - `di` : module Koin de la feature (sources, dépôt, ViewModels).
-- `core/` : `common` (AppResult, AppError, Freshness, Clock), `network` (client Ktor, enveloppes de l'API),
-  `database` (pilote SQLDelight), `security` (Keystore / Keychain), `sources` (moteur des sources lues sur
-  l'appareil), `testing` (faux).
-- `shared/` assemble tout pour les deux applications et exporte le framework iOS « Shared » (SKIE).
-- Règles vérifiées à la configuration Gradle (`build-logic/.../ModuleGraph.kt`) : une feature ne dépend jamais
-  d'une autre ; `domain` ne voit que `:core:common` ; `presentation` ne voit que son `domain` ; `data` ne voit pas
-  sa `presentation`. Deux features sur un même écran (fiche + suivi) sont assemblées par l'application.
-- Aucune logique dans Swift ni dans les Composables : ils affichent l'état et envoient des intentions.
+- One feature = one vertical slice in four modules: `feature/<name>/{domain,data,presentation,di}`.
+  - `domain`: pure common Kotlin (entities, repository interface, rules). No Ktor, no SQLDelight, no Koin.
+  - `data`: a remote source (`…RemoteDataSource`, Ktor) and a local source (`…LocalDataSource`, SQLDelight),
+    both behind an interface, injected into `…RepositoryImpl`.
+  - `presentation`: shared ViewModels (state + intents). All screen logic lives here.
+  - `di`: the feature's Koin module (sources, repository, ViewModels).
+- `core/`: `common` (AppResult, AppError, Freshness, Clock), `network` (Ktor client, API envelopes),
+  `database` (SQLDelight driver), `security` (Keystore / Keychain), `sources` (engine for sources read on the
+  device), `testing` (fakes).
+- `shared/` wires everything for both apps and exports the iOS "Shared" framework (SKIE).
+- Rules checked at Gradle configuration time (`build-logic/.../ModuleGraph.kt`): a feature never depends on
+  another; `domain` sees only `:core:common`; `presentation` sees only its `domain`; `data` does not see its
+  `presentation`. Two features on the same screen (title page + follow) are wired together by the app.
+- No logic in Swift or in Composables: they render the state and send intents.
 
-## Hors ligne d'abord
+## Offline first
 
-- Les écrans lisent la base locale (`Flow`), jamais le réseau directement. `refresh…` remplace la copie locale par
-  la réponse du serveur ; sans réseau, la copie reste affichée avec un bandeau discret (`Freshness.Offline`).
-- Écritures (bibliothèque) : appliquées tout de suite en local, mises en file (`outbox`, une opération par titre),
-  envoyées par `sync()` avec l'heure de l'action. Le serveur départage (last-write-wins) et rend l'état gagnant ;
-  `updatedSince` récupère les changements des autres appareils, suppressions comprises.
-- Base par feature ; après un changement de schéma, ajouter une migration `.sqm`. Cible SQLite 3.18 (Android 8) :
-  pas d'`ON CONFLICT … DO UPDATE`. Jeton de session dans `SecureStore` seulement ; tout est effacé à la déconnexion.
+- Screens read the local database (`Flow`), never the network directly. `refresh…` replaces the local copy with
+  the server's response; without network, the copy stays on screen with a discreet banner (`Freshness.Offline`).
+- Writes (library): applied locally right away, queued (`outbox`, one operation per title), sent by `sync()` with
+  the time of the action. The server settles conflicts (last-write-wins) and returns the winning state;
+  `updatedSince` fetches changes from other devices, deletions included.
+- One database per feature; after a schema change, add a `.sqm` migration. Target SQLite 3.18 (Android 8):
+  no `ON CONFLICT … DO UPDATE`. Session token in `SecureStore` only; everything is wiped on sign-out.
 
 ## Sources
 
-- `feature/sources` : sources actives de l'utilisateur (`GET api/v1/catalog/sources`), visibles ou non, dans son
-  ordre ; choix appliqués en local puis envoyés (`PUT`, rejoués s'ils n'ont pas pu partir). Au moins une reste
-  visible. Écran « Sources » et sélecteur du catalogue (`SourcePicker`), assemblés par l'application.
-- Deux moteurs, choisis par `sourceKey` dans les sources de données distantes (`Routing…RemoteDataSource`) :
-  - `vovoscan` (interne) : lu par notre API.
-  - source à règles (ex. Project Gutenberg) : **l'appareil interprète le manifeste et fait lui-même les requêtes**.
-    Rien ne passe par notre API, sauf la référence `(sourceKey, titleRef)` d'un titre suivi et sa progression.
-- `core/sources` : manifeste (contrat v1, copie de `vovo-plugin/schema`), JSONPath, gabarits `{{settings.x}}`,
-  sélecteurs CSS (Ksoup), transformations, `RulesSource` (catalogue, fiche, pages, URL du livre).
-- `RulesHttp` : client à part, **sans session vovoscan ni cookies**, redirections suivies à la main et limitées
-  aux hôtes déclarés (manifeste + réglages de type URL), débit plafonné par le manifeste.
-- Catalogue, fiches et chapitres sont rangés par `(sourceKey, id)` : deux sources ne se mélangent jamais.
-  Le catalogue suit la première source visible tant que le lecteur n'en choisit pas une autre (`SourcesChanged`).
-- Tests : `core/sources/src/commonTest/.../Fixtures.kt` recopie les manifestes (les modifier avec `vovo-plugin`).
+- `feature/sources`: the user's active sources (`GET api/v1/catalog/sources`), visible or not, in their order;
+  choices applied locally then sent (`PUT`, replayed if they could not go out). At least one stays visible.
+  "Sources" screen and catalog picker (`SourcePicker`), wired together by the app.
+- Two engines, chosen by `sourceKey` in the remote data sources (`Routing…RemoteDataSource`):
+  - `vovoscan` (internal): read through our API.
+  - rule-based source (e.g. Project Gutenberg): **the device interprets the manifest and makes the requests
+    itself**. Nothing goes through our API, except the `(sourceKey, titleRef)` reference of a followed title and
+    its progress.
+- `core/sources`: manifest (v1 contract, copy of `vovo-plugin/schema`), JSONPath, `{{settings.x}}` templates,
+  CSS selectors (Ksoup), transforms, `RulesSource` (catalog, title page, pages, book URL).
+- `RulesHttp`: a separate client, **without the vovoscan session or cookies**, redirects followed by hand and
+  limited to declared hosts (manifest + URL-type settings), rate capped by the manifest.
+- Catalog, title pages and chapters are keyed by `(sourceKey, id)`: two sources never mix.
+  The catalog follows the first visible source until the reader picks another one (`SourcesChanged`).
+- Tests: `core/sources/src/commonTest/.../Fixtures.kt` copies the manifests (change them with `vovo-plugin`).
 
-## Lecteur
+## Reader
 
-- `feature/reader` : chapitre prêt à lire (`GET api/v1/catalog/chapters/{id}`), copie locale du chapitre, sens de
-  lecture (`PagedRightToLeft` pour le manga, `Vertical` pour le webtoon, `Book` pour un livre), reprise et
-  progression.
-- Livres (EPUB) : téléchargés une fois (URL signée de l'API, ou hôte de la source pour une source à règles),
-  lus par `EpubParser` (Okio + Ksoup : `container.xml` → OPF → ordre de lecture, sommaire nav/NCX), sections
-  nettoyées (liste blanche, images en `data:` seulement, liens retirés) et rangées en base : relecture hors ligne.
-  Affichage dans une WebView / WKWebView sans JavaScript ni réseau, styles et CSP de `BookStyle`. La progression
-  d'un livre compte en sections.
-- La progression passe par le port `ReadingProgressSink`, branché dans `shared` sur la bibliothèque : le lecteur ne
-  connaît pas `library`. Elle n'est gardée que pour un titre suivi.
-- Les images sont des URLs signées, identiques pendant une journée : le cache d'images sert les pages déjà vues.
-  Le téléchargement de chapitres pour une lecture hors ligne complète reste à faire.
+- `feature/reader`: a chapter ready to read (`GET api/v1/catalog/chapters/{id}`), local copy of the chapter,
+  reading mode (`PagedRightToLeft` for manga, `Vertical` for webtoon, `Book` for a book), resume and progress.
+- Books (EPUB): downloaded once (signed URL from the API, or the source's host for a rule-based source),
+  read by `EpubParser` (Okio + Ksoup: `container.xml` → OPF → reading order, nav/NCX table of contents), sections
+  sanitized (allowlist, images as `data:` only, links removed) and stored in the database: offline rereading.
+  Displayed in a WebView / WKWebView with no JavaScript and no network, styles and CSP from `BookStyle`. A book's
+  progress counts in sections.
+- Progress goes through the `ReadingProgressSink` port, wired to the library in `shared`: the reader does not
+  know about `library`. It is kept only for a followed title.
+- Images are signed URLs, unchanged for a day: the image cache serves pages already seen.
+  Downloading chapters for full offline reading is still to do.
 
-## iOS : pièges connus
+## iOS: known pitfalls
 
-- Champs de saisie : `IntentField` garde le texte côté Swift et envoie chaque frappe en intention ; relire l'état
-  Kotlin (asynchrone) écraserait la saisie. Valider avec `submitAfterCommittingInput` : iOS ne remet le dernier
-  caractère composé qu'à la perte du focus.
-- Connexion : au moment de valider, renvoyer les valeurs exactes des champs (intentions) avant `Submit`, sinon
-  la dernière frappe peut manquer côté Kotlin.
-- Pas de propriété Kotlin nommée `description` dans un état exporté : sur iOS c'est `toString()` (NSObject).
-- Simulateur : construire signé (`CODE_SIGN_IDENTITY="-"`, ce que fait Xcode par défaut), sinon le Keychain
-  refuse d'écrire et la session ne tient pas.
+- Text fields: `IntentField` keeps the text on the Swift side and sends each keystroke as an intent; reading back
+  the Kotlin state (asynchronous) would overwrite the input. Submit with `submitAfterCommittingInput`: iOS only
+  hands over the last composed character when focus is lost.
+- Sign-in: when submitting, resend the exact field values (intents) before `Submit`, otherwise the last
+  keystroke may be missing on the Kotlin side.
+- No Kotlin property named `description` in an exported state: on iOS it is `toString()` (NSObject).
+- Simulator: build signed (`CODE_SIGN_IDENTITY="-"`, which Xcode does by default), otherwise the Keychain
+  refuses to write and the session does not persist.
 
-## Interface
+## UI
 
-- Couleurs : `Brand` (Android) et `BrandColors.swift` (iOS), recopiées de `brand/tokens.json`. Rouge = action,
-  cyan = travail en cours (synchronisation, voix), jaune = mise en avant. Texte sur rouge : encre, jamais blanc.
-- Bouton principal : ombre dure décalée sans flou, s'enfonce de 2 pt à l'appui (150 ms) avec retour haptique.
-- Textes en anglais, phrases courtes, ton calme (« Invite already used. »), séparateur ✦.
+- Colors: `Brand` (Android) and `BrandColors.swift` (iOS), copied from `brand/tokens.json`. Red = action,
+  cyan = work in progress (sync, voice), yellow = highlight. Text on red: ink, never white.
+- Primary button: hard offset shadow with no blur, presses down 2 pt on tap (150 ms) with haptic feedback.
+- Copy in English, short sentences, calm tone ("Invite already used."), ✦ separator.
 
-## Branches et commits
+## Branches and commits
 
-`v1` est la branche principale (pull request vers `v1`). Messages de commit en français, sans pied de page ni
-ligne `Co-Authored-By`.
+`v1` is the main branch (pull requests target `v1`). Commit messages in English, with no footer and no
+`Co-Authored-By` line.

@@ -13,8 +13,8 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
 /**
- * Écrit d'abord en local (l'écran change tout de suite, même hors ligne), puis synchronise.
- * Une seule synchronisation à la fois ; l'envoi garde l'heure de l'action, pas celle de l'envoi.
+ * Writes locally first (the screen updates at once, even offline), then syncs.
+ * One sync at a time; a change is sent with the time of the action, not the time it is sent.
  */
 class LibraryRepositoryImpl(
     private val remote: LibraryRemoteDataSource,
@@ -63,10 +63,10 @@ class LibraryRepositoryImpl(
         chapterRef: String,
         page: Int,
     ) {
-        // On ne suit pas un titre sans l'avoir demandé : la progression ne vaut que pour un titre suivi.
+        // A title is never followed implicitly: progress only counts for a followed title.
         val current = local.entry(sourceKey, titleRef) ?: return
         local.applyLocal(current.copy(lastChapterRef = chapterRef, lastPage = page, updatedAt = clock.nowMillis()), deleted = false)
-        // Envoyée tout de suite si le réseau répond ; sinon elle attend dans la file (le lecteur espace déjà les appels).
+        // Sent right away if the network responds; otherwise it waits in the queue (the reader already spaces out calls).
         sync()
     }
 
@@ -92,12 +92,12 @@ class LibraryRepositoryImpl(
                         local.dequeue(change)
                         local.applyServer(result.value, parseIsoMillis(result.value.updatedAt) ?: change.updatedAt)
                     }
-                    // Hors ligne ou session expirée : la file attend, rien n'est perdu.
+                    // Offline or session expired: the queue waits, nothing is lost.
                     is AppResult.Err ->
                         if (result.error == AppError.Network || result.error == AppError.Unauthorized) {
                             return@withLock result
                         } else {
-                            // Refus définitif (titre retiré du catalogue…) : l'opération est abandonnée.
+                            // Permanent rejection (title removed from the catalog…): the operation is dropped.
                             local.dequeue(change)
                         }
                 }

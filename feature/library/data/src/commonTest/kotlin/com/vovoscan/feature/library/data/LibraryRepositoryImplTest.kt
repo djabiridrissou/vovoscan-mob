@@ -18,7 +18,7 @@ class LibraryRepositoryImplTest {
     private val title = TitleRef("gutenberg", "1342", "Pride and Prejudice", null)
 
     @Test
-    fun horsLigneLActionResteEnFileEtSAfficheTout() =
+    fun offlineActionStaysQueuedAndShowsAtOnce() =
         runTest {
             val local =
                 SqlLibraryLocalDataSource(LibraryDatabase(inMemoryDriver(LibraryDatabase.Schema)), StandardTestDispatcher(testScheduler))
@@ -40,7 +40,7 @@ class LibraryRepositoryImplTest {
         }
 
     @Test
-    fun aLaReconnexionLaFileEstEnvoyeeAvecLHeureDeLAction() =
+    fun onReconnectQueueIsSentWithTheActionTime() =
         runTest {
             var online = false
             val sent = mutableListOf<String>()
@@ -76,7 +76,7 @@ class LibraryRepositoryImplTest {
         }
 
     @Test
-    fun unChangementPlusRecentDuServeurGagne() =
+    fun newerServerChangeWins() =
         runTest {
             val local =
                 SqlLibraryLocalDataSource(LibraryDatabase(inMemoryDriver(LibraryDatabase.Schema)), StandardTestDispatcher(testScheduler))

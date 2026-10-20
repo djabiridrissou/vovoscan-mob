@@ -102,7 +102,7 @@ class ReaderViewModelTest {
     fun tearDown() = Dispatchers.resetMain()
 
     @Test
-    fun repriseALaPageEnregistree() =
+    fun resumesAtSavedPage() =
         runTest(dispatcher) {
             val vm = ReaderViewModel("vovoscan", "t1", "c1", startPage = 3, FakeReader(comic, AppResult.Ok(Unit))) { _, _, _, _ -> }
             advanceUntilIdle()
@@ -112,7 +112,7 @@ class ReaderViewModelTest {
         }
 
     @Test
-    fun laProgressionSEnregistreApresUnePause() =
+    fun progressIsSavedAfterAPause() =
         runTest(dispatcher) {
             val saved = mutableListOf<Pair<String, Int>>()
             val vm =
@@ -129,7 +129,7 @@ class ReaderViewModelTest {
         }
 
     @Test
-    fun unLivreSOuvreEtSeLitParSection() =
+    fun bookOpensAndReadsBySection() =
         runTest(dispatcher) {
             val reader = FakeReader(book, AppResult.Ok(Unit))
             val vm = ReaderViewModel("vovoscan", "t9", "b1", startPage = 1, reader) { _, _, _, _ -> }
@@ -154,7 +154,7 @@ class ReaderViewModelTest {
         }
 
     @Test
-    fun jamaisOuvertEtHorsLigne() =
+    fun neverOpenedAndOffline() =
         runTest(dispatcher) {
             val vm = ReaderViewModel("vovoscan", "t1", "c1", 0, FakeReader(null, AppResult.Err(AppError.Network))) { _, _, _, _ -> }
             advanceUntilIdle()

@@ -35,7 +35,7 @@ class CatalogRepositoryImplTest {
             """"authors":["A. Author"],"genres":["Action"],"chapters":[{"id":"c1","number":1,""" +
             """"pageCount":19,"publishedAt":"2026-10-01"}]}}"""
 
-    /** Une source sur l'appareil, minimale : catalogue JSON, fiche d'un seul tenant, livre. */
+    /** A minimal on-device source: JSON catalog, single-unit title page, book. */
     private val booksManifest =
         """{"contractVersion":1,"key":"books","name":"Books","version":"1.0.0","kinds":["book"],"langs":["en"],""" +
             """"rights":{"basis":"public-domain","notes":"Test source."},"hosts":["books.example"],""" +
@@ -86,7 +86,7 @@ class CatalogRepositoryImplTest {
     }
 
     @Test
-    fun laSourceInterneParLApi() =
+    fun internalSourceThroughTheApi() =
         runTest {
             val repo = repository { respondJson(page) }
             repo.observeTitles("vovoscan").test {
@@ -99,7 +99,7 @@ class CatalogRepositoryImplTest {
         }
 
     @Test
-    fun uneSourceSurLAppareilSansPasserParLApi() =
+    fun onDeviceSourceBypassesTheApi() =
         runTest {
             var apiCalls = 0
             val repo =
@@ -119,7 +119,7 @@ class CatalogRepositoryImplTest {
         }
 
     @Test
-    fun laFicheSeLitHorsLigneEtLesCataloguesNeSeMelentPas() =
+    fun titlePageReadsOfflineAndCatalogsNeverMix() =
         runTest {
             var online = true
             val repo =
@@ -134,7 +134,7 @@ class CatalogRepositoryImplTest {
             val result = repo.search("vovoscan", "ink")
             assertTrue(result.offline)
             assertEquals("t1", result.titles.single().id)
-            // La recherche dans « books » ne voit jamais les titres de vovoscan.
+            // Searching "books" never sees the vovoscan titles.
             assertTrue(repo.search("books", "ink").titles.all { it.sourceKey == "books" && it.id != "t1" })
         }
 }

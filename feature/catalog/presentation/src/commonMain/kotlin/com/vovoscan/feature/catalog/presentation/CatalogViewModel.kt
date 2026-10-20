@@ -24,23 +24,23 @@ import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-/** Une carte du catalogue, prête à afficher. */
+/** A catalog card, ready to display. */
 data class TitleCard(
     val sourceKey: String,
     val id: String,
     val name: String,
     val coverUrl: String?,
-    /** « WEBTOON », « MANGA » ou « BOOK » : pastille sur la couverture. */
+    /** "WEBTOON", "MANGA" or "BOOK": badge on the cover. */
     val formatLabel: String,
     val status: String,
 )
 
 data class CatalogUiState(
-    /** Source affichée ; le sélecteur vient de l'écran « Sources » (assemblé par l'application). */
+    /** Displayed source; the picker comes from the "Sources" screen (wired by the app). */
     val sourceKey: String = INTERNAL_SOURCE,
     val cards: List<TitleCard> = emptyList(),
     val query: String = "",
-    /** Résultats de recherche ; null hors recherche (le catalogue s'affiche). */
+    /** Search results; null when not searching (the catalog shows). */
     val results: List<TitleCard>? = null,
     val searchingOffline: Boolean = false,
     val freshness: Freshness = Freshness.Refreshing,
@@ -50,13 +50,13 @@ data class CatalogUiState(
 ) {
     val visible: List<TitleCard> get() = results ?: cards
 
-    /** Rien à montrer, une fois le serveur relu. */
+    /** Nothing to show, once the server has been read again. */
     val empty: Boolean get() = visible.isEmpty() && freshness != Freshness.Refreshing
 
     val emptyMessage: String
         get() = if (results != null) "No title matches “$query”." else "No titles yet. Check back soon."
 
-    /** Bandeau discret quand la copie locale est affichée. */
+    /** Discreet banner when the local copy is shown. */
     val offlineNotice: String?
         get() =
             when {
@@ -79,15 +79,15 @@ sealed interface CatalogIntent {
         val key: String,
     ) : CatalogIntent
 
-    /** Sources visibles, dans l'ordre du lecteur : la première sert tant qu'il n'en a pas choisi une autre. */
+    /** Visible sources, in the reader's order: the first is used until they pick another one. */
     data class SourcesChanged(
         val keys: List<String>,
     ) : CatalogIntent
 }
 
 /**
- * Catalogue d'une source, hors ligne d'abord : la copie locale tout de suite, puis relue ; recherche avec un court
- * délai de frappe. Changer de source repart de sa propre copie locale.
+ * A source's catalog, offline first: the local copy at once, then reloaded; search with a short typing
+ * debounce. Switching sources starts from that source's own local copy.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class CatalogViewModel(
@@ -124,7 +124,7 @@ class CatalogViewModel(
     private fun follow(keys: List<String>) {
         val first = keys.firstOrNull() ?: return
         if (source.value in keys && pickedByReader) return
-        // Source masquée entre-temps : on revient à l'ordre du lecteur.
+        // Source hidden in the meantime: fall back to the reader's order.
         pickedByReader = false
         select(first)
     }

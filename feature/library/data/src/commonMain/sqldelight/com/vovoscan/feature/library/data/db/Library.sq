@@ -1,6 +1,6 @@
--- Bibliothèque sur l'appareil, toutes sources confondues : lue par les écrans, modifiée hors ligne, synchronisée
--- par la file `outbox`. Un titre est repéré par (source, référence chez la source).
--- SQLite 3.18 (Android 8, minSdk 26) : pas d'ON CONFLICT … DO UPDATE.
+-- On-device library, across all sources: read by the screens, changed offline, synced
+-- through the `outbox` queue. A title is identified by (source, reference at that source).
+-- SQLite 3.18 (Android 8, minSdk 26): no ON CONFLICT … DO UPDATE.
 CREATE TABLE library_entry (
     source_key TEXT NOT NULL,
     title_ref TEXT NOT NULL,
@@ -14,7 +14,7 @@ CREATE TABLE library_entry (
     PRIMARY KEY (source_key, title_ref)
 );
 
--- Une seule opération en attente par titre : la plus récente remplace les précédentes.
+-- One pending operation per title: the most recent replaces earlier ones.
 CREATE TABLE outbox (
     source_key TEXT NOT NULL,
     title_ref TEXT NOT NULL,

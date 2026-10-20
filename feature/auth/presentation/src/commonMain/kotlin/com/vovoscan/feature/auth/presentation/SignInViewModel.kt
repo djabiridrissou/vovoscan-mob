@@ -53,7 +53,7 @@ sealed interface SignInIntent {
     data object Submit : SignInIntent
 }
 
-/** Connexion ou inscription sur invitation. Toute la logique d'écran est ici ; Compose et SwiftUI ne font qu'afficher. */
+/** Sign-in or sign-up with an invite. All screen logic lives here; Compose and SwiftUI only display it. */
 class SignInViewModel(
     private val auth: AuthRepository,
 ) : ViewModel() {
@@ -81,7 +81,7 @@ class SignInViewModel(
         val checked =
             current.copy(
                 emailError = Credentials.emailError(current.email),
-                // À la connexion, pas de règle de longueur : un ancien mot de passe doit rester accepté.
+                // No length rule on sign-in: an older password must still be accepted.
                 passwordError = if (invite) Credentials.passwordError(current.password) else null,
                 inviteError = if (invite) Credentials.inviteError(current.inviteCode) else null,
             )
@@ -99,7 +99,7 @@ class SignInViewModel(
                 }
             mutableState.update {
                 when (result) {
-                    // La navigation suit `AuthRepository.session` ; le mot de passe ne reste pas en mémoire.
+                    // Navigation follows `AuthRepository.session`; the password does not stay in memory.
                     is AppResult.Ok -> it.copy(submitting = false, password = "")
                     is AppResult.Err -> it.copy(submitting = false, error = result.error.userMessage())
                 }

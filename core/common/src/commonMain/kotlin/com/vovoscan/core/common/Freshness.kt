@@ -1,16 +1,16 @@
 package com.vovoscan.core.common
 
 /**
- * État de synchronisation d'un écran hors ligne d'abord : les données locales s'affichent toujours,
- * [Freshness] dit seulement si elles viennent d'être relues auprès du serveur.
+ * Sync state of an offline-first screen: local data is always shown,
+ * [Freshness] only says whether it was just refreshed from the server.
  */
 enum class Freshness {
-    /** Relecture en cours ; le cache reste affiché. */
+    /** Refresh in progress; the cache stays on screen. */
     Refreshing,
 
-    /** Relues auprès du serveur. */
+    /** Refreshed from the server. */
     Fresh,
 
-    /** Dernière relecture échouée (hors ligne, serveur injoignable) : copie locale affichée. */
+    /** Last refresh failed (offline, server unreachable): the local copy is shown. */
     Offline,
 }

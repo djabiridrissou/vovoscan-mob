@@ -24,24 +24,24 @@ import kotlinx.coroutines.launch
 
 data class ReaderUiState(
     val titleName: String = "",
-    /** « Chapter 2 · The last gate » ou « Full text ». */
+    /** "Chapter 2 · The last gate" or "Full text". */
     val chapterLabel: String = "",
     val mode: ReadingMode = ReadingMode.Vertical,
     val pages: List<ReaderPage> = emptyList(),
-    /** Livre : sections de la table des matières. */
+    /** Book: table-of-contents sections. */
     val sections: List<BookSection> = emptyList(),
-    /** Livre : la section courante, prête à afficher (HTML nettoyé et mis en forme). */
+    /** Book: the current section, ready to display (sanitized and styled HTML). */
     val sectionDocument: String? = null,
-    /** Livre en cours de téléchargement et d'ouverture. */
+    /** Book being downloaded and opened. */
     val preparingBook: Boolean = false,
-    /** Page (comic) ou section (livre) courante ; d'abord celle de la reprise de lecture. */
+    /** Current page (comic) or section (book); initially the resume position. */
     val currentIndex: Int = 0,
     val previousChapterId: String? = null,
     val nextChapterId: String? = null,
-    /** Barres du haut et du bas : un toucher au centre les masque ou les montre. */
+    /** Top and bottom bars: a tap in the center hides or shows them. */
     val chromeVisible: Boolean = true,
     val freshness: Freshness = Freshness.Refreshing,
-    /** Jamais ouvert et pas de réseau : rien à montrer. */
+    /** Never opened and no network: nothing to show. */
     val unavailable: Boolean = false,
     val error: String? = null,
 ) {
@@ -49,7 +49,7 @@ data class ReaderUiState(
 
     private val count: Int get() = if (isBook) sections.size else pages.size
 
-    /** « 5 / 19 » (pages) ou « Section 2 / 12 » (livre). */
+    /** "5 / 19" (pages) or "Section 2 / 12" (book). */
     val positionLabel: String
         get() =
             when {
@@ -66,14 +66,14 @@ data class ReaderUiState(
 
     val atEnd: Boolean get() = count > 0 && currentIndex >= count - 1
 
-    /** Bouton de fin d'unité. */
+    /** End-of-unit button. */
     val nextLabel: String? get() = nextChapterId?.let { if (isBook) "Next part →" else "Next chapter →" }
 
     val rightToLeft: Boolean get() = mode == ReadingMode.PagedRightToLeft
 }
 
 sealed interface ReaderIntent {
-    /** Page la plus visible à l'écran (comic), ou section choisie (livre). */
+    /** Most visible page on screen (comic), or chosen section (book). */
     data class PageVisible(
         val index: Int,
     ) : ReaderIntent
@@ -88,8 +88,8 @@ sealed interface ReaderIntent {
 }
 
 /**
- * Lecteur d'une unité, partagé par Compose et SwiftUI : comic (pages, sens de lecture) ou livre (sections d'un EPUB
- * ouvert sur l'appareil). Reprise à la page ou section enregistrée ; progression enregistrée après une courte pause.
+ * Reader for one unit, shared by Compose and SwiftUI: comic (pages, reading direction) or book (sections of an EPUB
+ * opened on the device). Resumes at the saved page or section; progress is saved after a short pause.
  */
 class ReaderViewModel(
     private val sourceKey: String,
@@ -231,7 +231,7 @@ class ReaderViewModel(
     }
 
     override fun onCleared() {
-        // En quittant le lecteur, la dernière page vue est enregistrée sans attendre la fin de la pause.
+        // When leaving the reader, the last page seen is saved without waiting for the pause to end.
         if (saveJob?.isActive == true) {
             saveJob?.cancel()
             progress.save(sourceKey, titleId, chapterId, state.value.currentIndex)

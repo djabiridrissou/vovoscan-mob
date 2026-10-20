@@ -23,7 +23,7 @@ data class MySourceDto(
     val langs: List<String> = emptyList(),
     val enabled: Boolean,
     val position: Int,
-    /** Sources lues sur l'appareil : manifeste (contrat v1) et réglages effectifs. */
+    /** Sources read on the device: manifest (v1 contract) and effective settings. */
     val manifest: JsonObject? = null,
     val settings: JsonObject? = null,
 )
@@ -39,7 +39,7 @@ internal data class SaveChoicesBody(
     val sources: List<SourceChoiceDto>,
 )
 
-/** Source distante : `GET/PUT api/v1/catalog/sources`. */
+/** Remote source: `GET/PUT api/v1/catalog/sources`. */
 interface SourcesRemoteDataSource {
     suspend fun mine(): AppResult<List<MySourceDto>>
 

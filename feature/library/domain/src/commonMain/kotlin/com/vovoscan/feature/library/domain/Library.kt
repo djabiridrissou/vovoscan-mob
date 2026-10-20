@@ -3,7 +3,7 @@ package com.vovoscan.feature.library.domain
 import com.vovoscan.core.common.AppResult
 import kotlinx.coroutines.flow.Flow
 
-/** Un titre de la bibliothèque, repéré par sa source et son identifiant chez elle. */
+/** A library title, identified by its source and its id at that source. */
 data class LibraryEntry(
     val sourceKey: String,
     val titleRef: String,
@@ -11,13 +11,13 @@ data class LibraryEntry(
     val coverUrl: String?,
     val lastChapterRef: String?,
     val lastPage: Int,
-    /** Heure de la dernière modification (appareil ou serveur), en ms. */
+    /** Time of the last change (device or server), in ms. */
     val updatedAt: Long,
-    /** Modifiée sur l'appareil, pas encore envoyée. */
+    /** Changed on the device, not sent yet. */
     val pendingSync: Boolean,
 )
 
-/** Ce que l'écran d'un titre sait de lui au moment de le suivre (nom et couverture gardés pour la bibliothèque). */
+/** What a title screen knows about the title when following it (name and cover kept for the library). */
 data class TitleRef(
     val sourceKey: String,
     val id: String,
@@ -26,9 +26,9 @@ data class TitleRef(
 )
 
 /**
- * Bibliothèque hors ligne d'abord, toutes sources confondues : chaque action s'applique tout de suite à la base
- * locale et part dans une file d'envoi ; [sync] vide la file puis récupère les changements des autres appareils.
- * Le serveur départage (last-write-wins sur l'heure de l'action).
+ * Offline-first library, across all sources: each action is applied to the local database at once and goes
+ * into an outbox; [sync] drains the outbox, then fetches changes made on other devices.
+ * The server settles conflicts (last-write-wins on the action time).
  */
 interface LibraryRepository {
     fun observe(): Flow<List<LibraryEntry>>
@@ -52,7 +52,7 @@ interface LibraryRepository {
         page: Int,
     )
 
-    /** Envoie la file, puis relit les changements ; sans réseau, la file attend la prochaine fois. */
+    /** Sends the outbox, then pulls changes; without a network, the outbox waits for next time. */
     suspend fun sync(): AppResult<Unit>
 
     suspend fun clearLocal()

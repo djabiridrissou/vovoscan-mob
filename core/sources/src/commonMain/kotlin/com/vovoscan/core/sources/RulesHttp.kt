@@ -23,8 +23,8 @@ import kotlin.time.ExperimentalTime
 const val RULES_USER_AGENT = "vovoscan/0.1 (+https://vovoscan.yieldgrowth.org)"
 
 /**
- * Client HTTP des sources à règles, séparé de celui de l'API : il n'envoie jamais la session vovoscan, ne suit pas
- * les redirections tout seul (chacune est revérifiée) et ne contacte que les hôtes déclarés par la source.
+ * HTTP client for rule-based sources, separate from the API client: it never sends the vovoscan session, does not
+ * follow redirects on its own (each one is checked again) and only contacts the hosts the source declares.
  */
 fun createRulesHttpClient(engine: HttpClientEngine): HttpClient =
     HttpClient(engine) {
@@ -89,7 +89,7 @@ class RulesHttp(
         return AppResult.Err(AppError.Rejected("SOURCE_ERROR", "Too many redirects."))
     }
 
-    /** Débit par source, celui du manifeste : on attend plutôt que de marteler le site. */
+    /** Per-source rate limit, taken from the manifest: wait rather than hammer the site. */
     @OptIn(ExperimentalTime::class)
     private suspend fun wait(manifest: SourceManifest) {
         val pause =

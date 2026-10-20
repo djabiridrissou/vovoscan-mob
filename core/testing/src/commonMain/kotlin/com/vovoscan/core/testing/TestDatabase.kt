@@ -4,5 +4,5 @@ import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.db.SqlSchema
 
-/** Base SQLDelight en mémoire, schéma créé : JDBC sur la JVM, pilote natif sur iOS. */
+/** In-memory SQLDelight database with the schema created: JDBC on the JVM, native driver on iOS. */
 expect fun inMemoryDriver(schema: SqlSchema<QueryResult.Value<Unit>>): SqlDriver

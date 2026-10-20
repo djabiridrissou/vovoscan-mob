@@ -1,4 +1,4 @@
-// Application Android : Compose, Kotlin intégré à AGP.
+// Android application: Compose, with AGP's built-in Kotlin.
 
 plugins {
     id("com.android.application")
@@ -22,7 +22,7 @@ android {
     buildFeatures { compose = true }
 }
 
-// Le code généré (SQLDelight, BuildConfig…) n'est pas vérifié.
+// Generated code (SQLDelight, BuildConfig…) is not checked.
 tasks.withType<org.jlleitschuh.gradle.ktlint.tasks.BaseKtLintCheckTask>().configureEach {
     exclude { it.file.path.contains("/build/") }
 }

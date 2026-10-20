@@ -1,13 +1,13 @@
 import Shared
 import SwiftUI
 
-/// Ouvre la fiche d'un titre d'une source.
+/// Opens the page of a title from a source.
 struct TitleRoute: Hashable {
     let sourceKey: String
     let titleId: String
 }
 
-/// Fiche d'un titre. La fiche (catalog) et le suivi (library) se côtoient sans se connaître.
+/// Title page. Details (catalog) and following (library) share it, unaware of each other.
 struct TitleView: View {
     @StateObject private var model: TitleModel
 
@@ -38,7 +38,7 @@ struct TitleView: View {
                     if let error = model.state.error { ErrorText(text: error) }
                     Text(model.state.name).font(.brandDisplay(26)).foregroundStyle(Color.brandPaper)
                     Text(model.state.meta).font(.brandBody(13)).foregroundStyle(Color.brandMuted)
-                    // Reprendre où on s'était arrêté, sinon commencer au premier chapitre (liste du plus récent au plus ancien).
+                    // Resume where the reader left off, otherwise start at the first chapter (list runs newest to oldest).
                     if let resume = model.follow.resumeChapterId {
                         NavigationLink(value: read(resume, Int(model.follow.resumePage))) {
                             Text(model.follow.resumeLabel(book: model.state.isBook) ?? "Continue →")

@@ -63,7 +63,7 @@ class LibraryViewModelTest {
     fun tearDown() = Dispatchers.resetMain()
 
     @Test
-    fun suivreHorsLigneSAfficheAvecSaPastille() =
+    fun followingOfflineShowsWithPendingBadge() =
         runTest {
             val library = FakeLibrary()
             val vm = LibraryViewModel(library)

@@ -1,8 +1,8 @@
 package com.vovoscan.feature.reader.presentation
 
 /**
- * Page HTML d'une section de livre, aux couleurs de la marque (sombre, texte papier). Partagée par Android (WebView)
- * et iOS (WKWebView), affichée JavaScript coupé : le contenu est déjà nettoyé, ce n'est qu'une mise en forme.
+ * HTML page for a book section, in brand colors (dark, paper-colored text). Shared by Android (WebView) and
+ * iOS (WKWebView), shown with JavaScript off: the content is already sanitized, this is styling only.
  */
 object BookStyle {
     fun document(

@@ -17,8 +17,8 @@ import org.koin.core.module.dsl.viewModelOf
 import org.koin.dsl.module
 
 /**
- * Module Koin de la feature : sources locale (SQLDelight + file d'envoi) et distante (Ktor) injectées dans le dépôt.
- * Attend de l'application : `HttpClient`, `DatabaseDriverFactory` et `AppDispatchers`.
+ * Koin module for the feature: local (SQLDelight + outbox) and remote (Ktor) sources injected into the repository.
+ * Expects from the app: `HttpClient`, `DatabaseDriverFactory` and `AppDispatchers`.
  */
 val libraryModule =
     module {

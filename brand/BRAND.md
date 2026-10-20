@@ -1,7 +1,7 @@
 # vovoscan — Brand dossier
 
 Source of truth: the live site <https://vovoscan.yieldgrowth.org/> (landing + `/login`). Every value below was read from its shipped CSS/HTML; the "Ref" column says where. Machine-readable: [tokens.json](tokens.json), [tokens.css](tokens.css). Logo: [assets/logo-mark.svg](assets/logo-mark.svg).
-Backend, web and mobile all follow this DA.
+Backend, web and mobile all follow this art direction.
 
 ## 1. Essence
 - **Product**: self-hosted, invite-only tool that turns a manga/webtoon chapter URL into a voiced motion-comic episode.
@@ -78,7 +78,7 @@ Rules: dark-only (no light theme). Red = action, cyan = audio/AI processing, yel
 
 Security promises (must stay true in backend): invite-only (single-use invites), Argon2id + revocable server sessions + CSRF on writes, sandboxed Chromium fetching (no downloads, no disk profile), SSRF guard (private/loopback/cloud-metadata refused, redirects re-checked), image type by bytes + metadata stripped, zero trackers / strict nonce CSP.
 
-## 9. Applying the DA
+## 9. Applying the art direction
 
 ### Backend
 - **Pipeline stage enum** = `FETCH, ANALYZE, OCR, TAG, VOICE, TIMELINE, PUBLISH` (shared across API, events/SSE, logs, UI chips). Add `QUEUED/DONE/FAILED` as states, not stages.

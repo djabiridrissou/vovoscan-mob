@@ -52,14 +52,14 @@ androidx-compose-material3 = { module = "androidx.compose.material3:material3" }
 androidx-compose-ui-tooling-preview = { module = "androidx.compose.ui:ui-tooling-preview" }
 androidx-compose-ui-tooling = { module = "androidx.compose.ui:ui-tooling" }
 turbine = { module = "app.cash.turbine:turbine", version.ref = "turbine" }
-# HTML et XML (règles des sources, EPUB, nettoyage du HTML des livres).
+# HTML and XML (source rules, EPUB, cleaning book HTML).
 ksoup = { module = "com.fleeksoft.ksoup:ksoup", version.ref = "ksoup" }
-# Lecture des archives EPUB (ZIP) sur Android et iOS.
+# Reading EPUB (ZIP) archives on Android and iOS.
 okio = { module = "com.squareup.okio:okio", version.ref = "okio" }
-# Couvertures et pages (cache mémoire et disque).
+# Covers and pages (memory and disk cache).
 coil-compose = { module = "io.coil-kt.coil3:coil-compose", version.ref = "coil" }
 coil-network-okhttp = { module = "io.coil-kt.coil3:coil-network-okhttp", version.ref = "coil" }
-# Plugins utilisés par build-logic
+# Plugins used by build-logic
 android-gradle-plugin = { module = "com.android.tools.build:gradle", version.ref = "agp" }
 kotlin-gradle-plugin = { module = "org.jetbrains.kotlin:kotlin-gradle-plugin", version.ref = "kotlin" }
 compose-compiler-gradle-plugin = { module = "org.jetbrains.kotlin:compose-compiler-gradle-plugin", version.ref = "kotlin" }

@@ -8,7 +8,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
-/** Le choix s'applique tout de suite sur l'appareil ; il part au serveur dès que le réseau répond. */
+/** A choice applies on the device at once; it is sent to the server as soon as the network responds. */
 class SourcesRepositoryImpl(
     private val remote: SourcesRemoteDataSource,
     private val local: SourcesLocalDataSource,
@@ -19,7 +19,7 @@ class SourcesRepositoryImpl(
 
     override suspend fun refresh(): AppResult<Unit> =
         syncing.withLock {
-            // Un choix fait hors ligne part d'abord, sinon la liste du serveur l'écraserait.
+            // A choice made offline is sent first, otherwise the server's list would overwrite it.
             local.pending()?.let { pending ->
                 when (val sent = remote.save(pending)) {
                     is AppResult.Ok -> {

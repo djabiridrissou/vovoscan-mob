@@ -18,13 +18,13 @@ import org.koin.core.module.dsl.viewModelOf
 import org.koin.dsl.module
 
 /**
- * Module Koin de la feature : sources locale (SQLDelight) et distante (Ktor) injectées dans le dépôt.
- * Attend de l'application : `HttpClient`, `DatabaseDriverFactory`, `AppDispatchers`, `ManifestProvider` et `RulesHttp`.
+ * Koin module of the feature: local (SQLDelight) and remote (Ktor) sources injected into the repository.
+ * Expects from the app: `HttpClient`, `DatabaseDriverFactory`, `AppDispatchers`, `ManifestProvider` and `RulesHttp`.
  */
 val catalogModule =
     module {
         single { CatalogDatabase(get<DatabaseDriverFactory>().create(CatalogDatabase.Schema, "catalog.db")) }
-        // Source interne par l'API ; sources lues sur l'appareil par le moteur de règles (client HTTP séparé).
+        // Internal source through the API; on-device sources through the rules engine (separate HTTP client).
         single<CatalogRemoteDataSource> {
             RoutingCatalogRemoteDataSource(get(), ApiCatalogRemoteDataSource(get()), OnDeviceCatalogRemoteDataSource(get(), get()))
         }

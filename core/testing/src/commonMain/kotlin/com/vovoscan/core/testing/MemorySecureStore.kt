@@ -2,7 +2,7 @@ package com.vovoscan.core.testing
 
 import com.vovoscan.core.security.SecureStore
 
-/** Coffre en mémoire pour les tests. */
+/** In-memory secure store for tests. */
 class MemorySecureStore(
     initial: Map<String, String> = emptyMap(),
 ) : SecureStore {

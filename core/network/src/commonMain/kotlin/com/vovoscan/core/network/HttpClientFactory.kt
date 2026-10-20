@@ -10,12 +10,12 @@ import io.ktor.http.HttpHeaders
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.serialization.json.Json
 
-/** `baseUrl` se termine par « / » ; les chemins sont relatifs (« api/v1/… »). */
+/** `baseUrl` ends with "/"; paths are relative ("api/v1/…"). */
 data class ApiConfig(
     val baseUrl: String,
 )
 
-/** Jeton de session (lu dans le coffre sécurisé), null hors connexion. */
+/** Session token (read from the secure store), null when signed out. */
 fun interface TokenProvider {
     suspend fun token(): String?
 }
@@ -27,8 +27,8 @@ val ApiJson =
     }
 
 /**
- * Client HTTP de l'application. `X-Client: mobile` : l'API rend le jeton de session dans le corps (pas de cookie)
- * et n'exige pas de jeton CSRF, réservé au navigateur. Le jeton part en `Authorization: Bearer`.
+ * The app's HTTP client. `X-Client: mobile`: the API returns the session token in the body (no cookie)
+ * and does not require a CSRF token, which is for browsers only. The token is sent as `Authorization: Bearer`.
  */
 fun createHttpClient(
     engine: HttpClientEngine,

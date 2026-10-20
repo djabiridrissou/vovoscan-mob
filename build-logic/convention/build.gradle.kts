@@ -2,7 +2,7 @@ plugins {
     `kotlin-dsl`
 }
 
-// Tous les plugins Gradle du projet : les modules les appliquent par leur id, sans version.
+// Every Gradle plugin of the project: modules apply them by id, without a version.
 dependencies {
     implementation(libs.android.gradle.plugin)
     implementation(libs.kotlin.gradle.plugin)

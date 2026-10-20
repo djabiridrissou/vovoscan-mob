@@ -1,6 +1,6 @@
 package com.vovoscan.core.sources
 
-/** Copies des manifestes : vovo-plugin/sources/gutenberg/source.json et le faux site HTML des tests du backend. */
+/** Manifest copies: vovo-plugin/sources/gutenberg/source.json and the fake HTML site from the backend tests. */
 internal object Fixtures {
     val gutenberg =
         """
@@ -28,7 +28,7 @@ internal object Fixtures {
       "label": "Project Gutenberg mirror",
       "type": "url",
       "required": true,
-      "help": "A private or official mirror serving /cache/epub/<id>/. Each book file is fetched once, then served from vovoscan."
+      "help": "A private or official mirror serving /cache/epub/<id>/. Readers' devices download each book from it once, then read it offline."
     },
     "languages": {
       "label": "Languages",

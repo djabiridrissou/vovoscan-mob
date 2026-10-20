@@ -1,20 +1,20 @@
 package com.vovoscan.core.common
 
-/** Erreurs vues par les cas d'usage et les écrans, indépendantes du réseau ou de la base. */
+/** Errors seen by use cases and screens, independent of the network or the database. */
 sealed interface AppError {
-    /** Pas de réseau ou serveur injoignable : le cache local reste affiché. */
+    /** No network or server unreachable: the local cache stays on screen. */
     data object Network : AppError
 
-    /** Session absente, expirée ou révoquée : reconnexion nécessaire. */
+    /** Session missing, expired or revoked: the user must sign in again. */
     data object Unauthorized : AppError
 
-    /** Permission manquante (403) : l'action n'est pas proposée à ce rôle. */
+    /** Missing permission (403): the action is not offered to this role. */
     data object Forbidden : AppError
 
-    /** Trop de demandes (429). */
+    /** Too many requests (429). */
     data object RateLimited : AppError
 
-    /** Refus métier de l'API : `code` stable (testé, traduit), `message` pour l'humain. */
+    /** Business rejection from the API: stable `code` (tested, translated), `message` for humans. */
     data class Rejected(
         val code: String,
         val message: String,

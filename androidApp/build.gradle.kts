@@ -13,7 +13,7 @@ android {
     buildTypes {
         debug {
             applicationIdSuffix = ".dev"
-            // -Pvovoscan.apiBaseUrl=… ; par défaut l'API lancée en local, vue depuis l'émulateur.
+            // -Pvovoscan.apiBaseUrl=…; defaults to the local API, as seen from the emulator.
             val apiBaseUrl = providers.gradleProperty("vovoscan.apiBaseUrl").getOrElse("http://10.0.2.2:8000/")
             buildConfigField("String", "API_BASE_URL", "\"$apiBaseUrl\"")
         }

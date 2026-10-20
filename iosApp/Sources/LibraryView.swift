@@ -28,7 +28,7 @@ struct LibraryView: View {
                                 Text(row.progress).font(.brandBody(13)).foregroundStyle(Color.brandMuted)
                             }
                             Spacer()
-                            // Cyan : action en attente d'envoi (la marque réserve le cyan au travail en cours).
+                            // Cyan: action waiting to be sent (the brand reserves cyan for work in progress).
                             if row.pendingSync { Circle().fill(Color.brandCyan).frame(width: 10, height: 10) }
                         }
                         .padding(.trailing, 14)

@@ -74,7 +74,7 @@ class CatalogViewModelTest {
     fun tearDown() = Dispatchers.resetMain()
 
     @Test
-    fun horsLigneLaCopieLocaleResteAffichee() =
+    fun offlineTheLocalCopyStaysVisible() =
         runTest(dispatcher) {
             val vm = CatalogViewModel(FakeCatalog(AppResult.Err(AppError.Network)))
             advanceUntilIdle()
@@ -90,7 +90,7 @@ class CatalogViewModelTest {
         }
 
     @Test
-    fun rechercheAttendLaFinDeLaFrappe() =
+    fun searchWaitsForTypingToStop() =
         runTest(dispatcher) {
             val vm = CatalogViewModel(FakeCatalog(AppResult.Ok(false)))
             vm.onIntent(CatalogIntent.Query("in"))
@@ -107,7 +107,7 @@ class CatalogViewModelTest {
         }
 
     @Test
-    fun changerDeSourceRepartDeSaCopie() =
+    fun switchingSourceStartsFromItsOwnCopy() =
         runTest(dispatcher) {
             val vm = CatalogViewModel(FakeCatalog(AppResult.Ok(false)))
             advanceUntilIdle()
@@ -119,7 +119,7 @@ class CatalogViewModelTest {
         }
 
     @Test
-    fun laPremiereSourceDuLecteurSertTantQuIlNEnChoisitPasUneAutre() =
+    fun readersFirstSourceIsUsedUntilTheyPickAnother() =
         runTest {
             val vm = CatalogViewModel(FakeCatalog(AppResult.Ok(false)))
             vm.onIntent(CatalogIntent.SourcesChanged(listOf("gutenberg", "vovoscan")))
@@ -128,7 +128,7 @@ class CatalogViewModelTest {
             vm.onIntent(CatalogIntent.SelectSource("vovoscan"))
             vm.onIntent(CatalogIntent.SourcesChanged(listOf("gutenberg", "vovoscan")))
             assertEquals("vovoscan", vm.state.value.sourceKey)
-            // La source choisie est masquée : retour à la première visible.
+            // The chosen source is hidden: back to the first visible one.
             vm.onIntent(CatalogIntent.SourcesChanged(listOf("gutenberg")))
             assertEquals("gutenberg", vm.state.value.sourceKey)
         }

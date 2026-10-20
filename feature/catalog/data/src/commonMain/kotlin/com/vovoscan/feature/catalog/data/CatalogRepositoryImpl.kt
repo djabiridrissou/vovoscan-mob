@@ -9,7 +9,7 @@ import com.vovoscan.feature.catalog.domain.TitleDetail
 import com.vovoscan.feature.catalog.domain.TitleSummary
 import kotlinx.coroutines.flow.Flow
 
-/** Stale-while-revalidate : la source locale s'affiche tout de suite, la source distante la remplace. */
+/** Stale-while-revalidate: the local source shows at once, the remote source replaces it. */
 class CatalogRepositoryImpl(
     private val remote: CatalogRemoteDataSource,
     private val local: CatalogLocalDataSource,

@@ -3,7 +3,7 @@ package com.vovoscan.feature.reader.domain
 import com.vovoscan.core.common.AppResult
 import kotlinx.coroutines.flow.Flow
 
-/** Comment se lit l'unité : pages de droite à gauche (manga), bande verticale (webtoon), texte (livre). */
+/** How a unit is read: right-to-left pages (manga), vertical strip (webtoon), text (book). */
 enum class ReadingMode {
     PagedRightToLeft,
     Vertical,
@@ -25,12 +25,12 @@ enum class ReadingMode {
 
 data class ReaderPage(
     val index: Int,
-    /** URL de l'image : signée par vovoscan (source interne) ou chez la source (lue sur l'appareil). */
+    /** Image URL: signed by vovoscan (internal source) or hosted by the source (read on the device). */
     val url: String,
     val width: Int,
     val height: Int,
 ) {
-    /** Largeur / hauteur, pour réserver la place avant que l'image n'arrive (pas de saut à l'affichage). */
+    /** Width / height, to reserve space before the image arrives (no layout jump). */
     val aspectRatio: Float get() = if (height > 0 && width > 0) width.toFloat() / height else 0.7f
 }
 
@@ -45,7 +45,7 @@ data class ReaderChapter(
     val previousChapterId: String?,
     val nextChapterId: String?,
     val pages: List<ReaderPage>,
-    /** Livre : adresse du fichier EPUB (téléchargé puis ouvert sur l'appareil). */
+    /** Book: URL of the EPUB file (downloaded, then opened on the device). */
     val documentUrl: String?,
 ) {
     val label: String
@@ -59,7 +59,7 @@ data class ReaderChapter(
     private fun numberLabel() = if (number % 1.0 == 0.0) number.toLong().toString() else number.toString()
 }
 
-/** Une section d'un livre (dans l'ordre de lecture) : titre de la table des matières et HTML nettoyé. */
+/** A book section (in reading order): table-of-contents title and sanitized HTML. */
 data class BookSection(
     val index: Int,
     val title: String,
@@ -70,8 +70,8 @@ data class Book(
 )
 
 /**
- * Lecteur hors ligne d'abord : l'unité déjà ouverte se relit sur l'appareil. Un livre est téléchargé une fois,
- * ouvert sur l'appareil (EPUB) et gardé en sections nettoyées, lisibles ensuite sans réseau.
+ * Offline-first reader: a unit already opened can be read again on the device. A book is downloaded once,
+ * opened on the device (EPUB) and kept as sanitized sections, readable afterwards without a network.
  */
 interface ReaderRepository {
     fun observe(
@@ -90,7 +90,7 @@ interface ReaderRepository {
         chapterId: String,
     ): Flow<Book?>
 
-    /** Télécharge et ouvre le livre s'il n'est pas déjà sur l'appareil. */
+    /** Downloads and opens the book if it is not already on the device. */
     suspend fun loadBook(
         sourceKey: String,
         chapterId: String,
@@ -106,8 +106,8 @@ interface ReaderRepository {
 }
 
 /**
- * Où va la progression de lecture. Port de la feature : l'application le branche sur la bibliothèque, sans que le
- * lecteur la connaisse. Sans attente : l'écriture se fait dans la portée de l'application.
+ * Where reading progress goes. A feature port: the app wires it to the library, without the reader knowing
+ * about it. Non-suspending: the write runs in the app's scope.
  */
 fun interface ReadingProgressSink {
     fun save(

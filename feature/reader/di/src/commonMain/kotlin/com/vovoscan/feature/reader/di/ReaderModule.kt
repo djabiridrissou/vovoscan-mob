@@ -17,14 +17,14 @@ import org.koin.core.module.dsl.viewModel
 import org.koin.dsl.module
 
 /**
- * Module Koin du lecteur : sources locale (SQLDelight) et distante (Ktor) injectées dans le dépôt.
- * Attend de l'application : `HttpClient`, `DatabaseDriverFactory`, `AppDispatchers`, `ReadingProgressSink`,
- * `ManifestProvider` et `RulesHttp`.
+ * Koin module for the reader: local (SQLDelight) and remote (Ktor) sources injected into the repository.
+ * Expects from the app: `HttpClient`, `DatabaseDriverFactory`, `AppDispatchers`, `ReadingProgressSink`,
+ * `ManifestProvider` and `RulesHttp`.
  */
 val readerModule =
     module {
         single { ReaderDatabase(get<DatabaseDriverFactory>().create(ReaderDatabase.Schema, "reader.db")) }
-        // Source interne par l'API ; sources lues sur l'appareil par le moteur de règles (client HTTP séparé).
+        // Internal source through the API; on-device sources through the rules engine (separate HTTP client).
         single<ReaderRemoteDataSource> {
             RoutingReaderRemoteDataSource(get(), ApiReaderRemoteDataSource(get()), OnDeviceReaderRemoteDataSource(get(), get()))
         }

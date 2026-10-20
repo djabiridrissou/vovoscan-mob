@@ -1,5 +1,5 @@
-// Moteur des sources à règles (manifestes JSON du dépôt vovo-plugin), exécuté sur l'appareil : leur contenu ne passe
-// jamais par les serveurs vovoscan.
+// Engine for rule-based sources (JSON manifests from the vovo-plugin repository), run on the device: their content never
+// goes through vovoscan servers.
 plugins {
     id("vovoscan.kmp-library")
     id("org.jetbrains.kotlin.plugin.serialization")

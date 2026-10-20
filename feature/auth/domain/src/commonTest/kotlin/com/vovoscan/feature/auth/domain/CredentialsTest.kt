@@ -14,20 +14,20 @@ class CredentialsTest {
     }
 
     @Test
-    fun motDePasseDeDouzeCaracteresAuMoins() {
+    fun passwordOfAtLeastTwelveCharacters() {
         assertNotNull(Credentials.passwordError("short"))
         assertNull(Credentials.passwordError("twelve-chars"))
     }
 
     @Test
-    fun invitationNormalisee() {
+    fun normalizedInvite() {
         assertEquals("VOVO-7K2D-QX9P", Credentials.normalizeInvite(" vovo-7k2d-qx9p "))
         assertNull(Credentials.inviteError("vovo-7k2d-qx9p"))
         assertNotNull(Credentials.inviteError("hello"))
     }
 
     @Test
-    fun permissionJoker() {
+    fun wildcardPermission() {
         val admin = Session("1", "a@b.c", "A", listOf("owner"), setOf("*"))
         assertTrue(admin.can("titles:publish"))
     }

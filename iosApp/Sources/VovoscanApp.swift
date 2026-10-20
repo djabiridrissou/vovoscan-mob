@@ -4,7 +4,7 @@ import SwiftUI
 @main
 struct VovoscanApp: App {
     init() {
-        // Couvertures : gardées par le cache HTTP partagé qu'utilise AsyncImage.
+        // Covers: kept by the shared HTTP cache that AsyncImage uses.
         URLCache.shared = URLCache(memoryCapacity: 32 * 1024 * 1024, diskCapacity: 200 * 1024 * 1024, directory: nil)
         IosAppKt.doInitKoin(apiBaseUrl: AppEnvironment.apiBaseUrl)
     }
@@ -19,7 +19,7 @@ struct VovoscanApp: App {
 }
 
 enum AppEnvironment {
-    /// Lue dans Info.plist (API_BASE_URL, fixée par configuration dans project.yml).
+    /// Read from Info.plist (API_BASE_URL, set per configuration in project.yml).
     static var apiBaseUrl: String {
         Bundle.main.object(forInfoDictionaryKey: "API_BASE_URL") as? String ?? "http://localhost:8000/"
     }

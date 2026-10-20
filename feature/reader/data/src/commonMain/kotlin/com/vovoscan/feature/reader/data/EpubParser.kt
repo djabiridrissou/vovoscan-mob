@@ -11,7 +11,7 @@ import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.random.Random
 
-/** Une section d'un livre, prête à afficher : titre et HTML nettoyé (images intégrées). */
+/** A book section, ready to display: title and sanitized HTML (images inlined). */
 data class ParsedSection(
     val title: String,
     val html: String,
@@ -22,9 +22,9 @@ class InvalidEpub(
 ) : Exception(message)
 
 /**
- * Ouvre un EPUB sur l'appareil : archive ZIP (Okio), `container.xml` → OPF → ordre de lecture (spine) et table des
- * matières (nav EPUB 3 ou NCX EPUB 2). Chaque section est nettoyée : ni script, ni style, ni gestionnaire
- * d'événement, ni iframe, ni lien sortant ; les images de l'archive sont intégrées (data:), rien n'est chargé du web.
+ * Opens an EPUB on the device: ZIP archive (Okio), `container.xml` → OPF → reading order (spine) and table of
+ * contents (EPUB 3 nav or EPUB 2 NCX). Each section is sanitized: no script, no style, no event handler, no iframe,
+ * no outgoing link; images from the archive are inlined (data:), nothing is loaded from the web.
  */
 class EpubParser(
     private val fileSystem: FileSystem = FileSystem.SYSTEM,
@@ -75,7 +75,7 @@ class EpubParser(
         }
     }
 
-    /** Titres par chemin de section : nav EPUB 3, sinon NCX EPUB 2. */
+    /** Titles by section path: EPUB 3 nav, otherwise EPUB 2 NCX. */
     private fun tableOfContents(
         opf: Document,
         items: Map<String, com.fleeksoft.ksoup.nodes.Element>,
@@ -131,7 +131,7 @@ class EpubParser(
 
     private fun clean(document: Document): String {
         val cleaned = Ksoup.parse(Ksoup.clean(document.body().html(), safelist))
-        // Pas de navigation depuis un livre : les liens restent du texte.
+        // No navigation out of a book: links stay plain text.
         cleaned.select("a[href]").forEach { it.removeAttr("href") }
         return cleaned.body().html()
     }
@@ -150,7 +150,7 @@ class EpubParser(
     }
 }
 
-/** Chemin dans l'archive, « .. » et « . » résolus, sans barre initiale. */
+/** Path inside the archive, with ".." and "." resolved and no leading slash. */
 internal fun resolve(
     dir: String,
     href: String,

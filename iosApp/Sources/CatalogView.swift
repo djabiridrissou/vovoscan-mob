@@ -12,7 +12,7 @@ struct CatalogView: View {
             VStack(alignment: .leading, spacing: 12) {
                 Kicker(text: "Catalog")
                 Text("Pick a title.").font(.brandDisplay(26)).foregroundStyle(Color.brandPaper)
-                // Deux features côte à côte sans se connaître : les sources (sélecteur) et le catalogue.
+                // Two features side by side, unaware of each other: sources (picker) and catalog.
                 SourcePicker(chips: sources.state.chips, selected: model.state.sourceKey) {
                     model.send(CatalogIntentSelectSource(key: $0))
                 }
@@ -46,7 +46,7 @@ struct CatalogView: View {
     }
 }
 
-/// Tuile d'un titre : couverture, pastille de format, nom.
+/// Title tile: cover, format badge, name.
 private struct TitleTile: View {
     let card: TitleCard
 

@@ -1,4 +1,4 @@
--- v1 → v2 : les titres sont repérés par (source, référence). L'existant appartient à la source interne.
+-- v1 → v2: titles are identified by (source, reference). Existing rows belong to the internal source.
 CREATE TABLE library_entry_v2 (
     source_key TEXT NOT NULL,
     title_ref TEXT NOT NULL,

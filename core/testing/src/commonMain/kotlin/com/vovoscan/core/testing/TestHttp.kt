@@ -14,7 +14,7 @@ import io.ktor.http.headersOf
 
 const val TEST_BASE_URL = "https://api.test/"
 
-/** Client de l'application branché sur un MockEngine. */
+/** The app's HTTP client backed by a MockEngine. */
 fun testHttpClient(
     token: String? = null,
     handler: suspend MockRequestHandleScope.(HttpRequestData) -> HttpResponseData,

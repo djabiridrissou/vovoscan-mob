@@ -7,7 +7,7 @@ import com.vovoscan.feature.auth.domain.Session
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
-/** Racine des deux applications : connecté ou non, et ce que le rôle permet d'afficher. */
+/** Root of both apps: signed in or not, and what the role allows to show. */
 class SessionViewModel(
     private val auth: AuthRepository,
 ) : ViewModel() {

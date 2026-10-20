@@ -1,7 +1,7 @@
 import Shared
 import SwiftUI
 
-/// Écran « Sources » : afficher ou masquer chaque source, et la ranger. Aucune logique ici (SourcesViewModel).
+/// "Sources" screen: show or hide each source, and reorder it. No logic here (SourcesViewModel).
 struct SourcesView: View {
     @StateObject private var model = SourcesModel()
 
@@ -47,7 +47,7 @@ struct SourcesView: View {
     }
 }
 
-/// Sélecteur de source en tête du catalogue : les sources visibles, dans l'ordre choisi.
+/// Source picker at the top of the catalog: the visible sources, in the chosen order.
 struct SourcePicker: View {
     let chips: [SourceChip]
     let selected: String

@@ -34,7 +34,7 @@ data class RulesTitle(
     val description: String,
     val authors: List<String>,
     val genres: List<String>,
-    /** Dans l'ordre de lecture (numéros croissants). */
+    /** In reading order (ascending numbers). */
     val units: List<RulesUnit>,
 )
 
@@ -45,8 +45,8 @@ data class RulesImage(
 )
 
 /**
- * Une source à règles exécutée sur l'appareil : catalogue, fiche, pages d'un comic, fichier d'un livre.
- * Les erreurs de règles deviennent `Rejected("SOURCE_RULES")`, les coupures `Network`.
+ * A rule-based source run on the device: catalog, title details, comic pages, book file.
+ * Rule errors become `Rejected("SOURCE_RULES")`, connection failures `Network`.
  */
 class RulesSource(
     val manifest: SourceManifest,
@@ -168,7 +168,7 @@ class RulesSource(
     private fun list(value: Any?): List<String> =
         when (value) {
             null -> emptyList()
-            // Avant `List` : un JsonArray est aussi une List, dont les éléments garderaient leurs guillemets.
+            // Before `List`: a JsonArray is also a List, whose elements would keep their quotes.
             is JsonElement -> JsonPath.select(value, "$[*]").mapNotNull { str(Rules.plain(it)) }
             is List<*> -> value.mapNotNull(::str)
             else -> listOfNotNull(str(value))
@@ -191,7 +191,7 @@ class RulesSource(
                 val child = ctx.child(node)
                 val unitId = str(Rules.evaluate(child, item["id"])) ?: return@mapIndexedNotNull null
                 val number = (Rules.evaluate(child, item["number"]) as? Double) ?: (index + 1).toDouble()
-                // Deux unités au même numéro casseraient l'ordre de lecture : on garde la première.
+                // Two units with the same number would break the reading order: keep the first one.
                 if (!seen.add(number)) return@mapIndexedNotNull null
                 RulesUnit(unitId, number, str(Rules.evaluate(child, item["name"])))
             }.sortedBy { it.number }
@@ -218,7 +218,7 @@ class RulesSource(
         }
     }
 
-    /** URL du fichier EPUB d'une unité de livre. */
+    /** URL of the EPUB file for a book unit. */
     suspend fun bookUrl(
         titleId: String,
         unitId: String,
@@ -240,7 +240,7 @@ class RulesSource(
         }
     }
 
-    /** Fichier d'un livre ou d'une image, chez la source (hôtes autorisés seulement). */
+    /** A book or image file, fetched from the source (allowed hosts only). */
     suspend fun download(url: String): AppResult<ByteArray> =
         when (val fetched = http.get(manifest, url)) {
             is AppResult.Err -> fetched

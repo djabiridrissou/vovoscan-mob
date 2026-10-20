@@ -16,7 +16,7 @@ class AppModulesTest {
     fun tearDown() = stopKoin()
 
     @Test
-    fun leSocleSeResout() {
+    fun coreModulesResolve() {
         val koin =
             startKoin {
                 modules(appModules(AppConfig("https://api.test/"), module { single<SecureStore> { MemorySecureStore() } }))

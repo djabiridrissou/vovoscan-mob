@@ -36,9 +36,9 @@ internal data class SaveEntryBody(
     val coverUrl: String?,
 )
 
-/** Source distante : `api/v1/library`. Écritures idempotentes, l'API rend l'état qui a gagné. */
+/** Remote source: `api/v1/library`. Idempotent writes; the API returns the winning state. */
 interface LibraryRemoteDataSource {
-    /** Avec [updatedSince] : changements depuis cette date, pierres tombales comprises. */
+    /** With [updatedSince]: changes since that date, tombstones included. */
     suspend fun entries(updatedSince: String?): AppResult<List<LibraryEntryDto>>
 
     suspend fun save(

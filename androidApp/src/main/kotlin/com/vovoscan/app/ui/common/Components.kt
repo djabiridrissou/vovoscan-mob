@@ -40,8 +40,8 @@ import androidx.compose.ui.unit.dp
 import com.vovoscan.app.ui.theme.Brand
 
 /**
- * Bouton principal de la marque : fond rouge, texte encre, bordure encre, ombre dure papier sans flou.
- * Appuyé, il s'enfonce de 2 px et son ombre rétrécit (150 ms), avec un retour haptique.
+ * Brand primary button: red background, ink text, ink border, hard paper shadow with no blur.
+ * When pressed, it sinks by 2 px and its shadow shrinks (150 ms), with haptic feedback.
  */
 @Composable
 fun PrimaryButton(
@@ -78,7 +78,7 @@ fun PrimaryButton(
     }
 }
 
-/** Bouton secondaire : transparent, texte papier, bordure fine. */
+/** Secondary button: transparent, paper text, thin border. */
 @Composable
 fun GhostButton(
     label: String,
@@ -97,7 +97,7 @@ fun GhostButton(
     }
 }
 
-/** Champ de l'application : fond `inputBg`, bordure `line`, libellé 13 px au-dessus. */
+/** App text field: `inputBg` background, `line` border, 13 px label above. */
 @Composable
 fun BrandField(
     label: String,
@@ -138,7 +138,7 @@ fun ErrorText(text: String) {
     Text(text, style = MaterialTheme.typography.bodySmall.copy(color = Brand.Danger), modifier = Modifier.padding(top = 6.dp))
 }
 
-/** Petit bandeau hors ligne : discret, la copie locale reste au centre. */
+/** Small offline banner: discreet, the local copy stays in focus. */
 @Composable
 fun OfflineNotice(text: String) {
     Row(
@@ -155,7 +155,7 @@ fun OfflineNotice(text: String) {
     }
 }
 
-/** Pastille « kicker » : fond papier, texte encre, majuscules, inclinée de -2°. */
+/** "Kicker" badge: paper background, ink text, uppercase, tilted -2°. */
 @Composable
 fun Kicker(text: String) {
     Text(
@@ -169,7 +169,7 @@ fun Kicker(text: String) {
     )
 }
 
-/** Logo : carré rouge incliné de -6°, bordure papier, ombre dure papier, « ヴ » en encre. */
+/** Logo: red square tilted -6°, paper border, hard paper shadow, "ヴ" in ink. */
 @Composable
 fun LogoMark(size: Int = 32) {
     Box(Modifier.size(size.dp).rotate(-6f)) {

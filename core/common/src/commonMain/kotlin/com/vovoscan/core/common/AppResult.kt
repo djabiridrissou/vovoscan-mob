@@ -1,6 +1,6 @@
 package com.vovoscan.core.common
 
-/** Résultat d'une opération : une valeur ou une [AppError], sans exception. */
+/** Result of an operation: a value or an [AppError], never an exception. */
 sealed interface AppResult<out T> {
     data class Ok<out T>(
         val value: T,

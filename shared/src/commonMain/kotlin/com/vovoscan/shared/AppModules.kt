@@ -26,14 +26,14 @@ import kotlinx.coroutines.launch
 import org.koin.core.module.Module
 import org.koin.dsl.module
 
-/** `apiBaseUrl` se termine par « / » (« https://api.vovoscan.app/ »). */
+/** `apiBaseUrl` ends with "/" ("https://api.vovoscan.app/"). */
 data class AppConfig(
     val apiBaseUrl: String,
 )
 
 /**
- * Tous les modules Koin de l'application ; `platform` fournit `DatabaseDriverFactory` et `SecureStore`.
- * Chaque feature reçoit ses sources locale et distante de son propre module (`di`).
+ * All Koin modules of the app; `platform` provides `DatabaseDriverFactory` and `SecureStore`.
+ * Each feature gets its local and remote sources from its own module (`di`).
  */
 fun appModules(
     config: AppConfig,
@@ -43,15 +43,15 @@ fun appModules(
         platform,
         module {
             single { AppDispatchers() }
-            // Portée de l'application : écritures qui doivent survivre à l'écran qui les lance.
+            // Application scope: writes that must outlive the screen that starts them.
             single { CoroutineScope(SupervisorJob() + get<AppDispatchers>().io) }
-            // Sources lues sur l'appareil : client séparé, sans la session vovoscan ni redirection automatique.
+            // Sources read on the device: a separate client, without the vovoscan session or automatic redirects.
             single { RulesHttp(createRulesHttpClient(platformHttpEngine())) }
             single<HttpClient> {
                 val store = get<SecureStore>()
                 createHttpClient(platformHttpEngine(), ApiConfig(config.apiBaseUrl)) { store.get(SecureKeys.SESSION_TOKEN) }
             }
-            // À la déconnexion, chaque feature efface sa copie locale (rien ne reste sur l'appareil).
+            // On sign-out, each feature erases its local copy (nothing stays on the device).
             single {
                 SignOutCleanup {
                     get<CatalogRepository>().clearLocal()
@@ -60,7 +60,7 @@ fun appModules(
                     get<SourcesRepository>().clearLocal()
                 }
             }
-            // Le lecteur enregistre la progression dans la bibliothèque, sans connaître la feature.
+            // The reader saves progress in the library without knowing that feature.
             single {
                 val library = get<LibraryRepository>()
                 val scope = get<CoroutineScope>()

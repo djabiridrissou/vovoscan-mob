@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Polices de la marque (licence OFL, dépôt google/fonts) : Dela Gothic One (titres), Space Grotesk (texte).
-# Copiées pour Android (res/font, noms en minuscules) et iOS (Fonts/, déclarées dans UIAppFonts).
+# Brand fonts (OFL licence, google/fonts repository): Dela Gothic One (headings), Space Grotesk (body text).
+# Copied for Android (res/font, lowercase names) and iOS (Fonts/, declared in UIAppFonts).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 base="https://raw.githubusercontent.com/google/fonts/main/ofl"

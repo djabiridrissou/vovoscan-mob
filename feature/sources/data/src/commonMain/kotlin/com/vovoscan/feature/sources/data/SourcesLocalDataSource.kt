@@ -17,14 +17,14 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
 
-/** Source locale : mes sources, leurs manifestes et le dernier choix pas encore envoyé. Fournit aussi les manifestes. */
+/** Local source: my sources, their manifests and the latest choice not sent yet. Also provides the manifests. */
 interface SourcesLocalDataSource : ManifestProvider {
     fun observe(): Flow<List<SourceItem>>
 
-    /** Remplace la liste par celle du serveur. */
+    /** Replaces the list with the server's. */
     suspend fun replace(sources: List<MySourceDto>)
 
-    /** Applique un choix sur l'appareil et le garde en attente d'envoi. */
+    /** Applies a choice on the device and keeps it pending until sent. */
     suspend fun applyPending(choices: List<SourceChoiceDto>)
 
     suspend fun pending(): List<SourceChoiceDto>?

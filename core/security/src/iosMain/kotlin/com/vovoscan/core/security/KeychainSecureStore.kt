@@ -35,7 +35,7 @@ import platform.Security.kSecMatchLimitOne
 import platform.Security.kSecReturnData
 import platform.Security.kSecValueData
 
-/** Mots de passe génériques du Keychain, propres à l'appareil (non synchronisés iCloud). */
+/** Keychain generic passwords, bound to this device (not synced to iCloud). */
 @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
 class KeychainSecureStore(
     private val service: String = "com.vovoscan.app",
@@ -76,7 +76,7 @@ class KeychainSecureStore(
         withQuery(account = null) { SecItemDelete(it) }
     }
 
-    /** Requête Keychain (classe, service, compte) plus des attributs, libérée après usage. */
+    /** Keychain query (class, service, account) plus extra attributes, released after use. */
     private inline fun <T> withQuery(
         account: String?,
         vararg extra: Pair<CFTypeRef?, CFTypeRef?>,

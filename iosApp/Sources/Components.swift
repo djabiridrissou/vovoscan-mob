@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// Bouton principal : fond rouge, texte encre, bordure encre, ombre dure papier (sans flou).
-/// Appuyé, il s'enfonce de 2 pt et son ombre rétrécit (150 ms), avec un retour haptique.
+/// Primary button: red background, ink text, ink border, hard paper shadow (no blur).
+/// When pressed, it sinks by 2 pt and its shadow shrinks (150 ms), with haptic feedback.
 struct PrimaryButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         let shadow: CGFloat = configuration.isPressed ? 2 : 6
@@ -35,7 +35,7 @@ struct GhostButtonStyle: ButtonStyle {
     }
 }
 
-/// Champ de l'application : libellé 13 pt au-dessus, fond `inputBg`, bordure `line`.
+/// App text field: 13 pt label above, `inputBg` background, `line` border.
 struct BrandField: View {
     let label: String
     @Binding var text: String
@@ -67,7 +67,7 @@ struct ErrorText: View {
     var body: some View { Text(text).font(.brandBody(13)).foregroundStyle(Color.brandDanger) }
 }
 
-/// Bandeau hors ligne : discret, la copie locale reste au centre.
+/// Offline banner: discreet, the local copy stays in focus.
 struct OfflineNotice: View {
     let text: String
     var body: some View {
@@ -83,7 +83,7 @@ struct OfflineNotice: View {
     }
 }
 
-/// Pastille « kicker » : fond papier, texte encre, majuscules, inclinée de -2°.
+/// "Kicker" badge: paper background, ink text, uppercase, tilted -2°.
 struct Kicker: View {
     let text: String
     var body: some View {
@@ -98,7 +98,7 @@ struct Kicker: View {
     }
 }
 
-/// Logo : carré rouge incliné de -6°, bordure papier, ombre dure papier, « ヴ » en encre.
+/// Logo: red square tilted -6°, paper border, hard paper shadow, "ヴ" in ink.
 struct LogoMark: View {
     var size: CGFloat = 32
     var body: some View {
@@ -112,9 +112,9 @@ struct LogoMark: View {
     }
 }
 
-/// Champ branché sur un ViewModel Kotlin. Le texte vit côté Swift (`text`), chaque frappe part en intention :
-/// l'état Kotlin arrive en asynchrone et, relu directement, il écraserait la saisie en cours (caractères perdus en
-/// tapant vite). Une valeur vidée par le ViewModel (mot de passe après connexion, changement de mode) est reprise.
+/// Field wired to a Kotlin ViewModel. The text lives on the Swift side (`text`) and each keystroke is sent as an
+/// intent: Kotlin state arrives asynchronously and, read back directly, would overwrite the input in progress
+/// (characters lost when typing fast). A value cleared by the ViewModel (password after sign-in, mode switch) is applied.
 struct IntentField: View {
     let label: String
     @Binding var text: String
@@ -132,9 +132,9 @@ struct IntentField: View {
     }
 }
 
-/// Valide un formulaire après avoir rendu le clavier : iOS ne remet la frappe en cours (dernier caractère composé)
-/// au champ qu'à la perte du focus. Sans ce détour, le dernier caractère tapé partirait après l'envoi.
-/// Le formulaire renvoie ensuite la valeur exacte de chaque champ avant d'envoyer : aucune course possible.
+/// Submits a form after dismissing the keyboard: iOS only commits the pending input (last composed character)
+/// to the field when it loses focus. Without this detour, the last typed character would arrive after the submit.
+/// The form then resends the exact value of each field before submitting: no race is possible.
 @MainActor
 func submitAfterCommittingInput(_ submit: @escaping () -> Void) {
     UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)

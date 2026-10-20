@@ -17,7 +17,7 @@ class AuthRepositoryImplTest {
         """{"id":"u1","email":"r@v.app","displayName":"Reader","roleName":"Reader","permissions":["library-entries:update"]}"""
 
     @Test
-    fun connexionGardeLeJetonDansLeCoffre() =
+    fun signInKeepsTheTokenInTheSecureStore() =
         runTest {
             val store = MemorySecureStore()
             val repo =
@@ -32,7 +32,7 @@ class AuthRepositoryImplTest {
         }
 
     @Test
-    fun horsLigneLaSessionLocaleResteOuverte() =
+    fun offlineTheLocalSessionStaysOpen() =
         runTest {
             val store = MemorySecureStore()
             SecureSessionLocalDataSource(store).save(
@@ -48,7 +48,7 @@ class AuthRepositoryImplTest {
         }
 
     @Test
-    fun sessionRevoqueeEffaceTout() =
+    fun revokedSessionErasesEverything() =
         runTest {
             val store = MemorySecureStore()
             SecureSessionLocalDataSource(store).save(SessionDto("t1", UserDto("u1", "r@v.app", "Reader")))

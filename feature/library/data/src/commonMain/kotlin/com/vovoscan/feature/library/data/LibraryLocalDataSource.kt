@@ -12,7 +12,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 
-/** Une action faite sur l'appareil, en attente d'envoi. */
+/** An action taken on the device, waiting to be sent. */
 data class PendingChange(
     val sourceKey: String,
     val titleRef: String,
@@ -24,7 +24,7 @@ data class PendingChange(
     val updatedAt: Long,
 )
 
-/** Source locale : entrées de la bibliothèque, file d'envoi et curseur de synchronisation. */
+/** Local source: library entries, outbox and sync cursor. */
 interface LibraryLocalDataSource {
     fun observe(): Flow<List<LibraryEntry>>
 
@@ -38,7 +38,7 @@ interface LibraryLocalDataSource {
         titleRef: String,
     ): LibraryEntry?
 
-    /** Applique une action locale et la met en file, dans la même transaction. */
+    /** Applies a local action and queues it, in the same transaction. */
     suspend fun applyLocal(
         entry: LibraryEntry,
         deleted: Boolean,
@@ -46,10 +46,10 @@ interface LibraryLocalDataSource {
 
     suspend fun pending(): List<PendingChange>
 
-    /** Retire l'opération envoyée, sauf si une plus récente l'a remplacée entre-temps. */
+    /** Removes the sent operation, unless a newer one has replaced it in the meantime. */
     suspend fun dequeue(change: PendingChange)
 
-    /** État rendu par le serveur ; ignoré si une action locale plus récente attend encore. */
+    /** State returned by the server; ignored if a newer local action is still waiting. */
     suspend fun applyServer(
         dto: LibraryEntryDto,
         updatedAt: Long,

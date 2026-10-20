@@ -17,7 +17,7 @@ class VovoscanApplication : Application() {
             androidContext(this@VovoscanApplication)
             modules(appModules(AppConfig(BuildConfig.API_BASE_URL), androidPlatformModule(this@VovoscanApplication)))
         }
-        // Session gardée sur l'appareil, avant le premier écran ; la confirmation réseau suit, sans bloquer hors ligne.
+        // Session stored on the device, before the first screen; the network check follows, without blocking offline.
         runBlocking { GlobalContext.get().get<AuthRepository>().restore() }
     }
 }

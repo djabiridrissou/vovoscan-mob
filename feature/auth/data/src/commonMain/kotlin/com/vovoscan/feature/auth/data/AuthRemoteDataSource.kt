@@ -20,7 +20,7 @@ data class UserDto(
     val displayName: String,
     val roleName: String = "",
     val isSuperAdmin: Boolean = false,
-    /** « module:action » ; « * » pour un super-admin. */
+    /** "module:action"; "*" for a super-admin. */
     val permissions: List<String> = emptyList(),
 )
 
@@ -44,7 +44,7 @@ internal data class RedeemInviteBody(
     val displayName: String,
 )
 
-/** Source distante : l'API d'authentification (`api/v1/auth/…`). */
+/** Remote source: the authentication API (`api/v1/auth/…`). */
 interface AuthRemoteDataSource {
     suspend fun signIn(
         email: String,

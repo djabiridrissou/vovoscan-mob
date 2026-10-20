@@ -4,7 +4,7 @@ import kotlin.time.ExperimentalTime
 import kotlin.time.Instant
 import kotlin.time.Clock as KotlinClock
 
-/** Horloge injectée : les écritures hors ligne sont datées par l'appareil (last-write-wins côté serveur). */
+/** Injected clock: offline writes are timestamped by the device (last-write-wins on the server). */
 fun interface Clock {
     fun nowMillis(): Long
 }
@@ -14,11 +14,11 @@ object SystemClock : Clock {
     override fun nowMillis(): Long = KotlinClock.System.now().toEpochMilliseconds()
 }
 
-/** ISO 8601 en UTC (« 2026-10-20T10:00:00Z »), comme l'attend l'API. */
+/** ISO 8601 in UTC ("2026-10-20T10:00:00Z"), as the API expects. */
 @OptIn(ExperimentalTime::class)
 fun isoUtc(epochMillis: Long): String = Instant.fromEpochMilliseconds(epochMillis).toString()
 
-/** Lit une date de l'API ; sans fuseau, elle est en UTC. */
+/** Parses an API date; without a time zone, it is UTC. */
 @OptIn(ExperimentalTime::class)
 fun parseIsoMillis(value: String): Long? {
     val zoned = if (value.endsWith("Z") || value.contains('+') || value.lastIndexOf('-') > 9) value else value + "Z"

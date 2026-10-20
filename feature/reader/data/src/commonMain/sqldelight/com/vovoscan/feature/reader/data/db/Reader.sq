@@ -1,5 +1,5 @@
--- Unités déjà ouvertes, relues hors ligne. Une unité est repérée par « source/identifiant ».
--- Comic : ses pages (les images viennent du cache d'images). Livre : ses sections nettoyées, lisibles sans réseau.
+-- Units already opened, reread offline. A unit is identified by "source/id".
+-- Comic: its pages (images come from the image cache). Book: its sanitized sections, readable without a network.
 CREATE TABLE reader_chapter (
     chapter_key TEXT NOT NULL PRIMARY KEY,
     source_key TEXT NOT NULL,

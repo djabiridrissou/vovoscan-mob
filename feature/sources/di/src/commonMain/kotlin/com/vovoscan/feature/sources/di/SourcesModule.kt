@@ -15,8 +15,8 @@ import org.koin.core.module.dsl.viewModelOf
 import org.koin.dsl.module
 
 /**
- * Module Koin de la feature : sources locale (SQLDelight, manifestes compris) et distante (Ktor) injectées dans le
- * dépôt. Fournit aussi `ManifestProvider` au catalogue et au lecteur (sources lues sur l'appareil).
+ * Koin module for the feature: local (SQLDelight, manifests included) and remote (Ktor) sources injected into the
+ * repository. Also provides `ManifestProvider` to the catalog and the reader (sources read on the device).
  */
 val sourcesModule =
     module {

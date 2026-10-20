@@ -22,7 +22,7 @@ import org.koin.core.parameter.parametersOf
 import org.koin.dsl.module
 import org.koin.mp.KoinPlatform
 
-/** Appelé une fois au lancement de l'app iOS (VovoscanApp.swift). */
+/** Called once when the iOS app launches (VovoscanApp.swift). */
 fun initKoin(apiBaseUrl: String) {
     startKoin {
         modules(
@@ -35,13 +35,13 @@ fun initKoin(apiBaseUrl: String) {
             ),
         )
     }
-    // Session gardée sur l'appareil, avant le premier écran (lecture du Keychain, courte ; le réseau suit).
+    // Session kept on the device, before the first screen (a short Keychain read; the network follows).
     runBlocking { KoinPlatform.getKoin().get<AuthRepository>().restore() }
 }
 
 /**
- * Fournit les ViewModels Kotlin aux vues SwiftUI. Chaque écran garde son propre `ViewModels`
- * et appelle `clear()` en disparaissant : les coroutines du ViewModel sont annulées.
+ * Provides the Kotlin ViewModels to the SwiftUI views. Each screen keeps its own `ViewModels`
+ * and calls `clear()` when it disappears: the ViewModel's coroutines are cancelled.
  */
 class ViewModels : KoinComponent {
     private val store = ViewModelStore()

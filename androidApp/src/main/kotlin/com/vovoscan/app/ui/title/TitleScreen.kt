@@ -31,7 +31,7 @@ import com.vovoscan.feature.library.presentation.FollowViewModel
 import org.koin.compose.viewmodel.koinViewModel
 import org.koin.core.parameter.parametersOf
 
-/** Fiche d'un titre. Deux features s'y côtoient sans se connaître : la fiche (catalog) et le suivi (library). */
+/** Title page. Two features share it, unaware of each other: details (catalog) and following (library). */
 @Composable
 fun TitleScreen(
     sourceKey: String,
@@ -61,7 +61,7 @@ fun TitleScreen(
                 state.error?.let { ErrorText(it) }
                 Text(state.name, style = MaterialTheme.typography.headlineSmall)
                 Text(state.meta, style = MaterialTheme.typography.bodySmall)
-                // Reprendre où on s'était arrêté, sinon commencer au premier chapitre (la liste va du plus récent au plus ancien).
+                // Resume where the reader left off, otherwise start at the first chapter (the list runs newest to oldest).
                 val resume = followState.resumeChapterId
                 when {
                     resume != null ->

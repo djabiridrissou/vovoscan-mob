@@ -1,8 +1,8 @@
 package com.vovoscan.core.security
 
 /**
- * Coffre pour le jeton de session : Keystore (EncryptedSharedPreferences) sur Android, Keychain sur iOS.
- * Jamais dans la base locale.
+ * Secure store for the session token: Keystore (EncryptedSharedPreferences) on Android, Keychain on iOS.
+ * Never in the local database.
  */
 interface SecureStore {
     suspend fun get(key: String): String?
@@ -14,7 +14,7 @@ interface SecureStore {
 
     suspend fun remove(key: String)
 
-    /** Tout effacer (déconnexion). */
+    /** Erases everything (sign-out). */
     suspend fun clear()
 }
 

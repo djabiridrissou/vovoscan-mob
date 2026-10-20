@@ -1,6 +1,6 @@
--- Copie locale du catalogue de chaque source : lue par les écrans, remplacée par la source (le serveur vovoscan pour
--- la source interne, la source elle-même pour les autres). Un titre est repéré par (source, identifiant).
--- SQLite 3.18 (Android 8, minSdk 26) : pas d'ON CONFLICT … DO UPDATE.
+-- Local copy of each source's catalog: read by the screens, replaced by the source (the vovoscan server for
+-- the internal source, the source itself for the others). A title is identified by (source, id).
+-- SQLite 3.18 (Android 8, minSdk 26): no ON CONFLICT … DO UPDATE.
 CREATE TABLE title (
     source_key TEXT NOT NULL,
     id TEXT NOT NULL,
@@ -9,7 +9,7 @@ CREATE TABLE title (
     kind TEXT NOT NULL,
     format TEXT NOT NULL,
     status TEXT NOT NULL,
-    -- Rang dans le catalogue de la source (null : connu seulement par une recherche ou une fiche).
+    -- Rank in the source's catalog (null: known only from a search or a title page).
     catalog_rank INTEGER,
     description TEXT,
     authors TEXT,
@@ -32,7 +32,7 @@ CREATE TABLE chapter (
 
 CREATE TABLE catalog_cursor (
     source_key TEXT NOT NULL PRIMARY KEY,
-    -- Prochaine page du catalogue de la source (null : tout est chargé).
+    -- Next page of the source's catalog (null: everything is loaded).
     next_page INTEGER
 );
 

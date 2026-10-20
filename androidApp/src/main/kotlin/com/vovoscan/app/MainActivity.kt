@@ -53,14 +53,14 @@ private enum class Tab(
     Sources("Sources"),
 }
 
-/** Racine : connexion, ou onglets Catalogue / Bibliothèque / Sources, avec la fiche d'un titre et le lecteur par-dessus. */
+/** Root: sign-in, or the Catalog / Library / Sources tabs, with the title page and the reader on top. */
 @Composable
 private fun Root(session: SessionViewModel = koinViewModel()) {
     val user by session.session.collectAsStateWithLifecycle()
     var tab by rememberSaveable { mutableStateOf(Tab.Catalog) }
-    // Fiche ouverte : « source|titre ».
+    // Open title page: "source|title".
     var openTitle by rememberSaveable { mutableStateOf<String?>(null) }
-    // Lecteur ouvert : « source|titre|chapitre|page de départ ».
+    // Open reader: "source|title|chapter|start page".
     var openReader by rememberSaveable { mutableStateOf<String?>(null) }
     Column(
         Modifier

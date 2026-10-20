@@ -12,17 +12,17 @@ import kotlinx.coroutines.launch
 
 data class FollowUiState(
     val followed: Boolean = false,
-    /** Chapitre et page où reprendre la lecture, si le titre a déjà été lu. */
+    /** Chapter and page to resume reading from, if the title has been read before. */
     val resumeChapterId: String? = null,
     val resumePage: Int = 0,
 ) {
     val label: String get() = if (followed) "In your library ✓" else "Add to library →"
 
-    /** « Continue · page 5 » (« section » pour un livre), null si rien à reprendre. */
+    /** "Continue · page 5" ("section" for a book), null if there is nothing to resume. */
     fun resumeLabel(book: Boolean): String? = resumeChapterId?.let { "Continue · ${if (book) "section" else "page"} ${resumePage + 1}" }
 }
 
-/** Bouton « suivre » et reprise de lecture sur la fiche d'un titre. L'application l'assemble à côté de la fiche. */
+/** "Follow" button and reading resume on a title page. The app assembles it next to the title page. */
 class FollowViewModel(
     private val sourceKey: String,
     private val titleId: String,

@@ -1,4 +1,4 @@
-// Module Kotlin Multiplatform : Android, iosArm64 et iosSimulatorArm64, tests communs sur la JVM (host tests Android).
+// Kotlin Multiplatform module: Android, iosArm64 and iosSimulatorArm64; common tests run on the JVM (Android host tests).
 
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
@@ -23,7 +23,7 @@ kotlin {
         withHostTest {}
     }
     listOf(iosArm64(), iosSimulatorArm64()).forEach { target ->
-        // Pilote SQLDelight natif (SQLiter) : SQLite système, pour les binaires de test comme pour le framework.
+        // Native SQLDelight driver (SQLiter): system SQLite, for test binaries as well as the framework.
         target.binaries.all { linkerOpts("-lsqlite3") }
     }
 
@@ -37,7 +37,7 @@ kotlin {
     }
 }
 
-// Le code généré (SQLDelight, BuildConfig…) n'est pas vérifié.
+// Generated code (SQLDelight, BuildConfig…) is not checked.
 tasks.withType<org.jlleitschuh.gradle.ktlint.tasks.BaseKtLintCheckTask>().configureEach {
     exclude { it.file.path.contains("/build/") }
 }

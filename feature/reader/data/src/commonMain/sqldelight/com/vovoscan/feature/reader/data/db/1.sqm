@@ -1,4 +1,4 @@
--- v1 → v2 : unités repérées par source, livres en sections. Cache seulement : on repart de zéro.
+-- v1 → v2: units identified by source, books stored as sections. Cache only: start from scratch.
 DROP TABLE IF EXISTS reader_page;
 DROP TABLE IF EXISTS reader_chapter;
 

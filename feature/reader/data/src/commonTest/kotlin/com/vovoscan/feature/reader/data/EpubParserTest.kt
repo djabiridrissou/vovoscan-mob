@@ -13,28 +13,28 @@ class EpubParserTest {
     private val epub = Base64.decode(EpubFixture.base64)
 
     @Test
-    fun ordreDeLectureEtTableDesMatieres() {
+    fun readingOrderAndTableOfContents() {
         val sections = EpubParser().parse(epub)
         assertEquals(listOf("The River Opens", "The Rain Returns"), sections.map { it.title })
         assertTrue("Paper boats wait on the bank." in sections[0].html)
     }
 
     @Test
-    fun leHtmlEstNettoye() {
+    fun htmlIsSanitized() {
         val html = EpubParser().parse(epub)[0].html
         listOf("<script", "alert(", "onclick", "<style", "style=", "<iframe", "tracker.example").forEach { assertFalse(it in html, it) }
-        // L'image de l'archive est intégrée : rien n'est chargé du web.
+        // The archive image is inlined: nothing is loaded from the web.
         assertTrue("src=\"data:image/png;base64," in html)
     }
 
     @Test
-    fun cheminsRelatifs() {
+    fun relativePaths() {
         assertEquals("OEBPS/images/dot.png", resolve("OEBPS/text", "../images/dot.png"))
         assertEquals("a/b.xhtml", resolve("", "./a/b.xhtml"))
     }
 
     @Test
-    fun pasUnEpub() {
+    fun notAnEpub() {
         assertFailsWith<InvalidEpub> { EpubParser().parse("<html>not a book</html>".encodeToByteArray()) }
     }
 }

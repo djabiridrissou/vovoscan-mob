@@ -1,5 +1,5 @@
-// Parapluie : assemble core et features pour les deux applications, et exporte vers iOS
-// le framework « Shared » (SKIE : Flow -> AsyncSequence, suspend -> async, sealed -> enum).
+// Umbrella: assembles core and features for both apps, and exports the "Shared" framework to iOS
+// (SKIE: Flow -> AsyncSequence, suspend -> async, sealed -> enum).
 
 import org.jetbrains.kotlin.gradle.plugin.mpp.apple.XCFramework
 

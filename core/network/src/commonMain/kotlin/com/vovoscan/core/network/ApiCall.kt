@@ -12,7 +12,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
 
-/** Enveloppe d'erreur de l'API : `{ "code": 409, "message": "…", "data": { "error": "INVITE_INVALID" } }`. */
+/** API error envelope: `{ "code": 409, "message": "…", "data": { "error": "INVITE_INVALID" } }`. */
 @Serializable
 data class ApiErrorEnvelope(
     val code: Int,
@@ -25,13 +25,13 @@ data class ApiErrorData(
     val error: String,
 )
 
-/** Enveloppe de succès d'un élément : `{ "data": … }`. */
+/** Success envelope for a single item: `{ "data": … }`. */
 @Serializable
 data class ApiData<T>(
     val data: T,
 )
 
-/** Enveloppe d'une liste paginée : `{ "data": [...], "total", "page", "perPage", "pages" }`. */
+/** Envelope for a paginated list: `{ "data": [...], "total", "page", "perPage", "pages" }`. */
 @Serializable
 data class ApiPage<T>(
     val data: List<T> = emptyList(),
@@ -44,8 +44,8 @@ data class ApiPage<T>(
 }
 
 /**
- * Exécute une requête et la traduit en [AppResult] : jamais d'exception hors annulation.
- * Sans réponse (coupure, délai) : [AppError.Network].
+ * Runs a request and maps it to an [AppResult]: never throws, except on cancellation.
+ * No response (connection lost, timeout): [AppError.Network].
  */
 suspend inline fun <reified T> HttpClient.apiCall(request: HttpClient.() -> HttpResponse): AppResult<T> =
     try {
@@ -59,7 +59,7 @@ suspend inline fun <reified T> HttpClient.apiCall(request: HttpClient.() -> Http
         if (e.isDecodingFailure()) AppResult.Err(AppError.Unknown("unreadable response: ${e.message}")) else AppResult.Err(AppError.Network)
     }
 
-/** Requête sans corps de réponse utile (204). */
+/** Request with no useful response body (204). */
 suspend inline fun HttpClient.apiCallUnit(request: HttpClient.() -> HttpResponse): AppResult<Unit> =
     try {
         val response = request()
@@ -70,7 +70,7 @@ suspend inline fun HttpClient.apiCallUnit(request: HttpClient.() -> HttpResponse
         AppResult.Err(AppError.Network)
     }
 
-/** Ktor enveloppe parfois l'erreur de désérialisation (JsonConvertException). */
+/** Ktor sometimes wraps the deserialization error (JsonConvertException). */
 fun Throwable.isDecodingFailure(): Boolean =
     generateSequence(this) { it.cause }.any { it is SerializationException || it::class.simpleName == "JsonConvertException" }
 
@@ -78,7 +78,7 @@ suspend fun errorOf(response: HttpResponse): AppError {
     val body = runCatching { ApiJson.decodeFromString(ApiErrorEnvelope.serializer(), response.bodyAsText()) }.getOrNull()
     val code = body?.data?.error
     return when {
-        // Un 401 précis (« INVALID_CREDENTIALS » à la connexion) garde son message ; le 401 générique = session finie.
+        // A specific 401 ("INVALID_CREDENTIALS" at sign-in) keeps its message; a generic 401 means the session has ended.
         response.status == HttpStatusCode.Unauthorized && (code == null || code == "UNAUTHORIZED") -> AppError.Unauthorized
         response.status == HttpStatusCode.Forbidden && (code == null || code == "PERMISSION_DENIED") -> AppError.Forbidden
         response.status == HttpStatusCode.TooManyRequests -> AppError.RateLimited

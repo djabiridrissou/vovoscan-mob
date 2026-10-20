@@ -5,8 +5,8 @@ import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.db.SqlSchema
 
 /**
- * Ouvre la base SQLDelight d'une feature (une base par feature, ses tables et ses migrations).
- * La base locale est la source de lecture des écrans (hors ligne d'abord) ; le serveur reste la source de vérité.
+ * Opens a feature's SQLDelight database (one database per feature, with its tables and migrations).
+ * The local database is what screens read from (offline first); the server remains the source of truth.
  */
 expect class DatabaseDriverFactory {
     fun create(

@@ -47,7 +47,7 @@ class SourcesViewModelTest {
     fun tearDown() = Dispatchers.resetMain()
 
     @Test
-    fun activerRangerEtGarderUneSourceVisible() =
+    fun enableReorderAndKeepOneSourceVisible() =
         runTest {
             val vm = SourcesViewModel(FakeSources())
             assertEquals(
