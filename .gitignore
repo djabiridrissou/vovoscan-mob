@@ -1,0 +1,12 @@
+.gradle/
+build/
+.kotlin/
+local.properties
+*.iml
+.idea/
+.DS_Store
+captures/
+xcuserdata/
+iosApp/Vovoscan.xcodeproj/
+iosApp/build/
+iosApp/Info.plist

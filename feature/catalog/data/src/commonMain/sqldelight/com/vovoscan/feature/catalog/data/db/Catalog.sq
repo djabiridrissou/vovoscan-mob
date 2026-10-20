@@ -1,0 +1,84 @@
+-- Copie locale du catalogue : lue par les écrans, remplacée par l'API (le serveur fait foi).
+-- SQLite 3.18 (Android 8, minSdk 26) : pas d'ON CONFLICT … DO UPDATE.
+CREATE TABLE title (
+    id TEXT NOT NULL PRIMARY KEY,
+    name TEXT NOT NULL,
+    cover_url TEXT,
+    format TEXT NOT NULL,
+    status TEXT NOT NULL,
+    -- Rang dans la liste du catalogue (null : connu seulement par une recherche ou une fiche).
+    catalog_rank INTEGER,
+    description TEXT,
+    authors TEXT,
+    genres TEXT
+);
+
+CREATE INDEX title_rank ON title(catalog_rank);
+
+CREATE TABLE chapter (
+    id TEXT NOT NULL PRIMARY KEY,
+    title_id TEXT NOT NULL,
+    number REAL NOT NULL,
+    name TEXT,
+    page_count INTEGER NOT NULL,
+    published_at TEXT
+);
+
+CREATE INDEX chapter_title ON chapter(title_id);
+
+CREATE TABLE catalog_cursor (
+    slot INTEGER NOT NULL PRIMARY KEY CHECK (slot = 1),
+    -- Prochaine page du catalogue (null : tout est chargé).
+    next_page INTEGER
+);
+
+insertSummary:
+INSERT OR IGNORE INTO title (id, name, cover_url, format, status) VALUES (?, ?, ?, ?, ?);
+
+updateSummary:
+UPDATE title SET name = ?, cover_url = ?, format = ?, status = ? WHERE id = ?;
+
+setRank:
+UPDATE title SET catalog_rank = ? WHERE id = ?;
+
+clearRanks:
+UPDATE title SET catalog_rank = NULL;
+
+maxRank:
+SELECT MAX(catalog_rank) AS max_rank FROM title;
+
+updateDetail:
+UPDATE title SET description = ?, authors = ?, genres = ? WHERE id = ?;
+
+catalogTitles:
+SELECT * FROM title WHERE catalog_rank IS NOT NULL ORDER BY catalog_rank;
+
+searchTitles:
+SELECT * FROM title WHERE name LIKE '%' || :query || '%' ORDER BY name LIMIT 50;
+
+titleById:
+SELECT * FROM title WHERE id = ?;
+
+chaptersOf:
+SELECT * FROM chapter WHERE title_id = ? ORDER BY number DESC;
+
+deleteChaptersOf:
+DELETE FROM chapter WHERE title_id = ?;
+
+insertChapter:
+INSERT OR REPLACE INTO chapter (id, title_id, number, name, page_count, published_at) VALUES (?, ?, ?, ?, ?, ?);
+
+putCursor:
+INSERT OR REPLACE INTO catalog_cursor (slot, next_page) VALUES (1, ?);
+
+cursor:
+SELECT next_page FROM catalog_cursor WHERE slot = 1;
+
+clearTitles:
+DELETE FROM title;
+
+clearChapters:
+DELETE FROM chapter;
+
+clearCursor:
+DELETE FROM catalog_cursor;

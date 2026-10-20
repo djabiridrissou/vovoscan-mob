@@ -1,0 +1,9 @@
+/* vovoscan design tokens — extracted from https://vovoscan.yieldgrowth.org/ */
+:root {
+  --ink:#0b0b0e; --ink-2:#15151b; --line:#2a2a33;
+  --paper:#f3eee4; --paper-2:#e6dfd1; --muted:#a39e94;
+  --red:#ff2d55; --yellow:#ffd60a; --cyan:#2de2e6; --danger:#ff6b6b;
+  --font-display:"Dela Gothic One",system-ui,sans-serif;
+  --font-body:"Space Grotesk",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  color-scheme: dark;
+}

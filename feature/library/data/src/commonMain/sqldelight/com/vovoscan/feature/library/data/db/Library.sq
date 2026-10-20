@@ -1,0 +1,66 @@
+-- Bibliothèque sur l'appareil : lue par les écrans, modifiée hors ligne, synchronisée par la file `outbox`.
+-- SQLite 3.18 (Android 8, minSdk 26) : pas d'ON CONFLICT … DO UPDATE.
+CREATE TABLE library_entry (
+    title_id TEXT NOT NULL PRIMARY KEY,
+    title_name TEXT NOT NULL,
+    cover_url TEXT,
+    last_chapter_id TEXT,
+    last_page INTEGER NOT NULL DEFAULT 0,
+    updated_at INTEGER NOT NULL,
+    deleted INTEGER NOT NULL DEFAULT 0,
+    pending INTEGER NOT NULL DEFAULT 0
+);
+
+-- Une seule opération en attente par titre : la plus récente remplace les précédentes.
+CREATE TABLE outbox (
+    title_id TEXT NOT NULL PRIMARY KEY,
+    kind TEXT NOT NULL, -- save | delete
+    last_chapter_id TEXT,
+    last_page INTEGER NOT NULL DEFAULT 0,
+    updated_at INTEGER NOT NULL
+);
+
+CREATE TABLE sync_state (
+    slot INTEGER NOT NULL PRIMARY KEY CHECK (slot = 1),
+    last_pulled_at TEXT
+);
+
+entries:
+SELECT * FROM library_entry WHERE deleted = 0 ORDER BY updated_at DESC;
+
+entry:
+SELECT * FROM library_entry WHERE title_id = ?;
+
+isFollowed:
+SELECT COUNT(*) FROM library_entry WHERE title_id = ? AND deleted = 0;
+
+putEntry:
+INSERT OR REPLACE INTO library_entry (title_id, title_name, cover_url, last_chapter_id, last_page, updated_at, deleted, pending)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+
+enqueue:
+INSERT OR REPLACE INTO outbox (title_id, kind, last_chapter_id, last_page, updated_at) VALUES (?, ?, ?, ?, ?);
+
+pending:
+SELECT * FROM outbox ORDER BY updated_at;
+
+dequeue:
+DELETE FROM outbox WHERE title_id = ? AND updated_at = ?;
+
+isQueued:
+SELECT COUNT(*) FROM outbox WHERE title_id = ?;
+
+lastPulledAt:
+SELECT last_pulled_at FROM sync_state WHERE slot = 1;
+
+putLastPulledAt:
+INSERT OR REPLACE INTO sync_state (slot, last_pulled_at) VALUES (1, ?);
+
+clearEntries:
+DELETE FROM library_entry;
+
+clearOutbox:
+DELETE FROM outbox;
+
+clearSyncState:
+DELETE FROM sync_state;

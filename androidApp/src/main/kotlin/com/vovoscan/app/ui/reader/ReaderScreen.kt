@@ -1,0 +1,190 @@
+package com.vovoscan.app.ui.reader
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import coil3.compose.AsyncImage
+import com.vovoscan.app.ui.common.ErrorText
+import com.vovoscan.app.ui.common.GhostButton
+import com.vovoscan.app.ui.common.PrimaryButton
+import com.vovoscan.app.ui.theme.Brand
+import com.vovoscan.feature.reader.domain.ReaderPage
+import com.vovoscan.feature.reader.domain.ReadingMode
+import com.vovoscan.feature.reader.presentation.ReaderIntent
+import com.vovoscan.feature.reader.presentation.ReaderUiState
+import com.vovoscan.feature.reader.presentation.ReaderViewModel
+import org.koin.compose.viewmodel.koinViewModel
+import org.koin.core.parameter.parametersOf
+
+/**
+ * Lecteur : bande verticale continue (webtoon) ou pages de droite à gauche (manga). Toucher le centre masque les
+ * barres. L'écran ne fait qu'afficher : page courante, reprise et progression sont dans `ReaderViewModel`.
+ */
+@Composable
+fun ReaderScreen(
+    chapterId: String,
+    startPage: Int,
+    onBack: () -> Unit,
+    onOpenChapter: (String) -> Unit,
+    viewModel: ReaderViewModel = koinViewModel(key = "reader:$chapterId") { parametersOf(chapterId, startPage) },
+) {
+    val state by viewModel.state.collectAsStateWithLifecycle()
+    Box(Modifier.fillMaxSize().background(Brand.Ink)) {
+        when {
+            state.unavailable ->
+                Column(Modifier.align(Alignment.Center).padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("This chapter isn't saved on this device yet.", style = MaterialTheme.typography.bodyMedium)
+                    state.error?.let { ErrorText(it) }
+                    GhostButton("Try again", { viewModel.onIntent(ReaderIntent.Retry) })
+                }
+            state.pages.isEmpty() -> Unit
+            state.mode == ReadingMode.Vertical -> VerticalStrip(state, viewModel::onIntent, onOpenChapter)
+            else -> RightToLeftPages(state, viewModel::onIntent)
+        }
+        if (state.chromeVisible) {
+            TopBar(state, onBack, Modifier.align(Alignment.TopCenter))
+            BottomBar(state, onOpenChapter, Modifier.align(Alignment.BottomCenter))
+        }
+    }
+}
+
+@Composable
+private fun VerticalStrip(
+    state: ReaderUiState,
+    onIntent: (ReaderIntent) -> Unit,
+    onOpenChapter: (String) -> Unit,
+) {
+    val list = rememberLazyListState()
+    var positioned by remember { mutableStateOf(false) }
+    // Reprise : on se place une seule fois sur la page enregistrée, dès que les pages sont là.
+    LaunchedEffect(state.pages.size) {
+        if (!positioned && state.pages.isNotEmpty()) {
+            list.scrollToItem(state.currentIndex)
+            positioned = true
+        }
+    }
+    LaunchedEffect(list) { snapshotFlow { list.firstVisibleItemIndex }.collect { onIntent(ReaderIntent.PageVisible(it)) } }
+    LazyColumn(
+        state = list,
+        modifier = Modifier.fillMaxSize().pointerInput(Unit) { detectTapGestures { onIntent(ReaderIntent.ToggleChrome) } },
+    ) {
+        itemsIndexed(state.pages, key = { _, page -> page.index }) { _, page -> PageImage(page, Modifier.fillMaxWidth()) }
+        item {
+            Column(Modifier.fillMaxWidth().padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("End of ${state.chapterLabel}.", style = MaterialTheme.typography.titleMedium)
+                state.nextChapterId?.let { next -> PrimaryButton("Next chapter →", { onOpenChapter(next) }) }
+                Spacer(Modifier.height(64.dp))
+            }
+        }
+    }
+}
+
+@Composable
+private fun RightToLeftPages(
+    state: ReaderUiState,
+    onIntent: (ReaderIntent) -> Unit,
+) {
+    val pager = rememberPagerState(initialPage = state.currentIndex) { state.pages.size }
+    LaunchedEffect(pager) { snapshotFlow { pager.settledPage }.collect { onIntent(ReaderIntent.PageVisible(it)) } }
+    // reverseLayout : la première page est à droite, on avance en tirant vers la droite (sens manga).
+    HorizontalPager(
+        state = pager,
+        reverseLayout = true,
+        key = { state.pages[it].index },
+        modifier = Modifier.fillMaxSize().pointerInput(Unit) { detectTapGestures { onIntent(ReaderIntent.ToggleChrome) } },
+    ) { index ->
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            PageImage(state.pages[index], Modifier.fillMaxWidth(), ContentScale.Fit)
+        }
+    }
+}
+
+@Composable
+private fun PageImage(
+    page: ReaderPage,
+    modifier: Modifier,
+    scale: ContentScale = ContentScale.FillWidth,
+) {
+    // La place est réservée d'après les dimensions connues : pas de saut quand l'image arrive.
+    AsyncImage(
+        model = page.url,
+        contentDescription = "Page ${page.index + 1}",
+        contentScale = scale,
+        modifier = modifier.aspectRatio(page.aspectRatio).background(Brand.Ink2),
+    )
+}
+
+@Composable
+private fun TopBar(
+    state: ReaderUiState,
+    onBack: () -> Unit,
+    modifier: Modifier,
+) {
+    Row(
+        modifier.fillMaxWidth().background(Brand.Ink.copy(alpha = 0.92f)).padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text("←", style = MaterialTheme.typography.titleMedium, modifier = Modifier.clickable(onClick = onBack).padding(end = 16.dp))
+        Column(Modifier.weight(1f)) {
+            Text(state.titleName, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(state.chapterLabel, style = MaterialTheme.typography.bodySmall)
+        }
+    }
+}
+
+@Composable
+private fun BottomBar(
+    state: ReaderUiState,
+    onOpenChapter: (String) -> Unit,
+    modifier: Modifier,
+) {
+    Row(
+        modifier.fillMaxWidth().background(Brand.Ink.copy(alpha = 0.92f)).padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(state.positionLabel, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+        state.previousChapterId?.let { previous ->
+            Text("← Previous", style = MaterialTheme.typography.bodySmall, modifier = Modifier.clickable { onOpenChapter(previous) })
+            Spacer(Modifier.width(20.dp))
+        }
+        state.nextChapterId?.let { next ->
+            Text(
+                "Next →",
+                style = MaterialTheme.typography.labelLarge.copy(color = Brand.Red),
+                modifier = Modifier.clickable { onOpenChapter(next) },
+            )
+        }
+    }
+}

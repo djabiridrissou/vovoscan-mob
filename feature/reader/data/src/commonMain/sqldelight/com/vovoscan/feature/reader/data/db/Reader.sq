@@ -1,0 +1,42 @@
+-- Chapitres déjà ouverts : relus hors ligne (les images viennent du cache d'images, la même journée).
+CREATE TABLE reader_chapter (
+    id TEXT NOT NULL PRIMARY KEY,
+    title_id TEXT NOT NULL,
+    title_name TEXT NOT NULL,
+    number REAL NOT NULL,
+    name TEXT,
+    format TEXT NOT NULL,
+    previous_id TEXT,
+    next_id TEXT
+);
+
+CREATE TABLE reader_page (
+    chapter_id TEXT NOT NULL,
+    page_index INTEGER NOT NULL,
+    url TEXT NOT NULL,
+    width INTEGER NOT NULL,
+    height INTEGER NOT NULL,
+    PRIMARY KEY (chapter_id, page_index)
+);
+
+chapter:
+SELECT * FROM reader_chapter WHERE id = ?;
+
+pages:
+SELECT * FROM reader_page WHERE chapter_id = ? ORDER BY page_index;
+
+putChapter:
+INSERT OR REPLACE INTO reader_chapter (id, title_id, title_name, number, name, format, previous_id, next_id)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+
+deletePages:
+DELETE FROM reader_page WHERE chapter_id = ?;
+
+putPage:
+INSERT OR REPLACE INTO reader_page (chapter_id, page_index, url, width, height) VALUES (?, ?, ?, ?, ?);
+
+clearChapters:
+DELETE FROM reader_chapter;
+
+clearPages:
+DELETE FROM reader_page;

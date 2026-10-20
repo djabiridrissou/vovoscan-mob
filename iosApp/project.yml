@@ -1,0 +1,56 @@
+# Projet Xcode généré par XcodeGen (brew install xcodegen ; cd iosApp ; xcodegen).
+# Le .xcodeproj n'est pas versionné : project.yml fait foi.
+name: Vovoscan
+options:
+  bundleIdPrefix: com.vovoscan
+  deploymentTarget:
+    iOS: "16.0"
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+targets:
+  Vovoscan:
+    type: application
+    platform: iOS
+    sources:
+      - Sources
+      # Dela Gothic One et Space Grotesk (scripts/fetch-fonts.sh) ; absentes, la police du système prend le relais.
+      - path: Fonts
+        buildPhase: resources
+    info:
+      path: Info.plist
+      properties:
+        CFBundleDisplayName: vovoscan
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        API_BASE_URL: $(API_BASE_URL)
+        UILaunchScreen: {}
+        UIStatusBarStyle: UIStatusBarStyleLightContent
+        UIUserInterfaceStyle: Dark
+        UIAppFonts: [DelaGothicOne-Regular.ttf, SpaceGrotesk.ttf]
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.vovoscan.app
+        FRAMEWORK_SEARCH_PATHS: $(SRCROOT)/../shared/build/xcode-frameworks/$(CONFIGURATION)/$(SDK_NAME)
+        OTHER_LDFLAGS: [-framework, Shared, -lsqlite3]
+        ENABLE_USER_SCRIPT_SANDBOXING: NO
+        # Cibles Kotlin : iosArm64 et iosSimulatorArm64 seulement (pas de simulateur Intel).
+        EXCLUDED_ARCHS[sdk=iphonesimulator*]: x86_64
+        CODE_SIGN_STYLE: Automatic
+      configs:
+        Debug:
+          PRODUCT_BUNDLE_IDENTIFIER: com.vovoscan.app.dev
+          API_BASE_URL: http://localhost:8000/
+        Release:
+          API_BASE_URL: https://vovoscan.yieldgrowth.org/
+    preBuildScripts:
+      - name: Compiler le framework Kotlin Shared
+        basedOnDependencyAnalysis: false
+        script: |
+          cd "$SRCROOT/.."
+          ./gradlew :shared:embedAndSignAppleFrameworkForXcode
