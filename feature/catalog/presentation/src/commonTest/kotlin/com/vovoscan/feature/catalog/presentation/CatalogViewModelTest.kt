@@ -4,6 +4,7 @@ import com.vovoscan.core.common.AppError
 import com.vovoscan.core.common.AppResult
 import com.vovoscan.core.common.Freshness
 import com.vovoscan.feature.catalog.domain.CatalogRepository
+import com.vovoscan.feature.catalog.domain.ContentKind
 import com.vovoscan.feature.catalog.domain.ReadingFormat
 import com.vovoscan.feature.catalog.domain.SearchResult
 import com.vovoscan.feature.catalog.domain.TitleDetail
@@ -32,19 +33,36 @@ class CatalogViewModelTest {
     private class FakeCatalog(
         var refresh: AppResult<Boolean>,
     ) : CatalogRepository {
-        val titles = MutableStateFlow(listOf(TitleSummary("t1", "Ink Road", null, ReadingFormat.Webtoon, "ongoing")))
+        val titles =
+            MutableStateFlow(listOf(TitleSummary("vovoscan", "t1", "Ink Road", null, ContentKind.Comic, ReadingFormat.Webtoon, "ongoing")))
 
-        override fun observeTitles(): Flow<List<TitleSummary>> = titles
+        override fun observeTitles(sourceKey: String): Flow<List<TitleSummary>> =
+            if (sourceKey ==
+                "vovoscan"
+            ) {
+                titles
+            } else {
+                flowOf(emptyList())
+            }
 
-        override suspend fun refreshTitles() = refresh
+        override suspend fun refreshTitles(sourceKey: String) = refresh
 
-        override suspend fun loadMoreTitles() = AppResult.Ok(false)
+        override suspend fun loadMoreTitles(sourceKey: String) = AppResult.Ok(false)
 
-        override suspend fun search(query: String) = SearchResult(titles.value, offline = true)
+        override suspend fun search(
+            sourceKey: String,
+            query: String,
+        ) = SearchResult(titles.value, offline = true)
 
-        override fun observeTitle(id: String): Flow<TitleDetail?> = flowOf(null)
+        override fun observeTitle(
+            sourceKey: String,
+            id: String,
+        ): Flow<TitleDetail?> = flowOf(null)
 
-        override suspend fun refreshTitle(id: String) = AppResult.Ok(Unit)
+        override suspend fun refreshTitle(
+            sourceKey: String,
+            id: String,
+        ) = AppResult.Ok(Unit)
 
         override suspend fun clearLocal() = Unit
     }
@@ -86,5 +104,32 @@ class CatalogViewModelTest {
             assertEquals("Offline: searching titles saved on this device.", vm.state.value.offlineNotice)
             vm.onIntent(CatalogIntent.Query(""))
             assertNull(vm.state.value.results)
+        }
+
+    @Test
+    fun changerDeSourceRepartDeSaCopie() =
+        runTest(dispatcher) {
+            val vm = CatalogViewModel(FakeCatalog(AppResult.Ok(false)))
+            advanceUntilIdle()
+            assertEquals(1, vm.state.value.cards.size)
+            vm.onIntent(CatalogIntent.SelectSource("gutenberg"))
+            advanceUntilIdle()
+            assertEquals("gutenberg", vm.state.value.sourceKey)
+            assertEquals(emptyList(), vm.state.value.cards)
+        }
+
+    @Test
+    fun laPremiereSourceDuLecteurSertTantQuIlNEnChoisitPasUneAutre() =
+        runTest {
+            val vm = CatalogViewModel(FakeCatalog(AppResult.Ok(false)))
+            vm.onIntent(CatalogIntent.SourcesChanged(listOf("gutenberg", "vovoscan")))
+            advanceUntilIdle()
+            assertEquals("gutenberg", vm.state.value.sourceKey)
+            vm.onIntent(CatalogIntent.SelectSource("vovoscan"))
+            vm.onIntent(CatalogIntent.SourcesChanged(listOf("gutenberg", "vovoscan")))
+            assertEquals("vovoscan", vm.state.value.sourceKey)
+            // La source choisie est masquée : retour à la première visible.
+            vm.onIntent(CatalogIntent.SourcesChanged(listOf("gutenberg")))
+            assertEquals("gutenberg", vm.state.value.sourceKey)
         }
 }

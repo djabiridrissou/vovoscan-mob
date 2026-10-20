@@ -39,7 +39,7 @@ import org.koin.compose.viewmodel.koinViewModel
 
 @Composable
 fun LibraryScreen(
-    onOpenTitle: (String) -> Unit,
+    onOpenTitle: (sourceKey: String, titleId: String) -> Unit,
     onSignOut: () -> Unit,
     viewModel: LibraryViewModel = koinViewModel(),
 ) {
@@ -58,14 +58,14 @@ fun LibraryScreen(
                 if (state.empty) Text(state.emptyMessage, style = MaterialTheme.typography.bodyMedium)
             }
         }
-        items(state.rows, key = { it.titleId }) { row ->
+        items(state.rows, key = { it.sourceKey + "/" + it.titleId }) { row ->
             Row(
                 Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(12.dp))
                     .background(Brand.Ink2)
                     .border(1.dp, Brand.Line, RoundedCornerShape(12.dp))
-                    .clickable { onOpenTitle(row.titleId) },
+                    .clickable { onOpenTitle(row.sourceKey, row.titleId) },
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 AsyncImage(row.coverUrl, null, contentScale = ContentScale.Crop, modifier = Modifier.size(64.dp).background(Brand.Line))

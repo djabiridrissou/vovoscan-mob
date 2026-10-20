@@ -1,0 +1,106 @@
+package com.vovoscan.core.sources
+
+import com.vovoscan.core.common.AppError
+import com.vovoscan.core.common.AppResult
+import io.ktor.client.HttpClient
+import io.ktor.client.engine.HttpClientEngine
+import io.ktor.client.plugins.HttpTimeout
+import io.ktor.client.request.get
+import io.ktor.client.request.header
+import io.ktor.client.request.parameter
+import io.ktor.client.statement.HttpResponse
+import io.ktor.client.statement.bodyAsBytes
+import io.ktor.client.statement.request
+import io.ktor.http.HttpHeaders
+import io.ktor.http.isSuccess
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlin.time.Clock
+import kotlin.time.ExperimentalTime
+
+const val RULES_USER_AGENT = "vovoscan/0.1 (+https://vovoscan.yieldgrowth.org)"
+
+/**
+ * Client HTTP des sources à règles, séparé de celui de l'API : il n'envoie jamais la session vovoscan, ne suit pas
+ * les redirections tout seul (chacune est revérifiée) et ne contacte que les hôtes déclarés par la source.
+ */
+fun createRulesHttpClient(engine: HttpClientEngine): HttpClient =
+    HttpClient(engine) {
+        expectSuccess = false
+        followRedirects = false
+        install(HttpTimeout) {
+            connectTimeoutMillis = 10_000
+            requestTimeoutMillis = 30_000
+        }
+    }
+
+class Fetched(
+    val body: ByteArray,
+    val finalUrl: String,
+)
+
+class RulesHttp(
+    private val client: HttpClient,
+) {
+    private val throttle = Mutex()
+    private val recent = mutableMapOf<String, MutableList<Long>>()
+
+    suspend fun get(
+        manifest: SourceManifest,
+        url: String,
+        query: Map<String, String> = emptyMap(),
+        maxBytes: Int = 30 * 1024 * 1024,
+    ): AppResult<Fetched> {
+        val hosts = manifest.allowedHosts
+        var current = url
+        var params = query
+        repeat(4) {
+            val host = hostOf(current)
+            if (host == null || host !in hosts || !(current.startsWith("https://") || current.startsWith("http://"))) {
+                return AppResult.Err(AppError.Rejected("HOST_NOT_ALLOWED", "This source can't reach $host."))
+            }
+            wait(manifest)
+            val response: HttpResponse =
+                try {
+                    client.get(current) {
+                        header(HttpHeaders.UserAgent, RULES_USER_AGENT)
+                        params.forEach { (k, v) -> parameter(k, v) }
+                    }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    return AppResult.Err(AppError.Network)
+                }
+            val location = response.headers[HttpHeaders.Location]
+            if (response.status.value in 300..399 && location != null) {
+                current = absoluteUrl(response.request.url.toString(), location)
+                params = emptyMap()
+                return@repeat
+            }
+            if (!response.status.isSuccess()) {
+                return AppResult.Err(AppError.Rejected("SOURCE_ERROR", "The source answered ${response.status.value}."))
+            }
+            val body = response.bodyAsBytes()
+            if (body.size > maxBytes) return AppResult.Err(AppError.Rejected("SOURCE_ERROR", "The source answered with a file too large."))
+            return AppResult.Ok(Fetched(body, response.request.url.toString()))
+        }
+        return AppResult.Err(AppError.Rejected("SOURCE_ERROR", "Too many redirects."))
+    }
+
+    /** Débit par source, celui du manifeste : on attend plutôt que de marteler le site. */
+    @OptIn(ExperimentalTime::class)
+    private suspend fun wait(manifest: SourceManifest) {
+        val pause =
+            throttle.withLock {
+                val now = Clock.System.now().toEpochMilliseconds()
+                val window = recent.getOrPut(manifest.key) { mutableListOf() }
+                window.removeAll { now - it >= 60_000 }
+                val delayMs = if (window.size >= manifest.requestsPerMinute) 60_000 - (now - window.first()) else 0
+                window += now + delayMs
+                delayMs
+            }
+        if (pause > 0) delay(pause)
+    }
+}

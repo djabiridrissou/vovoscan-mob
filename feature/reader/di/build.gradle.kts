@@ -9,6 +9,7 @@ kotlin {
             implementation(project(":feature:reader:data"))
             implementation(project(":core:network"))
             implementation(project(":core:database"))
+            implementation(project(":core:sources"))
             api(libs.koin.core)
             implementation(libs.koin.core.viewmodel)
         }

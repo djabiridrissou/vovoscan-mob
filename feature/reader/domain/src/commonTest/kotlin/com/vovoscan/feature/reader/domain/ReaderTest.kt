@@ -5,14 +5,17 @@ import kotlin.test.assertEquals
 
 class ReaderTest {
     @Test
-    fun sensDeLectureSelonLeFormat() {
-        assertEquals(ReadingMode.Vertical, ReadingMode.fromFormat("webtoon"))
-        assertEquals(ReadingMode.PagedRightToLeft, ReadingMode.fromFormat("manga"))
+    fun sensDeLecture() {
+        assertEquals(ReadingMode.Vertical, ReadingMode.from("comic", "webtoon"))
+        assertEquals(ReadingMode.PagedRightToLeft, ReadingMode.from("comic", "manga"))
+        assertEquals(ReadingMode.Book, ReadingMode.from("book", "text"))
     }
 
     @Test
-    fun proportionsDeLaPage() {
+    fun libelles() {
         assertEquals(0.5f, ReaderPage(0, "u", 800, 1600).aspectRatio)
-        assertEquals("Chapter 12.5", ReaderChapter("c", "t", "T", 12.5, null, ReadingMode.Vertical, null, null, emptyList()).label)
+        val chapter = ReaderChapter("vovoscan", "c", "t", "T", 12.5, null, ReadingMode.Vertical, null, null, emptyList(), null)
+        assertEquals("Chapter 12.5", chapter.label)
+        assertEquals("Full text", chapter.copy(mode = ReadingMode.Book, name = "Full text").label)
     }
 }

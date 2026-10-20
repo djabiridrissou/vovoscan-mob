@@ -13,6 +13,7 @@ import com.vovoscan.feature.catalog.presentation.TitleDetailViewModel
 import com.vovoscan.feature.library.presentation.FollowViewModel
 import com.vovoscan.feature.library.presentation.LibraryViewModel
 import com.vovoscan.feature.reader.presentation.ReaderViewModel
+import com.vovoscan.feature.sources.presentation.SourcesViewModel
 import kotlinx.coroutines.runBlocking
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.get
@@ -51,17 +52,27 @@ class ViewModels : KoinComponent {
 
     fun catalog(): CatalogViewModel = remember("catalog") { get<CatalogViewModel>() }
 
-    fun titleDetail(titleId: String): TitleDetailViewModel =
-        remember("title:$titleId") { get<TitleDetailViewModel> { parametersOf(titleId) } }
+    fun titleDetail(
+        sourceKey: String,
+        titleId: String,
+    ): TitleDetailViewModel = remember("title:$sourceKey/$titleId") { get<TitleDetailViewModel> { parametersOf(sourceKey, titleId) } }
 
-    fun follow(titleId: String): FollowViewModel = remember("follow:$titleId") { get<FollowViewModel> { parametersOf(titleId) } }
+    fun follow(
+        sourceKey: String,
+        titleId: String,
+    ): FollowViewModel = remember("follow:$sourceKey/$titleId") { get<FollowViewModel> { parametersOf(sourceKey, titleId) } }
+
+    fun sources(): SourcesViewModel = remember("sources") { get<SourcesViewModel>() }
 
     fun library(): LibraryViewModel = remember("library") { get<LibraryViewModel>() }
 
     fun reader(
+        sourceKey: String,
+        titleId: String,
         chapterId: String,
         startPage: Int,
-    ): ReaderViewModel = remember("reader:$chapterId") { get<ReaderViewModel> { parametersOf(chapterId, startPage) } }
+    ): ReaderViewModel =
+        remember("reader:$sourceKey/$chapterId") { get<ReaderViewModel> { parametersOf(sourceKey, titleId, chapterId, startPage) } }
 
     fun clear() = store.clear()
 

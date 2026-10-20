@@ -2,10 +2,12 @@ package com.vovoscan.feature.catalog.di
 
 import com.vovoscan.core.common.AppDispatchers
 import com.vovoscan.core.database.DatabaseDriverFactory
+import com.vovoscan.feature.catalog.data.ApiCatalogRemoteDataSource
 import com.vovoscan.feature.catalog.data.CatalogLocalDataSource
 import com.vovoscan.feature.catalog.data.CatalogRemoteDataSource
 import com.vovoscan.feature.catalog.data.CatalogRepositoryImpl
-import com.vovoscan.feature.catalog.data.KtorCatalogRemoteDataSource
+import com.vovoscan.feature.catalog.data.OnDeviceCatalogRemoteDataSource
+import com.vovoscan.feature.catalog.data.RoutingCatalogRemoteDataSource
 import com.vovoscan.feature.catalog.data.SqlCatalogLocalDataSource
 import com.vovoscan.feature.catalog.data.db.CatalogDatabase
 import com.vovoscan.feature.catalog.domain.CatalogRepository
@@ -17,14 +19,17 @@ import org.koin.dsl.module
 
 /**
  * Module Koin de la feature : sources locale (SQLDelight) et distante (Ktor) injectées dans le dépôt.
- * Attend de l'application : `HttpClient`, `DatabaseDriverFactory` et `AppDispatchers`.
+ * Attend de l'application : `HttpClient`, `DatabaseDriverFactory`, `AppDispatchers`, `ManifestProvider` et `RulesHttp`.
  */
 val catalogModule =
     module {
         single { CatalogDatabase(get<DatabaseDriverFactory>().create(CatalogDatabase.Schema, "catalog.db")) }
-        single<CatalogRemoteDataSource> { KtorCatalogRemoteDataSource(get()) }
+        // Source interne par l'API ; sources lues sur l'appareil par le moteur de règles (client HTTP séparé).
+        single<CatalogRemoteDataSource> {
+            RoutingCatalogRemoteDataSource(get(), ApiCatalogRemoteDataSource(get()), OnDeviceCatalogRemoteDataSource(get(), get()))
+        }
         single<CatalogLocalDataSource> { SqlCatalogLocalDataSource(get(), get<AppDispatchers>().io) }
         single<CatalogRepository> { CatalogRepositoryImpl(get(), get()) }
         viewModelOf(::CatalogViewModel)
-        viewModel { (titleId: String) -> TitleDetailViewModel(titleId, get()) }
+        viewModel { (sourceKey: String, titleId: String) -> TitleDetailViewModel(sourceKey, titleId, get()) }
     }

@@ -1,0 +1,38 @@
+-- v1 → v2 : un catalogue par source. La base n'est qu'une copie : on repart de zéro, la source la remplira.
+DROP TABLE IF EXISTS chapter;
+DROP TABLE IF EXISTS catalog_cursor;
+DROP INDEX IF EXISTS title_rank;
+DROP TABLE IF EXISTS title;
+
+CREATE TABLE title (
+    source_key TEXT NOT NULL,
+    id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    cover_url TEXT,
+    kind TEXT NOT NULL,
+    format TEXT NOT NULL,
+    status TEXT NOT NULL,
+    catalog_rank INTEGER,
+    description TEXT,
+    authors TEXT,
+    genres TEXT,
+    PRIMARY KEY (source_key, id)
+);
+
+CREATE INDEX title_rank ON title(source_key, catalog_rank);
+
+CREATE TABLE chapter (
+    source_key TEXT NOT NULL,
+    title_id TEXT NOT NULL,
+    id TEXT NOT NULL,
+    number REAL NOT NULL,
+    name TEXT,
+    page_count INTEGER NOT NULL,
+    published_at TEXT,
+    PRIMARY KEY (source_key, title_id, id)
+);
+
+CREATE TABLE catalog_cursor (
+    source_key TEXT NOT NULL PRIMARY KEY,
+    next_page INTEGER
+);

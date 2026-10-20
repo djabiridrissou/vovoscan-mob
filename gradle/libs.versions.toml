@@ -18,6 +18,8 @@ activity-compose = "1.13.0"
 security-crypto = "1.1.0"
 ktlint-gradle = "14.2.0"
 coil = "3.3.0"
+ksoup = "0.2.6"
+okio = "3.18.2"
 
 [libraries]
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
@@ -50,6 +52,10 @@ androidx-compose-material3 = { module = "androidx.compose.material3:material3" }
 androidx-compose-ui-tooling-preview = { module = "androidx.compose.ui:ui-tooling-preview" }
 androidx-compose-ui-tooling = { module = "androidx.compose.ui:ui-tooling" }
 turbine = { module = "app.cash.turbine:turbine", version.ref = "turbine" }
+# HTML et XML (règles des sources, EPUB, nettoyage du HTML des livres).
+ksoup = { module = "com.fleeksoft.ksoup:ksoup", version.ref = "ksoup" }
+# Lecture des archives EPUB (ZIP) sur Android et iOS.
+okio = { module = "com.squareup.okio:okio", version.ref = "okio" }
 # Couvertures et pages (cache mémoire et disque).
 coil-compose = { module = "io.coil-kt.coil3:coil-compose", version.ref = "coil" }
 coil-network-okhttp = { module = "io.coil-kt.coil3:coil-network-okhttp", version.ref = "coil" }

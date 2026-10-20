@@ -27,5 +27,5 @@ val libraryModule =
         single<LibraryLocalDataSource> { SqlLibraryLocalDataSource(get(), get<AppDispatchers>().io) }
         single<LibraryRepository> { LibraryRepositoryImpl(get(), get(), SystemClock) }
         viewModelOf(::LibraryViewModel)
-        viewModel { (titleId: String) -> FollowViewModel(titleId, get()) }
+        viewModel { (sourceKey: String, titleId: String) -> FollowViewModel(sourceKey, titleId, get()) }
     }

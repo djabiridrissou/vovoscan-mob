@@ -28,19 +28,26 @@ class LibraryViewModelTest {
 
         override fun observe(): Flow<List<LibraryEntry>> = entries
 
-        override fun isFollowed(titleId: String) = entries.map { list -> list.any { it.titleId == titleId } }
+        override fun isFollowed(
+            sourceKey: String,
+            titleRef: String,
+        ) = entries.map { list -> list.any { it.sourceKey == sourceKey && it.titleRef == titleRef } }
 
         override suspend fun follow(title: TitleRef) {
-            entries.value += LibraryEntry(title.id, title.name, title.coverUrl, null, 0, 1L, pendingSync = true)
+            entries.value += LibraryEntry(title.sourceKey, title.id, title.name, title.coverUrl, null, 0, 1L, pendingSync = true)
         }
 
-        override suspend fun unfollow(titleId: String) {
-            entries.value = entries.value.filterNot { it.titleId == titleId }
+        override suspend fun unfollow(
+            sourceKey: String,
+            titleRef: String,
+        ) {
+            entries.value = entries.value.filterNot { it.sourceKey == sourceKey && it.titleRef == titleRef }
         }
 
         override suspend fun saveProgress(
-            titleId: String,
-            chapterId: String,
+            sourceKey: String,
+            titleRef: String,
+            chapterRef: String,
             page: Int,
         ) = Unit
 
@@ -60,8 +67,8 @@ class LibraryViewModelTest {
         runTest {
             val library = FakeLibrary()
             val vm = LibraryViewModel(library)
-            val follow = FollowViewModel("t1", library)
-            follow.toggle("Ink Road", null)
+            val follow = FollowViewModel("gutenberg", "1342", library)
+            follow.toggle("Pride and Prejudice", null)
             assertEquals("In your library ✓", follow.state.value.label)
             assertEquals(
                 "Not started",

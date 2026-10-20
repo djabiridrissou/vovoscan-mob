@@ -3,6 +3,8 @@ import SwiftUI
 
 struct CatalogView: View {
     @StateObject private var model = CatalogModel()
+    @StateObject private var sources = SourcesModel()
+    @State private var query = ""
     private let columns = [GridItem(.adaptive(minimum: 150), spacing: 14)]
 
     var body: some View {
@@ -10,7 +12,13 @@ struct CatalogView: View {
             VStack(alignment: .leading, spacing: 12) {
                 Kicker(text: "Catalog")
                 Text("Pick a title.").font(.brandDisplay(26)).foregroundStyle(Color.brandPaper)
-                IntentField(label: "Search", value: model.state.query) { model.send(CatalogIntentQuery(value: $0)) }
+                // Deux features côte à côte sans se connaître : les sources (sélecteur) et le catalogue.
+                SourcePicker(chips: sources.state.chips, selected: model.state.sourceKey) {
+                    model.send(CatalogIntentSelectSource(key: $0))
+                }
+                .onAppear { model.send(CatalogIntentSourcesChanged(keys: sources.state.chips.map(\.key))) }
+                .onChange(of: sources.state.chips.map(\.key)) { model.send(CatalogIntentSourcesChanged(keys: $0)) }
+                IntentField(label: "Search", text: $query, value: model.state.query) { model.send(CatalogIntentQuery(value: $0)) }
                 if let notice = model.state.offlineNotice { OfflineNotice(text: notice) }
                 if let error = model.state.error { ErrorText(text: error) }
                 if model.state.empty {
@@ -18,7 +26,7 @@ struct CatalogView: View {
                 }
                 LazyVGrid(columns: columns, spacing: 14) {
                     ForEach(model.state.visible, id: \.id) { card in
-                        NavigationLink(value: card.id) { TitleTile(card: card) }
+                        NavigationLink(value: TitleRoute(sourceKey: card.sourceKey, titleId: card.id)) { TitleTile(card: card) }
                             .buttonStyle(.plain)
                     }
                 }
@@ -31,9 +39,10 @@ struct CatalogView: View {
         }
         .background(Color.brandInk)
         .refreshable { model.send(CatalogIntentRefresh.shared) }
-        .navigationDestination(for: String.self) { TitleView(titleId: $0) }
+        .navigationDestination(for: TitleRoute.self) { TitleView(route: $0) }
         .navigationDestination(for: ReaderRoute.self) { ReaderContainer(route: $0) }
         .task { await model.observe() }
+        .task { await sources.observe() }
     }
 }
 

@@ -6,6 +6,8 @@ import com.vovoscan.core.network.createHttpClient
 import com.vovoscan.core.network.platformHttpEngine
 import com.vovoscan.core.security.SecureKeys
 import com.vovoscan.core.security.SecureStore
+import com.vovoscan.core.sources.RulesHttp
+import com.vovoscan.core.sources.createRulesHttpClient
 import com.vovoscan.feature.auth.di.SignOutCleanup
 import com.vovoscan.feature.auth.di.authModule
 import com.vovoscan.feature.catalog.di.catalogModule
@@ -15,6 +17,8 @@ import com.vovoscan.feature.library.domain.LibraryRepository
 import com.vovoscan.feature.reader.di.readerModule
 import com.vovoscan.feature.reader.domain.ReaderRepository
 import com.vovoscan.feature.reader.domain.ReadingProgressSink
+import com.vovoscan.feature.sources.di.sourcesModule
+import com.vovoscan.feature.sources.domain.SourcesRepository
 import io.ktor.client.HttpClient
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
@@ -41,6 +45,8 @@ fun appModules(
             single { AppDispatchers() }
             // Portée de l'application : écritures qui doivent survivre à l'écran qui les lance.
             single { CoroutineScope(SupervisorJob() + get<AppDispatchers>().io) }
+            // Sources lues sur l'appareil : client séparé, sans la session vovoscan ni redirection automatique.
+            single { RulesHttp(createRulesHttpClient(platformHttpEngine())) }
             single<HttpClient> {
                 val store = get<SecureStore>()
                 createHttpClient(platformHttpEngine(), ApiConfig(config.apiBaseUrl)) { store.get(SecureKeys.SESSION_TOKEN) }
@@ -51,17 +57,21 @@ fun appModules(
                     get<CatalogRepository>().clearLocal()
                     get<LibraryRepository>().clearLocal()
                     get<ReaderRepository>().clearLocal()
+                    get<SourcesRepository>().clearLocal()
                 }
             }
             // Le lecteur enregistre la progression dans la bibliothèque, sans connaître la feature.
             single {
                 val library = get<LibraryRepository>()
                 val scope = get<CoroutineScope>()
-                ReadingProgressSink { titleId, chapterId, page -> scope.launch { library.saveProgress(titleId, chapterId, page) } }
+                ReadingProgressSink { sourceKey, titleId, chapterId, page ->
+                    scope.launch { library.saveProgress(sourceKey, titleId, chapterId, page) }
+                }
             }
         },
         authModule,
         catalogModule,
         libraryModule,
         readerModule,
+        sourcesModule,
     )

@@ -14,36 +14,51 @@ class CatalogRepositoryImpl(
     private val remote: CatalogRemoteDataSource,
     private val local: CatalogLocalDataSource,
 ) : CatalogRepository {
-    override fun observeTitles(): Flow<List<TitleSummary>> = local.observeCatalog()
+    override fun observeTitles(sourceKey: String): Flow<List<TitleSummary>> = local.observeCatalog(sourceKey)
 
-    override suspend fun refreshTitles(): AppResult<Boolean> = fetchPage(1)
+    override suspend fun refreshTitles(sourceKey: String): AppResult<Boolean> = fetchPage(sourceKey, 1)
 
-    override suspend fun loadMoreTitles(): AppResult<Boolean> {
-        val next = local.nextPage() ?: return AppResult.Ok(false)
-        return fetchPage(next)
+    override suspend fun loadMoreTitles(sourceKey: String): AppResult<Boolean> {
+        val next = local.nextPage(sourceKey) ?: return AppResult.Ok(false)
+        return fetchPage(sourceKey, next)
     }
 
-    override suspend fun search(query: String): SearchResult =
-        when (val result = remote.search(query.trim())) {
+    override suspend fun search(
+        sourceKey: String,
+        query: String,
+    ): SearchResult =
+        when (val result = remote.search(sourceKey, query.trim())) {
             is AppResult.Ok -> {
-                local.saveSummaries(result.value.data)
-                SearchResult(result.value.data.map { it.toDomain() }, offline = false)
+                local.saveSummaries(sourceKey, result.value.items)
+                SearchResult(result.value.items.map { it.toDomain(sourceKey) }, offline = false)
             }
             is AppResult.Err ->
                 if (result.error == AppError.Network) {
-                    SearchResult(local.searchLocal(query.trim()), offline = true)
+                    SearchResult(local.searchLocal(sourceKey, query.trim()), offline = true)
                 } else {
                     SearchResult(emptyList(), offline = false)
                 }
         }
 
-    override fun observeTitle(id: String): Flow<TitleDetail?> = local.observeDetail(id)
+    override fun observeTitle(
+        sourceKey: String,
+        id: String,
+    ): Flow<TitleDetail?> = local.observeDetail(sourceKey, id)
 
-    override suspend fun refreshTitle(id: String): AppResult<Unit> =
-        remote.title(id).also { if (it is AppResult.Ok) local.saveDetail(it.value) }.map { }
+    override suspend fun refreshTitle(
+        sourceKey: String,
+        id: String,
+    ): AppResult<Unit> = remote.title(sourceKey, id).also { if (it is AppResult.Ok) local.saveDetail(sourceKey, it.value) }.map { }
 
     override suspend fun clearLocal() = local.clear()
 
-    private suspend fun fetchPage(page: Int): AppResult<Boolean> =
-        remote.titles(page).also { if (it is AppResult.Ok) local.saveCatalogPage(it.value) }.map { it.hasNext }
+    private suspend fun fetchPage(
+        sourceKey: String,
+        page: Int,
+    ): AppResult<Boolean> =
+        remote
+            .titles(sourceKey, page)
+            .also {
+                if (it is AppResult.Ok) local.saveCatalogPage(sourceKey, it.value)
+            }.map { it.hasNext }
 }

@@ -12,14 +12,16 @@ import io.ktor.client.request.put
 import io.ktor.client.request.setBody
 import io.ktor.http.ContentType
 import io.ktor.http.contentType
+import io.ktor.http.encodeURLPathPart
 import kotlinx.serialization.Serializable
 
 @Serializable
 data class LibraryEntryDto(
-    val titleId: String,
+    val sourceKey: String,
+    val titleRef: String,
     val titleName: String,
     val coverUrl: String? = null,
-    val lastChapterId: String? = null,
+    val lastChapterRef: String? = null,
     val lastPage: Int = 0,
     val updatedAt: String,
     val deleted: Boolean = false,
@@ -28,8 +30,10 @@ data class LibraryEntryDto(
 @Serializable
 internal data class SaveEntryBody(
     val updatedAt: String,
-    val lastChapterId: String?,
+    val lastChapterRef: String?,
     val lastPage: Int,
+    val titleName: String?,
+    val coverUrl: String?,
 )
 
 /** Source distante : `api/v1/library`. Écritures idempotentes, l'API rend l'état qui a gagné. */
@@ -38,14 +42,18 @@ interface LibraryRemoteDataSource {
     suspend fun entries(updatedSince: String?): AppResult<List<LibraryEntryDto>>
 
     suspend fun save(
-        titleId: String,
+        sourceKey: String,
+        titleRef: String,
         updatedAt: String,
-        lastChapterId: String?,
+        lastChapterRef: String?,
         lastPage: Int,
+        titleName: String,
+        coverUrl: String?,
     ): AppResult<LibraryEntryDto>
 
     suspend fun remove(
-        titleId: String,
+        sourceKey: String,
+        titleRef: String,
         updatedAt: String,
     ): AppResult<LibraryEntryDto>
 }
@@ -53,6 +61,11 @@ interface LibraryRemoteDataSource {
 class KtorLibraryRemoteDataSource(
     private val http: HttpClient,
 ) : LibraryRemoteDataSource {
+    private fun path(
+        sourceKey: String,
+        titleRef: String,
+    ) = "api/v1/library/${sourceKey.encodeURLPathPart()}/${titleRef.encodeURLPathPart()}"
+
     override suspend fun entries(updatedSince: String?): AppResult<List<LibraryEntryDto>> =
         http
             .apiCall<ApiData<List<LibraryEntryDto>>> {
@@ -60,25 +73,29 @@ class KtorLibraryRemoteDataSource(
             }.map { it.data }
 
     override suspend fun save(
-        titleId: String,
+        sourceKey: String,
+        titleRef: String,
         updatedAt: String,
-        lastChapterId: String?,
+        lastChapterRef: String?,
         lastPage: Int,
+        titleName: String,
+        coverUrl: String?,
     ): AppResult<LibraryEntryDto> =
         http
             .apiCall<ApiData<LibraryEntryDto>> {
-                put("api/v1/library/$titleId") {
+                put(path(sourceKey, titleRef)) {
                     contentType(ContentType.Application.Json)
-                    setBody(SaveEntryBody(updatedAt, lastChapterId, lastPage))
+                    setBody(SaveEntryBody(updatedAt, lastChapterRef, lastPage, titleName, coverUrl))
                 }
             }.map { it.data }
 
     override suspend fun remove(
-        titleId: String,
+        sourceKey: String,
+        titleRef: String,
         updatedAt: String,
     ): AppResult<LibraryEntryDto> =
         http
             .apiCall<ApiData<LibraryEntryDto>> {
-                delete("api/v1/library/$titleId") { parameter("updatedAt", updatedAt) }
+                delete(path(sourceKey, titleRef)) { parameter("updatedAt", updatedAt) }
             }.map { it.data }
 }

@@ -18,12 +18,13 @@ data class FollowUiState(
 ) {
     val label: String get() = if (followed) "In your library ✓" else "Add to library →"
 
-    /** « Continue · page 5 », null si rien à reprendre. */
-    val resumeLabel: String? get() = resumeChapterId?.let { "Continue · page ${resumePage + 1}" }
+    /** « Continue · page 5 » (« section » pour un livre), null si rien à reprendre. */
+    fun resumeLabel(book: Boolean): String? = resumeChapterId?.let { "Continue · ${if (book) "section" else "page"} ${resumePage + 1}" }
 }
 
 /** Bouton « suivre » et reprise de lecture sur la fiche d'un titre. L'application l'assemble à côté de la fiche. */
 class FollowViewModel(
+    private val sourceKey: String,
     private val titleId: String,
     private val repository: LibraryRepository,
 ) : ViewModel() {
@@ -31,8 +32,8 @@ class FollowViewModel(
         repository
             .observe()
             .map { entries ->
-                val entry = entries.firstOrNull { it.titleId == titleId }
-                FollowUiState(followed = entry != null, resumeChapterId = entry?.lastChapterId, resumePage = entry?.lastPage ?: 0)
+                val entry = entries.firstOrNull { it.sourceKey == sourceKey && it.titleRef == titleId }
+                FollowUiState(followed = entry != null, resumeChapterId = entry?.lastChapterRef, resumePage = entry?.lastPage ?: 0)
             }.stateIn(viewModelScope, SharingStarted.Eagerly, FollowUiState())
 
     fun toggle(
@@ -40,7 +41,14 @@ class FollowViewModel(
         coverUrl: String?,
     ) {
         viewModelScope.launch {
-            if (state.value.followed) repository.unfollow(titleId) else repository.follow(TitleRef(titleId, name, coverUrl))
+            if (state.value.followed) {
+                repository.unfollow(
+                    sourceKey,
+                    titleId,
+                )
+            } else {
+                repository.follow(TitleRef(sourceKey, titleId, name, coverUrl))
+            }
         }
     }
 }

@@ -14,9 +14,12 @@ import kotlinx.coroutines.withContext
 
 /** Une action faite sur l'appareil, en attente d'envoi. */
 data class PendingChange(
-    val titleId: String,
+    val sourceKey: String,
+    val titleRef: String,
     val delete: Boolean,
-    val lastChapterId: String?,
+    val titleName: String,
+    val coverUrl: String?,
+    val lastChapterRef: String?,
     val lastPage: Int,
     val updatedAt: Long,
 )
@@ -25,9 +28,15 @@ data class PendingChange(
 interface LibraryLocalDataSource {
     fun observe(): Flow<List<LibraryEntry>>
 
-    fun isFollowed(titleId: String): Flow<Boolean>
+    fun isFollowed(
+        sourceKey: String,
+        titleRef: String,
+    ): Flow<Boolean>
 
-    suspend fun entry(titleId: String): LibraryEntry?
+    suspend fun entry(
+        sourceKey: String,
+        titleRef: String,
+    ): LibraryEntry?
 
     /** Applique une action locale et la met en file, dans la même transaction. */
     suspend fun applyLocal(
@@ -66,17 +75,23 @@ class SqlLibraryLocalDataSource(
             .mapToList(io)
             .map { rows -> rows.map { it.toDomain() } }
 
-    override fun isFollowed(titleId: String): Flow<Boolean> =
+    override fun isFollowed(
+        sourceKey: String,
+        titleRef: String,
+    ): Flow<Boolean> =
         queries
-            .isFollowed(titleId)
+            .isFollowed(sourceKey, titleRef)
             .asFlow()
             .mapToOne(io)
             .map { it > 0 }
 
-    override suspend fun entry(titleId: String): LibraryEntry? =
+    override suspend fun entry(
+        sourceKey: String,
+        titleRef: String,
+    ): LibraryEntry? =
         withContext(io) {
             queries
-                .entry(titleId)
+                .entry(sourceKey, titleRef)
                 .executeAsOneOrNull()
                 ?.takeIf { it.deleted == 0L }
                 ?.toDomain()
@@ -88,19 +103,23 @@ class SqlLibraryLocalDataSource(
     ) = withContext(io) {
         queries.transaction {
             queries.putEntry(
-                entry.titleId,
+                entry.sourceKey,
+                entry.titleRef,
                 entry.titleName,
                 entry.coverUrl,
-                entry.lastChapterId,
+                entry.lastChapterRef,
                 entry.lastPage.toLong(),
                 entry.updatedAt,
                 if (deleted) 1 else 0,
                 1,
             )
             queries.enqueue(
-                entry.titleId,
+                entry.sourceKey,
+                entry.titleRef,
                 if (deleted) "delete" else "save",
-                entry.lastChapterId,
+                entry.titleName,
+                entry.coverUrl,
+                entry.lastChapterRef,
                 entry.lastPage.toLong(),
                 entry.updatedAt,
             )
@@ -109,21 +128,25 @@ class SqlLibraryLocalDataSource(
 
     override suspend fun pending(): List<PendingChange> = withContext(io) { queries.pending().executeAsList().map { it.toChange() } }
 
-    override suspend fun dequeue(change: PendingChange) = withContext(io) { queries.dequeue(change.titleId, change.updatedAt).let { } }
+    override suspend fun dequeue(change: PendingChange) =
+        withContext(io) {
+            queries.dequeue(change.sourceKey, change.titleRef, change.updatedAt).let { }
+        }
 
     override suspend fun applyServer(
         dto: LibraryEntryDto,
         updatedAt: Long,
     ) = withContext(io) {
         queries.transaction {
-            val local = queries.entry(dto.titleId).executeAsOneOrNull()
-            val queued = queries.isQueued(dto.titleId).executeAsOne() > 0
+            val local = queries.entry(dto.sourceKey, dto.titleRef).executeAsOneOrNull()
+            val queued = queries.isQueued(dto.sourceKey, dto.titleRef).executeAsOne() > 0
             if (queued && local != null && local.updated_at > updatedAt) return@transaction
             queries.putEntry(
-                dto.titleId,
+                dto.sourceKey,
+                dto.titleRef,
                 dto.titleName,
                 dto.coverUrl,
-                dto.lastChapterId,
+                dto.lastChapterRef,
                 dto.lastPage.toLong(),
                 updatedAt,
                 if (dto.deleted) 1 else 0,
@@ -147,6 +170,7 @@ class SqlLibraryLocalDataSource(
 }
 
 private fun Library_entry.toDomain() =
-    LibraryEntry(title_id, title_name, cover_url, last_chapter_id, last_page.toInt(), updated_at, pending == 1L)
+    LibraryEntry(source_key, title_ref, title_name, cover_url, last_chapter_ref, last_page.toInt(), updated_at, pending == 1L)
 
-private fun Outbox.toChange() = PendingChange(title_id, kind == "delete", last_chapter_id, last_page.toInt(), updated_at)
+private fun Outbox.toChange() =
+    PendingChange(source_key, title_ref, kind == "delete", title_name, cover_url, last_chapter_ref, last_page.toInt(), updated_at)

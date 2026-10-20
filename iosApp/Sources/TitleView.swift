@@ -1,12 +1,25 @@
 import Shared
 import SwiftUI
 
+/// Ouvre la fiche d'un titre d'une source.
+struct TitleRoute: Hashable {
+    let sourceKey: String
+    let titleId: String
+}
+
 /// Fiche d'un titre. La fiche (catalog) et le suivi (library) se côtoient sans se connaître.
 struct TitleView: View {
     @StateObject private var model: TitleModel
 
-    init(titleId: String) {
-        _model = StateObject(wrappedValue: TitleModel(titleId: titleId))
+    private let route: TitleRoute
+
+    init(route: TitleRoute) {
+        self.route = route
+        _model = StateObject(wrappedValue: TitleModel(sourceKey: route.sourceKey, titleId: route.titleId))
+    }
+
+    private func read(_ chapterId: String, _ page: Int = 0) -> ReaderRoute {
+        ReaderRoute(sourceKey: route.sourceKey, titleId: route.titleId, chapterId: chapterId, startPage: page)
     }
 
     var body: some View {
@@ -27,12 +40,12 @@ struct TitleView: View {
                     Text(model.state.meta).font(.brandBody(13)).foregroundStyle(Color.brandMuted)
                     // Reprendre où on s'était arrêté, sinon commencer au premier chapitre (liste du plus récent au plus ancien).
                     if let resume = model.follow.resumeChapterId {
-                        NavigationLink(value: ReaderRoute(chapterId: resume, startPage: Int(model.follow.resumePage))) {
-                            Text(model.follow.resumeLabel ?? "Continue →")
+                        NavigationLink(value: read(resume, Int(model.follow.resumePage))) {
+                            Text(model.follow.resumeLabel(book: model.state.isBook) ?? "Continue →")
                         }
                         .buttonStyle(PrimaryButtonStyle())
                     } else if let first = model.state.chapters.last {
-                        NavigationLink(value: ReaderRoute(chapterId: first.id, startPage: 0)) { Text("Start reading →") }
+                        NavigationLink(value: read(first.id)) { Text(model.state.isBook ? "Read →" : "Start reading →") }
                             .buttonStyle(PrimaryButtonStyle())
                     }
                     if !model.state.name.isEmpty {
@@ -43,10 +56,10 @@ struct TitleView: View {
                         Text(model.state.genres.joined(separator: " ✦ ")).font(.brandBody(13)).foregroundStyle(Color.brandMuted)
                     }
                     if !model.state.chapters.isEmpty {
-                        Text("Chapters").font(.brandDisplay(18)).foregroundStyle(Color.brandPaper)
+                        Text(model.state.isBook ? "Contents" : "Chapters").font(.brandDisplay(18)).foregroundStyle(Color.brandPaper)
                     }
                     ForEach(model.state.chapters, id: \.id) { chapter in
-                        NavigationLink(value: ReaderRoute(chapterId: chapter.id, startPage: 0)) {
+                        NavigationLink(value: read(chapter.id)) {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(chapter.label).font(.brandBody(15)).foregroundStyle(Color.brandPaper)
                             Text(chapter.meta).font(.brandBody(13)).foregroundStyle(Color.brandMuted)

@@ -1,5 +1,9 @@
 package com.vovoscan.app.ui.reader
 
+import android.annotation.SuppressLint
+import android.webkit.WebResourceRequest
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -34,6 +38,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
 import com.vovoscan.app.ui.common.ErrorText
@@ -54,11 +59,14 @@ import org.koin.core.parameter.parametersOf
  */
 @Composable
 fun ReaderScreen(
+    sourceKey: String,
+    titleId: String,
     chapterId: String,
     startPage: Int,
     onBack: () -> Unit,
     onOpenChapter: (String) -> Unit,
-    viewModel: ReaderViewModel = koinViewModel(key = "reader:$chapterId") { parametersOf(chapterId, startPage) },
+    viewModel: ReaderViewModel =
+        koinViewModel(key = "reader:$sourceKey/$chapterId") { parametersOf(sourceKey, titleId, chapterId, startPage) },
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     Box(Modifier.fillMaxSize().background(Brand.Ink)) {
@@ -69,13 +77,15 @@ fun ReaderScreen(
                     state.error?.let { ErrorText(it) }
                     GhostButton("Try again", { viewModel.onIntent(ReaderIntent.Retry) })
                 }
+            state.isBook -> BookReader(state, viewModel::onIntent, onOpenChapter)
             state.pages.isEmpty() -> Unit
             state.mode == ReadingMode.Vertical -> VerticalStrip(state, viewModel::onIntent, onOpenChapter)
             else -> RightToLeftPages(state, viewModel::onIntent)
         }
-        if (state.chromeVisible) {
+        // Un livre garde ses barres : la vue web reçoit les touchers (défilement du texte).
+        if (state.chromeVisible || state.isBook) {
             TopBar(state, onBack, Modifier.align(Alignment.TopCenter))
-            BottomBar(state, onOpenChapter, Modifier.align(Alignment.BottomCenter))
+            BottomBar(state, viewModel::onIntent, onOpenChapter, Modifier.align(Alignment.BottomCenter))
         }
     }
 }
@@ -167,6 +177,7 @@ private fun TopBar(
 @Composable
 private fun BottomBar(
     state: ReaderUiState,
+    onIntent: (ReaderIntent) -> Unit,
     onOpenChapter: (String) -> Unit,
     modifier: Modifier,
 ) {
@@ -174,7 +185,22 @@ private fun BottomBar(
         modifier.fillMaxWidth().background(Brand.Ink.copy(alpha = 0.92f)).padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        if (state.isBook) {
+            Text(
+                "←",
+                style = MaterialTheme.typography.titleMedium.copy(color = if (state.canGoBack) Brand.Paper else Brand.Line),
+                modifier = Modifier.clickable(enabled = state.canGoBack) { onIntent(ReaderIntent.Previous) }.padding(end = 16.dp),
+            )
+        }
         Text(state.positionLabel, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+        if (state.isBook && state.canGoForward) {
+            Text(
+                "Next section →",
+                style = MaterialTheme.typography.labelLarge.copy(color = Brand.Red),
+                modifier = Modifier.clickable { onIntent(ReaderIntent.Next) },
+            )
+            return@Row
+        }
         state.previousChapterId?.let { previous ->
             Text("← Previous", style = MaterialTheme.typography.bodySmall, modifier = Modifier.clickable { onOpenChapter(previous) })
             Spacer(Modifier.width(20.dp))
@@ -185,6 +211,63 @@ private fun BottomBar(
                 style = MaterialTheme.typography.labelLarge.copy(color = Brand.Red),
                 modifier = Modifier.clickable { onOpenChapter(next) },
             )
+        }
+    }
+}
+
+/**
+ * Livre : une section à la fois, dans une vue web JavaScript coupé, sans réseau ni navigation. Le HTML est déjà
+ * nettoyé et mis en forme (BookStyle) ; les images sont intégrées.
+ */
+@SuppressLint("SetJavaScriptEnabled")
+@Composable
+private fun BookReader(
+    state: ReaderUiState,
+    onIntent: (ReaderIntent) -> Unit,
+    onOpenChapter: (String) -> Unit,
+) {
+    val document = state.sectionDocument
+    Box(Modifier.fillMaxSize().padding(top = 64.dp, bottom = 56.dp)) {
+        when {
+            state.preparingBook || document == null ->
+                Text(
+                    if (state.preparingBook) "Opening the book…" else "",
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.align(Alignment.Center),
+                )
+            else ->
+                AndroidView(
+                    modifier = Modifier.fillMaxSize(),
+                    factory = { context ->
+                        WebView(context).apply {
+                            setBackgroundColor(android.graphics.Color.parseColor("#0B0B0E"))
+                            settings.javaScriptEnabled = false
+                            settings.blockNetworkLoads = true
+                            settings.allowFileAccess = false
+                            settings.allowContentAccess = false
+                            // Aucun lien ne quitte le livre.
+                            webViewClient =
+                                object : WebViewClient() {
+                                    override fun shouldOverrideUrlLoading(
+                                        view: WebView,
+                                        request: WebResourceRequest,
+                                    ) = true
+                                }
+                        }
+                    },
+                    update = { view ->
+                        if (view.tag != document) {
+                            view.tag = document
+                            view.loadDataWithBaseURL(null, document, "text/html", "utf-8", null)
+                            view.scrollTo(0, 0)
+                        }
+                    },
+                )
+        }
+        if (state.atEnd && state.nextChapterId != null && document != null) {
+            Box(Modifier.align(Alignment.BottomCenter).padding(16.dp)) {
+                PrimaryButton(state.nextLabel ?: "Next →", { onOpenChapter(state.nextChapterId!!) })
+            }
         }
     }
 }

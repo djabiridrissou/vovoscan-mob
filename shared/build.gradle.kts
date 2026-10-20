@@ -8,7 +8,7 @@ plugins {
     id("co.touchlab.skie")
 }
 
-val features = listOf("auth", "catalog", "library", "reader")
+val features = listOf("auth", "catalog", "library", "reader", "sources")
 
 kotlin {
     val xcframework = XCFramework("Shared")
@@ -37,6 +37,7 @@ kotlin {
             implementation(project(":core:network"))
             implementation(project(":core:security"))
             implementation(project(":core:database"))
+            implementation(project(":core:sources"))
             api(libs.koin.core)
         }
         commonTest.dependencies {

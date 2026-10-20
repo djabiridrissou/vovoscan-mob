@@ -1,78 +1,84 @@
--- Copie locale du catalogue : lue par les écrans, remplacée par l'API (le serveur fait foi).
+-- Copie locale du catalogue de chaque source : lue par les écrans, remplacée par la source (le serveur vovoscan pour
+-- la source interne, la source elle-même pour les autres). Un titre est repéré par (source, identifiant).
 -- SQLite 3.18 (Android 8, minSdk 26) : pas d'ON CONFLICT … DO UPDATE.
 CREATE TABLE title (
-    id TEXT NOT NULL PRIMARY KEY,
+    source_key TEXT NOT NULL,
+    id TEXT NOT NULL,
     name TEXT NOT NULL,
     cover_url TEXT,
+    kind TEXT NOT NULL,
     format TEXT NOT NULL,
     status TEXT NOT NULL,
-    -- Rang dans la liste du catalogue (null : connu seulement par une recherche ou une fiche).
+    -- Rang dans le catalogue de la source (null : connu seulement par une recherche ou une fiche).
     catalog_rank INTEGER,
     description TEXT,
     authors TEXT,
-    genres TEXT
+    genres TEXT,
+    PRIMARY KEY (source_key, id)
 );
 
-CREATE INDEX title_rank ON title(catalog_rank);
+CREATE INDEX title_rank ON title(source_key, catalog_rank);
 
 CREATE TABLE chapter (
-    id TEXT NOT NULL PRIMARY KEY,
+    source_key TEXT NOT NULL,
     title_id TEXT NOT NULL,
+    id TEXT NOT NULL,
     number REAL NOT NULL,
     name TEXT,
     page_count INTEGER NOT NULL,
-    published_at TEXT
+    published_at TEXT,
+    PRIMARY KEY (source_key, title_id, id)
 );
 
-CREATE INDEX chapter_title ON chapter(title_id);
-
 CREATE TABLE catalog_cursor (
-    slot INTEGER NOT NULL PRIMARY KEY CHECK (slot = 1),
-    -- Prochaine page du catalogue (null : tout est chargé).
+    source_key TEXT NOT NULL PRIMARY KEY,
+    -- Prochaine page du catalogue de la source (null : tout est chargé).
     next_page INTEGER
 );
 
 insertSummary:
-INSERT OR IGNORE INTO title (id, name, cover_url, format, status) VALUES (?, ?, ?, ?, ?);
+INSERT OR IGNORE INTO title (source_key, id, name, cover_url, kind, format, status) VALUES (?, ?, ?, ?, ?, ?, ?);
 
 updateSummary:
-UPDATE title SET name = ?, cover_url = ?, format = ?, status = ? WHERE id = ?;
+UPDATE title SET name = ?, cover_url = ?, kind = ?, format = ?, status = ? WHERE source_key = ? AND id = ?;
 
 setRank:
-UPDATE title SET catalog_rank = ? WHERE id = ?;
+UPDATE title SET catalog_rank = ? WHERE source_key = ? AND id = ?;
 
 clearRanks:
-UPDATE title SET catalog_rank = NULL;
+UPDATE title SET catalog_rank = NULL WHERE source_key = ?;
 
 maxRank:
-SELECT MAX(catalog_rank) AS max_rank FROM title;
+SELECT MAX(catalog_rank) AS max_rank FROM title WHERE source_key = ?;
 
 updateDetail:
-UPDATE title SET description = ?, authors = ?, genres = ? WHERE id = ?;
+UPDATE title SET description = ?, authors = ?, genres = ? WHERE source_key = ? AND id = ?;
 
 catalogTitles:
-SELECT * FROM title WHERE catalog_rank IS NOT NULL ORDER BY catalog_rank;
+SELECT source_key, id, name, cover_url, kind, format, status FROM title
+WHERE source_key = ? AND catalog_rank IS NOT NULL ORDER BY catalog_rank;
 
 searchTitles:
-SELECT * FROM title WHERE name LIKE '%' || :query || '%' ORDER BY name LIMIT 50;
+SELECT source_key, id, name, cover_url, kind, format, status FROM title
+WHERE source_key = :source_key AND name LIKE '%' || :query || '%' ORDER BY name LIMIT 50;
 
 titleById:
-SELECT * FROM title WHERE id = ?;
+SELECT * FROM title WHERE source_key = ? AND id = ?;
 
 chaptersOf:
-SELECT * FROM chapter WHERE title_id = ? ORDER BY number DESC;
+SELECT * FROM chapter WHERE source_key = ? AND title_id = ? ORDER BY number DESC;
 
 deleteChaptersOf:
-DELETE FROM chapter WHERE title_id = ?;
+DELETE FROM chapter WHERE source_key = ? AND title_id = ?;
 
 insertChapter:
-INSERT OR REPLACE INTO chapter (id, title_id, number, name, page_count, published_at) VALUES (?, ?, ?, ?, ?, ?);
+INSERT OR REPLACE INTO chapter (source_key, title_id, id, number, name, page_count, published_at) VALUES (?, ?, ?, ?, ?, ?, ?);
 
 putCursor:
-INSERT OR REPLACE INTO catalog_cursor (slot, next_page) VALUES (1, ?);
+INSERT OR REPLACE INTO catalog_cursor (source_key, next_page) VALUES (?, ?);
 
 cursor:
-SELECT next_page FROM catalog_cursor WHERE slot = 1;
+SELECT next_page FROM catalog_cursor WHERE source_key = ?;
 
 clearTitles:
 DELETE FROM title;

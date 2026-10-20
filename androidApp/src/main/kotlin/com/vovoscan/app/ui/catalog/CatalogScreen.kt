@@ -19,6 +19,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -33,18 +34,24 @@ import com.vovoscan.app.ui.common.ErrorText
 import com.vovoscan.app.ui.common.GhostButton
 import com.vovoscan.app.ui.common.Kicker
 import com.vovoscan.app.ui.common.OfflineNotice
+import com.vovoscan.app.ui.sources.SourcePicker
 import com.vovoscan.app.ui.theme.Brand
 import com.vovoscan.feature.catalog.presentation.CatalogIntent
 import com.vovoscan.feature.catalog.presentation.CatalogViewModel
 import com.vovoscan.feature.catalog.presentation.TitleCard
+import com.vovoscan.feature.sources.presentation.SourcesViewModel
 import org.koin.compose.viewmodel.koinViewModel
 
 @Composable
 fun CatalogScreen(
-    onOpenTitle: (String) -> Unit,
+    onOpenTitle: (sourceKey: String, titleId: String) -> Unit,
     viewModel: CatalogViewModel = koinViewModel(),
+    sources: SourcesViewModel = koinViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val sourcesState by sources.state.collectAsStateWithLifecycle()
+    val sourceKeys = sourcesState.chips.map { it.key }
+    LaunchedEffect(sourceKeys) { viewModel.onIntent(CatalogIntent.SourcesChanged(sourceKeys)) }
     LazyVerticalGrid(
         columns = GridCells.Adaptive(150.dp),
         contentPadding = PaddingValues(20.dp),
@@ -56,13 +63,15 @@ fun CatalogScreen(
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Kicker("Catalog")
                 Text("Pick a title.", style = MaterialTheme.typography.headlineSmall)
+                // Deux features côte à côte sans se connaître : les sources (sélecteur) et le catalogue.
+                SourcePicker(sourcesState.chips, state.sourceKey) { viewModel.onIntent(CatalogIntent.SelectSource(it)) }
                 BrandField("Search", state.query, { viewModel.onIntent(CatalogIntent.Query(it)) })
                 state.offlineNotice?.let { OfflineNotice(it) }
                 state.error?.let { ErrorText(it) }
                 if (state.empty) Text(state.emptyMessage, style = MaterialTheme.typography.bodyMedium)
             }
         }
-        items(state.visible, key = { it.id }) { card -> TitleTile(card) { onOpenTitle(card.id) } }
+        items(state.visible, key = { it.sourceKey + "/" + it.id }) { card -> TitleTile(card) { onOpenTitle(card.sourceKey, card.id) } }
         if (state.canLoadMore && state.results == null) {
             item(span = { GridItemSpan(maxLineSpan) }) {
                 GhostButton(if (state.loadingMore) "Loading…" else "Load more", { viewModel.onIntent(CatalogIntent.LoadMore) })

@@ -7,6 +7,7 @@ import com.vovoscan.core.common.AppResult
 import com.vovoscan.core.common.Freshness
 import com.vovoscan.core.common.userMessage
 import com.vovoscan.feature.catalog.domain.CatalogRepository
+import com.vovoscan.feature.catalog.domain.ContentKind
 import com.vovoscan.feature.catalog.domain.ReadingFormat
 import com.vovoscan.feature.catalog.domain.TitleDetail
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -26,6 +27,8 @@ data class ChapterRow(
 )
 
 data class TitleDetailUiState(
+    val sourceKey: String = "",
+    val isBook: Boolean = false,
     val name: String = "",
     val coverUrl: String? = null,
     /** Pas « description » : sur iOS, ce nom est celui de `toString()` (NSObject) et serait renommé. */
@@ -42,6 +45,7 @@ data class TitleDetailUiState(
 
 /** Fiche d'un titre : nom, description, chapitres. Lisible hors ligne dès qu'elle a été ouverte une fois. */
 class TitleDetailViewModel(
+    private val sourceKey: String,
     private val titleId: String,
     private val repository: CatalogRepository,
 ) : ViewModel() {
@@ -51,7 +55,7 @@ class TitleDetailViewModel(
 
     init {
         repository
-            .observeTitle(titleId)
+            .observeTitle(sourceKey, titleId)
             .onEach { detail ->
                 if (detail != null) {
                     known = true
@@ -64,7 +68,7 @@ class TitleDetailViewModel(
     fun refresh() {
         mutableState.update { it.copy(freshness = Freshness.Refreshing, error = null) }
         viewModelScope.launch {
-            val result = repository.refreshTitle(titleId)
+            val result = repository.refreshTitle(sourceKey, titleId)
             mutableState.update {
                 when (result) {
                     is AppResult.Ok -> it.copy(freshness = Freshness.Fresh, unavailable = false)
@@ -81,23 +85,42 @@ class TitleDetailViewModel(
 
     private fun TitleDetailUiState.show(detail: TitleDetail) =
         copy(
+            sourceKey = detail.summary.sourceKey,
+            isBook = detail.summary.kind == ContentKind.Book,
             name = detail.summary.name,
             coverUrl = detail.summary.coverUrl,
             synopsis = detail.description,
             meta =
                 listOfNotNull(
-                    if (detail.summary.format == ReadingFormat.Webtoon) "WEBTOON" else "MANGA",
+                    when {
+                        detail.summary.kind == ContentKind.Book -> "BOOK"
+                        detail.summary.format == ReadingFormat.Webtoon -> "WEBTOON"
+                        else -> "MANGA"
+                    },
                     detail.summary.status.replaceFirstChar { it.uppercase() },
                     detail.authors.joinToString(", ").ifBlank { null },
                 ).joinToString(" ✦ "),
             genres = detail.genres,
             chapters =
                 detail.chapters.map { chapter ->
-                    ChapterRow(
-                        id = chapter.id,
-                        label = listOfNotNull("Chapter ${chapter.label}", chapter.name).joinToString(" · "),
-                        meta = if (chapter.pageCount == 1) "1 page" else "${chapter.pageCount} pages",
-                    )
+                    if (detail.summary.kind == ContentKind.Book) {
+                        ChapterRow(id = chapter.id, label = chapter.name ?: "Part ${chapter.label}", meta = "Book")
+                    } else {
+                        ChapterRow(
+                            id = chapter.id,
+                            label = listOfNotNull("Chapter ${chapter.label}", chapter.name).joinToString(" · "),
+                            meta =
+                                if (chapter.pageCount ==
+                                    0
+                                ) {
+                                    ""
+                                } else if (chapter.pageCount == 1) {
+                                    "1 page"
+                                } else {
+                                    "${chapter.pageCount} pages"
+                                },
+                        )
+                    }
                 },
         )
 }

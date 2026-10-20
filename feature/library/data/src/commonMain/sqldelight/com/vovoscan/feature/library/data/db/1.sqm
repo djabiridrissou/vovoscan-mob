@@ -1,0 +1,38 @@
+-- v1 → v2 : les titres sont repérés par (source, référence). L'existant appartient à la source interne.
+CREATE TABLE library_entry_v2 (
+    source_key TEXT NOT NULL,
+    title_ref TEXT NOT NULL,
+    title_name TEXT NOT NULL,
+    cover_url TEXT,
+    last_chapter_ref TEXT,
+    last_page INTEGER NOT NULL DEFAULT 0,
+    updated_at INTEGER NOT NULL,
+    deleted INTEGER NOT NULL DEFAULT 0,
+    pending INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (source_key, title_ref)
+);
+
+INSERT INTO library_entry_v2 (source_key, title_ref, title_name, cover_url, last_chapter_ref, last_page, updated_at, deleted, pending)
+SELECT 'vovoscan', title_id, title_name, cover_url, last_chapter_id, last_page, updated_at, deleted, pending FROM library_entry;
+
+DROP TABLE library_entry;
+ALTER TABLE library_entry_v2 RENAME TO library_entry;
+
+CREATE TABLE outbox_v2 (
+    source_key TEXT NOT NULL,
+    title_ref TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    title_name TEXT NOT NULL,
+    cover_url TEXT,
+    last_chapter_ref TEXT,
+    last_page INTEGER NOT NULL DEFAULT 0,
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY (source_key, title_ref)
+);
+
+INSERT INTO outbox_v2 (source_key, title_ref, kind, title_name, cover_url, last_chapter_ref, last_page, updated_at)
+SELECT 'vovoscan', o.title_id, o.kind, COALESCE(e.title_name, ''), e.cover_url, o.last_chapter_id, o.last_page, o.updated_at
+FROM outbox o LEFT JOIN library_entry e ON e.source_key = 'vovoscan' AND e.title_ref = o.title_id;
+
+DROP TABLE outbox;
+ALTER TABLE outbox_v2 RENAME TO outbox;

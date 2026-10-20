@@ -112,21 +112,21 @@ struct LogoMark: View {
     }
 }
 
-/// Champ branché sur un ViewModel Kotlin. Le texte vit ici, chaque frappe part en intention : l'état Kotlin arrive
-/// en asynchrone et, relu directement, il écraserait la saisie en cours (caractères perdus en tapant vite).
-/// Une valeur vidée par le ViewModel (mot de passe après connexion, changement de mode) est reprise.
+/// Champ branché sur un ViewModel Kotlin. Le texte vit côté Swift (`text`), chaque frappe part en intention :
+/// l'état Kotlin arrive en asynchrone et, relu directement, il écraserait la saisie en cours (caractères perdus en
+/// tapant vite). Une valeur vidée par le ViewModel (mot de passe après connexion, changement de mode) est reprise.
 struct IntentField: View {
     let label: String
+    @Binding var text: String
     let value: String
     var error: String?
     var secret = false
     var keyboard: UIKeyboardType = .default
     let onChange: (String) -> Void
-    @State private var text = ""
 
     var body: some View {
         BrandField(label: label, text: $text, error: error, secret: secret, keyboard: keyboard)
-            .onAppear { text = value }
+            .onAppear { if text.isEmpty { text = value } }
             .onChange(of: text) { onChange($0) }
             .onChange(of: value) { if $0.isEmpty && !text.isEmpty { text = "" } }
     }
@@ -134,8 +134,9 @@ struct IntentField: View {
 
 /// Valide un formulaire après avoir rendu le clavier : iOS ne remet la frappe en cours (dernier caractère composé)
 /// au champ qu'à la perte du focus. Sans ce détour, le dernier caractère tapé partirait après l'envoi.
+/// Le formulaire renvoie ensuite la valeur exacte de chaque champ avant d'envoyer : aucune course possible.
 @MainActor
 func submitAfterCommittingInput(_ submit: @escaping () -> Void) {
     UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
-    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { submit() }
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { submit() }
 }

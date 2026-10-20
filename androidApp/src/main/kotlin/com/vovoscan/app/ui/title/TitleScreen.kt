@@ -34,11 +34,12 @@ import org.koin.core.parameter.parametersOf
 /** Fiche d'un titre. Deux features s'y côtoient sans se connaître : la fiche (catalog) et le suivi (library). */
 @Composable
 fun TitleScreen(
+    sourceKey: String,
     titleId: String,
     onBack: () -> Unit,
     onRead: (chapterId: String, startPage: Int) -> Unit,
-    detail: TitleDetailViewModel = koinViewModel(key = "title:$titleId") { parametersOf(titleId) },
-    follow: FollowViewModel = koinViewModel(key = "follow:$titleId") { parametersOf(titleId) },
+    detail: TitleDetailViewModel = koinViewModel(key = "title:$sourceKey/$titleId") { parametersOf(sourceKey, titleId) },
+    follow: FollowViewModel = koinViewModel(key = "follow:$sourceKey/$titleId") { parametersOf(sourceKey, titleId) },
 ) {
     val state by detail.state.collectAsStateWithLifecycle()
     val followState by follow.state.collectAsStateWithLifecycle()
@@ -63,13 +64,20 @@ fun TitleScreen(
                 // Reprendre où on s'était arrêté, sinon commencer au premier chapitre (la liste va du plus récent au plus ancien).
                 val resume = followState.resumeChapterId
                 when {
-                    resume != null -> PrimaryButton(followState.resumeLabel ?: "Continue →", { onRead(resume, followState.resumePage) })
-                    state.chapters.isNotEmpty() -> PrimaryButton("Start reading →", { onRead(state.chapters.last().id, 0) })
+                    resume != null ->
+                        PrimaryButton(followState.resumeLabel(state.isBook) ?: "Continue →", { onRead(resume, followState.resumePage) })
+                    state.chapters.isNotEmpty() ->
+                        PrimaryButton(if (state.isBook) "Read →" else "Start reading →", { onRead(state.chapters.last().id, 0) })
                 }
                 if (state.name.isNotEmpty()) GhostButton(followState.label, { follow.toggle(state.name, state.coverUrl) })
                 Text(state.synopsis, style = MaterialTheme.typography.bodyMedium)
                 if (state.genres.isNotEmpty()) Text(state.genres.joinToString(" ✦ "), style = MaterialTheme.typography.bodySmall)
-                if (state.chapters.isNotEmpty()) Text("Chapters", style = MaterialTheme.typography.titleMedium)
+                if (state.chapters.isNotEmpty()) {
+                    Text(
+                        if (state.isBook) "Contents" else "Chapters",
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                }
             }
         }
         items(state.chapters, key = { it.id }) { chapter ->

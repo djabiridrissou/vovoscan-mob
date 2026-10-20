@@ -1,0 +1,35 @@
+-- v1 → v2 : unités repérées par source, livres en sections. Cache seulement : on repart de zéro.
+DROP TABLE IF EXISTS reader_page;
+DROP TABLE IF EXISTS reader_chapter;
+
+CREATE TABLE reader_chapter (
+    chapter_key TEXT NOT NULL PRIMARY KEY,
+    source_key TEXT NOT NULL,
+    id TEXT NOT NULL,
+    title_id TEXT NOT NULL,
+    title_name TEXT NOT NULL,
+    number REAL NOT NULL,
+    name TEXT,
+    kind TEXT NOT NULL,
+    format TEXT NOT NULL,
+    previous_id TEXT,
+    next_id TEXT,
+    document_url TEXT
+);
+
+CREATE TABLE reader_page (
+    chapter_key TEXT NOT NULL,
+    page_index INTEGER NOT NULL,
+    url TEXT NOT NULL,
+    width INTEGER NOT NULL,
+    height INTEGER NOT NULL,
+    PRIMARY KEY (chapter_key, page_index)
+);
+
+CREATE TABLE book_section (
+    chapter_key TEXT NOT NULL,
+    section_index INTEGER NOT NULL,
+    title TEXT NOT NULL,
+    html TEXT NOT NULL,
+    PRIMARY KEY (chapter_key, section_index)
+);

@@ -4,8 +4,8 @@ import com.vovoscan.core.common.AppResult
 import kotlinx.coroutines.flow.StateFlow
 
 /**
- * Utilisateur connecté. [permissions] vient du serveur (« module:action », « * » pour un super-admin) : l'interface s'en sert seulement
- * pour masquer ce qui serait refusé ; le serveur revérifie chaque appel.
+ * Utilisateur connecté. [permissions] vient du serveur (« module:action », « * » pour un super-admin) :
+ * l'interface s'en sert seulement pour masquer ce qui serait refusé ; le serveur revérifie chaque appel.
  */
 data class Session(
     val userId: String,

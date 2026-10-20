@@ -72,9 +72,9 @@ final class TitleModel: ObservableObject {
     private let detail: TitleDetailViewModel
     private let following: FollowViewModel
 
-    init(titleId: String) {
-        detail = owner.titleDetail(titleId: titleId)
-        following = owner.follow(titleId: titleId)
+    init(sourceKey: String, titleId: String) {
+        detail = owner.titleDetail(sourceKey: sourceKey, titleId: titleId)
+        following = owner.follow(sourceKey: sourceKey, titleId: titleId)
         state = detail.state.value
         follow = following.state.value
     }
@@ -120,8 +120,8 @@ final class ReaderModel: ObservableObject {
     private let owner = ViewModels()
     private let viewModel: ReaderViewModel
 
-    init(chapterId: String, startPage: Int) {
-        viewModel = owner.reader(chapterId: chapterId, startPage: Int32(startPage))
+    init(route: ReaderRoute) {
+        viewModel = owner.reader(sourceKey: route.sourceKey, titleId: route.titleId, chapterId: route.chapterId, startPage: Int32(route.startPage))
         state = viewModel.state.value
     }
 
@@ -130,6 +130,26 @@ final class ReaderModel: ObservableObject {
     }
 
     func send(_ intent: ReaderIntent) { viewModel.onIntent(intent: intent) }
+
+    deinit { owner.clear() }
+}
+
+@MainActor
+final class SourcesModel: ObservableObject {
+    @Published private(set) var state: SourcesUiState
+    private let owner = ViewModels()
+    private let viewModel: SourcesViewModel
+
+    init() {
+        viewModel = owner.sources()
+        state = viewModel.state.value
+    }
+
+    func observe() async {
+        for await next in viewModel.state { state = next }
+    }
+
+    func send(_ intent: SourcesIntent) { viewModel.onIntent(intent: intent) }
 
     deinit { owner.clear() }
 }

@@ -10,6 +10,8 @@ kotlin {
             api(project(":feature:reader:domain"))
             implementation(project(":core:network"))
             implementation(project(":core:database"))
+            implementation(project(":core:sources"))
+            implementation(libs.okio)
             implementation(libs.sqldelight.coroutines)
         }
         commonTest.dependencies { implementation(project(":core:testing")) }

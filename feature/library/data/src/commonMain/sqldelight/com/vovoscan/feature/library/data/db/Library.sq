@@ -1,23 +1,30 @@
--- Bibliothèque sur l'appareil : lue par les écrans, modifiée hors ligne, synchronisée par la file `outbox`.
+-- Bibliothèque sur l'appareil, toutes sources confondues : lue par les écrans, modifiée hors ligne, synchronisée
+-- par la file `outbox`. Un titre est repéré par (source, référence chez la source).
 -- SQLite 3.18 (Android 8, minSdk 26) : pas d'ON CONFLICT … DO UPDATE.
 CREATE TABLE library_entry (
-    title_id TEXT NOT NULL PRIMARY KEY,
+    source_key TEXT NOT NULL,
+    title_ref TEXT NOT NULL,
     title_name TEXT NOT NULL,
     cover_url TEXT,
-    last_chapter_id TEXT,
+    last_chapter_ref TEXT,
     last_page INTEGER NOT NULL DEFAULT 0,
     updated_at INTEGER NOT NULL,
     deleted INTEGER NOT NULL DEFAULT 0,
-    pending INTEGER NOT NULL DEFAULT 0
+    pending INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (source_key, title_ref)
 );
 
 -- Une seule opération en attente par titre : la plus récente remplace les précédentes.
 CREATE TABLE outbox (
-    title_id TEXT NOT NULL PRIMARY KEY,
+    source_key TEXT NOT NULL,
+    title_ref TEXT NOT NULL,
     kind TEXT NOT NULL, -- save | delete
-    last_chapter_id TEXT,
+    title_name TEXT NOT NULL,
+    cover_url TEXT,
+    last_chapter_ref TEXT,
     last_page INTEGER NOT NULL DEFAULT 0,
-    updated_at INTEGER NOT NULL
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY (source_key, title_ref)
 );
 
 CREATE TABLE sync_state (
@@ -29,26 +36,27 @@ entries:
 SELECT * FROM library_entry WHERE deleted = 0 ORDER BY updated_at DESC;
 
 entry:
-SELECT * FROM library_entry WHERE title_id = ?;
+SELECT * FROM library_entry WHERE source_key = ? AND title_ref = ?;
 
 isFollowed:
-SELECT COUNT(*) FROM library_entry WHERE title_id = ? AND deleted = 0;
+SELECT COUNT(*) FROM library_entry WHERE source_key = ? AND title_ref = ? AND deleted = 0;
 
 putEntry:
-INSERT OR REPLACE INTO library_entry (title_id, title_name, cover_url, last_chapter_id, last_page, updated_at, deleted, pending)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+INSERT OR REPLACE INTO library_entry (source_key, title_ref, title_name, cover_url, last_chapter_ref, last_page, updated_at, deleted, pending)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 enqueue:
-INSERT OR REPLACE INTO outbox (title_id, kind, last_chapter_id, last_page, updated_at) VALUES (?, ?, ?, ?, ?);
+INSERT OR REPLACE INTO outbox (source_key, title_ref, kind, title_name, cover_url, last_chapter_ref, last_page, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?);
 
 pending:
 SELECT * FROM outbox ORDER BY updated_at;
 
 dequeue:
-DELETE FROM outbox WHERE title_id = ? AND updated_at = ?;
+DELETE FROM outbox WHERE source_key = ? AND title_ref = ? AND updated_at = ?;
 
 isQueued:
-SELECT COUNT(*) FROM outbox WHERE title_id = ?;
+SELECT COUNT(*) FROM outbox WHERE source_key = ? AND title_ref = ?;
 
 lastPulledAt:
 SELECT last_pulled_at FROM sync_state WHERE slot = 1;

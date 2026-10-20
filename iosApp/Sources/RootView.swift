@@ -1,7 +1,7 @@
 import Shared
 import SwiftUI
 
-/// Racine : connexion, ou onglets Catalogue / Bibliothèque. La session vient du Kotlin partagé.
+/// Racine : connexion, ou onglets Catalogue / Bibliothèque / Sources. La session vient du Kotlin partagé.
 struct RootView: View {
     @StateObject private var session = SessionModel()
 
@@ -16,6 +16,8 @@ struct RootView: View {
                         .tabItem { Label("Catalog", systemImage: "square.grid.2x2") }
                     NavigationStack { LibraryView(onSignOut: session.signOut) }
                         .tabItem { Label("Library", systemImage: "books.vertical") }
+                    NavigationStack { SourcesView() }
+                        .tabItem { Label("Sources", systemImage: "square.stack.3d.up") }
                 }
             }
         }

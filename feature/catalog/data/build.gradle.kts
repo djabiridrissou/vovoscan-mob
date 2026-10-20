@@ -10,6 +10,7 @@ kotlin {
             api(project(":feature:catalog:domain"))
             implementation(project(":core:network"))
             implementation(project(":core:database"))
+            implementation(project(":core:sources"))
             implementation(libs.sqldelight.coroutines)
         }
         commonTest.dependencies { implementation(project(":core:testing")) }

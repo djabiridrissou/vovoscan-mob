@@ -15,8 +15,8 @@ struct LibraryView: View {
                 if model.state.empty {
                     Text(model.state.emptyMessage).font(.brandBody(15)).foregroundStyle(Color.brandPaper)
                 }
-                ForEach(model.state.rows, id: \.titleId) { row in
-                    NavigationLink(value: row.titleId) {
+                ForEach(model.state.rows, id: \.self) { row in
+                    NavigationLink(value: TitleRoute(sourceKey: row.sourceKey, titleId: row.titleId)) {
                         HStack(spacing: 14) {
                             AsyncImage(url: row.coverUrl.flatMap(URL.init(string:))) { image in
                                 image.resizable().scaledToFill()
@@ -45,7 +45,7 @@ struct LibraryView: View {
         }
         .background(Color.brandInk)
         .refreshable { model.send(LibraryIntentSync.shared) }
-        .navigationDestination(for: String.self) { TitleView(titleId: $0) }
+        .navigationDestination(for: TitleRoute.self) { TitleView(route: $0) }
         .navigationDestination(for: ReaderRoute.self) { ReaderContainer(route: $0) }
         .task { await model.observe() }
     }

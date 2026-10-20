@@ -27,6 +27,7 @@ import com.vovoscan.app.ui.catalog.CatalogScreen
 import com.vovoscan.app.ui.library.LibraryScreen
 import com.vovoscan.app.ui.reader.ReaderScreen
 import com.vovoscan.app.ui.signin.SignInScreen
+import com.vovoscan.app.ui.sources.SourcesScreen
 import com.vovoscan.app.ui.theme.Brand
 import com.vovoscan.app.ui.theme.VovoscanTheme
 import com.vovoscan.app.ui.title.TitleScreen
@@ -49,15 +50,17 @@ private enum class Tab(
 ) {
     Catalog("Catalog"),
     Library("Library"),
+    Sources("Sources"),
 }
 
-/** Racine : connexion, ou onglets Catalogue / Bibliothèque, avec la fiche d'un titre par-dessus. */
+/** Racine : connexion, ou onglets Catalogue / Bibliothèque / Sources, avec la fiche d'un titre et le lecteur par-dessus. */
 @Composable
 private fun Root(session: SessionViewModel = koinViewModel()) {
     val user by session.session.collectAsStateWithLifecycle()
     var tab by rememberSaveable { mutableStateOf(Tab.Catalog) }
+    // Fiche ouverte : « source|titre ».
     var openTitle by rememberSaveable { mutableStateOf<String?>(null) }
-    // Lecteur ouvert : « chapitre|page de départ ».
+    // Lecteur ouvert : « source|titre|chapitre|page de départ ».
     var openReader by rememberSaveable { mutableStateOf<String?>(null) }
     Column(
         Modifier
@@ -74,22 +77,30 @@ private fun Root(session: SessionViewModel = koinViewModel()) {
         if (reader != null) {
             BackHandler { openReader = null }
             ReaderScreen(
-                chapterId = reader[0],
-                startPage = reader[1].toInt(),
+                sourceKey = reader[0],
+                titleId = reader[1],
+                chapterId = reader[2],
+                startPage = reader[3].toInt(),
                 onBack = { openReader = null },
-                onOpenChapter = { openReader = "$it|0" },
+                onOpenChapter = { openReader = "${reader[0]}|${reader[1]}|$it|0" },
             )
             return@Column
         }
         Column(Modifier.weight(1f)) {
-            val titleId = openTitle
-            if (titleId != null) {
+            val title = openTitle?.split("|")
+            if (title != null) {
                 BackHandler { openTitle = null }
-                TitleScreen(titleId, onBack = { openTitle = null }, onRead = { chapter, page -> openReader = "$chapter|$page" })
+                TitleScreen(
+                    sourceKey = title[0],
+                    titleId = title[1],
+                    onBack = { openTitle = null },
+                    onRead = { chapter, page -> openReader = "${title[0]}|${title[1]}|$chapter|$page" },
+                )
             } else {
                 when (tab) {
-                    Tab.Catalog -> CatalogScreen(onOpenTitle = { openTitle = it })
-                    Tab.Library -> LibraryScreen(onOpenTitle = { openTitle = it }, onSignOut = session::signOut)
+                    Tab.Catalog -> CatalogScreen(onOpenTitle = { source, id -> openTitle = "$source|$id" })
+                    Tab.Library -> LibraryScreen(onOpenTitle = { source, id -> openTitle = "$source|$id" }, onSignOut = session::signOut)
+                    Tab.Sources -> SourcesScreen()
                 }
             }
         }

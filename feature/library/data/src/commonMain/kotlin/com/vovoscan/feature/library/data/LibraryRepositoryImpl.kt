@@ -25,31 +25,47 @@ class LibraryRepositoryImpl(
 
     override fun observe(): Flow<List<LibraryEntry>> = local.observe()
 
-    override fun isFollowed(titleId: String): Flow<Boolean> = local.isFollowed(titleId)
+    override fun isFollowed(
+        sourceKey: String,
+        titleRef: String,
+    ): Flow<Boolean> = local.isFollowed(sourceKey, titleRef)
 
     override suspend fun follow(title: TitleRef) {
-        val current = local.entry(title.id)
+        val current = local.entry(title.sourceKey, title.id)
         local.applyLocal(
-            LibraryEntry(title.id, title.name, title.coverUrl, current?.lastChapterId, current?.lastPage ?: 0, clock.nowMillis(), true),
+            LibraryEntry(
+                title.sourceKey,
+                title.id,
+                title.name,
+                title.coverUrl,
+                current?.lastChapterRef,
+                current?.lastPage ?: 0,
+                clock.nowMillis(),
+                true,
+            ),
             deleted = false,
         )
         sync()
     }
 
-    override suspend fun unfollow(titleId: String) {
-        val current = local.entry(titleId) ?: return
+    override suspend fun unfollow(
+        sourceKey: String,
+        titleRef: String,
+    ) {
+        val current = local.entry(sourceKey, titleRef) ?: return
         local.applyLocal(current.copy(updatedAt = clock.nowMillis(), pendingSync = true), deleted = true)
         sync()
     }
 
     override suspend fun saveProgress(
-        titleId: String,
-        chapterId: String,
+        sourceKey: String,
+        titleRef: String,
+        chapterRef: String,
         page: Int,
     ) {
         // On ne suit pas un titre sans l'avoir demandé : la progression ne vaut que pour un titre suivi.
-        val current = local.entry(titleId) ?: return
-        local.applyLocal(current.copy(lastChapterId = chapterId, lastPage = page, updatedAt = clock.nowMillis()), deleted = false)
+        val current = local.entry(sourceKey, titleRef) ?: return
+        local.applyLocal(current.copy(lastChapterRef = chapterRef, lastPage = page, updatedAt = clock.nowMillis()), deleted = false)
         // Envoyée tout de suite si le réseau répond ; sinon elle attend dans la file (le lecteur espace déjà les appels).
         sync()
     }
@@ -59,9 +75,17 @@ class LibraryRepositoryImpl(
             for (change in local.pending()) {
                 val result =
                     if (change.delete) {
-                        remote.remove(change.titleId, isoUtc(change.updatedAt))
+                        remote.remove(change.sourceKey, change.titleRef, isoUtc(change.updatedAt))
                     } else {
-                        remote.save(change.titleId, isoUtc(change.updatedAt), change.lastChapterId, change.lastPage)
+                        remote.save(
+                            change.sourceKey,
+                            change.titleRef,
+                            isoUtc(change.updatedAt),
+                            change.lastChapterRef,
+                            change.lastPage,
+                            change.titleName,
+                            change.coverUrl,
+                        )
                     }
                 when (result) {
                     is AppResult.Ok -> {

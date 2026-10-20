@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 data class LibraryRow(
+    val sourceKey: String,
     val titleId: String,
     val name: String,
     val coverUrl: String?,
@@ -50,6 +51,7 @@ sealed interface LibraryIntent {
     data object Sync : LibraryIntent
 
     data class Unfollow(
+        val sourceKey: String,
         val titleId: String,
     ) : LibraryIntent
 }
@@ -71,7 +73,7 @@ class LibraryViewModel(
     fun onIntent(intent: LibraryIntent) {
         when (intent) {
             LibraryIntent.Sync -> sync()
-            is LibraryIntent.Unfollow -> viewModelScope.launch { repository.unfollow(intent.titleId) }
+            is LibraryIntent.Unfollow -> viewModelScope.launch { repository.unfollow(intent.sourceKey, intent.titleId) }
         }
     }
 
@@ -94,10 +96,11 @@ class LibraryViewModel(
 
     private fun row(entry: LibraryEntry) =
         LibraryRow(
-            titleId = entry.titleId,
+            sourceKey = entry.sourceKey,
+            titleId = entry.titleRef,
             name = entry.titleName,
             coverUrl = entry.coverUrl,
-            progress = if (entry.lastChapterId == null) "Not started" else "Page ${entry.lastPage + 1}",
+            progress = if (entry.lastChapterRef == null) "Not started" else "Page ${entry.lastPage + 1}",
             pendingSync = entry.pendingSync,
         )
 }

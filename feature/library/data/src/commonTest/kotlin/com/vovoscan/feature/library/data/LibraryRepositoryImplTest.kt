@@ -15,7 +15,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 class LibraryRepositoryImplTest {
-    private val title = TitleRef("t1", "Ink Road", null)
+    private val title = TitleRef("gutenberg", "1342", "Pride and Prejudice", null)
 
     @Test
     fun horsLigneLActionResteEnFileEtSAfficheTout() =
@@ -28,7 +28,7 @@ class LibraryRepositoryImplTest {
                     local,
                 ) { 1_000L }
             repo.follow(title)
-            assertTrue(repo.isFollowed("t1").first())
+            assertTrue(repo.isFollowed("gutenberg", "1342").first())
             assertTrue(
                 repo
                     .observe()
@@ -50,9 +50,10 @@ class LibraryRepositoryImplTest {
                 testHttpClient { request ->
                     if (!online) throw IllegalStateException("offline")
                     if (request.method == HttpMethod.Put) {
-                        sent += request.body.toString()
+                        sent += request.url.encodedPath
                         respondJson(
-                            """{"data":{"titleId":"t1","titleName":"Ink Road","lastPage":0,"updatedAt":"1970-01-01T00:00:01Z"}}""",
+                            """{"data":{"sourceKey":"gutenberg","titleRef":"1342","titleName":"Pride and Prejudice",""" +
+                                """"lastPage":0,"updatedAt":"1970-01-01T00:00:01Z"}}""",
                         )
                     } else {
                         respondJson("""{"data":[]}""")
@@ -62,7 +63,7 @@ class LibraryRepositoryImplTest {
             repo.follow(title)
             online = true
             assertEquals(AppResult.Ok(Unit), repo.sync())
-            assertEquals(1, sent.size)
+            assertEquals(listOf("/api/v1/library/gutenberg/1342"), sent)
             assertEquals(0, local.pending().size)
             assertEquals(
                 false,
@@ -82,7 +83,8 @@ class LibraryRepositoryImplTest {
             val http =
                 testHttpClient {
                     respondJson(
-                        """{"data":[{"titleId":"t2","titleName":"Other","lastPage":7,"updatedAt":"2026-10-20T10:00:00Z"}]}""",
+                        """{"data":[{"sourceKey":"vovoscan","titleRef":"t2","titleName":"Other",""" +
+                            """"lastPage":7,"updatedAt":"2026-10-20T10:00:00Z"}]}""",
                     )
                 }
             val repo = LibraryRepositoryImpl(KtorLibraryRemoteDataSource(http), local) { 1_000L }
