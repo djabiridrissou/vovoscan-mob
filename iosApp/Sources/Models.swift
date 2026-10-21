@@ -193,3 +193,109 @@ final class SourceDetailModel: ObservableObject {
 
     deinit { owner.clear() }
 }
+
+// Settings (account slice).
+
+@MainActor
+final class ProviderKeysModel: ObservableObject {
+    @Published private(set) var state: ProviderKeysUiState
+    private let owner = ViewModels()
+    private let viewModel: ProviderKeysViewModel
+
+    init() {
+        viewModel = owner.providerKeys()
+        state = viewModel.state.value
+    }
+
+    func observe() async {
+        for await next in viewModel.state { state = next }
+    }
+
+    func send(_ intent: ProviderKeysIntent) { viewModel.onIntent(intent: intent) }
+
+    deinit { owner.clear() }
+}
+
+@MainActor
+final class ReadingSettingsModel: ObservableObject {
+    @Published private(set) var state: ReadingSettingsUiState
+    private let owner = ViewModels()
+    private let viewModel: ReadingSettingsViewModel
+
+    init() {
+        viewModel = owner.readingSettings()
+        state = viewModel.state.value
+    }
+
+    func observe() async {
+        for await next in viewModel.state { state = next }
+    }
+
+    func send(_ intent: ReadingSettingsIntent) { viewModel.onIntent(intent: intent) }
+
+    deinit { owner.clear() }
+}
+
+@MainActor
+final class UsageModel: ObservableObject {
+    @Published private(set) var state: UsageUiState
+    private let owner = ViewModels()
+    private let viewModel: UsageViewModel
+
+    init() {
+        viewModel = owner.usage()
+        state = viewModel.state.value
+    }
+
+    func observe() async {
+        for await next in viewModel.state { state = next }
+    }
+
+    func send(_ intent: UsageIntent) { viewModel.onIntent(intent: intent) }
+
+    deinit { owner.clear() }
+}
+
+// Episodes.
+
+@MainActor
+final class EpisodeModel: ObservableObject {
+    @Published private(set) var state: EpisodeUiState
+    private let owner = ViewModels()
+    private let viewModel: EpisodeViewModel
+
+    init(chapterId: String) {
+        viewModel = owner.episode(chapterId: chapterId)
+        state = viewModel.state.value
+    }
+
+    func observe() async {
+        for await next in viewModel.state { state = next }
+    }
+
+    func send(_ intent: EpisodeIntent) { viewModel.onIntent(intent: intent) }
+
+    deinit { owner.clear() }
+}
+
+/// The player: coarse state is published (about once a second while playing); the stage asks `frame` on every
+/// display frame, outside SwiftUI's state, so nothing but the Canvas redraws.
+@MainActor
+final class PlayerModel: ObservableObject {
+    @Published private(set) var state: PlayerUiState
+    private let owner = ViewModels()
+    let viewModel: PlayerViewModel
+
+    init(chapterId: String, nextChapterId: String?) {
+        viewModel = owner.player(chapterId: chapterId, nextChapterId: nextChapterId)
+        state = viewModel.state.value
+    }
+
+    func observe() async {
+        for await next in viewModel.state { state = next }
+    }
+
+    func send(_ intent: PlayerIntent) { viewModel.onIntent(intent: intent) }
+
+    deinit { owner.clear() }
+}

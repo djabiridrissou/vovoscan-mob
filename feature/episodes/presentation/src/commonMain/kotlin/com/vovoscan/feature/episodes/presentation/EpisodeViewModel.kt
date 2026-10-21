@@ -9,6 +9,7 @@ import com.vovoscan.core.common.userMessage
 import com.vovoscan.feature.episodes.domain.Episode
 import com.vovoscan.feature.episodes.domain.EpisodeStatus
 import com.vovoscan.feature.episodes.domain.EpisodesRepository
+import com.vovoscan.feature.episodes.domain.ExportStatus
 import com.vovoscan.feature.episodes.domain.KeyStatus
 import com.vovoscan.feature.episodes.domain.KeyStatusProvider
 import com.vovoscan.feature.episodes.domain.PipelineStage
@@ -52,6 +53,14 @@ data class StageChip(
     val state: StageState,
 )
 
+/** A video to download now: a freshly signed link and the file's name. [id] changes with every request. */
+data class VideoDownload(
+    val id: Int,
+    val url: String,
+    /** "Le Griot de Guerre - Chapter 1.mp4" (the name the server signed). */
+    val fileName: String,
+)
+
 data class EpisodeUiState(
     val phase: EpisodePhase = EpisodePhase.Loading,
     val headline: String = EpisodeText.LOADING,
@@ -85,12 +94,41 @@ data class EpisodeUiState(
     /** Following the run live (events, or polling). */
     val live: Boolean = false,
     val freshness: Freshness = Freshness.Refreshing,
+    /** Show the video section (the MP4 export, once the episode is ready). */
+    val exportShown: Boolean = false,
+    /** "Video ready.", "Making the video ✦ 42%"… */
+    val exportLabel: String? = null,
+    /** Under the label: what the video is for, or the server's error after a failure. */
+    val exportDetail: String? = null,
+    /** 0..1 while the video is queued or being made; null otherwise. */
+    val exportProgress: Double? = null,
+    val canRequestExport: Boolean = false,
+    /** "Make a video", "Try again". */
+    val exportActionLabel: String = EpisodeText.MAKE_VIDEO,
+    val canSaveVideo: Boolean = false,
+    /** A video request, or a fresh download link, is on its way. */
+    val exportWorking: Boolean = false,
+    /** Start this download (Android: DownloadManager or share; iOS: temp file, then the share sheet), then send `VideoHandled`. */
+    val videoDownload: VideoDownload? = null,
     /** Short confirmation ("Already in progress. Following it."). */
     val notice: String? = null,
     val error: String? = null,
 ) {
     /** False for a book: show nothing about episodes. */
     val visible: Boolean get() = phase != EpisodePhase.Unsupported
+
+    /** "Save video", or "Getting the video…" while the link is fetched and the download handed over. */
+    val saveVideoLabel: String get() = if (exportWorking || videoDownload != null) EpisodeText.GETTING_VIDEO else EpisodeText.SAVE_VIDEO
+
+    /** The discreet banner while the episode kept on the device is shown offline. */
+    val offlineNotice: String? get() =
+        if (freshness == Freshness.Offline &&
+            phase != EpisodePhase.Unavailable
+        ) {
+            EpisodeText.OFFLINE_COPY
+        } else {
+            null
+        }
 
     /** Show the key notice next to an action that would spend the user's keys. */
     val showsKeyNotice: Boolean get() = (canPrepare || canReread) && keyLines.isNotEmpty()
@@ -111,6 +149,18 @@ sealed interface EpisodeIntent {
     data object Reread : EpisodeIntent
 
     data object DismissMessage : EpisodeIntent
+
+    /** "Make a video" (or "Try again" after a failed one): `POST …/export`. Shared, CPU only: no key is spent. */
+    data object RequestExport : EpisodeIntent
+
+    /** "Save video": fetches a fresh download link, then hands it to the screen as [EpisodeUiState.videoDownload]. */
+    data object SaveVideo : EpisodeIntent
+
+    /** The screen took [EpisodeUiState.videoDownload] (download started, share sheet shown, or the user cancelled). */
+    data object VideoHandled : EpisodeIntent
+
+    /** The download of [EpisodeUiState.videoDownload] failed. */
+    data object VideoFailed : EpisodeIntent
 }
 
 /**
@@ -134,6 +184,7 @@ class EpisodeViewModel(
     private var unsupported = false
     private var followJob: Job? = null
     private var refreshJob: Job? = null
+    private var downloads = 0
 
     init {
         repository
@@ -141,7 +192,7 @@ class EpisodeViewModel(
             .onEach { stored ->
                 episode = stored
                 render()
-                if (stored?.status?.active == true) follow()
+                if (stored?.inProgress == true) follow()
             }.launchIn(viewModelScope)
         keys
             .observe()
@@ -160,6 +211,58 @@ class EpisodeViewModel(
             EpisodeIntent.Prepare -> run(reread = false)
             EpisodeIntent.Reread -> run(reread = true)
             EpisodeIntent.DismissMessage -> mutableState.update { it.copy(notice = null, error = null) }
+            EpisodeIntent.RequestExport -> requestExport()
+            EpisodeIntent.SaveVideo -> saveVideo()
+            EpisodeIntent.VideoHandled -> mutableState.update { it.copy(videoDownload = null) }
+            EpisodeIntent.VideoFailed -> mutableState.update { it.copy(videoDownload = null, error = EpisodeText.VIDEO_DOWNLOAD_FAILED) }
+        }
+        if (intent == EpisodeIntent.VideoHandled || intent == EpisodeIntent.VideoFailed) render()
+    }
+
+    private fun requestExport() {
+        val current = state.value
+        if (current.exportWorking || !current.canRequestExport) return
+        mutableState.update { it.copy(exportWorking = true, notice = null, error = null) }
+        viewModelScope.launch {
+            val result = repository.requestExport(chapterId)
+            mutableState.update {
+                when (result) {
+                    is AppResult.Ok ->
+                        it.copy(
+                            exportWorking = false,
+                            notice = if (result.value.status.active) EpisodeText.VIDEO_QUEUED else null,
+                        )
+                    is AppResult.Err -> it.copy(exportWorking = false, error = EpisodeText.exportError(result.error))
+                }
+            }
+            // The stored episode carries the export now: follow its progress live.
+            if (result is AppResult.Ok && result.value.status.active) follow()
+            render()
+        }
+    }
+
+    private fun saveVideo() {
+        val current = state.value
+        if (current.exportWorking || !current.canSaveVideo || current.videoDownload != null) return
+        mutableState.update { it.copy(exportWorking = true, notice = null, error = null) }
+        viewModelScope.launch {
+            // The link kept with the episode may have expired: a download always gets a fresh one.
+            val result = repository.export(chapterId)
+            mutableState.update {
+                when (result) {
+                    is AppResult.Err -> it.copy(exportWorking = false, error = EpisodeText.exportError(result.error))
+                    is AppResult.Ok -> {
+                        val url = result.value.url
+                        if (result.value.status == ExportStatus.Ready && url != null) {
+                            downloads += 1
+                            it.copy(exportWorking = false, videoDownload = VideoDownload(downloads, url, EpisodeText.videoFileName(url)))
+                        } else {
+                            it.copy(exportWorking = false, error = EpisodeText.VIDEO_GONE)
+                        }
+                    }
+                }
+            }
+            render()
         }
     }
 
@@ -168,7 +271,7 @@ class EpisodeViewModel(
         started = true
         refresh()
         viewModelScope.launch { keys.refresh() }
-        if (episode?.status?.active == true) follow()
+        if (episode?.inProgress == true) follow()
     }
 
     private fun stop() {
@@ -281,7 +384,7 @@ class EpisodeViewModel(
                     it.enabled && (it.anthropicHint == null || it.elevenLabsHint == null)
                 }?.let { EpisodeText.KEY_WARNING }
         mutableState.update { state ->
-            val base = state.copy(keyLines = keyLines, keyWarning = keyWarning)
+            val base = exportState(state.copy(keyLines = keyLines, keyWarning = keyWarning), current)
             when {
                 unsupported -> EpisodeUiState(phase = EpisodePhase.Unsupported)
                 current != null -> episodeState(base, current)
@@ -296,6 +399,50 @@ class EpisodeViewModel(
                     )
                 else -> base.copy(phase = EpisodePhase.Loading, headline = EpisodeText.LOADING)
             }
+        }
+    }
+
+    /** The video section: only for a ready episode, from the export carried by the stored episode. */
+    private fun exportState(
+        base: EpisodeUiState,
+        e: Episode?,
+    ): EpisodeUiState {
+        val hidden =
+            base.copy(
+                exportShown = false,
+                exportLabel = null,
+                exportDetail = null,
+                exportProgress = null,
+                canRequestExport = false,
+                canSaveVideo = false,
+            )
+        if (e == null || e.status != EpisodeStatus.Ready || unsupported) return hidden
+        val export = e.export
+        val shown = hidden.copy(exportShown = true)
+        return when (export?.status) {
+            null, ExportStatus.None ->
+                shown.copy(
+                    exportLabel = EpisodeText.VIDEO_NONE,
+                    exportDetail = EpisodeText.VIDEO_NONE_DETAIL,
+                    canRequestExport = true,
+                    exportActionLabel = EpisodeText.MAKE_VIDEO,
+                )
+            ExportStatus.Queued -> shown.copy(exportLabel = EpisodeText.VIDEO_QUEUED_LABEL, exportProgress = 0.0)
+            ExportStatus.Rendering ->
+                shown.copy(exportLabel = EpisodeText.videoProgress(export.progress), exportProgress = export.progress / 100.0)
+            ExportStatus.Ready ->
+                shown.copy(
+                    exportLabel = EpisodeText.VIDEO_READY,
+                    exportDetail = if (export.outdated) EpisodeText.VIDEO_OUTDATED else EpisodeText.VIDEO_READY_DETAIL,
+                    canSaveVideo = export.url != null,
+                )
+            ExportStatus.Failed ->
+                shown.copy(
+                    exportLabel = EpisodeText.VIDEO_FAILED,
+                    exportDetail = export.error,
+                    canRequestExport = true,
+                    exportActionLabel = EpisodeText.TRY_AGAIN,
+                )
         }
     }
 

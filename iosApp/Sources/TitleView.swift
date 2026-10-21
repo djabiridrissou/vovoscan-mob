@@ -59,17 +59,33 @@ struct TitleView: View {
                         Text(model.state.isBook ? "Contents" : "Chapters").font(.brandDisplay(18)).foregroundStyle(Color.brandPaper)
                     }
                     ForEach(model.state.chapters, id: \.id) { chapter in
-                        NavigationLink(value: read(chapter.id)) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(chapter.label).font(.brandBody(15)).foregroundStyle(Color.brandPaper)
-                            Text(chapter.meta).font(.brandBody(13)).foregroundStyle(Color.brandMuted)
+                        HStack(spacing: 10) {
+                            NavigationLink(value: read(chapter.id)) {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(chapter.label).font(.brandBody(15)).foregroundStyle(Color.brandPaper)
+                                    Text(chapter.meta).font(.brandBody(13)).foregroundStyle(Color.brandMuted)
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            // A comic of our catalog: the chapter's voiced episode, next to reading it.
+                            if model.state.offersEpisodes {
+                                NavigationLink(value: EpisodeRoute(chapterId: chapter.id, title: model.state)) {
+                                    Text("Episode")
+                                        .font(.brandBody(12, weight: .bold))
+                                        .tracking(1.2)
+                                        .foregroundStyle(Color.brandPaper)
+                                        .padding(.horizontal, 12)
+                                        .padding(.vertical, 8)
+                                        .overlay(Capsule().stroke(Color.brandLine, lineWidth: 1))
+                                }
+                                .buttonStyle(.plain)
+                            }
                         }
-                        .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(16)
                         .background(Color.brandInk2, in: RoundedRectangle(cornerRadius: 12))
                         .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.brandLine, lineWidth: 1))
-                        }
-                        .buttonStyle(.plain)
                     }
                 }
                 .padding(.horizontal, 20)
@@ -77,6 +93,7 @@ struct TitleView: View {
         }
         .background(Color.brandInk)
         .refreshable { model.refresh() }
+        .navigationDestination(for: EpisodeRoute.self) { EpisodeContainer(route: $0) }
         .task { await model.observe() }
         .task { await model.observeFollow() }
     }

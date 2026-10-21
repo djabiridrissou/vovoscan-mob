@@ -17,6 +17,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
@@ -38,6 +39,7 @@ fun TitleScreen(
     titleId: String,
     onBack: () -> Unit,
     onRead: (chapterId: String, startPage: Int) -> Unit,
+    onEpisode: (chapterId: String) -> Unit,
     detail: TitleDetailViewModel = koinViewModel(key = "title:$sourceKey/$titleId") { parametersOf(sourceKey, titleId) },
     follow: FollowViewModel = koinViewModel(key = "follow:$sourceKey/$titleId") { parametersOf(sourceKey, titleId) },
 ) {
@@ -89,10 +91,23 @@ fun TitleScreen(
                     .border(1.dp, Brand.Line, RoundedCornerShape(12.dp))
                     .clickable { onRead(chapter.id, 0) }
                     .padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Column {
+                Column(Modifier.weight(1f)) {
                     Text(chapter.label, style = MaterialTheme.typography.bodyMedium)
                     Text(chapter.meta, style = MaterialTheme.typography.bodySmall)
+                }
+                // A comic of our catalog: the chapter's voiced episode, next to reading it.
+                if (state.offersEpisodes) {
+                    Text(
+                        "Episode",
+                        style = MaterialTheme.typography.labelSmall.copy(color = Brand.Paper),
+                        modifier =
+                            Modifier
+                                .border(1.dp, Brand.Line, RoundedCornerShape(999.dp))
+                                .clickable { onEpisode(chapter.id) }
+                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                    )
                 }
             }
         }

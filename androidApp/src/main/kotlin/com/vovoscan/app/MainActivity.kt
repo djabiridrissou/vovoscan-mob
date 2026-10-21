@@ -21,11 +21,15 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.vovoscan.app.ui.catalog.CatalogScreen
+import com.vovoscan.app.ui.episode.EpisodeScreen
 import com.vovoscan.app.ui.library.LibraryScreen
+import com.vovoscan.app.ui.player.PlayerScreen
 import com.vovoscan.app.ui.reader.ReaderScreen
+import com.vovoscan.app.ui.settings.SettingsScreen
 import com.vovoscan.app.ui.signin.SignInScreen
 import com.vovoscan.app.ui.sources.AddSourceScreen
 import com.vovoscan.app.ui.sources.SourceDetailScreen
@@ -34,7 +38,9 @@ import com.vovoscan.app.ui.theme.Brand
 import com.vovoscan.app.ui.theme.VovoscanTheme
 import com.vovoscan.app.ui.title.TitleScreen
 import com.vovoscan.feature.auth.presentation.SessionViewModel
+import com.vovoscan.feature.catalog.presentation.TitleDetailViewModel
 import org.koin.compose.viewmodel.koinViewModel
+import org.koin.core.parameter.parametersOf
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -53,9 +59,13 @@ private enum class Tab(
     Catalog("Catalog"),
     Library("Library"),
     Sources("Sources"),
+    Settings("Settings"),
 }
 
-/** Root: sign-in, or the Catalog / Library / Sources tabs, with the title page, the source screens and the reader on top. */
+/**
+ * Root: sign-in, or the Catalog / Library / Sources / Settings tabs, with the title page, the source screens, the
+ * reader, an episode card and the full-screen episode player on top.
+ */
 @Composable
 private fun Root(session: SessionViewModel = koinViewModel()) {
     val user by session.session.collectAsStateWithLifecycle()
@@ -66,6 +76,25 @@ private fun Root(session: SessionViewModel = koinViewModel()) {
     var openSource by rememberSaveable { mutableStateOf<String?>(null) }
     // Open reader: "source|title|chapter|start page".
     var openReader by rememberSaveable { mutableStateOf<String?>(null) }
+    // Open episode card (over the title page): chapter id.
+    var openEpisode by rememberSaveable { mutableStateOf<String?>(null) }
+    // Open player (full screen): "chapter|next chapter or empty".
+    var openPlayer by rememberSaveable { mutableStateOf<String?>(null) }
+    val player = openPlayer?.split("|")
+    if (user != null && player != null) {
+        BackHandler { openPlayer = null }
+        PlayerScreen(
+            chapterId = player[0],
+            nextChapterId = player[1].ifEmpty { null },
+            onClose = { openPlayer = null },
+            onNextChapter = {
+                // The next chapter's episode card: watch it from there, or prepare it.
+                openPlayer = null
+                openEpisode = it
+            },
+        )
+        return
+    }
     Column(
         Modifier
             .fillMaxSize()
@@ -93,13 +122,28 @@ private fun Root(session: SessionViewModel = koinViewModel()) {
         Column(Modifier.weight(1f)) {
             val title = openTitle?.split("|")
             val source = openSource?.split("|", limit = 2)
-            if (title != null) {
+            val episode = openEpisode
+            if (title != null && episode != null) {
+                BackHandler { openEpisode = null }
+                // The title page's own ViewModel (same key): chapter label and the next chapter in reading order.
+                val detail: TitleDetailViewModel =
+                    koinViewModel(key = "title:${title[0]}/${title[1]}") { parametersOf(title[0], title[1]) }
+                val titleState by detail.state.collectAsStateWithLifecycle()
+                EpisodeScreen(
+                    chapterId = episode,
+                    titleName = titleState.name,
+                    chapterLabel = titleState.chapterLabel(episode),
+                    onBack = { openEpisode = null },
+                    onWatch = { openPlayer = "$episode|${titleState.nextChapterId(episode).orEmpty()}" },
+                )
+            } else if (title != null) {
                 BackHandler { openTitle = null }
                 TitleScreen(
                     sourceKey = title[0],
                     titleId = title[1],
                     onBack = { openTitle = null },
                     onRead = { chapter, page -> openReader = "${title[0]}|${title[1]}|$chapter|$page" },
+                    onEpisode = { openEpisode = it },
                 )
             } else if (tab == Tab.Sources && source != null) {
                 BackHandler { openSource = null }
@@ -121,6 +165,7 @@ private fun Root(session: SessionViewModel = koinViewModel()) {
                             onAdd = { repository -> openSource = if (repository == null) "add-source" else "add-source|$repository" },
                             onOpenSource = { openSource = "source-detail|$it" },
                         )
+                    Tab.Settings -> SettingsScreen(onSignOut = session::signOut)
                 }
             }
         }
@@ -130,15 +175,16 @@ private fun Root(session: SessionViewModel = koinViewModel()) {
                 Text(
                     entry.label,
                     style = MaterialTheme.typography.labelLarge.copy(color = if (selected) Brand.Red else Brand.Muted),
+                    textAlign = TextAlign.Center,
                     modifier =
                         Modifier
                             .weight(1f)
                             .clickable {
                                 tab = entry
                                 openTitle = null
+                                openEpisode = null
                                 openSource = null
-                            }.padding(vertical = 16.dp)
-                            .padding(start = 24.dp),
+                            }.padding(vertical = 16.dp),
                 )
             }
         }

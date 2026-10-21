@@ -8,6 +8,7 @@ import com.vovoscan.core.common.Freshness
 import com.vovoscan.core.common.userMessage
 import com.vovoscan.feature.catalog.domain.CatalogRepository
 import com.vovoscan.feature.catalog.domain.ContentKind
+import com.vovoscan.feature.catalog.domain.INTERNAL_SOURCE
 import com.vovoscan.feature.catalog.domain.ReadingFormat
 import com.vovoscan.feature.catalog.domain.TitleDetail
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -41,7 +42,19 @@ data class TitleDetailUiState(
     /** Title never opened and no network: nothing to show. */
     val unavailable: Boolean = false,
     val error: String? = null,
-)
+) {
+    /** A comic of our own catalog: each chapter can become a voiced episode (not books, not rule-based sources). */
+    val offersEpisodes: Boolean get() = !isBook && sourceKey == INTERNAL_SOURCE && chapters.isNotEmpty()
+
+    /** "Chapter 98 · The last gate" for a chapter of this title; "" when unknown. */
+    fun chapterLabel(chapterId: String): String = chapters.firstOrNull { it.id == chapterId }?.label.orEmpty()
+
+    /** The chapter after [chapterId] in reading order (the list runs newest to oldest); null for the latest. */
+    fun nextChapterId(chapterId: String): String? {
+        val index = chapters.indexOfFirst { it.id == chapterId }
+        return if (index > 0) chapters[index - 1].id else null
+    }
+}
 
 /** Title page: name, description, chapters. Readable offline once it has been opened. */
 class TitleDetailViewModel(

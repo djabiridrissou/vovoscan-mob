@@ -5,7 +5,9 @@ import com.vovoscan.feature.episodes.domain.Box
 import com.vovoscan.feature.episodes.domain.BubbleSound
 import com.vovoscan.feature.episodes.domain.Direction
 import com.vovoscan.feature.episodes.domain.Episode
+import com.vovoscan.feature.episodes.domain.EpisodeExport
 import com.vovoscan.feature.episodes.domain.EpisodeStatus
+import com.vovoscan.feature.episodes.domain.ExportStatus
 import com.vovoscan.feature.episodes.domain.LoopCue
 import com.vovoscan.feature.episodes.domain.Point
 import com.vovoscan.feature.episodes.domain.Quad
@@ -39,7 +41,20 @@ data class RenderSummaryDto(
     val createdAt: String,
 )
 
-/** `EpisodeOut` (its `export` field, the MP4, is not part of M1 and is ignored). */
+/** `ExportOut`: the MP4 of a render. */
+@Serializable
+data class ExportDto(
+    val status: String,
+    val progress: Int = 0,
+    val url: String? = null,
+    val streamUrl: String? = null,
+    val error: String? = null,
+    val outdated: Boolean = false,
+) {
+    val active: Boolean get() = status == ExportStatus.Queued.wire || status == ExportStatus.Rendering.wire
+}
+
+/** `EpisodeOut`. */
 @Serializable
 data class EpisodeDto(
     val chapterId: String,
@@ -52,10 +67,15 @@ data class EpisodeDto(
     val render: RenderSummaryDto? = null,
     val outdated: Boolean = false,
     val canReread: Boolean = false,
+    val export: ExportDto? = null,
     val updatedAt: String,
 ) {
-    /** Ready or failed: nothing more will change without a new run. */
-    val isFinal: Boolean get() = status == EpisodeStatus.Ready.wire || status == EpisodeStatus.Failed.wire
+    /**
+     * Ready or failed, and no MP4 being made: nothing more will change without a new request. (An export does not
+     * move `updatedAt`; its progress comes in snapshots of the same episode.)
+     */
+    val isFinal: Boolean
+        get() = (status == EpisodeStatus.Ready.wire || status == EpisodeStatus.Failed.wire) && export?.active != true
 }
 
 /** The 409 `EPISODE_BUSY` envelope: `{code, message, data: {error, episode}}`. */
@@ -178,8 +198,13 @@ internal fun EpisodeDto.toDomain(): Episode? {
         outdated = outdated,
         canReread = canReread,
         updatedAtMillis = parseIsoMillis(updatedAt) ?: 0L,
+        export = export?.toDomain(),
     )
 }
+
+/** An unknown status (a newer server) reads as "none": the screen offers to make it, the server settles. */
+internal fun ExportDto.toDomain(): EpisodeExport =
+    EpisodeExport(ExportStatus.from(status) ?: ExportStatus.None, progress.coerceIn(0, 100), url, streamUrl, error, outdated)
 
 private fun List<Double>.box(): Box = Box(this[0], this[1], this[2], this[3])
 

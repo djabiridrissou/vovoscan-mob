@@ -71,10 +71,45 @@ data class RenderSummary(
     val createdAtMillis: Long,
 )
 
+/** Where the MP4 of the render an episode plays is (`ExportStatus` on the server). */
+enum class ExportStatus(
+    val wire: String,
+) {
+    /** Never made (or made by an older export version). */
+    None("none"),
+    Queued("queued"),
+    Rendering("rendering"),
+    Ready("ready"),
+    Failed("failed"),
+    ;
+
+    /** Being made: the live stream keeps going until it is ready or failed. */
+    val active: Boolean get() = this == Queued || this == Rendering
+
+    companion object {
+        fun from(wire: String): ExportStatus? = entries.firstOrNull { it.wire == wire }
+    }
+}
+
+/**
+ * The MP4 of an episode's render (`ExportOut`): [progress] 0-100; once ready, [url] (a signed download, saved as an
+ * attachment named after the chapter) and [streamUrl] (the same file inline). Shared like renders: CPU only, no key.
+ */
+data class EpisodeExport(
+    val status: ExportStatus,
+    val progress: Int,
+    val url: String?,
+    val streamUrl: String?,
+    val error: String?,
+    /** The render was built by older code: preparing again rebuilds it first. */
+    val outdated: Boolean,
+)
+
 /**
  * A chapter's episode, shared with everyone who can see the chapter. [degraded] and [silent] come from the render
  * it plays (null without one); [outdated]: the pages changed or the render was built by older code; [canReread]:
- * the server says this user may run it again with their own keys (the truth: never computed on the device).
+ * the server says this user may run it again with their own keys (the truth: never computed on the device);
+ * [export]: the MP4 of its render (null without a render of the chapter's pages as they are now).
  */
 data class Episode(
     val chapterId: String,
@@ -88,7 +123,11 @@ data class Episode(
     val outdated: Boolean,
     val canReread: Boolean,
     val updatedAtMillis: Long,
+    val export: EpisodeExport? = null,
 ) {
+    /** Something is still being made (the run, or its MP4): worth following live. */
+    val inProgress: Boolean get() = status.active || export?.status?.active == true
+
     /** The stage running now; null once ready or failed. */
     val stage: PipelineStage?
         get() = if (status.active) PipelineStage.from(progress?.stage) ?: PipelineStage.of(status) else null
@@ -171,6 +210,15 @@ interface EpisodesRepository {
         chapterId: String,
         forceRefresh: Boolean = false,
     ): AppResult<Watch>
+
+    /**
+     * `POST …/export`: makes the MP4 of the render the chapter plays (or returns the one ready or being made), and
+     * saves it on the stored episode so the screen shows its progress at once.
+     */
+    suspend fun requestExport(chapterId: String): AppResult<EpisodeExport>
+
+    /** `GET …/export`: the MP4's state with freshly signed URLs (a download needs a link that has not expired). */
+    suspend fun export(chapterId: String): AppResult<EpisodeExport>
 
     suspend fun clearLocal()
 }

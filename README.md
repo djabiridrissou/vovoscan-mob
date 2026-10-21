@@ -15,6 +15,8 @@ cd iosApp && xcodegen && open Vovoscan.xcodeproj
 
 Local API: `http://10.0.2.2:8000/` (Android emulator), `http://localhost:8000/` (iOS simulator).
 Another address: `./gradlew :androidApp:assembleDebug -Pvovoscan.apiBaseUrl=https://…/`.
+On the Android 17 (API 37) emulator the app's requests to `10.0.2.2` never reached the local API (the emulator itself
+could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://localhost:8000/` works.
 
 ## Architecture
 
@@ -104,7 +106,7 @@ Another address: `./gradlew :androidApp:assembleDebug -Pvovoscan.apiBaseUrl=http
 
 - `feature/episodes`: a comic chapter of our catalog made into a voiced episode with the user's own keys, shared with
   everyone who can see the chapter (`api/v1/episodes/chapters/{chapterId}`: `GET`, `POST` prepare, `POST …/reread`,
-  `GET …/events`, `GET …/watch`; the MP4 export is not in the app yet). Nobody pays twice: a usable render answers
+  `GET …/events`, `GET …/watch`, `GET`/`POST …/export`). Nobody pays twice: a usable render answers
   `200` and nothing is queued. `canReread` from the API is the truth, never computed on the device.
 - Offline first: every answer and live snapshot is saved (`episode` table, last known episode per chapter; an older
   `updatedAt` never replaces a newer one); the last watch (timeline + signed URLs) is kept and reused while its URLs
@@ -118,6 +120,12 @@ Another address: `./gradlew :androidApp:assembleDebug -Pvovoscan.apiBaseUrl=http
   TIMELINE chips, step x/y), ready (Watch, Degraded / Silent / Outdated badges, "Prepare again" when outdated, reread
   when `canReread`), failed (the server's error, "Try again"). `409 EPISODE_BUSY` follows the run in progress;
   `422 EPISODE_NOT_SUPPORTED` (a book) hides the feature (`visible` false).
+- MP4 export (`…/export`, 10 requests an hour): `EpisodeExport` rides on the episode (`EpisodeDto.export`, in `GET` and
+  every live snapshot; an export does not move `updatedAt`, so equal timestamps still replace the stored copy). `follow()`
+  keeps going while the MP4 is queued or rendering (`Episode.inProgress`). `EpisodeViewModel` shows a Video section once
+  the episode is ready ("Make a video" / "Making the video ✦ 42%" / "Save video" / "Try again"); `SaveVideo` fetches a
+  fresh signed link (`GET …/export`) and hands it once as `videoDownload` (file name from the signed `name=`); the
+  screen answers `VideoHandled` or `VideoFailed`. 409 and 429 have calm messages (`EpisodeText.exportError`).
 - Which keys a run would use comes through the `KeyStatusProvider` port (hints only), wired in `shared` to the account
   slice: episodes do not know about `account`.
 
@@ -139,6 +147,44 @@ Another address: `./gradlew :androidApp:assembleDebug -Pvovoscan.apiBaseUrl=http
   navigation, end of chapter ("Next chapter →" when the opening screen gave one). The native side calls
   `frame(frameTimeMs, stageW, stageH)` on every display frame and draws and plays exactly what it returns (audio: one
   player per cue id). URLs are refetched 5 minutes before they expire, or on `PlayerIntent.MediaFailed`.
+
+## Screens (account and episodes)
+
+- Settings (4th tab, gear on iOS): Keys (two provider slots, add / replace / remove with a confirmation, privacy note;
+  the form's secret field is a password-type field with no autocorrection and no password AutoFill, emptied whenever
+  `secretFieldResets` changes), Reading model (three options), Costs (period chips, totals, entries), Sign out (also
+  still in Library).
+- Title page of a comic of our catalog (`TitleDetailUiState.offersEpisodes`): each chapter row has an "Episode" chip
+  next to reading it → Episode card → Watch → full-screen player. `nextChapterId(…)` (reading order) gives "Next
+  chapter →"; at the end it swaps the card for the next chapter's (Android `openEpisode`, iOS `EpisodeContainer`).
+- Episode card: Start / Stop on start / stop (Android lifecycle) or appear / disappear (iOS): live events only while it
+  is visible. Video: Android saves through `DownloadManager` (`Movies/vovoscan`, Android 10+; the app's own Movies
+  folder on 8-9); iOS downloads to a temporary file and opens the share sheet (Save Video needs
+  `NSPhotoLibraryAddUsageDescription`, set in `project.yml`).
+
+## Player rendering and audio
+
+- Stage 9:16, centred, letterboxed; dark; controls fade after 3 s while playing (tap toggles); end card; silent hint;
+  `reducedMotion` from the OS (Android "Remove animations", iOS Reduce Motion); screen kept awake while playing.
+- Android (`ui/player`): one Compose `Canvas`; a `withFrameNanos` loop calls `frame(…)` and writes a state read only
+  while drawing (no recomposition per frame; ~12 frames a second while paused). Draw order: backdrop, 55 % black,
+  page clipped to `framing.shape` (a reused `Path`), the bubble's yellow outline, the ghost in a `saveLayer` at
+  `1 - mix`, the veil, the caption (`drawText`, measured with a cached `TextMeasurer`, placement cached per beat).
+  `PageImages`: Coil (cache key = URL without its query, since signed URLs change), page ≤ 2400 px, and a backdrop
+  blurred once per page (72 px copy, three box-blur passes, drawn scaled up with bilinear filtering): no per-frame blur
+  on any API level, so no RenderEffect. `CueAudio`: media3 ExoPlayer per cue id (plays Ogg Opus), volume per frame,
+  pan through a `PanProcessor` in each player's audio sink (StereoPannerNode law), drift check every 300 ms (> 250 ms
+  re-seeks), the next voice line prepared ahead, all paused on `ON_STOP`.
+- iOS (`PlayerView.swift`): `TimelineView(.animation)` + `Canvas` (the Canvas must read `timeline.date`, or SwiftUI does
+  not redraw it); measured at 58-60 fps in the simulator. Images decoded once with ImageIO (≤ 2400 px), backdrop blurred
+  once per page with Core Image; the caption is a SwiftUI `Text` over the stage that changes only with the card. The
+  controls are inserted / removed with `withAnimation` (an implicit `.animation(_:value:)` on their opacity never
+  finished while the stage redraws every frame).
+- **No sound on iOS yet**: AVAudioPlayer does not play the API's Ogg Opus clips (iOS 18.6 simulator: the file parses,
+  `prepareToPlay()` and `play()` return false; AAC plays in the same process; same on macOS 26). AVAudioFile decodes
+  them and AVAudioEngine / AVPlayer play them, so either an engine-based player (per-cue `AVAudioPlayerNode` with
+  `pan`, `volume` and an `AVAudioUnitTimePitch` for the speed) or an AAC variant from the backend is needed. The
+  deployment target stays iOS 16.
 
 ## iOS: known pitfalls
 

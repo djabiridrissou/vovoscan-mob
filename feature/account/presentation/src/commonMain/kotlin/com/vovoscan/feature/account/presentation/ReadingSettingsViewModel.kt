@@ -35,6 +35,9 @@ data class ReadingSettingsUiState(
         get() = ReadingModel.entries.map { ModelOption(it, it.label, it == (saving ?: selected)) }
 
     val footnote: String get() = AccountText.MODEL_FOOTNOTE
+
+    /** The discreet banner while the copy on the device is shown offline. */
+    val offlineNotice: String? get() = if (freshness == Freshness.Offline) AccountText.OFFLINE_COPY else null
 }
 
 sealed interface ReadingSettingsIntent {

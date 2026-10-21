@@ -4,6 +4,7 @@ import com.vovoscan.core.common.AppError
 import com.vovoscan.core.common.AppResult
 import com.vovoscan.core.common.Clock
 import com.vovoscan.feature.episodes.domain.Episode
+import com.vovoscan.feature.episodes.domain.EpisodeExport
 import com.vovoscan.feature.episodes.domain.EpisodesRepository
 import com.vovoscan.feature.episodes.domain.PrepareResult
 import com.vovoscan.feature.episodes.domain.Watch
@@ -12,10 +13,10 @@ import kotlinx.coroutines.flow.Flow
 import kotlin.math.min
 
 /**
- * Episodes, offline first: every answer (GET, prepare, reread, live snapshot) is saved on the device and screens read
- * the saved copy. [follow] keeps an SSE connection while the run goes on: reconnects with backoff (1 s, 2 s, 4 s…
- * up to 30 s) and, after [STREAM_ATTEMPTS] failed connections in a row (or `429 TOO_MANY_STREAMS`), polls `GET`
- * every 10 s, trying the stream again every minute.
+ * Episodes, offline first: every answer (GET, prepare, reread, export, live snapshot) is saved on the device and screens
+ * read the saved copy. [follow] keeps an SSE connection while the run (or the MP4 export) goes on: reconnects with
+ * backoff (1 s, 2 s, 4 s… up to 30 s) and, after [STREAM_ATTEMPTS] failed connections in a row (or
+ * `429 TOO_MANY_STREAMS`), polls `GET` every 10 s, trying the stream again every minute.
  */
 class EpisodesRepositoryImpl(
     private val remote: EpisodesRemoteDataSource,
@@ -130,6 +131,23 @@ class EpisodesRepositoryImpl(
             is AppResult.Err -> if (result.error == AppError.Network && cached != null) AppResult.Ok(cached) else result
         }
     }
+
+    override suspend fun requestExport(chapterId: String): AppResult<EpisodeExport> =
+        exportResult(chapterId, remote.requestExport(chapterId))
+
+    override suspend fun export(chapterId: String): AppResult<EpisodeExport> = exportResult(chapterId, remote.export(chapterId))
+
+    private suspend fun exportResult(
+        chapterId: String,
+        result: AppResult<ExportDto>,
+    ): AppResult<EpisodeExport> =
+        when (result) {
+            is AppResult.Err -> result
+            is AppResult.Ok -> {
+                local.saveExport(chapterId, result.value)
+                AppResult.Ok(result.value.toDomain())
+            }
+        }
 
     override suspend fun clearLocal() = local.clear()
 

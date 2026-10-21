@@ -8,6 +8,7 @@ import com.vovoscan.core.testing.respondJson
 import com.vovoscan.core.testing.testHttpClient
 import com.vovoscan.feature.episodes.data.db.EpisodesDatabase
 import com.vovoscan.feature.episodes.domain.EpisodeStatus
+import com.vovoscan.feature.episodes.domain.ExportStatus
 import com.vovoscan.feature.episodes.domain.PipelineStage
 import com.vovoscan.feature.episodes.domain.PrepareResult
 import io.ktor.client.engine.mock.MockRequestHandleScope
@@ -39,8 +40,16 @@ class EpisodesRepositoryImplTest {
         progress: String = "null",
         degraded: String = "null",
         render: String = "null",
+        export: String = "null",
     ) = """{"chapterId":"c1","status":"$status","progress":$progress,"error":null,"pageCount":12,"degraded":$degraded,""" +
-        """"silent":null,"render":$render,"outdated":false,"canReread":false,"export":null,"updatedAt":"$updatedAt"}"""
+        """"silent":null,"render":$render,"outdated":false,"canReread":false,"export":$export,"updatedAt":"$updatedAt"}"""
+
+    private fun exportJson(
+        status: String,
+        progress: Int = 0,
+        url: String? = null,
+    ) = """{"status":"$status","progress":$progress,"url":${url?.let { "\"$it\"" } ?: "null"},""" +
+        """"streamUrl":null,"error":null,"outdated":false}"""
 
     private val ready =
         episode(
@@ -81,6 +90,75 @@ class EpisodesRepositoryImplTest {
         val events = lines.mapNotNull { parser.line(it) }
         assertEquals(listOf(SseEvent("snapshot", "{\"a\":1,\n\"b\":2}"), SseEvent("message", "plain")), events)
     }
+
+    @Test
+    fun followsAReadyEpisodeWhileItsVideoIsBeingMade() =
+        runTest {
+            val at = "2026-10-21T10:05:00Z"
+            val repo =
+                repository { request ->
+                    assertTrue(request.events)
+                    stream(
+                        sse(
+                            episode("ready", at, export = exportJson("rendering", 10)),
+                            episode("ready", at, export = exportJson("rendering", 60)),
+                            episode("ready", at, export = exportJson("ready", 100, "http://x/v.mp4?download=1")),
+                        ),
+                    )
+                }
+            val result = assertIs<AppResult.Ok<*>>(repo.follow("c1")).value as com.vovoscan.feature.episodes.domain.Episode
+            assertEquals(ExportStatus.Ready, result.export?.status)
+            // Same updatedAt (an export does not move it): every snapshot still replaces the stored one.
+            val stored = repo.observe("c1").first()
+            assertEquals(ExportStatus.Ready, stored?.export?.status)
+            assertEquals("http://x/v.mp4?download=1", stored?.export?.url)
+        }
+
+    @Test
+    fun requestingAVideoPutsItOnTheStoredEpisode() =
+        runTest {
+            var posted = 0
+            val repo =
+                repository { request ->
+                    when {
+                        request.url.encodedPath.endsWith("/export") && request.method == HttpMethod.Post -> {
+                            posted += 1
+                            if (posted == 1) {
+                                respondJson("""{"data":${exportJson("queued")}}""", HttpStatusCode.Accepted)
+                            } else {
+                                err(HttpStatusCode.TooManyRequests, "TOO_MANY_REQUESTS")
+                            }
+                        }
+                        request.url.encodedPath.endsWith(
+                            "/export",
+                        ) -> respondJson("""{"data":${exportJson("ready", 100, "http://x/new")}}""")
+                        else -> respondJson("""{"data":${episode("ready", "2026-10-21T10:05:00Z")}}""")
+                    }
+                }
+            repo.refresh("c1")
+            val queued = assertIs<AppResult.Ok<*>>(repo.requestExport("c1")).value as com.vovoscan.feature.episodes.domain.EpisodeExport
+            assertEquals(ExportStatus.Queued, queued.status)
+            assertEquals(
+                ExportStatus.Queued,
+                repo
+                    .observe("c1")
+                    .first()
+                    ?.export
+                    ?.status,
+            )
+            assertTrue(repo.observe("c1").first()?.inProgress == true)
+            assertEquals(AppResult.Err(AppError.RateLimited), repo.requestExport("c1"))
+            val fresh = assertIs<AppResult.Ok<*>>(repo.export("c1")).value as com.vovoscan.feature.episodes.domain.EpisodeExport
+            assertEquals("http://x/new", fresh.url)
+            assertEquals(
+                "http://x/new",
+                repo
+                    .observe("c1")
+                    .first()
+                    ?.export
+                    ?.url,
+            )
+        }
 
     @Test
     fun noEpisodeYet() =

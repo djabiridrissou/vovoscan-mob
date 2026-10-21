@@ -84,6 +84,9 @@ data class ProviderKeysUiState(
     val secretPlaceholder: String get() = AccountText.SECRET_PLACEHOLDER
     val labelPlaceholder: String get() = AccountText.LABEL_PLACEHOLDER
     val privacyNote: String get() = AccountText.KEY_PRIVACY
+
+    /** The discreet banner while the copy on the device is shown offline. */
+    val offlineNotice: String? get() = if (freshness == Freshness.Offline) AccountText.OFFLINE_COPY else null
 }
 
 internal fun emptySlot(provider: Provider) =

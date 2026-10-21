@@ -56,6 +56,12 @@ interface EpisodesRemoteDataSource {
 
     suspend fun watch(chapterId: String): AppResult<WatchDto>
 
+    /** `POST …/export` (202 queued, 200 already ready or being made). */
+    suspend fun requestExport(chapterId: String): AppResult<ExportDto>
+
+    /** `GET …/export`. */
+    suspend fun export(chapterId: String): AppResult<ExportDto>
+
     /**
      * One connection to `…/events` (server-sent events): calls [onSnapshot] for every `event: snapshot`, until it
      * returns false (the caller has what it needs), the server closes the stream (`Ok`), or the connection fails.
@@ -83,6 +89,12 @@ class KtorEpisodesRemoteDataSource(
 
     override suspend fun watch(chapterId: String): AppResult<WatchDto> =
         http.apiCall<ApiData<WatchDto>> { get(path(chapterId) + "/watch") }.map { it.data }
+
+    override suspend fun requestExport(chapterId: String): AppResult<ExportDto> =
+        http.apiCall<ApiData<ExportDto>> { post(path(chapterId) + "/export") }.map { it.data }
+
+    override suspend fun export(chapterId: String): AppResult<ExportDto> =
+        http.apiCall<ApiData<ExportDto>> { get(path(chapterId) + "/export") }.map { it.data }
 
     private suspend fun run(path: String): AppResult<RunDto> =
         try {

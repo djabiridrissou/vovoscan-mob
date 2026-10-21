@@ -31,6 +31,8 @@ targets:
         UIUserInterfaceStyle: Dark
         UIAppFonts: [DelaGothicOne-Regular.ttf, SpaceGrotesk.ttf]
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+        # The share sheet's "Save Video" for an episode's MP4 (adds to Photos, never reads it).
+        NSPhotoLibraryAddUsageDescription: Saves the episode videos you choose to keep in Photos.
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
     settings:

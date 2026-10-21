@@ -21,6 +21,12 @@ interface EpisodesLocalDataSource {
 
     suspend fun delete(chapterId: String)
 
+    /** Puts [export] on the stored episode (if any), keeping its `updatedAt`: an export does not move it. */
+    suspend fun saveExport(
+        chapterId: String,
+        export: ExportDto,
+    )
+
     suspend fun watch(chapterId: String): Watch?
 
     suspend fun saveWatch(watch: WatchDto)
@@ -52,6 +58,21 @@ class SqlEpisodesLocalDataSource(
                 }
             }
         }
+
+    override suspend fun saveExport(
+        chapterId: String,
+        export: ExportDto,
+    ) {
+        withContext(io) {
+            queries.transaction {
+                val body = queries.episode(chapterId).executeAsOneOrNull() ?: return@transaction
+                val stored = decodeEpisode(body) ?: return@transaction
+                val updated = parseIsoMillis(stored.updatedAt) ?: 0L
+                val next = stored.copy(export = export)
+                queries.putEpisode(chapterId, next.status, updated, ApiJson.encodeToString(EpisodeDto.serializer(), next))
+            }
+        }
+    }
 
     override suspend fun delete(chapterId: String) {
         withContext(io) { queries.deleteEpisode(chapterId) }

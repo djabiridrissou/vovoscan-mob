@@ -88,6 +88,8 @@ class PlayerViewModelTest {
             val state = vm.state.value
             assertTrue(state.ended)
             assertFalse(state.playing)
+            // The clock shows the whole length at the end ("0:03 / 0:03").
+            assertEquals(state.durationMs, state.positionMs)
             assertEquals(2, state.beat)
             assertEquals("Next chapter →", state.nextLabel)
             assertEquals("End of chapter", state.endTitle)

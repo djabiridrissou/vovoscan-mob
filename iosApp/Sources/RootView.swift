@@ -1,7 +1,7 @@
 import Shared
 import SwiftUI
 
-/// Root: sign-in, or the Catalog / Library / Sources tabs. The session comes from shared Kotlin.
+/// Root: sign-in, or the Catalog / Library / Sources / Settings tabs. The session comes from shared Kotlin.
 struct RootView: View {
     @StateObject private var session = SessionModel()
 
@@ -18,6 +18,8 @@ struct RootView: View {
                         .tabItem { Label("Library", systemImage: "books.vertical") }
                     NavigationStack { SourcesView() }
                         .tabItem { Label("Sources", systemImage: "square.stack.3d.up") }
+                    NavigationStack { SettingsView(onSignOut: session.signOut) }
+                        .tabItem { Label("Settings", systemImage: "gearshape") }
                 }
             }
         }

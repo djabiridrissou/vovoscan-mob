@@ -49,10 +49,7 @@ class EpisodeViewModelTest {
                 listOf("Your Anthropic key (•••• abcd) reads the bubbles.", "No ElevenLabs key: the episode stays silent."),
                 state.keyLines,
             )
-            assertEquals(
-                "Without an Anthropic key the bubbles stay unread; without an ElevenLabs key the episode stays silent.",
-                state.keyWarning,
-            )
+            assertEquals("Add the missing key in Settings.", state.keyWarning)
             assertEquals(1, keys.refreshes)
             keys.status.value = KeyStatus(true, "abcd", "9876")
             advanceUntilIdle()

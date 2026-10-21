@@ -12,6 +12,7 @@ object EpisodeText {
     const val READY = "Episode ready."
     const val FAILED = "Preparation failed."
     const val LOADING = "Checking the episode…"
+    const val OFFLINE_COPY = "Offline: showing what's saved on this device."
     const val UNAVAILABLE_OFFLINE = "You're offline. The episode shows once you're back online."
     const val PREPARE = "Prepare episode"
     const val PREPARE_AGAIN = "Prepare again"
@@ -29,7 +30,9 @@ object EpisodeText {
     const val NOTE_SILENT = "No voices: it was prepared without an ElevenLabs key."
     const val NOTE_OUTDATED = "The chapter or the pipeline changed since this episode was made. Prepare it again to catch up."
     const val NOTE_REREAD = "Your keys can improve it."
-    const val KEY_WARNING = "Without an Anthropic key the bubbles stay unread; without an ElevenLabs key the episode stays silent."
+
+    // The key lines already say what each missing key costs; this only says where to fix it.
+    const val KEY_WARNING = "Add the missing key in Settings."
     const val KEYS_DISABLED = "Keys are turned off on this server: the episode will be unread and silent."
     const val COST_NOTE = "Your own keys pay for this run. Everyone can watch the result."
     const val OFFLINE_WRITE = "You're offline. Connect to the internet to prepare this episode."
@@ -64,6 +67,79 @@ object EpisodeText {
             error is AppError.Rejected && error.code == "CHAPTER_NOT_FOUND" -> CHAPTER_NOT_FOUND
             else -> error.userMessage()
         }
+
+    // Video (MP4 export).
+    const val MAKE_VIDEO = "Make a video"
+    const val SAVE_VIDEO = "Save video"
+    const val GETTING_VIDEO = "Getting the video…"
+    const val VIDEO_NONE = "No video yet."
+    const val VIDEO_NONE_DETAIL = "Make an MP4 of this episode to keep or share. It costs no key."
+    const val VIDEO_QUEUED_LABEL = "Video queued"
+    const val VIDEO_QUEUED = "Video queued. It takes a few minutes; you can leave this screen."
+    const val VIDEO_READY = "Video ready."
+    const val VIDEO_READY_DETAIL = "An MP4 of the episode, 1080 × 1920."
+    const val VIDEO_OUTDATED = "Made from the episode as it was prepared. Prepare it again for the latest version."
+    const val VIDEO_FAILED = "The video couldn't be made."
+    const val VIDEO_GONE = "This video isn't available anymore. Make it again."
+    const val VIDEO_DOWNLOAD_FAILED = "The video couldn't be downloaded. Try again."
+    const val VIDEO_OFFLINE = "You're offline. Connect to the internet to get the video."
+    const val VIDEO_RATE_LIMITED = "You can ask for 10 videos an hour. Try again later."
+    const val VIDEO_FILE = "vovoscan episode.mp4"
+
+    /** "Making the video ✦ 42%". */
+    fun videoProgress(percent: Int): String = "Making the video ✦ ${percent.coerceIn(0, 100)}%"
+
+    /** Making or saving the video. */
+    fun exportError(error: AppError): String =
+        when {
+            error == AppError.Network -> VIDEO_OFFLINE
+            error == AppError.RateLimited -> VIDEO_RATE_LIMITED
+            error is AppError.Rejected && error.code == "EPISODE_NOT_READY" -> NOT_READY
+            error is AppError.Rejected && error.code == "EPISODE_OUTDATED" -> OUTDATED
+            error is AppError.Rejected && error.code == "CHAPTER_NOT_FOUND" -> CHAPTER_NOT_FOUND
+            else -> error.userMessage()
+        }
+
+    /** The file name the server signed into the download link (`name=`), else a plain one. Always `.mp4`. */
+    fun videoFileName(url: String): String {
+        val query = url.substringAfter('?', "").substringBefore('#')
+        val raw =
+            query
+                .split('&')
+                .firstOrNull { it.startsWith("name=") }
+                ?.removePrefix("name=")
+                ?.let(::percentDecode)
+                // No path separators, reserved or control characters in a file name.
+                ?.map { if (it < ' ' || it in "/\\:*?\"<>|") ' ' else it }
+                ?.joinToString("")
+                ?.trim()
+                .orEmpty()
+        if (raw.isEmpty()) return VIDEO_FILE
+        return if (raw.endsWith(".mp4", ignoreCase = true)) raw else "$raw.mp4"
+    }
+
+    private fun percentDecode(text: String): String {
+        val bytes = ArrayList<Byte>(text.length)
+        var i = 0
+        while (i < text.length) {
+            val c = text[i]
+            when {
+                c == '+' -> bytes += ' '.code.toByte()
+                c == '%' && i + 2 < text.length -> {
+                    val hex = text.substring(i + 1, i + 3).toIntOrNull(16)
+                    if (hex != null) {
+                        bytes += hex.toByte()
+                        i += 3
+                        continue
+                    }
+                    bytes += c.code.toByte()
+                }
+                else -> c.toString().encodeToByteArray().forEach { bytes += it }
+            }
+            i += 1
+        }
+        return bytes.toByteArray().decodeToString()
+    }
 
     // Player.
     const val PLAYER_LOADING = "Loading the episode…"

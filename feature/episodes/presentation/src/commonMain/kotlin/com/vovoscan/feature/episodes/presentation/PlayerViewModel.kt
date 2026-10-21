@@ -203,11 +203,13 @@ class PlayerViewModel(
             position += min(MAX_STEP_MS, max(0.0, frameTimeMs - lastTick)) * current.speed
         }
         lastTick = frameTimeMs
-        if (current.playing && position >= p.durationMs) {
+        val ending = current.playing && position >= p.durationMs
+        if (ending) {
             position = p.durationMs
             mutableState.update { it.copy(playing = false, ended = true) }
         }
-        publish(p)
+        // At the end the clock shows the full length, not the last whole second published.
+        publish(p, force = ending)
         val frame = p.frame(position, stageWidth, stageHeight, playing = state.value.playing, reducedMotion = reducedMotion) ?: return null
         return if (state.value.muted) frame.copy(audio = frame.audio.map { it.copy(gain = 0.0) }) else frame
     }

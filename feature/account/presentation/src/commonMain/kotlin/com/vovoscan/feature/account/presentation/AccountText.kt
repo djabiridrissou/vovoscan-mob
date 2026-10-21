@@ -15,6 +15,7 @@ object AccountText {
     const val KEYS_DISABLED = "Keys are turned off on this server."
     const val OFFLINE_KEYS = "You're offline. Connect to the internet to change your keys."
     const val OFFLINE_MODEL = "You're offline. Connect to the internet to change the model."
+    const val OFFLINE_COPY = "Offline: showing what's saved on this device."
     const val OFFLINE_USAGE = "You're offline. Costs show once you're back online."
     const val SECRET_MISSING = "Paste your key."
     const val SECRET_INVALID = "This doesn't look like a key. Check that you copied all of it."

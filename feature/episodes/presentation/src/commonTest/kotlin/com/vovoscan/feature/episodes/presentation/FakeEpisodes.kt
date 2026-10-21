@@ -3,8 +3,10 @@ package com.vovoscan.feature.episodes.presentation
 import com.vovoscan.core.common.AppResult
 import com.vovoscan.feature.episodes.domain.Box
 import com.vovoscan.feature.episodes.domain.Episode
+import com.vovoscan.feature.episodes.domain.EpisodeExport
 import com.vovoscan.feature.episodes.domain.EpisodeStatus
 import com.vovoscan.feature.episodes.domain.EpisodesRepository
+import com.vovoscan.feature.episodes.domain.ExportStatus
 import com.vovoscan.feature.episodes.domain.KeyStatus
 import com.vovoscan.feature.episodes.domain.KeyStatusProvider
 import com.vovoscan.feature.episodes.domain.LoopCue
@@ -28,6 +30,7 @@ internal fun episode(
     outdated: Boolean = false,
     canReread: Boolean = false,
     render: Boolean = status == EpisodeStatus.Ready,
+    export: EpisodeExport? = null,
 ) = Episode(
     chapterId = "c1",
     status = status,
@@ -40,6 +43,7 @@ internal fun episode(
     outdated = outdated,
     canReread = canReread,
     updatedAtMillis = 0,
+    export = export,
 )
 
 internal class FakeKeyStatus(
@@ -106,6 +110,27 @@ internal class FakeEpisodes(
     ): AppResult<Watch> {
         watchCalls += forceRefresh
         return watchResults.removeFirstOrNull() ?: AppResult.Err(com.vovoscan.core.common.AppError.Network)
+    }
+
+    var exportRequests = 0
+    var exportFetches = 0
+    var exportRequestResult: () -> AppResult<EpisodeExport> = {
+        AppResult.Ok(EpisodeExport(ExportStatus.Queued, 0, null, null, null, false))
+    }
+    var exportResult: () -> AppResult<EpisodeExport> = { AppResult.Err(com.vovoscan.core.common.AppError.Network) }
+
+    override suspend fun requestExport(chapterId: String): AppResult<EpisodeExport> {
+        exportRequests += 1
+        val result = exportRequestResult()
+        if (result is AppResult.Ok) stored.value = stored.value?.copy(export = result.value)
+        return result
+    }
+
+    override suspend fun export(chapterId: String): AppResult<EpisodeExport> {
+        exportFetches += 1
+        val result = exportResult()
+        if (result is AppResult.Ok) stored.value = stored.value?.copy(export = result.value)
+        return result
     }
 
     override suspend fun clearLocal() = Unit
