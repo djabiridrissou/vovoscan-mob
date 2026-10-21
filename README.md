@@ -11,7 +11,12 @@ a local copy so it works offline. Brand: `brand/BRAND.md` (copy of the shared br
 ./gradlew -p build-logic test
 scripts/fetch-fonts.sh                     # brand fonts (otherwise, the system font)
 cd iosApp && xcodegen && open Vovoscan.xcodeproj
+cd iosApp && xcodebuild test -project Vovoscan.xcodeproj -scheme Vovoscan \
+  -destination 'platform=iOS Simulator,name=iPhone 16 Pro,OS=18.6' -derivedDataPath build -only-testing:VovoscanAudioTests
 ```
+
+The iOS deployment target is **iOS 18.4** (`iosApp/project.yml`): the first iOS that reads the API's Ogg Opus audio
+(see "iOS audio" below).
 
 Local API: `http://10.0.2.2:8000/` (Android emulator), `http://localhost:8000/` (iOS simulator).
 Another address: `./gradlew :androidApp:assembleDebug -Pvovoscan.apiBaseUrl=https://…/`.
@@ -180,11 +185,43 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   once per page with Core Image; the caption is a SwiftUI `Text` over the stage that changes only with the card. The
   controls are inserted / removed with `withAnimation` (an implicit `.animation(_:value:)` on their opacity never
   finished while the stage redraws every frame).
-- **No sound on iOS yet**: AVAudioPlayer does not play the API's Ogg Opus clips (iOS 18.6 simulator: the file parses,
-  `prepareToPlay()` and `play()` return false; AAC plays in the same process; same on macOS 26). AVAudioFile decodes
-  them and AVAudioEngine / AVPlayer play them, so either an engine-based player (per-cue `AVAudioPlayerNode` with
-  `pan`, `volume` and an `AVAudioUnitTimePitch` for the speed) or an AAC variant from the backend is needed. The
-  deployment target stays iOS 16.
+- iOS audio (`iosApp/Sources/Audio`): AVAudioPlayer refuses the API's Ogg Opus clips (the file parses,
+  `prepareToPlay()` / `play()` return false), AVAudioFile decodes them, so the player plays them on AVAudioEngine (the
+  backend keeps Ogg Opus only). `PlayerAudio` (one per player screen, owned by `StageDriver`) gets each frame's cues
+  (`CueState`, a Swift copy of `AudioCue`) and the play state / speed. Graph: one `AVAudioPlayerNode` per cue id
+  (`volume` = gain, `pan` = pan, set every frame) → a cue `AVAudioMixerNode` → [`AVAudioUnitTimePitch`, rate = speed,
+  pitch kept] → main mixer → output. `CueMixer`: a node is attached and starts at `offsetMs` when its id appears
+  (the rest of the clip shares the clip's memory, `bufferListNoCopy`), stopped and detached when it goes; a loop
+  schedules the rest of the clip from the offset, then the whole clip with `.loops`: back to back, sample-exact. Drift:
+  every 300 ms, a node more than 250 ms from its cue's offset (circular for loops) is scheduled again from the offset
+  (the Android rule). Pause pauses every node and the engine; the engine starts (and the session activates) only when a
+  node must play. The time-pitch stage is in the graph only away from 1×: it reads ~4 000 frames (~80 ms) ahead of
+  what is heard, which would delay gain, pan and pause by as much; switching speed rewires it with the engine paused
+  for a moment. A new node (attached and connected while the engine runs) is heard 0 to 3 render cycles after it is
+  started (0-50 ms in the offline tests, 800-frame cycles); the drift rule tolerates it.
+  `ClipStore`: each clip downloaded once to `Caches/EpisodeAudio/<sha256 of the URL without its query>.ogg` (trimmed to
+  200 MB, oldest first), decoded whole with AVAudioFile to float PCM at 48 kHz (AVAudioConverter if the rate differs;
+  voices mono, beds/music stereo, more channels mixed down to two), kept in an LRU of 96 MB (about 4 minutes of
+  stereo); the next beat's voice line is warmed (`prefetchUrls`). A download or decode failure sends
+  `PlayerIntent.MediaFailed(url)` once (not retried for 30 s unless the URL changes). Audio session: `.playback` (plays
+  with the silent switch on); an interruption pauses (and resets the nodes), its end resumes if the episode was
+  playing and the system says `shouldResume`; headphones / Bluetooth gone (`oldDeviceUnavailable`) pauses; an engine
+  configuration change resets the nodes (made again at their offsets on the next frame); a media-services reset
+  rebuilds the engine; closing the player stops the engine and deactivates the session (`notifyOthersOnDeactivation`).
+- iOS audio tests (`iosApp/Tests/Audio`, target `VovoscanAudioTests`, in the `Vovoscan` scheme): `Sources/Audio`
+  compiled as it is, an `AVAudioEngine` in offline manual rendering driven at 60 frames a second, Ogg Opus fixtures
+  made the backend's way (`make-fixtures.sh`: ffmpeg libopus 48 kHz, a mono `say` voice line, a stereo 2.025 s loop).
+  They check the decoding (Apple's decode equals ffmpeg's, Opus pre-skip and end trim applied), start at the offset,
+  gain and pan, the loop seam (output bit-identical to the clip played back to back, no silent millisecond), speed
+  0.75 / 1.5 keeping the pitch (tone and voice fundamental), pause / resume, drift re-sync, removal, failures, the LRU.
+- Ogg Opus on iOS needs **iOS 18.4**: the audio tests pass on the iOS 18.4, 18.6 and 26.5 simulators (and AVAudioFile
+  reads the clips on macOS 26); on the iOS 18.2 simulator `AVAudioFile` refuses them (`ExtAudioFileOpenURL` error
+  `'typ?'`, kAudioFileUnsupportedFileTypeError: no Ogg reader before 18.4). No iOS 16 or 17 runtime was installed, but
+  they are older than 18.2. So the deployment target went from iOS 16 to 18.4; a lower one would play episodes silent
+  (every clip reported as failed) unless the backend also serves another format (AAC / Opus in CAF or MP4).
+- The timeline's loop length (`LoopCue.durationMs`, ffprobe's container duration) includes the Opus pre-skip
+  (6.5 ms), so it is a few ms longer than the decoded loop: a bed slowly drifts from the clock and is re-synced once
+  250 ms away (after ~40 turns of the loop). Android has the same; fixing it is a backend change (the decoded length).
 
 ## iOS: known pitfalls
 
@@ -201,6 +238,9 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
 - No Kotlin property named `description` in an exported state: on iOS it is `toString()` (NSObject).
 - Simulator: build signed (`CODE_SIGN_IDENTITY="-"`, which Xcode does by default), otherwise the Keychain
   refuses to write and the session does not persist.
+- AVAudioEngine: `AVAudioPlayerNode.play()` while the engine is not running raises an Objective-C exception (a
+  crash): `CueMixer` starts the engine first and never plays a node in a stopped engine. Do not run audio work in a
+  SwiftUI view's body other than through `PlayerAudio.sync` (cheap: volume, pan, a drift check every 300 ms).
 
 ## UI
 

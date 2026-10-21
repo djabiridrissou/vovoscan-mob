@@ -17,7 +17,7 @@ struct CatalogView: View {
                     model.send(CatalogIntentSelectSource(key: $0))
                 }
                 .onAppear { model.send(CatalogIntentSourcesChanged(keys: sources.state.chips.map(\.key))) }
-                .onChange(of: sources.state.chips.map(\.key)) { model.send(CatalogIntentSourcesChanged(keys: $0)) }
+                .onChange(of: sources.state.chips.map(\.key)) { _, keys in model.send(CatalogIntentSourcesChanged(keys: keys)) }
                 IntentField(label: "Search", text: $query, value: model.state.query) { model.send(CatalogIntentQuery(value: $0)) }
                 if let notice = model.state.offlineNotice { OfflineNotice(text: notice) }
                 if let error = model.state.error { ErrorText(text: error) }

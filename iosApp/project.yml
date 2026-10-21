@@ -3,8 +3,10 @@
 name: Vovoscan
 options:
   bundleIdPrefix: com.vovoscan
+  # 18.4: the first iOS whose AudioToolbox reads Ogg (the API's episode audio is Ogg Opus); the 18.2 simulator answers
+  # kAudioFileUnsupportedFileTypeError, 18.4 plays it (iosApp/Tests/Audio). See CLAUDE.md, "iOS audio".
   deploymentTarget:
-    iOS: "16.0"
+    iOS: "18.4"
 settings:
   base:
     SWIFT_VERSION: "5.0"
@@ -14,6 +16,8 @@ targets:
   Vovoscan:
     type: application
     platform: iOS
+    scheme:
+      testTargets: [VovoscanAudioTests]
     sources:
       - Sources
       # Dela Gothic One and Space Grotesk (scripts/fetch-fonts.sh); if missing, the system font is used instead.
@@ -56,3 +60,17 @@ targets:
         script: |
           cd "$SRCROOT/.."
           ./gradlew :shared:embedAndSignAppleFrameworkForXcode
+  # The episode audio (Sources/Audio: AVAudioEngine, Ogg Opus) tested offline in the simulator, without the app or the
+  # Kotlin framework: xcodebuild test -project Vovoscan.xcodeproj -scheme Vovoscan -destination 'platform=iOS Simulator,name=iPhone 16 Pro,OS=18.6'
+  VovoscanAudioTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - Sources/Audio
+      - path: Tests/Audio
+        excludes: ["*.sh"]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.vovoscan.audio-tests
+        GENERATE_INFOPLIST_FILE: YES
+        EXCLUDED_ARCHS[sdk=iphonesimulator*]: x86_64

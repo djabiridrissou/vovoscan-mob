@@ -13,8 +13,8 @@ struct PlayerRoute: Hashable, Identifiable {
 
 /// The full-screen episode player: a 9:16 stage (letterboxed on other screens) redrawn at the display's rate by a
 /// `TimelineView(.animation)` + `Canvas`, with the controls over it (they fade while playing). Each frame asks the
-/// shared `PlayerViewModel.frame` what to draw; this view only draws it. No sound on iOS yet: AVAudioPlayer does not
-/// play the API's Ogg Opus clips (see CLAUDE.md, "Episodes on iOS").
+/// shared `PlayerViewModel.frame` what to draw and play; this view only draws it and hands the frame's audio cues to
+/// `PlayerAudio` (AVAudioEngine, see `Audio/`).
 struct PlayerView: View {
     @StateObject private var model: PlayerModel
     @StateObject private var stage = StageDriver()
@@ -67,26 +67,37 @@ struct PlayerView: View {
             try? await Task.sleep(nanoseconds: 3_000_000_000)
             if !Task.isCancelled { withAnimation(.easeInOut(duration: 0.25)) { controlsShown = false } }
         }
-        .onAppear { stage.onFailed = { [weak model] url in model?.send(PlayerIntentMediaFailed(url: url)) } }
+        .onAppear {
+            let player = model
+            stage.onFailed = { [weak player] url in player?.send(PlayerIntentMediaFailed(url: url)) }
+            stage.audio.onPause = { [weak player] in player?.send(PlayerIntentPause.shared) }
+            stage.audio.onResume = { [weak player] in player?.send(PlayerIntentPlay.shared) }
+        }
         // Starts once, when the episode is loaded.
-        .onChange(of: model.state.ready) { ready in
+        .onChange(of: model.state.ready) { _, ready in
             if ready && !started {
                 started = true
                 model.send(PlayerIntentPlay.shared)
             }
         }
-        // Warm the next beat's page.
-        .onChange(of: model.state.beat) { beat in
+        // Warm what the next beat needs: its page image and its voice line.
+        .onChange(of: model.state.beat) { _, beat in
             model.viewModel.plan?.prefetchUrls(beat: beat).forEach { url in
-                if model.state.pageUrls.contains(url) { stage.images.request(url) }
+                if model.state.pageUrls.contains(url) { stage.images.request(url) } else { stage.audio.prefetch(url) }
             }
         }
-        // The screen stays on while the episode plays.
-        .onChange(of: model.state.playing) { UIApplication.shared.isIdleTimerDisabled = $0 }
-        .onChange(of: scenePhase) { phase in
+        // The screen stays on while the episode plays; the sound follows the clock even when no frame comes.
+        .onChange(of: model.state.playing) { _, playing in
+            UIApplication.shared.isIdleTimerDisabled = playing
+            stage.audio.setPlaying(playing)
+        }
+        .onChange(of: scenePhase) { _, phase in
             if phase != .active { model.send(PlayerIntentPause.shared) }
         }
-        .onDisappear { UIApplication.shared.isIdleTimerDisabled = false }
+        .onDisappear {
+            UIApplication.shared.isIdleTimerDisabled = false
+            stage.audio.close()
+        }
     }
 
     private var controls: some View {
@@ -224,9 +235,9 @@ private struct StageView: View {
     }
 }
 
-/// Asks the shared player for the frame and draws it: backdrop (blurred once per page, darkened), the page clipped
-/// to the panel's outline, the bubble's discreet outline, the fading previous shot, the opening veil. Publishes the
-/// caption only when it changes.
+/// Asks the shared player for the frame, draws it and plays its sound: backdrop (blurred once per page, darkened), the
+/// page clipped to the panel's outline, the bubble's discreet outline, the fading previous shot, the opening veil; the
+/// audio cues go to `PlayerAudio`. Publishes the caption only when it changes.
 @MainActor
 final class StageDriver: ObservableObject {
     struct Caption: Equatable {
@@ -243,8 +254,12 @@ final class StageDriver: ObservableObject {
     @Published private(set) var caption: Caption?
     @Published private(set) var spoken = ""
     let images = StageImages()
+    let audio = PlayerAudio()
     var onFailed: (String) -> Void = { _ in } {
-        didSet { images.onFailed = onFailed }
+        didSet {
+            images.onFailed = onFailed
+            audio.onFailed = onFailed
+        }
     }
     private var placements: [String: CaptionPlacement] = [:]
 
@@ -259,6 +274,8 @@ final class StageDriver: ObservableObject {
         else { return }
         images.request(frame.shot.pageUrl)
         if let ghost = frame.ghost { images.request(ghost.pageUrl) }
+        let ui = viewModel.state.value
+        audio.sync(frame.audio.map(CueState.init), playing: ui.playing, speed: ui.speed)
         drawShot(frame.shot, in: &context, size: size)
         if let ghost = frame.ghost {
             let alpha = max(0, min(1, 1 - frame.shot.framing.mix))
@@ -427,6 +444,12 @@ final class StageImages {
             kCGImageSourceShouldCacheImmediately: true,
         ]
         return CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary)
+    }
+}
+
+extension CueState {
+    init(_ cue: AudioCue) {
+        self.init(id: cue.id, url: cue.url, offsetMs: cue.offsetMs, gain: cue.gain, pan: cue.pan, loop: cue.loop)
     }
 }
 

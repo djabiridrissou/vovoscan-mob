@@ -188,7 +188,7 @@ private struct KeyForm: View {
                     .padding(.vertical, 10)
                     .background(Color.brandInputBg, in: RoundedRectangle(cornerRadius: 8))
                     .overlay(RoundedRectangle(cornerRadius: 8).stroke(state.secretError == nil ? Color.brandLine : Color.brandDanger, lineWidth: 1))
-                    .onChange(of: secret) { model.send(ProviderKeysIntentSecretChanged(value: $0)) }
+                    .onChange(of: secret) { _, typed in model.send(ProviderKeysIntentSecretChanged(value: typed)) }
                 if let error = state.secretError { ErrorText(text: error) }
             }
             IntentField(label: "Label", text: $label, value: state.formLabel, error: state.labelError, placeholder: state.labelPlaceholder) {
@@ -211,7 +211,7 @@ private struct KeyForm: View {
         .background(Color.brandInk2, in: RoundedRectangle(cornerRadius: 12))
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.brandRed, lineWidth: 1))
         // Emptied right after sending (whatever the answer) and when the form closes.
-        .onChange(of: state.secretFieldResets) { _ in secret = "" }
+        .onChange(of: state.secretFieldResets) { secret = "" }
     }
 }
 

@@ -17,7 +17,7 @@ struct PrimaryButtonStyle: ButtonStyle {
             )
             .offset(x: 6 - shadow, y: 6 - shadow)
             .animation(.easeOut(duration: 0.15), value: configuration.isPressed)
-            .onChange(of: configuration.isPressed) { pressed in
+            .onChange(of: configuration.isPressed) { _, pressed in
                 if pressed { UIImpactFeedbackGenerator(style: .light).impactOccurred() }
             }
     }
@@ -137,8 +137,8 @@ struct IntentField: View {
     var body: some View {
         BrandField(label: label, text: $text, error: error, secret: secret, keyboard: keyboard, placeholder: placeholder, help: help)
             .onAppear { if text.isEmpty { text = value } }
-            .onChange(of: text) { onChange($0) }
-            .onChange(of: value) { if $0.isEmpty && !text.isEmpty { text = "" } }
+            .onChange(of: text) { _, typed in onChange(typed) }
+            .onChange(of: value) { _, latest in if latest.isEmpty && !text.isEmpty { text = "" } }
     }
 }
 

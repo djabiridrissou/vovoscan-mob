@@ -55,7 +55,7 @@ struct SourceDetailView: View {
         } message: {
             Text(model.state.hostsConfirmation ?? "")
         }
-        .onChange(of: model.state.gone) { gone in if gone { dismiss() } }
+        .onChange(of: model.state.gone) { _, gone in if gone { dismiss() } }
         .task { await model.observe() }
     }
 

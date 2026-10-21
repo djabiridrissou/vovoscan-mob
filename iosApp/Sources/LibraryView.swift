@@ -55,7 +55,7 @@ struct LibraryView: View {
         .navigationDestination(for: ReaderRoute.self) { ReaderContainer(route: $0) }
         // Two features side by side, unaware of each other: titles of a source no longer listed show "Source removed".
         .onAppear { model.send(LibraryIntentSourcesChanged(keys: sources.state.sourceKeys)) }
-        .onChange(of: sources.state.sourceKeys) { model.send(LibraryIntentSourcesChanged(keys: $0)) }
+        .onChange(of: sources.state.sourceKeys) { _, keys in model.send(LibraryIntentSourcesChanged(keys: keys)) }
         .task { await model.observe() }
         .task { await sources.observe() }
     }

@@ -55,7 +55,7 @@ struct EpisodeView: View {
         .onAppear { model.send(EpisodeIntentStart.shared) }
         .onDisappear { model.send(EpisodeIntentStop.shared) }
         // A fresh download link from the ViewModel: download it, then the share sheet (Save Video, Save to Files…).
-        .onChange(of: model.state.videoDownload?.id) { _ in
+        .onChange(of: model.state.videoDownload?.id) {
             guard let download = model.state.videoDownload else { return }
             Task {
                 if let file = await VideoFile.download(download.url, as: download.fileName) {
