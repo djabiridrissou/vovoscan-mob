@@ -1,0 +1,40 @@
+-- The user's provider keys as the server lists them: provider, hint (last 4 characters), label and dates.
+-- The secret itself is never stored on the device: it is typed once and sent once, in the request body.
+CREATE TABLE provider_key (
+    id TEXT NOT NULL PRIMARY KEY,
+    provider TEXT NOT NULL,
+    hint TEXT NOT NULL,
+    label TEXT,
+    created_at INTEGER NOT NULL,
+    last_used_at INTEGER
+);
+
+-- Small values: "byok_enabled" ("1" / "0", present once the key list was read), "reading_model".
+CREATE TABLE account_value (
+    name TEXT NOT NULL PRIMARY KEY,
+    value TEXT NOT NULL
+);
+
+keys:
+SELECT * FROM provider_key ORDER BY provider, created_at;
+
+putKey:
+INSERT OR REPLACE INTO provider_key (id, provider, hint, label, created_at, last_used_at) VALUES (?, ?, ?, ?, ?, ?);
+
+deleteKey:
+DELETE FROM provider_key WHERE id = ?;
+
+deleteKeysOf:
+DELETE FROM provider_key WHERE provider = ?;
+
+clearKeys:
+DELETE FROM provider_key;
+
+value:
+SELECT value FROM account_value WHERE name = ?;
+
+putValue:
+INSERT OR REPLACE INTO account_value (name, value) VALUES (?, ?);
+
+clearValues:
+DELETE FROM account_value;

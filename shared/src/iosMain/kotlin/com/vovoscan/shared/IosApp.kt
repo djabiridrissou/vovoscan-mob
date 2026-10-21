@@ -5,11 +5,16 @@ import androidx.lifecycle.ViewModelStore
 import com.vovoscan.core.database.DatabaseDriverFactory
 import com.vovoscan.core.security.KeychainSecureStore
 import com.vovoscan.core.security.SecureStore
+import com.vovoscan.feature.account.presentation.ProviderKeysViewModel
+import com.vovoscan.feature.account.presentation.ReadingSettingsViewModel
+import com.vovoscan.feature.account.presentation.UsageViewModel
 import com.vovoscan.feature.auth.domain.AuthRepository
 import com.vovoscan.feature.auth.presentation.SessionViewModel
 import com.vovoscan.feature.auth.presentation.SignInViewModel
 import com.vovoscan.feature.catalog.presentation.CatalogViewModel
 import com.vovoscan.feature.catalog.presentation.TitleDetailViewModel
+import com.vovoscan.feature.episodes.presentation.EpisodeViewModel
+import com.vovoscan.feature.episodes.presentation.PlayerViewModel
 import com.vovoscan.feature.library.presentation.FollowViewModel
 import com.vovoscan.feature.library.presentation.LibraryViewModel
 import com.vovoscan.feature.reader.presentation.ReaderViewModel
@@ -86,6 +91,20 @@ class ViewModels : KoinComponent {
         startPage: Int,
     ): ReaderViewModel =
         remember("reader:$sourceKey/$chapterId") { get<ReaderViewModel> { parametersOf(sourceKey, titleId, chapterId, startPage) } }
+
+    fun providerKeys(): ProviderKeysViewModel = remember("providerKeys") { get<ProviderKeysViewModel>() }
+
+    fun readingSettings(): ReadingSettingsViewModel = remember("readingSettings") { get<ReadingSettingsViewModel>() }
+
+    fun usage(): UsageViewModel = remember("usage") { get<UsageViewModel>() }
+
+    fun episode(chapterId: String): EpisodeViewModel = remember("episode:$chapterId") { get<EpisodeViewModel> { parametersOf(chapterId) } }
+
+    /** `nextChapterId`: the chapter after this one when the opening screen knows it ("Next chapter →" at the end). */
+    fun player(
+        chapterId: String,
+        nextChapterId: String?,
+    ): PlayerViewModel = remember("player:$chapterId") { get<PlayerViewModel> { parametersOf(chapterId, nextChapterId) } }
 
     fun clear() = store.clear()
 

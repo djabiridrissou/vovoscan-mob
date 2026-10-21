@@ -8,7 +8,7 @@ plugins {
     id("co.touchlab.skie")
 }
 
-val features = listOf("auth", "catalog", "library", "reader", "sources")
+val features = listOf("account", "auth", "catalog", "episodes", "library", "reader", "sources")
 
 kotlin {
     val xcframework = XCFramework("Shared")

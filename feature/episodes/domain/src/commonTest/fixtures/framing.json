@@ -1,0 +1,4154 @@
+{
+  "frameView": [
+    {
+      "name": "tall panel: whole, above the caption band",
+      "page": [800.0, 1200.0],
+      "panel": [24.0, 416.0, 300.0, 700.0],
+      "bubble": [60.0, 450.0, 120.0, 90.0],
+      "aspect": 0.5625,
+      "progress": 0.5,
+      "direction": "rtl",
+      "band": 0.2,
+      "push": 1.0,
+      "view": [-39.994565, 416.0, 427.98913, 760.869565]
+    },
+    {
+      "name": "tall panel: push-in held by its lettering",
+      "page": [800.0, 1200.0],
+      "panel": [24.0, 416.0, 300.0, 700.0],
+      "bubble": [60.0, 450.0, 120.0, 90.0],
+      "aspect": 0.5625,
+      "progress": 0.5,
+      "direction": "rtl",
+      "band": 0.2,
+      "keep": [40.0, 440.0, 260.0, 640.0],
+      "push": 1.0,
+      "view": [-51.0, 440.0, 450.0, 800.0]
+    },
+    {
+      "name": "landscape stage: a 16:9 panel whole",
+      "page": [800.0, 1200.0],
+      "panel": [24.0, 24.0, 640.0, 360.0],
+      "bubble": [60.0, 60.0, 120.0, 90.0],
+      "aspect": 1.7777777777777777,
+      "progress": 0.5,
+      "direction": "rtl",
+      "band": 0.2,
+      "push": 1.0,
+      "view": [-3.826087, 24.0, 695.652174, 391.304348]
+    },
+    {
+      "name": "wide panel: whole width, gentle push toward the bubble",
+      "page": [800.0, 1200.0],
+      "panel": [24.0, 24.0, 752.0, 368.0],
+      "bubble": [546.0, 54.0, 200.0, 90.0],
+      "aspect": 0.5625,
+      "progress": 0.5,
+      "direction": "rtl",
+      "band": 0.2,
+      "push": 1.0,
+      "view": [122.086957, -257.004831, 653.913043, 1162.512077]
+    },
+    {
+      "name": "wide panel: half-way through the push",
+      "page": [800.0, 1200.0],
+      "panel": [24.0, 24.0, 752.0, 368.0],
+      "bubble": [546.0, 54.0, 200.0, 90.0],
+      "aspect": 0.5625,
+      "progress": 0.5,
+      "direction": "rtl",
+      "band": 0.2,
+      "push": 0.5,
+      "view": [73.043478, -291.880193, 702.956522, 1249.700483]
+    },
+    {
+      "name": "wide panel: push 0 is the whole panel",
+      "page": [800.0, 1200.0],
+      "panel": [24.0, 24.0, 752.0, 368.0],
+      "bubble": [546.0, 54.0, 200.0, 90.0],
+      "aspect": 0.5625,
+      "progress": 0.5,
+      "direction": "rtl",
+      "band": 0.2,
+      "push": 0.0,
+      "view": [24.0, -326.755556, 752.0, 1336.888889]
+    },
+    {
+      "name": "wide panel: characters across it allow no push",
+      "page": [800.0, 1200.0],
+      "panel": [24.0, 24.0, 752.0, 368.0],
+      "bubble": [546.0, 54.0, 200.0, 90.0],
+      "aspect": 0.5625,
+      "progress": 0.5,
+      "direction": "rtl",
+      "band": 0.2,
+      "keep": [40.0, 30.0, 720.0, 350.0],
+      "push": 1.0,
+      "view": [40.0, -304.0, 720.0, 1280.0]
+    },
+    {
+      "name": "wide panel: characters on the right side",
+      "page": [800.0, 1200.0],
+      "panel": [24.0, 24.0, 752.0, 368.0],
+      "bubble": [546.0, 54.0, 200.0, 90.0],
+      "aspect": 0.5625,
+      "progress": 0.5,
+      "direction": "rtl",
+      "band": 0.2,
+      "keep": [420.0, 40.0, 340.0, 330.0],
+      "push": 1.0,
+      "view": [122.086957, -257.004831, 653.913043, 1162.512077]
+    },
+    {
+      "name": "wide panel: bubble at the left edge stays inside",
+      "page": [800.0, 1200.0],
+      "panel": [24.0, 24.0, 752.0, 368.0],
+      "bubble": [30.0, 200.0, 100.0, 80.0],
+      "aspect": 0.5625,
+      "progress": 0.5,
+      "direction": "rtl",
+      "band": 0.2,
+      "push": 1.0,
+      "view": [24.0, -257.004831, 653.913043, 1162.512077]
+    },
+    {
+      "name": "square panel: the area rule caps the push",
+      "page": [800.0, 1200.0],
+      "panel": [410.0, 420.0, 366.0, 380.0],
+      "bubble": [430.0, 700.0, 100.0, 80.0],
+      "aspect": 0.96,
+      "progress": 0.5,
+      "direction": "rtl",
+      "band": 0.2,
+      "push": 1.0,
+      "view": [394.73913, 469.565217, 396.521739, 413.043478]
+    },
+    {
+      "name": "square panel in a square stage",
+      "page": [800.0, 1200.0],
+      "panel": [410.0, 420.0, 366.0, 380.0],
+      "bubble": [430.0, 700.0, 100.0, 80.0],
+      "aspect": 1.0,
+      "progress": 0.5,
+      "direction": "rtl",
+      "band": 0.2,
+      "push": 1.0,
+      "view": [386.478261, 469.565217, 413.043478, 413.043478]
+    },
+    {
+      "name": "export band: the panel sits higher",
+      "page": [800.0, 1200.0],
+      "panel": [24.0, 24.0, 752.0, 368.0],
+      "bubble": [546.0, 54.0, 200.0, 90.0],
+      "aspect": 0.5625,
+      "progress": 0.5,
+      "direction": "rtl",
+      "band": 0.3,
+      "push": 1.0,
+      "view": [122.086957, -198.879227, 653.913043, 1162.512077]
+    },
+    {
+      "name": "keep outside the panel is cut to it",
+      "page": [800.0, 1200.0],
+      "panel": [24.0, 24.0, 752.0, 368.0],
+      "bubble": [546.0, 54.0, 200.0, 90.0],
+      "aspect": 0.5625,
+      "progress": 0.5,
+      "direction": "rtl",
+      "band": 0.2,
+      "keep": [700.0, 300.0, 400.0, 400.0],
+      "push": 1.0,
+      "view": [122.086957, -257.004831, 653.913043, 1162.512077]
+    },
+    {
+      "name": "wordless panel without detail: whole, centred",
+      "page": [800.0, 1200.0],
+      "panel": [24.0, 24.0, 752.0, 368.0],
+      "bubble": [24.0, 24.0, 752.0, 368.0],
+      "aspect": 0.5625,
+      "progress": 0.5,
+      "direction": "rtl",
+      "band": 0.2,
+      "push": 1.0,
+      "view": [8.96, -487.182222, 782.08, 1390.364444]
+    },
+    {
+      "name": "wordless panel: push toward its detail",
+      "page": [800.0, 1200.0],
+      "panel": [24.0, 24.0, 752.0, 368.0],
+      "bubble": [24.0, 24.0, 752.0, 368.0],
+      "aspect": 0.5625,
+      "progress": 0.5,
+      "direction": "rtl",
+      "detail": [60.0, 150.0, 250.0, 210.0],
+      "band": 0.2,
+      "push": 1.0,
+      "view": [24.0, -373.256039, 653.913043, 1162.512077]
+    },
+    {
+      "name": "wordless tall panel with detail in a landscape stage",
+      "page": [800.0, 1200.0],
+      "panel": [24.0, 416.0, 300.0, 700.0],
+      "bubble": [24.0, 416.0, 300.0, 700.0],
+      "aspect": 1.7777777777777777,
+      "progress": 0.5,
+      "direction": "rtl",
+      "detail": [40.0, 700.0, 200.0, 300.0],
+      "band": 0.2,
+      "push": 1.0,
+      "view": [-367.062802, 507.304348, 1082.125604, 608.695652]
+    },
+    {
+      "name": "webtoon panel: bubble centred, width whole",
+      "page": [800.0, 4800.0],
+      "panel": [0.0, 1300.0, 800.0, 2400.0],
+      "bubble": [100.0, 2600.0, 300.0, 160.0],
+      "aspect": 0.5625,
+      "progress": 0.5,
+      "direction": "rtl",
+      "band": 0.2,
+      "push": 1.0,
+      "view": [-16.0, 2088.355556, 832.0, 1479.111111]
+    },
+    {
+      "name": "webtoon panel: bubble near the top",
+      "page": [800.0, 4800.0],
+      "panel": [0.0, 1300.0, 800.0, 2400.0],
+      "bubble": [100.0, 1320.0, 300.0, 160.0],
+      "aspect": 0.5625,
+      "progress": 0.5,
+      "direction": "rtl",
+      "band": 0.2,
+      "push": 1.0,
+      "view": [-16.0, 1287.244444, 832.0, 1479.111111]
+    },
+    {
+      "name": "webtoon panel: wordless pan start",
+      "page": [800.0, 4800.0],
+      "panel": [0.0, 1300.0, 800.0, 2400.0],
+      "bubble": [0.0, 1300.0, 800.0, 2400.0],
+      "aspect": 0.5625,
+      "progress": 0.0,
+      "direction": "rtl",
+      "seconds": 2.0,
+      "band": 0.2,
+      "push": 1.0,
+      "view": [-16.0, 1534.090748, 832.0, 1479.111111]
+    },
+    {
+      "name": "webtoon panel: wordless pan middle",
+      "page": [800.0, 4800.0],
+      "panel": [0.0, 1300.0, 800.0, 2400.0],
+      "bubble": [0.0, 1300.0, 800.0, 2400.0],
+      "aspect": 0.5625,
+      "progress": 0.5,
+      "direction": "rtl",
+      "seconds": 2.0,
+      "band": 0.2,
+      "push": 1.0,
+      "view": [-16.0, 1760.444444, 832.0, 1479.111111]
+    },
+    {
+      "name": "webtoon panel: wordless pan end, slow beat",
+      "page": [800.0, 4800.0],
+      "panel": [0.0, 1300.0, 800.0, 2400.0],
+      "bubble": [0.0, 1300.0, 800.0, 2400.0],
+      "aspect": 0.5625,
+      "progress": 1.0,
+      "direction": "rtl",
+      "seconds": 20.0,
+      "band": 0.2,
+      "push": 1.0,
+      "view": [-48.0, 2192.444444, 896.0, 1592.888889]
+    },
+    {
+      "name": "webtoon panel in a landscape stage",
+      "page": [800.0, 4800.0],
+      "panel": [0.0, 1300.0, 800.0, 2400.0],
+      "bubble": [100.0, 2600.0, 300.0, 160.0],
+      "aspect": 1.7777777777777777,
+      "progress": 0.5,
+      "direction": "rtl",
+      "band": 0.2,
+      "push": 1.0,
+      "view": [-524.444444, 2264.0, 1848.888889, 1040.0]
+    },
+    {
+      "name": "panorama: pans right to left",
+      "page": [1600.0, 1000.0],
+      "panel": [20.0, 20.0, 1560.0, 380.0],
+      "bubble": [20.0, 20.0, 1560.0, 380.0],
+      "aspect": 0.5625,
+      "progress": 0.0,
+      "direction": "rtl",
+      "seconds": 30.0,
+      "band": 0.2,
+      "push": 1.0,
+      "view": [371.6, -924.933333, 1276.8, 2269.866667]
+    },
+    {
+      "name": "panorama: pans left to right",
+      "page": [1600.0, 1000.0],
+      "panel": [20.0, 20.0, 1560.0, 380.0],
+      "bubble": [20.0, 20.0, 1560.0, 380.0],
+      "aspect": 0.5625,
+      "progress": 0.0,
+      "direction": "ltr",
+      "seconds": 30.0,
+      "band": 0.2,
+      "push": 1.0,
+      "view": [-48.4, -924.933333, 1276.8, 2269.866667]
+    },
+    {
+      "name": "panorama: across its detail",
+      "page": [1600.0, 1000.0],
+      "panel": [20.0, 20.0, 1560.0, 380.0],
+      "bubble": [20.0, 20.0, 1560.0, 380.0],
+      "aspect": 0.5625,
+      "progress": 1.0,
+      "direction": "rtl",
+      "detail": [200.0, 40.0, 900.0, 300.0],
+      "seconds": 3.0,
+      "band": 0.2,
+      "push": 1.0,
+      "view": [-5.65, -848.933333, 1191.3, 2117.866667]
+    },
+    {
+      "name": "panorama: bubble centred",
+      "page": [1600.0, 1000.0],
+      "panel": [20.0, 20.0, 1560.0, 380.0],
+      "bubble": [1300.0, 60.0, 200.0, 100.0],
+      "aspect": 0.5625,
+      "progress": 0.5,
+      "direction": "rtl",
+      "band": 0.2,
+      "push": 1.0,
+      "view": [377.2, -633.093333, 1185.6, 2107.733333]
+    },
+    {
+      "name": "cover: whole page, push toward the title",
+      "page": [1600.0, 1100.0],
+      "panel": [0.0, 0.0, 1600.0, 1100.0],
+      "bubble": [0.0, 0.0, 1600.0, 1100.0],
+      "aspect": 0.5625,
+      "progress": 0.5,
+      "direction": "rtl",
+      "detail": [380.0, 420.0, 840.0, 220.0],
+      "band": 0.2,
+      "push": 1.0,
+      "view": [104.347826, -686.714976, 1391.304348, 2473.429952]
+    },
+    {
+      "name": "cover in a landscape stage",
+      "page": [1600.0, 1100.0],
+      "panel": [0.0, 0.0, 1600.0, 1100.0],
+      "bubble": [0.0, 0.0, 1600.0, 1100.0],
+      "aspect": 1.7777777777777777,
+      "progress": 0.5,
+      "direction": "rtl",
+      "detail": [700.0, 400.0, 300.0, 250.0],
+      "band": 0.2,
+      "push": 1.0,
+      "view": [-50.241546, 46.73913, 1700.483092, 956.521739]
+    },
+    {
+      "name": "panel read whole: slight push to its centre",
+      "page": [800.0, 1200.0],
+      "panel": [24.0, 24.0, 752.0, 368.0],
+      "bubble": [546.0, 54.0, 200.0, 90.0],
+      "aspect": 0.5625,
+      "progress": 0.5,
+      "direction": "rtl",
+      "band": 0.2,
+      "push": 1.0,
+      "wide": true,
+      "view": [41.904762, -301.291005, 716.190476, 1273.227513]
+    },
+    {
+      "name": "panel read whole: slight push toward its characters",
+      "page": [800.0, 1200.0],
+      "panel": [410.0, 420.0, 366.0, 380.0],
+      "bubble": [430.0, 700.0, 100.0, 80.0],
+      "aspect": 0.5625,
+      "progress": 0.5,
+      "direction": "rtl",
+      "band": 0.2,
+      "keep": [300.0, 650.0, 300.0, 300.0],
+      "push": 1.0,
+      "wide": true,
+      "view": [410.0, 362.126984, 348.571429, 619.68254]
+    },
+    {
+      "name": "panel read whole, landscape, half way",
+      "page": [800.0, 1200.0],
+      "panel": [410.0, 420.0, 366.0, 380.0],
+      "bubble": [430.0, 700.0, 100.0, 80.0],
+      "aspect": 1.7777777777777777,
+      "progress": 0.5,
+      "direction": "rtl",
+      "band": 0.2,
+      "push": 0.5,
+      "wide": true,
+      "view": [180.830688, 424.52381, 824.338624, 463.690476]
+    },
+    {
+      "name": "panel read whole: glides down the frame, start",
+      "page": [800.0, 1200.0],
+      "panel": [24.0, 24.0, 752.0, 368.0],
+      "bubble": [546.0, 54.0, 200.0, 90.0],
+      "aspect": 0.5625,
+      "progress": 0.0,
+      "direction": "rtl",
+      "seconds": 6.0,
+      "band": 0.2,
+      "push": 0.0,
+      "wide": true,
+      "view": [24.0, -428.275556, 752.0, 1336.888889]
+    },
+    {
+      "name": "panel read whole: glides down the frame, middle",
+      "page": [800.0, 1200.0],
+      "panel": [24.0, 24.0, 752.0, 368.0],
+      "bubble": [546.0, 54.0, 200.0, 90.0],
+      "aspect": 0.5625,
+      "progress": 0.5,
+      "direction": "rtl",
+      "seconds": 6.0,
+      "band": 0.2,
+      "push": 0.6,
+      "wide": true,
+      "view": [34.742857, -311.476825, 730.514286, 1298.692063]
+    },
+    {
+      "name": "panel read whole: glides down the frame, end",
+      "page": [800.0, 1200.0],
+      "panel": [24.0, 24.0, 752.0, 368.0],
+      "bubble": [546.0, 54.0, 200.0, 90.0],
+      "aspect": 0.5625,
+      "progress": 1.0,
+      "direction": "rtl",
+      "seconds": 6.0,
+      "band": 0.2,
+      "push": 1.0,
+      "wide": true,
+      "view": [41.904762, -199.771005, 716.190476, 1273.227513]
+    },
+    {
+      "name": "panel read whole: a long take glides at most WIDE_GLIDE_MAX",
+      "page": [800.0, 1200.0],
+      "panel": [24.0, 24.0, 752.0, 368.0],
+      "bubble": [546.0, 54.0, 200.0, 90.0],
+      "aspect": 0.5625,
+      "progress": 1.0,
+      "direction": "rtl",
+      "seconds": 40.0,
+      "band": 0.2,
+      "keep": [420.0, 40.0, 340.0, 330.0],
+      "push": 1.0,
+      "wide": true,
+      "view": [59.809524, -150.891005, 716.190476, 1273.227513]
+    },
+    {
+      "name": "tall panel read whole: glides sideways, right to left",
+      "page": [800.0, 1200.0],
+      "panel": [24.0, 416.0, 300.0, 700.0],
+      "bubble": [60.0, 450.0, 120.0, 90.0],
+      "aspect": 1.7777777777777777,
+      "progress": 1.0,
+      "direction": "rtl",
+      "seconds": 5.0,
+      "band": 0.2,
+      "push": 1.0,
+      "wide": true,
+      "view": [-741.740741, 432.666667, 1481.481481, 833.333333]
+    },
+    {
+      "name": "tall panel read whole: glides sideways, left to right",
+      "page": [800.0, 1200.0],
+      "panel": [24.0, 416.0, 300.0, 700.0],
+      "bubble": [60.0, 450.0, 120.0, 90.0],
+      "aspect": 1.7777777777777777,
+      "progress": 0.0,
+      "direction": "ltr",
+      "seconds": 5.0,
+      "band": 0.2,
+      "push": 0.0,
+      "wide": true,
+      "view": [-778.777778, 416.0, 1555.555556, 875.0]
+    },
+    {
+      "name": "panel the frame's shape read whole: no room to glide",
+      "page": [800.0, 1200.0],
+      "panel": [100.0, 100.0, 400.0, 500.0],
+      "bubble": [150.0, 150.0, 120.0, 90.0],
+      "aspect": 0.8,
+      "progress": 1.0,
+      "direction": "rtl",
+      "seconds": 5.0,
+      "band": 0.0,
+      "push": 1.0,
+      "wide": true,
+      "view": [105.064113, 106.330141, 389.871774, 487.339717]
+    }
+  ],
+  "framingAt": [
+    {
+      "name": "first bubble: fades in from black",
+      "page": [800.0, 1200.0],
+      "aspect": 0.5625,
+      "bubble": {
+        "speaker": null,
+        "text": "x",
+        "shout": false,
+        "tone": "normal",
+        "audioKey": null,
+        "tags": {
+          "onomatopoeia": [],
+          "ambience": "none",
+          "mood": "neutral"
+        },
+        "id": "b0001",
+        "page": 0,
+        "panelBbox": [24.0, 24.0, 752.0, 368.0],
+        "bubbleBbox": [546, 54, 200, 90],
+        "durationMs": 3000,
+        "leadMs": 450,
+        "camera": {
+          "from": [24.0, 24.0, 752.0, 368.0],
+          "to": [24.0, 24.0, 752.0, 368.0]
+        },
+        "keepBbox": [420, 40, 340, 330]
+      },
+      "prev": null,
+      "elapsed": 100,
+      "still": false,
+      "view": [24.0, -369.901556, 752.0, 1336.888889],
+      "mask": [27.68, 27.68, 744.64, 360.64],
+      "light": 0.395061728,
+      "mix": 1.0,
+      "shape": [
+        [27.68, 27.68],
+        [772.32, 27.68],
+        [772.32, 388.32],
+        [27.68, 388.32]
+      ],
+      "backdrop": [24.0, 24.0, 752.0, 368.0]
+    },
+    {
+      "name": "first bubble: lit, push-in starting",
+      "page": [800.0, 1200.0],
+      "aspect": 0.5625,
+      "bubble": {
+        "speaker": null,
+        "text": "x",
+        "shout": false,
+        "tone": "normal",
+        "audioKey": null,
+        "tags": {
+          "onomatopoeia": [],
+          "ambience": "none",
+          "mood": "neutral"
+        },
+        "id": "b0001",
+        "page": 0,
+        "panelBbox": [24.0, 24.0, 752.0, 368.0],
+        "bubbleBbox": [546, 54, 200, 90],
+        "durationMs": 3000,
+        "leadMs": 450,
+        "camera": {
+          "from": [24.0, 24.0, 752.0, 368.0],
+          "to": [24.0, 24.0, 752.0, 368.0]
+        },
+        "keepBbox": [420, 40, 340, 330]
+      },
+      "prev": null,
+      "elapsed": 600,
+      "still": false,
+      "view": [27.30244, -362.477154, 748.69756, 1331.017885],
+      "mask": [27.68, 27.68, 744.64, 360.64],
+      "light": 1.0,
+      "mix": 1.0,
+      "shape": [
+        [27.68, 27.68],
+        [772.32, 27.68],
+        [772.32, 388.32],
+        [27.68, 388.32]
+      ],
+      "backdrop": [24.0, 24.0, 752.0, 368.0]
+    },
+    {
+      "name": "first bubble: push-in half way",
+      "page": [800.0, 1200.0],
+      "aspect": 0.5625,
+      "bubble": {
+        "speaker": null,
+        "text": "x",
+        "shout": false,
+        "tone": "normal",
+        "audioKey": null,
+        "tags": {
+          "onomatopoeia": [],
+          "ambience": "none",
+          "mood": "neutral"
+        },
+        "id": "b0001",
+        "page": 0,
+        "panelBbox": [24.0, 24.0, 752.0, 368.0],
+        "bubbleBbox": [546, 54, 200, 90],
+        "durationMs": 3000,
+        "leadMs": 450,
+        "camera": {
+          "from": [24.0, 24.0, 752.0, 368.0],
+          "to": [24.0, 24.0, 752.0, 368.0]
+        },
+        "keepBbox": [420, 40, 340, 330]
+      },
+      "prev": null,
+      "elapsed": 1200,
+      "still": false,
+      "view": [48.168642, -327.334966, 727.831358, 1293.922414],
+      "mask": [27.68, 27.68, 744.64, 360.64],
+      "light": 1.0,
+      "mix": 1.0,
+      "shape": [
+        [27.68, 27.68],
+        [772.32, 27.68],
+        [772.32, 388.32],
+        [27.68, 388.32]
+      ],
+      "backdrop": [24.0, 24.0, 752.0, 368.0]
+    },
+    {
+      "name": "first bubble: still drifting near its end",
+      "page": [800.0, 1200.0],
+      "aspect": 0.5625,
+      "bubble": {
+        "speaker": null,
+        "text": "x",
+        "shout": false,
+        "tone": "normal",
+        "audioKey": null,
+        "tags": {
+          "onomatopoeia": [],
+          "ambience": "none",
+          "mood": "neutral"
+        },
+        "id": "b0001",
+        "page": 0,
+        "panelBbox": [24.0, 24.0, 752.0, 368.0],
+        "bubbleBbox": [546, 54, 200, 90],
+        "durationMs": 3000,
+        "leadMs": 450,
+        "camera": {
+          "from": [24.0, 24.0, 752.0, 368.0],
+          "to": [24.0, 24.0, 752.0, 368.0]
+        },
+        "keepBbox": [420, 40, 340, 330]
+      },
+      "prev": null,
+      "elapsed": 2900,
+      "still": false,
+      "view": [119.977821, -218.742661, 656.022179, 1166.261652],
+      "mask": [27.68, 27.68, 744.64, 360.64],
+      "light": 1.0,
+      "mix": 1.0,
+      "shape": [
+        [27.68, 27.68],
+        [772.32, 27.68],
+        [772.32, 388.32],
+        [27.68, 388.32]
+      ],
+      "backdrop": [24.0, 24.0, 752.0, 368.0]
+    },
+    {
+      "name": "first bubble: impact shake as it fades in",
+      "page": [800.0, 1200.0],
+      "aspect": 0.5625,
+      "bubble": {
+        "speaker": null,
+        "text": "x",
+        "shout": false,
+        "tone": "normal",
+        "audioKey": null,
+        "tags": {
+          "onomatopoeia": ["DOKA"],
+          "ambience": "none",
+          "mood": "neutral"
+        },
+        "id": "b0011",
+        "page": 0,
+        "panelBbox": [24.0, 24.0, 752.0, 368.0],
+        "bubbleBbox": [546, 54, 200, 90],
+        "durationMs": 3000,
+        "leadMs": 450,
+        "camera": {
+          "from": [24.0, 24.0, 752.0, 368.0],
+          "to": [24.0, 24.0, 752.0, 368.0]
+        },
+        "keepBbox": [420, 40, 340, 330]
+      },
+      "prev": null,
+      "elapsed": 150,
+      "still": false,
+      "view": [26.492551, -372.016556, 752.0, 1336.888889],
+      "mask": [27.68, 27.68, 744.64, 360.64],
+      "light": 0.555555556,
+      "mix": 1.0,
+      "shape": [
+        [27.68, 27.68],
+        [772.32, 27.68],
+        [772.32, 388.32],
+        [27.68, 388.32]
+      ],
+      "backdrop": [24.0, 24.0, 752.0, 368.0]
+    },
+    {
+      "name": "impact shake during a glide",
+      "page": [800.0, 1200.0],
+      "aspect": 0.5625,
+      "bubble": {
+        "speaker": null,
+        "text": "x",
+        "shout": false,
+        "tone": "normal",
+        "audioKey": null,
+        "tags": {
+          "onomatopoeia": ["DOKA"],
+          "ambience": "none",
+          "mood": "neutral"
+        },
+        "id": "b0012",
+        "page": 0,
+        "panelBbox": [330.0, 394.0, 446.0, 406.0],
+        "bubbleBbox": [560, 420, 150, 80],
+        "durationMs": 2800,
+        "leadMs": 800,
+        "camera": {
+          "from": [330.0, 394.0, 446.0, 406.0],
+          "to": [330.0, 394.0, 446.0, 406.0]
+        },
+        "panelShape": [
+          [483.2, 394.0],
+          [776.0, 394.0],
+          [776.0, 800.0],
+          [343.1, 800.0]
+        ]
+      },
+      "prev": {
+        "speaker": null,
+        "text": "x",
+        "shout": false,
+        "tone": "normal",
+        "audioKey": null,
+        "tags": {
+          "onomatopoeia": [],
+          "ambience": "none",
+          "mood": "neutral"
+        },
+        "id": "b0002",
+        "page": 0,
+        "panelBbox": [24.0, 24.0, 752.0, 368.0],
+        "bubbleBbox": [40, 224, 210, 100],
+        "durationMs": 2600,
+        "leadMs": 600,
+        "camera": {
+          "from": [24.0, 24.0, 752.0, 368.0],
+          "to": [24.0, 24.0, 752.0, 368.0]
+        },
+        "keepBbox": [30, 40, 730, 330]
+      },
+      "elapsed": 200,
+      "still": false,
+      "view": [129.057726, -100.036997, 628.201679, 1116.802985],
+      "mask": [119.827453, 139.33472, 653.614215, 374.465776],
+      "light": 1.0,
+      "mix": 1.0,
+      "shape": [
+        [166.522974, 139.33472],
+        [773.441668, 139.33472],
+        [773.441668, 513.800496],
+        [123.820347, 513.800496]
+      ],
+      "backdrop": [117.269121, 136.776388, 658.730879, 379.58244]
+    },
+    {
+      "name": "same panel: glide between push-ins",
+      "page": [800.0, 1200.0],
+      "aspect": 0.5625,
+      "bubble": {
+        "speaker": null,
+        "text": "x",
+        "shout": false,
+        "tone": "normal",
+        "audioKey": null,
+        "tags": {
+          "onomatopoeia": [],
+          "ambience": "none",
+          "mood": "neutral"
+        },
+        "id": "b0002",
+        "page": 0,
+        "panelBbox": [24.0, 24.0, 752.0, 368.0],
+        "bubbleBbox": [40, 224, 210, 100],
+        "durationMs": 2600,
+        "leadMs": 600,
+        "camera": {
+          "from": [24.0, 24.0, 752.0, 368.0],
+          "to": [24.0, 24.0, 752.0, 368.0]
+        },
+        "keepBbox": [30, 40, 730, 330]
+      },
+      "prev": {
+        "speaker": null,
+        "text": "x",
+        "shout": false,
+        "tone": "normal",
+        "audioKey": null,
+        "tags": {
+          "onomatopoeia": [],
+          "ambience": "none",
+          "mood": "neutral"
+        },
+        "id": "b0001",
+        "page": 0,
+        "panelBbox": [24.0, 24.0, 752.0, 368.0],
+        "bubbleBbox": [546, 54, 200, 90],
+        "durationMs": 3000,
+        "leadMs": 450,
+        "camera": {
+          "from": [24.0, 24.0, 752.0, 368.0],
+          "to": [24.0, 24.0, 752.0, 368.0]
+        },
+        "keepBbox": [420, 40, 340, 330]
+      },
+      "elapsed": 250,
+      "still": false,
+      "view": [75.223766, -282.106681, 696.095945, 1237.503903],
+      "mask": [27.68, 27.68, 744.64, 360.64],
+      "light": 1.0,
+      "mix": 1.0,
+      "shape": [
+        [27.68, 27.68],
+        [772.32, 27.68],
+        [772.32, 388.32],
+        [27.68, 388.32]
+      ],
+      "backdrop": [24.0, 24.0, 752.0, 368.0]
+    },
+    {
+      "name": "same panel: push-in restarts part way",
+      "page": [800.0, 1200.0],
+      "aspect": 0.5625,
+      "bubble": {
+        "speaker": null,
+        "text": "x",
+        "shout": false,
+        "tone": "normal",
+        "audioKey": null,
+        "tags": {
+          "onomatopoeia": [],
+          "ambience": "none",
+          "mood": "neutral"
+        },
+        "id": "b0002",
+        "page": 0,
+        "panelBbox": [24.0, 24.0, 752.0, 368.0],
+        "bubbleBbox": [40, 224, 210, 100],
+        "durationMs": 2600,
+        "leadMs": 600,
+        "camera": {
+          "from": [24.0, 24.0, 752.0, 368.0],
+          "to": [24.0, 24.0, 752.0, 368.0]
+        },
+        "keepBbox": [30, 40, 730, 330]
+      },
+      "prev": {
+        "speaker": null,
+        "text": "x",
+        "shout": false,
+        "tone": "normal",
+        "audioKey": null,
+        "tags": {
+          "onomatopoeia": [],
+          "ambience": "none",
+          "mood": "neutral"
+        },
+        "id": "b0001",
+        "page": 0,
+        "panelBbox": [24.0, 24.0, 752.0, 368.0],
+        "bubbleBbox": [546, 54, 200, 90],
+        "durationMs": 3000,
+        "leadMs": 450,
+        "camera": {
+          "from": [24.0, 24.0, 752.0, 368.0],
+          "to": [24.0, 24.0, 752.0, 368.0]
+        },
+        "keepBbox": [420, 40, 340, 330]
+      },
+      "elapsed": 600,
+      "still": false,
+      "view": [27.0, -352.773333, 741.0, 1317.333333],
+      "mask": [27.68, 27.68, 744.64, 360.64],
+      "light": 1.0,
+      "mix": 1.0,
+      "shape": [
+        [27.68, 27.68],
+        [772.32, 27.68],
+        [772.32, 388.32],
+        [27.68, 388.32]
+      ],
+      "backdrop": [24.0, 24.0, 752.0, 368.0]
+    },
+    {
+      "name": "same panel: settled, drifting in",
+      "page": [800.0, 1200.0],
+      "aspect": 0.5625,
+      "bubble": {
+        "speaker": null,
+        "text": "x",
+        "shout": false,
+        "tone": "normal",
+        "audioKey": null,
+        "tags": {
+          "onomatopoeia": [],
+          "ambience": "none",
+          "mood": "neutral"
+        },
+        "id": "b0002",
+        "page": 0,
+        "panelBbox": [24.0, 24.0, 752.0, 368.0],
+        "bubbleBbox": [40, 224, 210, 100],
+        "durationMs": 2600,
+        "leadMs": 600,
+        "camera": {
+          "from": [24.0, 24.0, 752.0, 368.0],
+          "to": [24.0, 24.0, 752.0, 368.0]
+        },
+        "keepBbox": [30, 40, 730, 330]
+      },
+      "prev": {
+        "speaker": null,
+        "text": "x",
+        "shout": false,
+        "tone": "normal",
+        "audioKey": null,
+        "tags": {
+          "onomatopoeia": [],
+          "ambience": "none",
+          "mood": "neutral"
+        },
+        "id": "b0001",
+        "page": 0,
+        "panelBbox": [24.0, 24.0, 752.0, 368.0],
+        "bubbleBbox": [546, 54, 200, 90],
+        "durationMs": 3000,
+        "leadMs": 450,
+        "camera": {
+          "from": [24.0, 24.0, 752.0, 368.0],
+          "to": [24.0, 24.0, 752.0, 368.0]
+        },
+        "keepBbox": [420, 40, 340, 330]
+      },
+      "elapsed": 2000,
+      "still": false,
+      "view": [29.240839, -299.554553, 732.783591, 1302.726383],
+      "mask": [27.68, 27.68, 744.64, 360.64],
+      "light": 1.0,
+      "mix": 1.0,
+      "shape": [
+        [27.68, 27.68],
+        [772.32, 27.68],
+        [772.32, 388.32],
+        [27.68, 388.32]
+      ],
+      "backdrop": [24.0, 24.0, 752.0, 368.0]
+    },
+    {
+      "name": "slanted panel: glide, outline morphs",
+      "page": [800.0, 1200.0],
+      "aspect": 0.5625,
+      "bubble": {
+        "speaker": null,
+        "text": "x",
+        "shout": false,
+        "tone": "normal",
+        "audioKey": null,
+        "tags": {
+          "onomatopoeia": [],
+          "ambience": "none",
+          "mood": "neutral"
+        },
+        "id": "b0003",
+        "page": 0,
+        "panelBbox": [330.0, 394.0, 446.0, 406.0],
+        "bubbleBbox": [560, 420, 150, 80],
+        "durationMs": 2800,
+        "leadMs": 800,
+        "camera": {
+          "from": [330.0, 394.0, 446.0, 406.0],
+          "to": [330.0, 394.0, 446.0, 406.0]
+        },
+        "panelShape": [
+          [483.2, 394.0],
+          [776.0, 394.0],
+          [776.0, 800.0],
+          [343.1, 800.0]
+        ]
+      },
+      "prev": {
+        "speaker": null,
+        "text": "x",
+        "shout": false,
+        "tone": "normal",
+        "audioKey": null,
+        "tags": {
+          "onomatopoeia": [],
+          "ambience": "none",
+          "mood": "neutral"
+        },
+        "id": "b0002",
+        "page": 0,
+        "panelBbox": [24.0, 24.0, 752.0, 368.0],
+        "bubbleBbox": [40, 224, 210, 100],
+        "durationMs": 2600,
+        "leadMs": 600,
+        "camera": {
+          "from": [24.0, 24.0, 752.0, 368.0],
+          "to": [24.0, 24.0, 752.0, 368.0]
+        },
+        "keepBbox": [30, 40, 730, 330]
+      },
+      "elapsed": 300,
+      "still": false,
+      "view": [234.60423, 88.906846, 528.24814, 939.107805],
+      "mask": [226.155567, 268.172094, 548.580383, 390.419213],
+      "light": 1.0,
+      "mix": 1.0,
+      "shape": [
+        [326.732627, 268.172094],
+        [774.73595, 268.172094],
+        [774.73595, 658.591307],
+        [234.755825, 658.591307]
+      ],
+      "backdrop": [224.891517, 266.908044, 551.108483, 392.947313]
+    },
+    {
+      "name": "slanted panel: settled",
+      "page": [800.0, 1200.0],
+      "aspect": 0.5625,
+      "bubble": {
+        "speaker": null,
+        "text": "x",
+        "shout": false,
+        "tone": "normal",
+        "audioKey": null,
+        "tags": {
+          "onomatopoeia": [],
+          "ambience": "none",
+          "mood": "neutral"
+        },
+        "id": "b0003",
+        "page": 0,
+        "panelBbox": [330.0, 394.0, 446.0, 406.0],
+        "bubbleBbox": [560, 420, 150, 80],
+        "durationMs": 2800,
+        "leadMs": 800,
+        "camera": {
+          "from": [330.0, 394.0, 446.0, 406.0],
+          "to": [330.0, 394.0, 446.0, 406.0]
+        },
+        "panelShape": [
+          [483.2, 394.0],
+          [776.0, 394.0],
+          [776.0, 800.0],
+          [343.1, 800.0]
+        ]
+      },
+      "prev": {
+        "speaker": null,
+        "text": "x",
+        "shout": false,
+        "tone": "normal",
+        "audioKey": null,
+        "tags": {
+          "onomatopoeia": [],
+          "ambience": "none",
+          "mood": "neutral"
+        },
+        "id": "b0002",
+        "page": 0,
+        "panelBbox": [24.0, 24.0, 752.0, 368.0],
+        "bubbleBbox": [40, 224, 210, 100],
+        "durationMs": 2600,
+        "leadMs": 600,
+        "camera": {
+          "from": [24.0, 24.0, 752.0, 368.0],
+          "to": [24.0, 24.0, 752.0, 368.0]
+        },
+        "keepBbox": [30, 40, 730, 330]
+      },
+      "elapsed": 2700,
+      "still": false,
+      "view": [386.540511, 338.11403, 389.459489, 692.372425],
+      "mask": [330.0, 394.0, 446.0, 406.0],
+      "light": 1.0,
+      "mix": 1.0,
+      "shape": [
+        [483.2, 394.0],
+        [776.0, 394.0],
+        [776.0, 800.0],
+        [343.1, 800.0]
+      ],
+      "backdrop": [330.0, 394.0, 446.0, 406.0]
+    },
+    {
+      "name": "far panel: dissolve begins over the old shot",
+      "page": [800.0, 1200.0],
+      "aspect": 0.5625,
+      "bubble": {
+        "speaker": null,
+        "text": "",
+        "shout": false,
+        "tone": "normal",
+        "audioKey": null,
+        "tags": {
+          "onomatopoeia": [],
+          "ambience": "none",
+          "mood": "neutral"
+        },
+        "id": "b0004",
+        "page": 0,
+        "panelBbox": [24.0, 1000.0, 200.0, 180.0],
+        "bubbleBbox": [24.0, 1000.0, 200.0, 180.0],
+        "durationMs": 2400,
+        "leadMs": 500,
+        "camera": {
+          "from": [24.0, 1000.0, 200.0, 180.0],
+          "to": [24.0, 1000.0, 200.0, 180.0]
+        }
+      },
+      "prev": {
+        "speaker": null,
+        "text": "x",
+        "shout": false,
+        "tone": "normal",
+        "audioKey": null,
+        "tags": {
+          "onomatopoeia": [],
+          "ambience": "none",
+          "mood": "neutral"
+        },
+        "id": "b0003",
+        "page": 0,
+        "panelBbox": [330.0, 394.0, 446.0, 406.0],
+        "bubbleBbox": [560, 420, 150, 80],
+        "durationMs": 2800,
+        "leadMs": 800,
+        "camera": {
+          "from": [330.0, 394.0, 446.0, 406.0],
+          "to": [330.0, 394.0, 446.0, 406.0]
+        },
+        "panelShape": [
+          [483.2, 394.0],
+          [776.0, 394.0],
+          [776.0, 800.0],
+          [343.1, 800.0]
+        ]
+      },
+      "elapsed": 100,
+      "still": false,
+      "view": [24.0, 903.672222, 200.0, 355.555556],
+      "mask": [25.8, 1001.8, 196.4, 176.4],
+      "light": 1.0,
+      "mix": 0.095491503,
+      "shape": [
+        [25.8, 1001.8],
+        [222.2, 1001.8],
+        [222.2, 1178.2],
+        [25.8, 1178.2]
+      ],
+      "backdrop": [24.0, 1000.0, 200.0, 180.0]
+    },
+    {
+      "name": "far panel: dissolve half way, never dark",
+      "page": [800.0, 1200.0],
+      "aspect": 0.5625,
+      "bubble": {
+        "speaker": null,
+        "text": "",
+        "shout": false,
+        "tone": "normal",
+        "audioKey": null,
+        "tags": {
+          "onomatopoeia": [],
+          "ambience": "none",
+          "mood": "neutral"
+        },
+        "id": "b0004",
+        "page": 0,
+        "panelBbox": [24.0, 1000.0, 200.0, 180.0],
+        "bubbleBbox": [24.0, 1000.0, 200.0, 180.0],
+        "durationMs": 2400,
+        "leadMs": 500,
+        "camera": {
+          "from": [24.0, 1000.0, 200.0, 180.0],
+          "to": [24.0, 1000.0, 200.0, 180.0]
+        }
+      },
+      "prev": {
+        "speaker": null,
+        "text": "x",
+        "shout": false,
+        "tone": "normal",
+        "audioKey": null,
+        "tags": {
+          "onomatopoeia": [],
+          "ambience": "none",
+          "mood": "neutral"
+        },
+        "id": "b0003",
+        "page": 0,
+        "panelBbox": [330.0, 394.0, 446.0, 406.0],
+        "bubbleBbox": [560, 420, 150, 80],
+        "durationMs": 2800,
+        "leadMs": 800,
+        "camera": {
+          "from": [330.0, 394.0, 446.0, 406.0],
+          "to": [330.0, 394.0, 446.0, 406.0]
+        },
+        "panelShape": [
+          [483.2, 394.0],
+          [776.0, 394.0],
+          [776.0, 800.0],
+          [343.1, 800.0]
+        ]
+      },
+      "elapsed": 240,
+      "still": false,
+      "view": [24.0, 903.672222, 200.0, 355.555556],
+      "mask": [25.8, 1001.8, 196.4, 176.4],
+      "light": 1.0,
+      "mix": 0.46860474,
+      "shape": [
+        [25.8, 1001.8],
+        [222.2, 1001.8],
+        [222.2, 1178.2],
+        [25.8, 1178.2]
+      ],
+      "backdrop": [24.0, 1000.0, 200.0, 180.0]
+    },
+    {
+      "name": "far panel: dissolve nearly done",
+      "page": [800.0, 1200.0],
+      "aspect": 0.5625,
+      "bubble": {
+        "speaker": null,
+        "text": "",
+        "shout": false,
+        "tone": "normal",
+        "audioKey": null,
+        "tags": {
+          "onomatopoeia": [],
+          "ambience": "none",
+          "mood": "neutral"
+        },
+        "id": "b0004",
+        "page": 0,
+        "panelBbox": [24.0, 1000.0, 200.0, 180.0],
+        "bubbleBbox": [24.0, 1000.0, 200.0, 180.0],
+        "durationMs": 2400,
+        "leadMs": 500,
+        "camera": {
+          "from": [24.0, 1000.0, 200.0, 180.0],
+          "to": [24.0, 1000.0, 200.0, 180.0]
+        }
+      },
+      "prev": {
+        "speaker": null,
+        "text": "x",
+        "shout": false,
+        "tone": "normal",
+        "audioKey": null,
+        "tags": {
+          "onomatopoeia": [],
+          "ambience": "none",
+          "mood": "neutral"
+        },
+        "id": "b0003",
+        "page": 0,
+        "panelBbox": [330.0, 394.0, 446.0, 406.0],
+        "bubbleBbox": [560, 420, 150, 80],
+        "durationMs": 2800,
+        "leadMs": 800,
+        "camera": {
+          "from": [330.0, 394.0, 446.0, 406.0],
+          "to": [330.0, 394.0, 446.0, 406.0]
+        },
+        "panelShape": [
+          [483.2, 394.0],
+          [776.0, 394.0],
+          [776.0, 800.0],
+          [343.1, 800.0]
+        ]
+      },
+      "elapsed": 400,
+      "still": false,
+      "view": [24.0, 903.672222, 200.0, 355.555556],
+      "mask": [25.8, 1001.8, 196.4, 176.4],
+      "light": 1.0,
+      "mix": 0.904508497,
+      "shape": [
+        [25.8, 1001.8],
+        [222.2, 1001.8],
+        [222.2, 1178.2],
+        [25.8, 1178.2]
+      ],
+      "backdrop": [24.0, 1000.0, 200.0, 180.0]
+    },
+    {
+      "name": "short lead: dissolve instead of a whip",
+      "page": [800.0, 1200.0],
+      "aspect": 0.5625,
+      "bubble": {
+        "speaker": null,
+        "text": "x",
+        "shout": false,
+        "tone": "normal",
+        "audioKey": null,
+        "tags": {
+          "onomatopoeia": [],
+          "ambience": "none",
+          "mood": "neutral"
+        },
+        "id": "b0013",
+        "page": 0,
+        "panelBbox": [330.0, 394.0, 446.0, 406.0],
+        "bubbleBbox": [560, 420, 150, 80],
+        "durationMs": 2800,
+        "leadMs": 300,
+        "camera": {
+          "from": [330.0, 394.0, 446.0, 406.0],
+          "to": [330.0, 394.0, 446.0, 406.0]
+        },
+        "panelShape": [
+          [483.2, 394.0],
+          [776.0, 394.0],
+          [776.0, 800.0],
+          [343.1, 800.0]
+        ]
+      },
+      "prev": {
+        "speaker": null,
+        "text": "x",
+        "shout": false,
+        "tone": "normal",
+        "audioKey": null,
+        "tags": {
+          "onomatopoeia": [],
+          "ambience": "none",
+          "mood": "neutral"
+        },
+        "id": "b0002",
+        "page": 0,
+        "panelBbox": [24.0, 24.0, 752.0, 368.0],
+        "bubbleBbox": [40, 224, 210, 100],
+        "durationMs": 2600,
+        "leadMs": 600,
+        "camera": {
+          "from": [24.0, 24.0, 752.0, 368.0],
+          "to": [24.0, 24.0, 752.0, 368.0]
+        },
+        "keepBbox": [30, 40, 730, 330]
+      },
+      "elapsed": 150,
+      "still": false,
+      "view": [330.0, 254.756944, 446.0, 792.888889],
+      "mask": [330.0, 394.0, 446.0, 406.0],
+      "light": 1.0,
+      "mix": 0.206107374,
+      "shape": [
+        [483.2, 394.0],
+        [776.0, 394.0],
+        [776.0, 800.0],
+        [343.1, 800.0]
+      ],
+      "backdrop": [330.0, 394.0, 446.0, 406.0]
+    },
+    {
+      "name": "new page: dissolves in over the last page",
+      "page": [800.0, 1200.0],
+      "aspect": 0.5625,
+      "bubble": {
+        "speaker": null,
+        "text": "",
+        "shout": false,
+        "tone": "normal",
+        "audioKey": null,
+        "tags": {
+          "onomatopoeia": [],
+          "ambience": "none",
+          "mood": "neutral"
+        },
+        "id": "b0005",
+        "page": 1,
+        "panelBbox": [24.0, 24.0, 752.0, 368.0],
+        "bubbleBbox": [24.0, 24.0, 752.0, 368.0],
+        "durationMs": 2000,
+        "leadMs": 450,
+        "camera": {
+          "from": [24.0, 24.0, 752.0, 368.0],
+          "to": [24.0, 24.0, 752.0, 368.0]
+        },
+        "detailBbox": [60, 150, 250, 210]
+      },
+      "prev": {
+        "speaker": null,
+        "text": "",
+        "shout": false,
+        "tone": "normal",
+        "audioKey": null,
+        "tags": {
+          "onomatopoeia": [],
+          "ambience": "none",
+          "mood": "neutral"
+        },
+        "id": "b0004",
+        "page": 0,
+        "panelBbox": [24.0, 1000.0, 200.0, 180.0],
+        "bubbleBbox": [24.0, 1000.0, 200.0, 180.0],
+        "durationMs": 2400,
+        "leadMs": 500,
+        "camera": {
+          "from": [24.0, 1000.0, 200.0, 180.0],
+          "to": [24.0, 1000.0, 200.0, 180.0]
+        }
+      },
+      "elapsed": 200,
+      "still": false,
+      "view": [24.0, -486.670444, 752.0, 1336.888889],
+      "mask": [27.68, 27.68, 744.64, 360.64],
+      "light": 1.0,
+      "mix": 0.413175911,
+      "shape": [
+        [27.68, 27.68],
+        [772.32, 27.68],
+        [772.32, 388.32],
+        [27.68, 388.32]
+      ],
+      "backdrop": [24.0, 24.0, 752.0, 368.0]
+    },
+    {
+      "name": "wordless beat on a new page",
+      "page": [800.0, 1200.0],
+      "aspect": 0.5625,
+      "bubble": {
+        "speaker": null,
+        "text": "",
+        "shout": false,
+        "tone": "normal",
+        "audioKey": null,
+        "tags": {
+          "onomatopoeia": [],
+          "ambience": "none",
+          "mood": "neutral"
+        },
+        "id": "b0005",
+        "page": 1,
+        "panelBbox": [24.0, 24.0, 752.0, 368.0],
+        "bubbleBbox": [24.0, 24.0, 752.0, 368.0],
+        "durationMs": 2000,
+        "leadMs": 450,
+        "camera": {
+          "from": [24.0, 24.0, 752.0, 368.0],
+          "to": [24.0, 24.0, 752.0, 368.0]
+        },
+        "detailBbox": [60, 150, 250, 210]
+      },
+      "prev": {
+        "speaker": null,
+        "text": "",
+        "shout": false,
+        "tone": "normal",
+        "audioKey": null,
+        "tags": {
+          "onomatopoeia": [],
+          "ambience": "none",
+          "mood": "neutral"
+        },
+        "id": "b0004",
+        "page": 0,
+        "panelBbox": [24.0, 1000.0, 200.0, 180.0],
+        "bubbleBbox": [24.0, 1000.0, 200.0, 180.0],
+        "durationMs": 2400,
+        "leadMs": 500,
+        "camera": {
+          "from": [24.0, 1000.0, 200.0, 180.0],
+          "to": [24.0, 1000.0, 200.0, 180.0]
+        }
+      },
+      "elapsed": 1500,
+      "still": false,
+      "view": [24.0, -388.279904, 681.284142, 1211.171808],
+      "mask": [27.68, 27.68, 744.64, 360.64],
+      "light": 1.0,
+      "mix": 1.0,
+      "shape": [
+        [27.68, 27.68],
+        [772.32, 27.68],
+        [772.32, 388.32],
+        [27.68, 388.32]
+      ],
+      "backdrop": [24.0, 24.0, 752.0, 368.0]
+    },
+    {
+      "name": "reduced motion: whole panel",
+      "page": [800.0, 1200.0],
+      "aspect": 0.5625,
+      "bubble": {
+        "speaker": null,
+        "text": "x",
+        "shout": false,
+        "tone": "normal",
+        "audioKey": null,
+        "tags": {
+          "onomatopoeia": [],
+          "ambience": "none",
+          "mood": "neutral"
+        },
+        "id": "b0003",
+        "page": 0,
+        "panelBbox": [330.0, 394.0, 446.0, 406.0],
+        "bubbleBbox": [560, 420, 150, 80],
+        "durationMs": 2800,
+        "leadMs": 800,
+        "camera": {
+          "from": [330.0, 394.0, 446.0, 406.0],
+          "to": [330.0, 394.0, 446.0, 406.0]
+        },
+        "panelShape": [
+          [483.2, 394.0],
+          [776.0, 394.0],
+          [776.0, 800.0],
+          [343.1, 800.0]
+        ]
+      },
+      "prev": {
+        "speaker": null,
+        "text": "x",
+        "shout": false,
+        "tone": "normal",
+        "audioKey": null,
+        "tags": {
+          "onomatopoeia": [],
+          "ambience": "none",
+          "mood": "neutral"
+        },
+        "id": "b0002",
+        "page": 0,
+        "panelBbox": [24.0, 24.0, 752.0, 368.0],
+        "bubbleBbox": [40, 224, 210, 100],
+        "durationMs": 2600,
+        "leadMs": 600,
+        "camera": {
+          "from": [24.0, 24.0, 752.0, 368.0],
+          "to": [24.0, 24.0, 752.0, 368.0]
+        },
+        "keepBbox": [30, 40, 730, 330]
+      },
+      "elapsed": 1000,
+      "still": true,
+      "view": [330.0, 279.844444, 446.0, 792.888889],
+      "mask": [330.0, 394.0, 446.0, 406.0],
+      "light": 1.0,
+      "mix": 1.0,
+      "shape": [
+        [483.2, 394.0],
+        [776.0, 394.0],
+        [776.0, 800.0],
+        [343.1, 800.0]
+      ],
+      "backdrop": [330.0, 394.0, 446.0, 406.0]
+    },
+    {
+      "name": "landscape stage",
+      "page": [800.0, 1200.0],
+      "aspect": 1.7777777777777777,
+      "bubble": {
+        "speaker": null,
+        "text": "x",
+        "shout": false,
+        "tone": "normal",
+        "audioKey": null,
+        "tags": {
+          "onomatopoeia": [],
+          "ambience": "none",
+          "mood": "neutral"
+        },
+        "id": "b0002",
+        "page": 0,
+        "panelBbox": [24.0, 24.0, 752.0, 368.0],
+        "bubbleBbox": [40, 224, 210, 100],
+        "durationMs": 2600,
+        "leadMs": 600,
+        "camera": {
+          "from": [24.0, 24.0, 752.0, 368.0],
+          "to": [24.0, 24.0, 752.0, 368.0]
+        },
+        "keepBbox": [30, 40, 730, 330]
+      },
+      "prev": {
+        "speaker": null,
+        "text": "x",
+        "shout": false,
+        "tone": "normal",
+        "audioKey": null,
+        "tags": {
+          "onomatopoeia": [],
+          "ambience": "none",
+          "mood": "neutral"
+        },
+        "id": "b0001",
+        "page": 0,
+        "panelBbox": [24.0, 24.0, 752.0, 368.0],
+        "bubbleBbox": [546, 54, 200, 90],
+        "durationMs": 3000,
+        "leadMs": 450,
+        "camera": {
+          "from": [24.0, 24.0, 752.0, 368.0],
+          "to": [24.0, 24.0, 752.0, 368.0]
+        },
+        "keepBbox": [420, 40, 340, 330]
+      },
+      "elapsed": 2000,
+      "still": false,
+      "view": [22.167934, 37.975571, 744.017822, 418.510025],
+      "mask": [27.68, 27.68, 744.64, 360.64],
+      "light": 1.0,
+      "mix": 1.0,
+      "shape": [
+        [27.68, 27.68],
+        [772.32, 27.68],
+        [772.32, 388.32],
+        [27.68, 388.32]
+      ],
+      "backdrop": [24.0, 24.0, 752.0, 368.0]
+    },
+    {
+      "name": "export band",
+      "page": [800.0, 1200.0],
+      "aspect": 0.5625,
+      "bubble": {
+        "speaker": null,
+        "text": "x",
+        "shout": false,
+        "tone": "normal",
+        "audioKey": null,
+        "tags": {
+          "onomatopoeia": [],
+          "ambience": "none",
+          "mood": "neutral"
+        },
+        "id": "b0001",
+        "page": 0,
+        "panelBbox": [24.0, 24.0, 752.0, 368.0],
+        "bubbleBbox": [546, 54, 200, 90],
+        "durationMs": 3000,
+        "leadMs": 450,
+        "camera": {
+          "from": [24.0, 24.0, 752.0, 368.0],
+          "to": [24.0, 24.0, 752.0, 368.0]
+        },
+        "keepBbox": [420, 40, 340, 330]
+      },
+      "prev": null,
+      "elapsed": 2900,
+      "still": false,
+      "band": 0.3,
+      "view": [119.977821, -160.429578, 656.022179, 1166.261652],
+      "mask": [27.68, 27.68, 744.64, 360.64],
+      "light": 1.0,
+      "mix": 1.0,
+      "shape": [
+        [27.68, 27.68],
+        [772.32, 27.68],
+        [772.32, 388.32],
+        [27.68, 388.32]
+      ],
+      "backdrop": [24.0, 24.0, 752.0, 368.0]
+    },
+    {
+      "name": "ltr reading direction",
+      "page": [800.0, 1200.0],
+      "aspect": 0.5625,
+      "bubble": {
+        "speaker": null,
+        "text": "",
+        "shout": false,
+        "tone": "normal",
+        "audioKey": null,
+        "tags": {
+          "onomatopoeia": [],
+          "ambience": "none",
+          "mood": "neutral"
+        },
+        "id": "b0005",
+        "page": 1,
+        "panelBbox": [24.0, 24.0, 752.0, 368.0],
+        "bubbleBbox": [24.0, 24.0, 752.0, 368.0],
+        "durationMs": 2000,
+        "leadMs": 450,
+        "camera": {
+          "from": [24.0, 24.0, 752.0, 368.0],
+          "to": [24.0, 24.0, 752.0, 368.0]
+        },
+        "detailBbox": [60, 150, 250, 210]
+      },
+      "prev": {
+        "speaker": null,
+        "text": "",
+        "shout": false,
+        "tone": "normal",
+        "audioKey": null,
+        "tags": {
+          "onomatopoeia": [],
+          "ambience": "none",
+          "mood": "neutral"
+        },
+        "id": "b0004",
+        "page": 0,
+        "panelBbox": [24.0, 1000.0, 200.0, 180.0],
+        "bubbleBbox": [24.0, 1000.0, 200.0, 180.0],
+        "durationMs": 2400,
+        "leadMs": 500,
+        "camera": {
+          "from": [24.0, 1000.0, 200.0, 180.0],
+          "to": [24.0, 1000.0, 200.0, 180.0]
+        }
+      },
+      "elapsed": 1500,
+      "still": false,
+      "direction": "ltr",
+      "view": [24.0, -388.279904, 681.284142, 1211.171808],
+      "mask": [27.68, 27.68, 744.64, 360.64],
+      "light": 1.0,
+      "mix": 1.0,
+      "shape": [
+        [27.68, 27.68],
+        [772.32, 27.68],
+        [772.32, 388.32],
+        [27.68, 388.32]
+      ],
+      "backdrop": [24.0, 24.0, 752.0, 368.0]
+    },
+    {
+      "name": "timeline without leads: capped glide",
+      "page": [800.0, 1200.0],
+      "aspect": 0.5625,
+      "bubble": {
+        "speaker": null,
+        "text": "x",
+        "shout": false,
+        "tone": "normal",
+        "audioKey": null,
+        "tags": {
+          "onomatopoeia": [],
+          "ambience": "none",
+          "mood": "neutral"
+        },
+        "id": "b0006",
+        "page": 0,
+        "panelBbox": [330.0, 394.0, 446.0, 406.0],
+        "bubbleBbox": [560, 420, 150, 80],
+        "durationMs": 2000,
+        "leadMs": 0,
+        "camera": {
+          "from": [330.0, 394.0, 446.0, 406.0],
+          "to": [330.0, 394.0, 446.0, 406.0]
+        }
+      },
+      "prev": {
+        "speaker": null,
+        "text": "x",
+        "shout": false,
+        "tone": "normal",
+        "audioKey": null,
+        "tags": {
+          "onomatopoeia": [],
+          "ambience": "none",
+          "mood": "neutral"
+        },
+        "id": "b0002",
+        "page": 0,
+        "panelBbox": [24.0, 24.0, 752.0, 368.0],
+        "bubbleBbox": [40, 224, 210, 100],
+        "durationMs": 2600,
+        "leadMs": 600,
+        "camera": {
+          "from": [24.0, 24.0, 752.0, 368.0],
+          "to": [24.0, 24.0, 752.0, 368.0]
+        },
+        "keepBbox": [30, 40, 730, 330]
+      },
+      "elapsed": 300,
+      "still": false,
+      "view": [243.166682, 102.538069, 518.943142, 922.565586],
+      "mask": [228.820991, 270.837517, 543.249536, 385.088366],
+      "light": 1.0,
+      "mix": 1.0,
+      "shape": [
+        [228.820991, 270.837517],
+        [772.070527, 270.837517],
+        [772.070527, 655.925883],
+        [228.820991, 655.925883]
+      ],
+      "backdrop": [224.891517, 266.908044, 551.108483, 392.947313]
+    },
+    {
+      "name": "webtoon: bubble panel",
+      "page": [800.0, 4800.0],
+      "aspect": 0.5625,
+      "bubble": {
+        "speaker": null,
+        "text": "x",
+        "shout": false,
+        "tone": "normal",
+        "audioKey": null,
+        "tags": {
+          "onomatopoeia": [],
+          "ambience": "none",
+          "mood": "neutral"
+        },
+        "id": "b0007",
+        "page": 2,
+        "panelBbox": [0, 0, 800, 1300],
+        "bubbleBbox": [80, 60, 300, 160],
+        "durationMs": 2500,
+        "leadMs": 450,
+        "camera": {
+          "from": [0, 0, 800, 1300],
+          "to": [0, 0, 800, 1300]
+        }
+      },
+      "prev": null,
+      "elapsed": 2000,
+      "still": false,
+      "view": [-10.939781, 0.0, 817.706898, 1453.701152],
+      "mask": [8.0, 8.0, 784.0, 1284.0],
+      "light": 1.0,
+      "mix": 1.0,
+      "shape": [
+        [8.0, 8.0],
+        [792.0, 8.0],
+        [792.0, 1292.0],
+        [8.0, 1292.0]
+      ],
+      "backdrop": [0.0, 0.0, 800.0, 1300.0]
+    },
+    {
+      "name": "webtoon: strip pan underway",
+      "page": [800.0, 4800.0],
+      "aspect": 0.5625,
+      "bubble": {
+        "speaker": null,
+        "text": "",
+        "shout": false,
+        "tone": "normal",
+        "audioKey": null,
+        "tags": {
+          "onomatopoeia": [],
+          "ambience": "none",
+          "mood": "neutral"
+        },
+        "id": "b0008",
+        "page": 2,
+        "panelBbox": [0.0, 1300.0, 800.0, 2400.0],
+        "bubbleBbox": [0.0, 1300.0, 800.0, 2400.0],
+        "durationMs": 4000,
+        "leadMs": 900,
+        "camera": {
+          "from": [0.0, 1300.0, 800.0, 2400.0],
+          "to": [0.0, 1300.0, 800.0, 2400.0]
+        },
+        "detailBbox": [0, 1500, 800, 2000]
+      },
+      "prev": {
+        "speaker": null,
+        "text": "x",
+        "shout": false,
+        "tone": "normal",
+        "audioKey": null,
+        "tags": {
+          "onomatopoeia": [],
+          "ambience": "none",
+          "mood": "neutral"
+        },
+        "id": "b0007",
+        "page": 2,
+        "panelBbox": [0, 0, 800, 1300],
+        "bubbleBbox": [80, 60, 300, 160],
+        "durationMs": 2500,
+        "leadMs": 450,
+        "camera": {
+          "from": [0, 0, 800, 1300],
+          "to": [0, 0, 800, 1300]
+        }
+      },
+      "elapsed": 2500,
+      "still": false,
+      "view": [-9.685519, 1783.645678, 819.371037, 1456.659622],
+      "mask": [8.0, 1308.0, 784.0, 2384.0],
+      "light": 1.0,
+      "mix": 1.0,
+      "shape": [
+        [8.0, 1308.0],
+        [792.0, 1308.0],
+        [792.0, 3692.0],
+        [8.0, 3692.0]
+      ],
+      "backdrop": [0.0, 1300.0, 800.0, 2400.0]
+    },
+    {
+      "name": "webtoon: strip pan in a landscape stage",
+      "page": [800.0, 4800.0],
+      "aspect": 1.7777777777777777,
+      "bubble": {
+        "speaker": null,
+        "text": "",
+        "shout": false,
+        "tone": "normal",
+        "audioKey": null,
+        "tags": {
+          "onomatopoeia": [],
+          "ambience": "none",
+          "mood": "neutral"
+        },
+        "id": "b0008",
+        "page": 2,
+        "panelBbox": [0.0, 1300.0, 800.0, 2400.0],
+        "bubbleBbox": [0.0, 1300.0, 800.0, 2400.0],
+        "durationMs": 4000,
+        "leadMs": 900,
+        "camera": {
+          "from": [0.0, 1300.0, 800.0, 2400.0],
+          "to": [0.0, 1300.0, 800.0, 2400.0]
+        },
+        "detailBbox": [0, 1500, 800, 2000]
+      },
+      "prev": {
+        "speaker": null,
+        "text": "x",
+        "shout": false,
+        "tone": "normal",
+        "audioKey": null,
+        "tags": {
+          "onomatopoeia": [],
+          "ambience": "none",
+          "mood": "neutral"
+        },
+        "id": "b0007",
+        "page": 2,
+        "panelBbox": [0, 0, 800, 1300],
+        "bubbleBbox": [80, 60, 300, 160],
+        "durationMs": 2500,
+        "leadMs": 450,
+        "camera": {
+          "from": [0, 0, 800, 1300],
+          "to": [0, 0, 800, 1300]
+        }
+      },
+      "elapsed": 2500,
+      "still": false,
+      "view": [-328.329811, 2098.495441, 1456.659622, 819.371037],
+      "mask": [8.0, 1308.0, 784.0, 2384.0],
+      "light": 1.0,
+      "mix": 1.0,
+      "shape": [
+        [8.0, 1308.0],
+        [792.0, 1308.0],
+        [792.0, 3692.0],
+        [8.0, 3692.0]
+      ],
+      "backdrop": [0.0, 1300.0, 800.0, 2400.0]
+    },
+    {
+      "name": "panel take: arriving on the whole panel",
+      "page": [800.0, 1200.0],
+      "aspect": 0.5625,
+      "bubble": {
+        "speaker": null,
+        "text": "Who goes there?",
+        "shout": false,
+        "tone": "normal",
+        "audioKey": null,
+        "tags": {
+          "onomatopoeia": [],
+          "ambience": "none",
+          "mood": "neutral"
+        },
+        "id": "b0030",
+        "page": 0,
+        "panelBbox": [20.0, 20.0, 760.0, 560.0],
+        "bubbleBbox": [560, 40, 190, 80],
+        "durationMs": 2400,
+        "leadMs": 450,
+        "camera": {
+          "from": [20.0, 20.0, 760.0, 560.0],
+          "to": [20.0, 20.0, 760.0, 560.0]
+        },
+        "keepBbox": [60.0, 40.0, 690.0, 500.0]
+      },
+      "prev": null,
+      "elapsed": 200,
+      "still": false,
+      "take": {
+        "startMs": 0.0,
+        "totalMs": 7200.0,
+        "leadMs": 450.0,
+        "wide": true
+      },
+      "view": [20.0, -355.869444, 760.0, 1351.111111],
+      "mask": [25.6, 25.6, 748.8, 548.8],
+      "light": 0.691358025,
+      "mix": 1.0,
+      "shape": [
+        [25.6, 25.6],
+        [774.4, 25.6],
+        [774.4, 574.4],
+        [25.6, 574.4]
+      ],
+      "backdrop": [20.0, 20.0, 760.0, 560.0]
+    },
+    {
+      "name": "panel take: drifting through the first balloon",
+      "page": [800.0, 1200.0],
+      "aspect": 0.5625,
+      "bubble": {
+        "speaker": null,
+        "text": "Who goes there?",
+        "shout": false,
+        "tone": "normal",
+        "audioKey": null,
+        "tags": {
+          "onomatopoeia": [],
+          "ambience": "none",
+          "mood": "neutral"
+        },
+        "id": "b0030",
+        "page": 0,
+        "panelBbox": [20.0, 20.0, 760.0, 560.0],
+        "bubbleBbox": [560, 40, 190, 80],
+        "durationMs": 2400,
+        "leadMs": 450,
+        "camera": {
+          "from": [20.0, 20.0, 760.0, 560.0],
+          "to": [20.0, 20.0, 760.0, 560.0]
+        },
+        "keepBbox": [60.0, 40.0, 690.0, 500.0]
+      },
+      "prev": null,
+      "elapsed": 1500,
+      "still": false,
+      "take": {
+        "startMs": 0.0,
+        "totalMs": 7200.0,
+        "leadMs": 450.0,
+        "wide": true
+      },
+      "view": [22.472135, -317.204699, 756.12614, 1344.224248],
+      "mask": [25.6, 25.6, 748.8, 548.8],
+      "light": 1.0,
+      "mix": 1.0,
+      "shape": [
+        [25.6, 25.6],
+        [774.4, 25.6],
+        [774.4, 574.4],
+        [25.6, 574.4]
+      ],
+      "backdrop": [20.0, 20.0, 760.0, 560.0]
+    },
+    {
+      "name": "panel take: the second balloon goes on, no move",
+      "page": [800.0, 1200.0],
+      "aspect": 0.5625,
+      "bubble": {
+        "speaker": null,
+        "text": "Open the gate!",
+        "shout": false,
+        "tone": "normal",
+        "audioKey": null,
+        "tags": {
+          "onomatopoeia": [],
+          "ambience": "none",
+          "mood": "neutral"
+        },
+        "id": "b0031",
+        "page": 0,
+        "panelBbox": [20.0, 20.0, 760.0, 560.0],
+        "bubbleBbox": [60, 60, 170, 70],
+        "durationMs": 2200,
+        "leadMs": 0,
+        "camera": {
+          "from": [20.0, 20.0, 760.0, 560.0],
+          "to": [20.0, 20.0, 760.0, 560.0]
+        },
+        "keepBbox": [60.0, 40.0, 690.0, 500.0]
+      },
+      "prev": {
+        "speaker": null,
+        "text": "Who goes there?",
+        "shout": false,
+        "tone": "normal",
+        "audioKey": null,
+        "tags": {
+          "onomatopoeia": [],
+          "ambience": "none",
+          "mood": "neutral"
+        },
+        "id": "b0030",
+        "page": 0,
+        "panelBbox": [20.0, 20.0, 760.0, 560.0],
+        "bubbleBbox": [560, 40, 190, 80],
+        "durationMs": 2400,
+        "leadMs": 450,
+        "camera": {
+          "from": [20.0, 20.0, 760.0, 560.0],
+          "to": [20.0, 20.0, 760.0, 560.0]
+        },
+        "keepBbox": [60.0, 40.0, 690.0, 500.0]
+      },
+      "elapsed": 0,
+      "still": false,
+      "take": {
+        "startMs": 2400.0,
+        "totalMs": 7200.0,
+        "leadMs": 450.0,
+        "wide": true
+      },
+      "prevTake": {
+        "startMs": 0.0,
+        "totalMs": 7200.0,
+        "leadMs": 450.0,
+        "wide": true
+      },
+      "view": [25.555076, -282.989321, 751.295138, 1335.635801],
+      "mask": [25.6, 25.6, 748.8, 548.8],
+      "light": 1.0,
+      "mix": 1.0,
+      "shape": [
+        [25.6, 25.6],
+        [774.4, 25.6],
+        [774.4, 574.4],
+        [25.6, 574.4]
+      ],
+      "backdrop": [20.0, 20.0, 760.0, 560.0]
+    },
+    {
+      "name": "panel take: the third balloon near its end",
+      "page": [800.0, 1200.0],
+      "aspect": 0.5625,
+      "bubble": {
+        "speaker": null,
+        "text": "We hold the line.",
+        "shout": false,
+        "tone": "normal",
+        "audioKey": null,
+        "tags": {
+          "onomatopoeia": [],
+          "ambience": "none",
+          "mood": "neutral"
+        },
+        "id": "b0032",
+        "page": 0,
+        "panelBbox": [20.0, 20.0, 760.0, 560.0],
+        "bubbleBbox": [520, 420, 200, 80],
+        "durationMs": 2600,
+        "leadMs": 0,
+        "camera": {
+          "from": [20.0, 20.0, 760.0, 560.0],
+          "to": [20.0, 20.0, 760.0, 560.0]
+        },
+        "keepBbox": [60.0, 40.0, 690.0, 500.0]
+      },
+      "prev": {
+        "speaker": null,
+        "text": "Open the gate!",
+        "shout": false,
+        "tone": "normal",
+        "audioKey": null,
+        "tags": {
+          "onomatopoeia": [],
+          "ambience": "none",
+          "mood": "neutral"
+        },
+        "id": "b0031",
+        "page": 0,
+        "panelBbox": [20.0, 20.0, 760.0, 560.0],
+        "bubbleBbox": [60, 60, 170, 70],
+        "durationMs": 2200,
+        "leadMs": 0,
+        "camera": {
+          "from": [20.0, 20.0, 760.0, 560.0],
+          "to": [20.0, 20.0, 760.0, 560.0]
+        },
+        "keepBbox": [60.0, 40.0, 690.0, 500.0]
+      },
+      "elapsed": 2500,
+      "still": false,
+      "take": {
+        "startMs": 4600.0,
+        "totalMs": 7200.0,
+        "leadMs": 450.0,
+        "wide": true
+      },
+      "prevTake": {
+        "startMs": 2400.0,
+        "totalMs": 7200.0,
+        "leadMs": 450.0,
+        "wide": true
+      },
+      "view": [42.91791, -102.901595, 724.087399, 1287.266487],
+      "mask": [25.6, 25.6, 748.8, 548.8],
+      "light": 1.0,
+      "mix": 1.0,
+      "shape": [
+        [25.6, 25.6],
+        [774.4, 25.6],
+        [774.4, 574.4],
+        [25.6, 574.4]
+      ],
+      "backdrop": [20.0, 20.0, 760.0, 560.0]
+    },
+    {
+      "name": "panel take: the shout pushes toward its balloon",
+      "page": [800.0, 1200.0],
+      "aspect": 0.5625,
+      "bubble": {
+        "speaker": null,
+        "text": "NOT ONE STEP BACK!",
+        "shout": true,
+        "tone": "shout",
+        "audioKey": null,
+        "tags": {
+          "onomatopoeia": [],
+          "ambience": "none",
+          "mood": "neutral"
+        },
+        "id": "b0033",
+        "page": 0,
+        "panelBbox": [20.0, 20.0, 760.0, 560.0],
+        "bubbleBbox": [80, 430, 180, 70],
+        "durationMs": 2000,
+        "leadMs": 600,
+        "camera": {
+          "from": [20.0, 20.0, 760.0, 560.0],
+          "to": [20.0, 20.0, 760.0, 560.0]
+        },
+        "keepBbox": [60.0, 40.0, 690.0, 500.0]
+      },
+      "prev": {
+        "speaker": null,
+        "text": "We hold the line.",
+        "shout": false,
+        "tone": "normal",
+        "audioKey": null,
+        "tags": {
+          "onomatopoeia": [],
+          "ambience": "none",
+          "mood": "neutral"
+        },
+        "id": "b0032",
+        "page": 0,
+        "panelBbox": [20.0, 20.0, 760.0, 560.0],
+        "bubbleBbox": [520, 420, 200, 80],
+        "durationMs": 2600,
+        "leadMs": 0,
+        "camera": {
+          "from": [20.0, 20.0, 760.0, 560.0],
+          "to": [20.0, 20.0, 760.0, 560.0]
+        },
+        "keepBbox": [60.0, 40.0, 690.0, 500.0]
+      },
+      "elapsed": 1500,
+      "still": false,
+      "take": {
+        "startMs": 0.0,
+        "totalMs": 2000.0,
+        "leadMs": 600.0,
+        "wide": false
+      },
+      "prevTake": {
+        "startMs": 4600.0,
+        "totalMs": 7200.0,
+        "leadMs": 450.0,
+        "wide": true
+      },
+      "view": [53.59799, -191.793612, 701.203517, 1246.584031],
+      "mask": [25.6, 25.6, 748.8, 548.8],
+      "light": 1.0,
+      "mix": 1.0,
+      "shape": [
+        [25.6, 25.6],
+        [774.4, 25.6],
+        [774.4, 574.4],
+        [25.6, 574.4]
+      ],
+      "backdrop": [20.0, 20.0, 760.0, 560.0]
+    },
+    {
+      "name": "panel take: small lettering pushed toward",
+      "page": [800.0, 1200.0],
+      "aspect": 0.5625,
+      "bubble": {
+        "speaker": null,
+        "text": "psst, over here, quietly now",
+        "shout": false,
+        "tone": "normal",
+        "audioKey": null,
+        "tags": {
+          "onomatopoeia": [],
+          "ambience": "none",
+          "mood": "neutral"
+        },
+        "id": "b0034",
+        "page": 0,
+        "panelBbox": [20.0, 20.0, 760.0, 560.0],
+        "bubbleBbox": [300, 300, 30, 10],
+        "durationMs": 2000,
+        "leadMs": 600,
+        "camera": {
+          "from": [20.0, 20.0, 760.0, 560.0],
+          "to": [20.0, 20.0, 760.0, 560.0]
+        },
+        "keepBbox": [60.0, 40.0, 690.0, 500.0]
+      },
+      "prev": {
+        "speaker": null,
+        "text": "NOT ONE STEP BACK!",
+        "shout": true,
+        "tone": "shout",
+        "audioKey": null,
+        "tags": {
+          "onomatopoeia": [],
+          "ambience": "none",
+          "mood": "neutral"
+        },
+        "id": "b0033",
+        "page": 0,
+        "panelBbox": [20.0, 20.0, 760.0, 560.0],
+        "bubbleBbox": [80, 430, 180, 70],
+        "durationMs": 2000,
+        "leadMs": 600,
+        "camera": {
+          "from": [20.0, 20.0, 760.0, 560.0],
+          "to": [20.0, 20.0, 760.0, 560.0]
+        },
+        "keepBbox": [60.0, 40.0, 690.0, 500.0]
+      },
+      "elapsed": 1800,
+      "still": false,
+      "take": {
+        "startMs": 0.0,
+        "totalMs": 2000.0,
+        "leadMs": 600.0,
+        "wide": false
+      },
+      "prevTake": {
+        "startMs": 0.0,
+        "totalMs": 2000.0,
+        "leadMs": 600.0,
+        "wide": false
+      },
+      "view": [58.076273, -175.960638, 693.366522, 1232.651595],
+      "mask": [25.6, 25.6, 748.8, 548.8],
+      "light": 1.0,
+      "mix": 1.0,
+      "shape": [
+        [25.6, 25.6],
+        [774.4, 25.6],
+        [774.4, 574.4],
+        [25.6, 574.4]
+      ],
+      "backdrop": [20.0, 20.0, 760.0, 560.0]
+    }
+  ],
+  "transition": [
+    {
+      "name": "new page fades",
+      "page": [800.0, 1200.0],
+      "aspect": 0.5625,
+      "bubble": {
+        "speaker": null,
+        "text": "x",
+        "shout": false,
+        "tone": "normal",
+        "audioKey": null,
+        "tags": {
+          "onomatopoeia": [],
+          "ambience": "none",
+          "mood": "neutral"
+        },
+        "id": "b0001",
+        "page": 0,
+        "panelBbox": [24.0, 24.0, 752.0, 368.0],
+        "bubbleBbox": [546, 54, 200, 90],
+        "durationMs": 3000,
+        "leadMs": 450,
+        "camera": {
+          "from": [24.0, 24.0, 752.0, 368.0],
+          "to": [24.0, 24.0, 752.0, 368.0]
+        },
+        "keepBbox": [420, 40, 340, 330]
+      },
+      "prev": null,
+      "kind": "page",
+      "ms": 450
+    },
+    {
+      "name": "same panel glide",
+      "page": [800.0, 1200.0],
+      "aspect": 0.5625,
+      "bubble": {
+        "speaker": null,
+        "text": "x",
+        "shout": false,
+        "tone": "normal",
+        "audioKey": null,
+        "tags": {
+          "onomatopoeia": [],
+          "ambience": "none",
+          "mood": "neutral"
+        },
+        "id": "b0002",
+        "page": 0,
+        "panelBbox": [24.0, 24.0, 752.0, 368.0],
+        "bubbleBbox": [40, 224, 210, 100],
+        "durationMs": 2600,
+        "leadMs": 600,
+        "camera": {
+          "from": [24.0, 24.0, 752.0, 368.0],
+          "to": [24.0, 24.0, 752.0, 368.0]
+        },
+        "keepBbox": [30, 40, 730, 330]
+      },
+      "prev": {
+        "speaker": null,
+        "text": "x",
+        "shout": false,
+        "tone": "normal",
+        "audioKey": null,
+        "tags": {
+          "onomatopoeia": [],
+          "ambience": "none",
+          "mood": "neutral"
+        },
+        "id": "b0001",
+        "page": 0,
+        "panelBbox": [24.0, 24.0, 752.0, 368.0],
+        "bubbleBbox": [546, 54, 200, 90],
+        "durationMs": 3000,
+        "leadMs": 450,
+        "camera": {
+          "from": [24.0, 24.0, 752.0, 368.0],
+          "to": [24.0, 24.0, 752.0, 368.0]
+        },
+        "keepBbox": [420, 40, 340, 330]
+      },
+      "kind": "glide",
+      "ms": 500
+    },
+    {
+      "name": "next panel glide",
+      "page": [800.0, 1200.0],
+      "aspect": 0.5625,
+      "bubble": {
+        "speaker": null,
+        "text": "x",
+        "shout": false,
+        "tone": "normal",
+        "audioKey": null,
+        "tags": {
+          "onomatopoeia": [],
+          "ambience": "none",
+          "mood": "neutral"
+        },
+        "id": "b0003",
+        "page": 0,
+        "panelBbox": [330.0, 394.0, 446.0, 406.0],
+        "bubbleBbox": [560, 420, 150, 80],
+        "durationMs": 2800,
+        "leadMs": 800,
+        "camera": {
+          "from": [330.0, 394.0, 446.0, 406.0],
+          "to": [330.0, 394.0, 446.0, 406.0]
+        },
+        "panelShape": [
+          [483.2, 394.0],
+          [776.0, 394.0],
+          [776.0, 800.0],
+          [343.1, 800.0]
+        ]
+      },
+      "prev": {
+        "speaker": null,
+        "text": "x",
+        "shout": false,
+        "tone": "normal",
+        "audioKey": null,
+        "tags": {
+          "onomatopoeia": [],
+          "ambience": "none",
+          "mood": "neutral"
+        },
+        "id": "b0002",
+        "page": 0,
+        "panelBbox": [24.0, 24.0, 752.0, 368.0],
+        "bubbleBbox": [40, 224, 210, 100],
+        "durationMs": 2600,
+        "leadMs": 600,
+        "camera": {
+          "from": [24.0, 24.0, 752.0, 368.0],
+          "to": [24.0, 24.0, 752.0, 368.0]
+        },
+        "keepBbox": [30, 40, 730, 330]
+      },
+      "kind": "glide",
+      "ms": 512.314638
+    },
+    {
+      "name": "far panel dissolves",
+      "page": [800.0, 1200.0],
+      "aspect": 0.5625,
+      "bubble": {
+        "speaker": null,
+        "text": "",
+        "shout": false,
+        "tone": "normal",
+        "audioKey": null,
+        "tags": {
+          "onomatopoeia": [],
+          "ambience": "none",
+          "mood": "neutral"
+        },
+        "id": "b0004",
+        "page": 0,
+        "panelBbox": [24.0, 1000.0, 200.0, 180.0],
+        "bubbleBbox": [24.0, 1000.0, 200.0, 180.0],
+        "durationMs": 2400,
+        "leadMs": 500,
+        "camera": {
+          "from": [24.0, 1000.0, 200.0, 180.0],
+          "to": [24.0, 1000.0, 200.0, 180.0]
+        }
+      },
+      "prev": {
+        "speaker": null,
+        "text": "x",
+        "shout": false,
+        "tone": "normal",
+        "audioKey": null,
+        "tags": {
+          "onomatopoeia": [],
+          "ambience": "none",
+          "mood": "neutral"
+        },
+        "id": "b0003",
+        "page": 0,
+        "panelBbox": [330.0, 394.0, 446.0, 406.0],
+        "bubbleBbox": [560, 420, 150, 80],
+        "durationMs": 2800,
+        "leadMs": 800,
+        "camera": {
+          "from": [330.0, 394.0, 446.0, 406.0],
+          "to": [330.0, 394.0, 446.0, 406.0]
+        },
+        "panelShape": [
+          [483.2, 394.0],
+          [776.0, 394.0],
+          [776.0, 800.0],
+          [343.1, 800.0]
+        ]
+      },
+      "kind": "dissolve",
+      "ms": 500
+    },
+    {
+      "name": "cover fades slower",
+      "page": [1600.0, 1100.0],
+      "aspect": 0.5625,
+      "bubble": {
+        "speaker": null,
+        "text": "",
+        "shout": false,
+        "tone": "normal",
+        "audioKey": null,
+        "tags": {
+          "onomatopoeia": [],
+          "ambience": "none",
+          "mood": "neutral"
+        },
+        "id": "b0009",
+        "page": 3,
+        "panelBbox": [0.0, 0.0, 1600.0, 1100.0],
+        "bubbleBbox": [0.0, 0.0, 1600.0, 1100.0],
+        "durationMs": 3000,
+        "leadMs": 0,
+        "camera": {
+          "from": [0.0, 0.0, 1600.0, 1100.0],
+          "to": [0.0, 0.0, 1600.0, 1100.0]
+        }
+      },
+      "prev": null,
+      "kind": "page",
+      "ms": 900
+    },
+    {
+      "name": "old timeline glide capped",
+      "page": [800.0, 1200.0],
+      "aspect": 0.5625,
+      "bubble": {
+        "speaker": null,
+        "text": "x",
+        "shout": false,
+        "tone": "normal",
+        "audioKey": null,
+        "tags": {
+          "onomatopoeia": [],
+          "ambience": "none",
+          "mood": "neutral"
+        },
+        "id": "b0006",
+        "page": 0,
+        "panelBbox": [330.0, 394.0, 446.0, 406.0],
+        "bubbleBbox": [560, 420, 150, 80],
+        "durationMs": 2000,
+        "leadMs": 0,
+        "camera": {
+          "from": [330.0, 394.0, 446.0, 406.0],
+          "to": [330.0, 394.0, 446.0, 406.0]
+        }
+      },
+      "prev": {
+        "speaker": null,
+        "text": "x",
+        "shout": false,
+        "tone": "normal",
+        "audioKey": null,
+        "tags": {
+          "onomatopoeia": [],
+          "ambience": "none",
+          "mood": "neutral"
+        },
+        "id": "b0002",
+        "page": 0,
+        "panelBbox": [24.0, 24.0, 752.0, 368.0],
+        "bubbleBbox": [40, 224, 210, 100],
+        "durationMs": 2600,
+        "leadMs": 600,
+        "camera": {
+          "from": [24.0, 24.0, 752.0, 368.0],
+          "to": [24.0, 24.0, 752.0, 368.0]
+        },
+        "keepBbox": [30, 40, 730, 330]
+      },
+      "kind": "glide",
+      "ms": 512.314638
+    },
+    {
+      "name": "lead too short: dissolve, not a whip",
+      "page": [800.0, 1200.0],
+      "aspect": 0.5625,
+      "bubble": {
+        "speaker": null,
+        "text": "x",
+        "shout": false,
+        "tone": "normal",
+        "audioKey": null,
+        "tags": {
+          "onomatopoeia": [],
+          "ambience": "none",
+          "mood": "neutral"
+        },
+        "id": "b0013",
+        "page": 0,
+        "panelBbox": [330.0, 394.0, 446.0, 406.0],
+        "bubbleBbox": [560, 420, 150, 80],
+        "durationMs": 2800,
+        "leadMs": 300,
+        "camera": {
+          "from": [330.0, 394.0, 446.0, 406.0],
+          "to": [330.0, 394.0, 446.0, 406.0]
+        },
+        "panelShape": [
+          [483.2, 394.0],
+          [776.0, 394.0],
+          [776.0, 800.0],
+          [343.1, 800.0]
+        ]
+      },
+      "prev": {
+        "speaker": null,
+        "text": "x",
+        "shout": false,
+        "tone": "normal",
+        "audioKey": null,
+        "tags": {
+          "onomatopoeia": [],
+          "ambience": "none",
+          "mood": "neutral"
+        },
+        "id": "b0002",
+        "page": 0,
+        "panelBbox": [24.0, 24.0, 752.0, 368.0],
+        "bubbleBbox": [40, 224, 210, 100],
+        "durationMs": 2600,
+        "leadMs": 600,
+        "camera": {
+          "from": [24.0, 24.0, 752.0, 368.0],
+          "to": [24.0, 24.0, 752.0, 368.0]
+        },
+        "keepBbox": [30, 40, 730, 330]
+      },
+      "kind": "dissolve",
+      "ms": 500
+    },
+    {
+      "name": "landscape stage",
+      "page": [800.0, 1200.0],
+      "aspect": 1.7777777777777777,
+      "bubble": {
+        "speaker": null,
+        "text": "x",
+        "shout": false,
+        "tone": "normal",
+        "audioKey": null,
+        "tags": {
+          "onomatopoeia": [],
+          "ambience": "none",
+          "mood": "neutral"
+        },
+        "id": "b0003",
+        "page": 0,
+        "panelBbox": [330.0, 394.0, 446.0, 406.0],
+        "bubbleBbox": [560, 420, 150, 80],
+        "durationMs": 2800,
+        "leadMs": 800,
+        "camera": {
+          "from": [330.0, 394.0, 446.0, 406.0],
+          "to": [330.0, 394.0, 446.0, 406.0]
+        },
+        "panelShape": [
+          [483.2, 394.0],
+          [776.0, 394.0],
+          [776.0, 800.0],
+          [343.1, 800.0]
+        ]
+      },
+      "prev": {
+        "speaker": null,
+        "text": "x",
+        "shout": false,
+        "tone": "normal",
+        "audioKey": null,
+        "tags": {
+          "onomatopoeia": [],
+          "ambience": "none",
+          "mood": "neutral"
+        },
+        "id": "b0002",
+        "page": 0,
+        "panelBbox": [24.0, 24.0, 752.0, 368.0],
+        "bubbleBbox": [40, 224, 210, 100],
+        "durationMs": 2600,
+        "leadMs": 600,
+        "camera": {
+          "from": [24.0, 24.0, 752.0, 368.0],
+          "to": [24.0, 24.0, 752.0, 368.0]
+        },
+        "keepBbox": [30, 40, 730, 330]
+      },
+      "kind": "glide",
+      "ms": 743.217661
+    },
+    {
+      "name": "webtoon strip",
+      "page": [800.0, 4800.0],
+      "aspect": 0.5625,
+      "bubble": {
+        "speaker": null,
+        "text": "",
+        "shout": false,
+        "tone": "normal",
+        "audioKey": null,
+        "tags": {
+          "onomatopoeia": [],
+          "ambience": "none",
+          "mood": "neutral"
+        },
+        "id": "b0008",
+        "page": 2,
+        "panelBbox": [0.0, 1300.0, 800.0, 2400.0],
+        "bubbleBbox": [0.0, 1300.0, 800.0, 2400.0],
+        "durationMs": 4000,
+        "leadMs": 900,
+        "camera": {
+          "from": [0.0, 1300.0, 800.0, 2400.0],
+          "to": [0.0, 1300.0, 800.0, 2400.0]
+        },
+        "detailBbox": [0, 1500, 800, 2000]
+      },
+      "prev": {
+        "speaker": null,
+        "text": "x",
+        "shout": false,
+        "tone": "normal",
+        "audioKey": null,
+        "tags": {
+          "onomatopoeia": [],
+          "ambience": "none",
+          "mood": "neutral"
+        },
+        "id": "b0007",
+        "page": 2,
+        "panelBbox": [0, 0, 800, 1300],
+        "bubbleBbox": [80, 60, 300, 160],
+        "durationMs": 2500,
+        "leadMs": 450,
+        "camera": {
+          "from": [0, 0, 800, 1300],
+          "to": [0, 0, 800, 1300]
+        }
+      },
+      "kind": "glide",
+      "ms": 771.471227
+    }
+  ],
+  "captionAnchor": [
+    {
+      "name": "wide panel: caption under it",
+      "page": [800.0, 1200.0],
+      "aspect": 0.5625,
+      "bubble": {
+        "speaker": null,
+        "text": "x",
+        "shout": false,
+        "tone": "normal",
+        "audioKey": null,
+        "tags": {
+          "onomatopoeia": [],
+          "ambience": "none",
+          "mood": "neutral"
+        },
+        "id": "b0001",
+        "page": 0,
+        "panelBbox": [24.0, 24.0, 752.0, 368.0],
+        "bubbleBbox": [546, 54, 200, 90],
+        "durationMs": 3000,
+        "leadMs": 450,
+        "camera": {
+          "from": [24.0, 24.0, 752.0, 368.0],
+          "to": [24.0, 24.0, 752.0, 368.0]
+        },
+        "keepBbox": [420, 40, 340, 330]
+      },
+      "prev": null,
+      "band": 0.2,
+      "anchor": 0.517997914
+    },
+    {
+      "name": "export band",
+      "page": [800.0, 1200.0],
+      "aspect": 0.5625,
+      "bubble": {
+        "speaker": null,
+        "text": "x",
+        "shout": false,
+        "tone": "normal",
+        "audioKey": null,
+        "tags": {
+          "onomatopoeia": [],
+          "ambience": "none",
+          "mood": "neutral"
+        },
+        "id": "b0001",
+        "page": 0,
+        "panelBbox": [24.0, 24.0, 752.0, 368.0],
+        "bubbleBbox": [546, 54, 200, 90],
+        "durationMs": 3000,
+        "leadMs": 450,
+        "camera": {
+          "from": [24.0, 24.0, 752.0, 368.0],
+          "to": [24.0, 24.0, 752.0, 368.0]
+        },
+        "keepBbox": [420, 40, 340, 330]
+      },
+      "prev": null,
+      "band": 0.3,
+      "anchor": 0.467997914
+    },
+    {
+      "name": "slanted panel",
+      "page": [800.0, 1200.0],
+      "aspect": 0.5625,
+      "bubble": {
+        "speaker": null,
+        "text": "x",
+        "shout": false,
+        "tone": "normal",
+        "audioKey": null,
+        "tags": {
+          "onomatopoeia": [],
+          "ambience": "none",
+          "mood": "neutral"
+        },
+        "id": "b0003",
+        "page": 0,
+        "panelBbox": [330.0, 394.0, 446.0, 406.0],
+        "bubbleBbox": [560, 420, 150, 80],
+        "durationMs": 2800,
+        "leadMs": 800,
+        "camera": {
+          "from": [330.0, 394.0, 446.0, 406.0],
+          "to": [330.0, 394.0, 446.0, 406.0]
+        },
+        "panelShape": [
+          [483.2, 394.0],
+          [776.0, 394.0],
+          [776.0, 800.0],
+          [343.1, 800.0]
+        ]
+      },
+      "prev": {
+        "speaker": null,
+        "text": "x",
+        "shout": false,
+        "tone": "normal",
+        "audioKey": null,
+        "tags": {
+          "onomatopoeia": [],
+          "ambience": "none",
+          "mood": "neutral"
+        },
+        "id": "b0002",
+        "page": 0,
+        "panelBbox": [24.0, 24.0, 752.0, 368.0],
+        "bubbleBbox": [40, 224, 210, 100],
+        "durationMs": 2600,
+        "leadMs": 600,
+        "camera": {
+          "from": [24.0, 24.0, 752.0, 368.0],
+          "to": [24.0, 24.0, 752.0, 368.0]
+        },
+        "keepBbox": [30, 40, 730, 330]
+      },
+      "band": 0.3,
+      "anchor": 0.615320277
+    },
+    {
+      "name": "tall panel in a phone frame",
+      "page": [800.0, 1200.0],
+      "aspect": 0.5625,
+      "bubble": {
+        "speaker": null,
+        "text": "x",
+        "shout": false,
+        "tone": "normal",
+        "audioKey": null,
+        "tags": {
+          "onomatopoeia": [],
+          "ambience": "none",
+          "mood": "neutral"
+        },
+        "id": "b0010",
+        "page": 0,
+        "panelBbox": [24.0, 416.0, 300.0, 700.0],
+        "bubbleBbox": [60, 450, 120, 90],
+        "durationMs": 2000,
+        "leadMs": 450,
+        "camera": {
+          "from": [24.0, 416.0, 300.0, 700.0],
+          "to": [24.0, 416.0, 300.0, 700.0]
+        }
+      },
+      "prev": null,
+      "band": 0.3,
+      "anchor": 0.80155
+    }
+  ],
+  "captionShown": [
+    {
+      "name": "big lettering in a whole panel: no caption",
+      "page": [800.0, 1200.0],
+      "aspect": 0.5625,
+      "bubble": {
+        "speaker": null,
+        "text": "Who goes there?",
+        "shout": false,
+        "tone": "normal",
+        "audioKey": null,
+        "tags": {
+          "onomatopoeia": [],
+          "ambience": "none",
+          "mood": "neutral"
+        },
+        "id": "b0020",
+        "page": 0,
+        "panelBbox": [24.0, 24.0, 752.0, 368.0],
+        "bubbleBbox": [546, 54, 200, 90],
+        "durationMs": 3000,
+        "leadMs": 450,
+        "camera": {
+          "from": [24.0, 24.0, 752.0, 368.0],
+          "to": [24.0, 24.0, 752.0, 368.0]
+        }
+      },
+      "prev": null,
+      "band": 0.2,
+      "lettering": 29.393877,
+      "shown": false
+    },
+    {
+      "name": "small lettering: caption",
+      "page": [800.0, 1200.0],
+      "aspect": 0.5625,
+      "bubble": {
+        "speaker": null,
+        "text": "We have to hold the gate until the cavalry gets here, no matter what",
+        "shout": false,
+        "tone": "normal",
+        "audioKey": null,
+        "tags": {
+          "onomatopoeia": [],
+          "ambience": "none",
+          "mood": "neutral"
+        },
+        "id": "b0021",
+        "page": 0,
+        "panelBbox": [24.0, 24.0, 752.0, 368.0],
+        "bubbleBbox": [546, 54, 120, 50],
+        "durationMs": 3000,
+        "leadMs": 450,
+        "camera": {
+          "from": [24.0, 24.0, 752.0, 368.0],
+          "to": [24.0, 24.0, 752.0, 368.0]
+        }
+      },
+      "prev": null,
+      "band": 0.2,
+      "lettering": 7.970534,
+      "shown": true
+    },
+    {
+      "name": "balloon outside the panel: caption",
+      "page": [800.0, 1200.0],
+      "aspect": 0.5625,
+      "bubble": {
+        "speaker": null,
+        "text": "Who goes there?",
+        "shout": false,
+        "tone": "normal",
+        "audioKey": null,
+        "tags": {
+          "onomatopoeia": [],
+          "ambience": "none",
+          "mood": "neutral"
+        },
+        "id": "b0022",
+        "page": 0,
+        "panelBbox": [24.0, 24.0, 752.0, 368.0],
+        "bubbleBbox": [700, 300, 200, 150],
+        "durationMs": 3000,
+        "leadMs": 450,
+        "camera": {
+          "from": [24.0, 24.0, 752.0, 368.0],
+          "to": [24.0, 24.0, 752.0, 368.0]
+        }
+      },
+      "prev": null,
+      "band": 0.2,
+      "lettering": 37.947332,
+      "shown": true
+    },
+    {
+      "name": "caption in another script: caption",
+      "page": [800.0, 1200.0],
+      "aspect": 0.5625,
+      "bubble": {
+        "speaker": null,
+        "text": "どうした",
+        "shout": false,
+        "tone": "normal",
+        "audioKey": null,
+        "tags": {
+          "onomatopoeia": [],
+          "ambience": "none",
+          "mood": "neutral"
+        },
+        "id": "b0023",
+        "page": 0,
+        "panelBbox": [24.0, 24.0, 752.0, 368.0],
+        "bubbleBbox": [546, 54, 90, 200],
+        "durationMs": 3000,
+        "leadMs": 450,
+        "camera": {
+          "from": [24.0, 24.0, 752.0, 368.0],
+          "to": [24.0, 24.0, 752.0, 368.0]
+        },
+        "display": "What happened"
+      },
+      "prev": null,
+      "band": 0.2,
+      "lettering": 56.284989,
+      "shown": true
+    },
+    {
+      "name": "CJK lettering, legible: no caption",
+      "page": [800.0, 1200.0],
+      "aspect": 0.5625,
+      "bubble": {
+        "speaker": null,
+        "text": "どうした",
+        "shout": false,
+        "tone": "normal",
+        "audioKey": null,
+        "tags": {
+          "onomatopoeia": [],
+          "ambience": "none",
+          "mood": "neutral"
+        },
+        "id": "b0024",
+        "page": 0,
+        "panelBbox": [24.0, 24.0, 752.0, 368.0],
+        "bubbleBbox": [546, 54, 90, 200],
+        "durationMs": 3000,
+        "leadMs": 450,
+        "camera": {
+          "from": [24.0, 24.0, 752.0, 368.0],
+          "to": [24.0, 24.0, 752.0, 368.0]
+        }
+      },
+      "prev": null,
+      "band": 0.2,
+      "lettering": 56.284989,
+      "shown": false
+    },
+    {
+      "name": "same lettering in a landscape stage",
+      "page": [800.0, 1200.0],
+      "aspect": 1.7777777777777777,
+      "bubble": {
+        "speaker": null,
+        "text": "Open the gate right now!",
+        "shout": false,
+        "tone": "normal",
+        "audioKey": null,
+        "tags": {
+          "onomatopoeia": [],
+          "ambience": "none",
+          "mood": "neutral"
+        },
+        "id": "b0025",
+        "page": 0,
+        "panelBbox": [24.0, 24.0, 752.0, 368.0],
+        "bubbleBbox": [546, 54, 120, 60],
+        "durationMs": 3000,
+        "leadMs": 450,
+        "camera": {
+          "from": [24.0, 24.0, 752.0, 368.0],
+          "to": [24.0, 24.0, 752.0, 368.0]
+        }
+      },
+      "prev": null,
+      "band": 0.2,
+      "lettering": 14.696938,
+      "shown": false
+    },
+    {
+      "name": "same lettering in a phone frame",
+      "page": [800.0, 1200.0],
+      "aspect": 0.5625,
+      "bubble": {
+        "speaker": null,
+        "text": "Open the gate right now!",
+        "shout": false,
+        "tone": "normal",
+        "audioKey": null,
+        "tags": {
+          "onomatopoeia": [],
+          "ambience": "none",
+          "mood": "neutral"
+        },
+        "id": "b0026",
+        "page": 0,
+        "panelBbox": [24.0, 24.0, 752.0, 368.0],
+        "bubbleBbox": [546, 54, 120, 60],
+        "durationMs": 3000,
+        "leadMs": 450,
+        "camera": {
+          "from": [24.0, 24.0, 752.0, 368.0],
+          "to": [24.0, 24.0, 752.0, 368.0]
+        }
+      },
+      "prev": null,
+      "band": 0.2,
+      "lettering": 14.696938,
+      "shown": true
+    },
+    {
+      "name": "export band, second balloon of the panel",
+      "page": [800.0, 1200.0],
+      "aspect": 0.5625,
+      "bubble": {
+        "speaker": null,
+        "text": "x",
+        "shout": false,
+        "tone": "normal",
+        "audioKey": null,
+        "tags": {
+          "onomatopoeia": [],
+          "ambience": "none",
+          "mood": "neutral"
+        },
+        "id": "b0002",
+        "page": 0,
+        "panelBbox": [24.0, 24.0, 752.0, 368.0],
+        "bubbleBbox": [40, 224, 210, 100],
+        "durationMs": 2600,
+        "leadMs": 600,
+        "camera": {
+          "from": [24.0, 24.0, 752.0, 368.0],
+          "to": [24.0, 24.0, 752.0, 368.0]
+        },
+        "keepBbox": [30, 40, 730, 330]
+      },
+      "prev": {
+        "speaker": null,
+        "text": "x",
+        "shout": false,
+        "tone": "normal",
+        "audioKey": null,
+        "tags": {
+          "onomatopoeia": [],
+          "ambience": "none",
+          "mood": "neutral"
+        },
+        "id": "b0001",
+        "page": 0,
+        "panelBbox": [24.0, 24.0, 752.0, 368.0],
+        "bubbleBbox": [546, 54, 200, 90],
+        "durationMs": 3000,
+        "leadMs": 450,
+        "camera": {
+          "from": [24.0, 24.0, 752.0, 368.0],
+          "to": [24.0, 24.0, 752.0, 368.0]
+        },
+        "keepBbox": [420, 40, 340, 330]
+      },
+      "band": 0.3,
+      "lettering": 72.0,
+      "shown": false
+    },
+    {
+      "name": "webtoon bubble",
+      "page": [800.0, 4800.0],
+      "aspect": 0.5625,
+      "bubble": {
+        "speaker": null,
+        "text": "x",
+        "shout": false,
+        "tone": "normal",
+        "audioKey": null,
+        "tags": {
+          "onomatopoeia": [],
+          "ambience": "none",
+          "mood": "neutral"
+        },
+        "id": "b0007",
+        "page": 2,
+        "panelBbox": [0, 0, 800, 1300],
+        "bubbleBbox": [80, 60, 300, 160],
+        "durationMs": 2500,
+        "leadMs": 450,
+        "camera": {
+          "from": [0, 0, 800, 1300],
+          "to": [0, 0, 800, 1300]
+        }
+      },
+      "prev": null,
+      "band": 0.2,
+      "lettering": 115.2,
+      "shown": false
+    },
+    {
+      "name": "wordless beat",
+      "page": [800.0, 1200.0],
+      "aspect": 0.5625,
+      "bubble": {
+        "speaker": null,
+        "text": "",
+        "shout": false,
+        "tone": "normal",
+        "audioKey": null,
+        "tags": {
+          "onomatopoeia": [],
+          "ambience": "none",
+          "mood": "neutral"
+        },
+        "id": "b0005",
+        "page": 1,
+        "panelBbox": [24.0, 24.0, 752.0, 368.0],
+        "bubbleBbox": [24.0, 24.0, 752.0, 368.0],
+        "durationMs": 2000,
+        "leadMs": 450,
+        "camera": {
+          "from": [24.0, 24.0, 752.0, 368.0],
+          "to": [24.0, 24.0, 752.0, 368.0]
+        },
+        "detailBbox": [60, 150, 250, 210]
+      },
+      "prev": {
+        "speaker": null,
+        "text": "",
+        "shout": false,
+        "tone": "normal",
+        "audioKey": null,
+        "tags": {
+          "onomatopoeia": [],
+          "ambience": "none",
+          "mood": "neutral"
+        },
+        "id": "b0004",
+        "page": 0,
+        "panelBbox": [24.0, 1000.0, 200.0, 180.0],
+        "bubbleBbox": [24.0, 1000.0, 200.0, 180.0],
+        "durationMs": 2400,
+        "leadMs": 500,
+        "camera": {
+          "from": [24.0, 1000.0, 200.0, 180.0],
+          "to": [24.0, 1000.0, 200.0, 180.0]
+        }
+      },
+      "band": 0.2,
+      "lettering": 0.0,
+      "shown": true
+    }
+  ],
+  "takes": [
+    {
+      "name": "phone frame",
+      "page": [800.0, 1200.0],
+      "aspect": 0.5625,
+      "band": 0.2,
+      "bubbles": [
+        {
+          "speaker": null,
+          "text": "Who goes there?",
+          "shout": false,
+          "tone": "normal",
+          "audioKey": null,
+          "tags": {
+            "onomatopoeia": [],
+            "ambience": "none",
+            "mood": "neutral"
+          },
+          "id": "b0030",
+          "page": 0,
+          "panelBbox": [20.0, 20.0, 760.0, 560.0],
+          "bubbleBbox": [560, 40, 190, 80],
+          "durationMs": 2400,
+          "leadMs": 450,
+          "camera": {
+            "from": [20.0, 20.0, 760.0, 560.0],
+            "to": [20.0, 20.0, 760.0, 560.0]
+          },
+          "keepBbox": [60.0, 40.0, 690.0, 500.0]
+        },
+        {
+          "speaker": null,
+          "text": "Open the gate!",
+          "shout": false,
+          "tone": "normal",
+          "audioKey": null,
+          "tags": {
+            "onomatopoeia": [],
+            "ambience": "none",
+            "mood": "neutral"
+          },
+          "id": "b0031",
+          "page": 0,
+          "panelBbox": [20.0, 20.0, 760.0, 560.0],
+          "bubbleBbox": [60, 60, 170, 70],
+          "durationMs": 2200,
+          "leadMs": 0,
+          "camera": {
+            "from": [20.0, 20.0, 760.0, 560.0],
+            "to": [20.0, 20.0, 760.0, 560.0]
+          },
+          "keepBbox": [60.0, 40.0, 690.0, 500.0]
+        },
+        {
+          "speaker": null,
+          "text": "We hold the line.",
+          "shout": false,
+          "tone": "normal",
+          "audioKey": null,
+          "tags": {
+            "onomatopoeia": [],
+            "ambience": "none",
+            "mood": "neutral"
+          },
+          "id": "b0032",
+          "page": 0,
+          "panelBbox": [20.0, 20.0, 760.0, 560.0],
+          "bubbleBbox": [520, 420, 200, 80],
+          "durationMs": 2600,
+          "leadMs": 0,
+          "camera": {
+            "from": [20.0, 20.0, 760.0, 560.0],
+            "to": [20.0, 20.0, 760.0, 560.0]
+          },
+          "keepBbox": [60.0, 40.0, 690.0, 500.0]
+        },
+        {
+          "speaker": null,
+          "text": "NOT ONE STEP BACK!",
+          "shout": true,
+          "tone": "shout",
+          "audioKey": null,
+          "tags": {
+            "onomatopoeia": [],
+            "ambience": "none",
+            "mood": "neutral"
+          },
+          "id": "b0033",
+          "page": 0,
+          "panelBbox": [20.0, 20.0, 760.0, 560.0],
+          "bubbleBbox": [80, 430, 180, 70],
+          "durationMs": 2000,
+          "leadMs": 600,
+          "camera": {
+            "from": [20.0, 20.0, 760.0, 560.0],
+            "to": [20.0, 20.0, 760.0, 560.0]
+          },
+          "keepBbox": [60.0, 40.0, 690.0, 500.0]
+        },
+        {
+          "speaker": null,
+          "text": "psst, over here, quietly now",
+          "shout": false,
+          "tone": "normal",
+          "audioKey": null,
+          "tags": {
+            "onomatopoeia": [],
+            "ambience": "none",
+            "mood": "neutral"
+          },
+          "id": "b0034",
+          "page": 0,
+          "panelBbox": [20.0, 20.0, 760.0, 560.0],
+          "bubbleBbox": [300, 300, 30, 10],
+          "durationMs": 2000,
+          "leadMs": 600,
+          "camera": {
+            "from": [20.0, 20.0, 760.0, 560.0],
+            "to": [20.0, 20.0, 760.0, 560.0]
+          },
+          "keepBbox": [60.0, 40.0, 690.0, 500.0]
+        },
+        {
+          "speaker": null,
+          "text": "It's over.",
+          "shout": false,
+          "tone": "normal",
+          "audioKey": null,
+          "tags": {
+            "onomatopoeia": [],
+            "ambience": "none",
+            "mood": "neutral"
+          },
+          "id": "b0035",
+          "page": 0,
+          "panelBbox": [24.0, 1000.0, 200.0, 180.0],
+          "bubbleBbox": [40, 1010, 150, 60],
+          "durationMs": 2000,
+          "leadMs": 700,
+          "camera": {
+            "from": [24.0, 1000.0, 200.0, 180.0],
+            "to": [24.0, 1000.0, 200.0, 180.0]
+          }
+        }
+      ],
+      "takes": [
+        {
+          "startMs": 0.0,
+          "totalMs": 7200.0,
+          "leadMs": 450.0,
+          "wide": true
+        },
+        {
+          "startMs": 2400.0,
+          "totalMs": 7200.0,
+          "leadMs": 450.0,
+          "wide": true
+        },
+        {
+          "startMs": 4600.0,
+          "totalMs": 7200.0,
+          "leadMs": 450.0,
+          "wide": true
+        },
+        {
+          "startMs": 0.0,
+          "totalMs": 2000.0,
+          "leadMs": 600.0,
+          "wide": false
+        },
+        {
+          "startMs": 0.0,
+          "totalMs": 2000.0,
+          "leadMs": 600.0,
+          "wide": false
+        },
+        {
+          "startMs": 0.0,
+          "totalMs": 2000.0,
+          "leadMs": 700.0,
+          "wide": false
+        }
+      ]
+    },
+    {
+      "name": "export band",
+      "page": [800.0, 1200.0],
+      "aspect": 0.5625,
+      "band": 0.3,
+      "bubbles": [
+        {
+          "speaker": null,
+          "text": "Who goes there?",
+          "shout": false,
+          "tone": "normal",
+          "audioKey": null,
+          "tags": {
+            "onomatopoeia": [],
+            "ambience": "none",
+            "mood": "neutral"
+          },
+          "id": "b0030",
+          "page": 0,
+          "panelBbox": [20.0, 20.0, 760.0, 560.0],
+          "bubbleBbox": [560, 40, 190, 80],
+          "durationMs": 2400,
+          "leadMs": 450,
+          "camera": {
+            "from": [20.0, 20.0, 760.0, 560.0],
+            "to": [20.0, 20.0, 760.0, 560.0]
+          },
+          "keepBbox": [60.0, 40.0, 690.0, 500.0]
+        },
+        {
+          "speaker": null,
+          "text": "Open the gate!",
+          "shout": false,
+          "tone": "normal",
+          "audioKey": null,
+          "tags": {
+            "onomatopoeia": [],
+            "ambience": "none",
+            "mood": "neutral"
+          },
+          "id": "b0031",
+          "page": 0,
+          "panelBbox": [20.0, 20.0, 760.0, 560.0],
+          "bubbleBbox": [60, 60, 170, 70],
+          "durationMs": 2200,
+          "leadMs": 0,
+          "camera": {
+            "from": [20.0, 20.0, 760.0, 560.0],
+            "to": [20.0, 20.0, 760.0, 560.0]
+          },
+          "keepBbox": [60.0, 40.0, 690.0, 500.0]
+        },
+        {
+          "speaker": null,
+          "text": "We hold the line.",
+          "shout": false,
+          "tone": "normal",
+          "audioKey": null,
+          "tags": {
+            "onomatopoeia": [],
+            "ambience": "none",
+            "mood": "neutral"
+          },
+          "id": "b0032",
+          "page": 0,
+          "panelBbox": [20.0, 20.0, 760.0, 560.0],
+          "bubbleBbox": [520, 420, 200, 80],
+          "durationMs": 2600,
+          "leadMs": 0,
+          "camera": {
+            "from": [20.0, 20.0, 760.0, 560.0],
+            "to": [20.0, 20.0, 760.0, 560.0]
+          },
+          "keepBbox": [60.0, 40.0, 690.0, 500.0]
+        },
+        {
+          "speaker": null,
+          "text": "NOT ONE STEP BACK!",
+          "shout": true,
+          "tone": "shout",
+          "audioKey": null,
+          "tags": {
+            "onomatopoeia": [],
+            "ambience": "none",
+            "mood": "neutral"
+          },
+          "id": "b0033",
+          "page": 0,
+          "panelBbox": [20.0, 20.0, 760.0, 560.0],
+          "bubbleBbox": [80, 430, 180, 70],
+          "durationMs": 2000,
+          "leadMs": 600,
+          "camera": {
+            "from": [20.0, 20.0, 760.0, 560.0],
+            "to": [20.0, 20.0, 760.0, 560.0]
+          },
+          "keepBbox": [60.0, 40.0, 690.0, 500.0]
+        },
+        {
+          "speaker": null,
+          "text": "psst, over here, quietly now",
+          "shout": false,
+          "tone": "normal",
+          "audioKey": null,
+          "tags": {
+            "onomatopoeia": [],
+            "ambience": "none",
+            "mood": "neutral"
+          },
+          "id": "b0034",
+          "page": 0,
+          "panelBbox": [20.0, 20.0, 760.0, 560.0],
+          "bubbleBbox": [300, 300, 30, 10],
+          "durationMs": 2000,
+          "leadMs": 600,
+          "camera": {
+            "from": [20.0, 20.0, 760.0, 560.0],
+            "to": [20.0, 20.0, 760.0, 560.0]
+          },
+          "keepBbox": [60.0, 40.0, 690.0, 500.0]
+        },
+        {
+          "speaker": null,
+          "text": "It's over.",
+          "shout": false,
+          "tone": "normal",
+          "audioKey": null,
+          "tags": {
+            "onomatopoeia": [],
+            "ambience": "none",
+            "mood": "neutral"
+          },
+          "id": "b0035",
+          "page": 0,
+          "panelBbox": [24.0, 1000.0, 200.0, 180.0],
+          "bubbleBbox": [40, 1010, 150, 60],
+          "durationMs": 2000,
+          "leadMs": 700,
+          "camera": {
+            "from": [24.0, 1000.0, 200.0, 180.0],
+            "to": [24.0, 1000.0, 200.0, 180.0]
+          }
+        }
+      ],
+      "takes": [
+        {
+          "startMs": 0.0,
+          "totalMs": 7200.0,
+          "leadMs": 450.0,
+          "wide": true
+        },
+        {
+          "startMs": 2400.0,
+          "totalMs": 7200.0,
+          "leadMs": 450.0,
+          "wide": true
+        },
+        {
+          "startMs": 4600.0,
+          "totalMs": 7200.0,
+          "leadMs": 450.0,
+          "wide": true
+        },
+        {
+          "startMs": 0.0,
+          "totalMs": 2000.0,
+          "leadMs": 600.0,
+          "wide": false
+        },
+        {
+          "startMs": 0.0,
+          "totalMs": 2000.0,
+          "leadMs": 600.0,
+          "wide": false
+        },
+        {
+          "startMs": 0.0,
+          "totalMs": 2000.0,
+          "leadMs": 700.0,
+          "wide": false
+        }
+      ]
+    },
+    {
+      "name": "landscape stage",
+      "page": [800.0, 1200.0],
+      "aspect": 1.7777777777777777,
+      "band": 0.2,
+      "bubbles": [
+        {
+          "speaker": null,
+          "text": "Who goes there?",
+          "shout": false,
+          "tone": "normal",
+          "audioKey": null,
+          "tags": {
+            "onomatopoeia": [],
+            "ambience": "none",
+            "mood": "neutral"
+          },
+          "id": "b0030",
+          "page": 0,
+          "panelBbox": [20.0, 20.0, 760.0, 560.0],
+          "bubbleBbox": [560, 40, 190, 80],
+          "durationMs": 2400,
+          "leadMs": 450,
+          "camera": {
+            "from": [20.0, 20.0, 760.0, 560.0],
+            "to": [20.0, 20.0, 760.0, 560.0]
+          },
+          "keepBbox": [60.0, 40.0, 690.0, 500.0]
+        },
+        {
+          "speaker": null,
+          "text": "Open the gate!",
+          "shout": false,
+          "tone": "normal",
+          "audioKey": null,
+          "tags": {
+            "onomatopoeia": [],
+            "ambience": "none",
+            "mood": "neutral"
+          },
+          "id": "b0031",
+          "page": 0,
+          "panelBbox": [20.0, 20.0, 760.0, 560.0],
+          "bubbleBbox": [60, 60, 170, 70],
+          "durationMs": 2200,
+          "leadMs": 0,
+          "camera": {
+            "from": [20.0, 20.0, 760.0, 560.0],
+            "to": [20.0, 20.0, 760.0, 560.0]
+          },
+          "keepBbox": [60.0, 40.0, 690.0, 500.0]
+        },
+        {
+          "speaker": null,
+          "text": "We hold the line.",
+          "shout": false,
+          "tone": "normal",
+          "audioKey": null,
+          "tags": {
+            "onomatopoeia": [],
+            "ambience": "none",
+            "mood": "neutral"
+          },
+          "id": "b0032",
+          "page": 0,
+          "panelBbox": [20.0, 20.0, 760.0, 560.0],
+          "bubbleBbox": [520, 420, 200, 80],
+          "durationMs": 2600,
+          "leadMs": 0,
+          "camera": {
+            "from": [20.0, 20.0, 760.0, 560.0],
+            "to": [20.0, 20.0, 760.0, 560.0]
+          },
+          "keepBbox": [60.0, 40.0, 690.0, 500.0]
+        },
+        {
+          "speaker": null,
+          "text": "NOT ONE STEP BACK!",
+          "shout": true,
+          "tone": "shout",
+          "audioKey": null,
+          "tags": {
+            "onomatopoeia": [],
+            "ambience": "none",
+            "mood": "neutral"
+          },
+          "id": "b0033",
+          "page": 0,
+          "panelBbox": [20.0, 20.0, 760.0, 560.0],
+          "bubbleBbox": [80, 430, 180, 70],
+          "durationMs": 2000,
+          "leadMs": 600,
+          "camera": {
+            "from": [20.0, 20.0, 760.0, 560.0],
+            "to": [20.0, 20.0, 760.0, 560.0]
+          },
+          "keepBbox": [60.0, 40.0, 690.0, 500.0]
+        },
+        {
+          "speaker": null,
+          "text": "psst, over here, quietly now",
+          "shout": false,
+          "tone": "normal",
+          "audioKey": null,
+          "tags": {
+            "onomatopoeia": [],
+            "ambience": "none",
+            "mood": "neutral"
+          },
+          "id": "b0034",
+          "page": 0,
+          "panelBbox": [20.0, 20.0, 760.0, 560.0],
+          "bubbleBbox": [300, 300, 30, 10],
+          "durationMs": 2000,
+          "leadMs": 600,
+          "camera": {
+            "from": [20.0, 20.0, 760.0, 560.0],
+            "to": [20.0, 20.0, 760.0, 560.0]
+          },
+          "keepBbox": [60.0, 40.0, 690.0, 500.0]
+        },
+        {
+          "speaker": null,
+          "text": "It's over.",
+          "shout": false,
+          "tone": "normal",
+          "audioKey": null,
+          "tags": {
+            "onomatopoeia": [],
+            "ambience": "none",
+            "mood": "neutral"
+          },
+          "id": "b0035",
+          "page": 0,
+          "panelBbox": [24.0, 1000.0, 200.0, 180.0],
+          "bubbleBbox": [40, 1010, 150, 60],
+          "durationMs": 2000,
+          "leadMs": 700,
+          "camera": {
+            "from": [24.0, 1000.0, 200.0, 180.0],
+            "to": [24.0, 1000.0, 200.0, 180.0]
+          }
+        }
+      ],
+      "takes": [
+        {
+          "startMs": 0.0,
+          "totalMs": 7200.0,
+          "leadMs": 450.0,
+          "wide": true
+        },
+        {
+          "startMs": 2400.0,
+          "totalMs": 7200.0,
+          "leadMs": 450.0,
+          "wide": true
+        },
+        {
+          "startMs": 4600.0,
+          "totalMs": 7200.0,
+          "leadMs": 450.0,
+          "wide": true
+        },
+        {
+          "startMs": 0.0,
+          "totalMs": 2000.0,
+          "leadMs": 600.0,
+          "wide": false
+        },
+        {
+          "startMs": 0.0,
+          "totalMs": 2000.0,
+          "leadMs": 600.0,
+          "wide": false
+        },
+        {
+          "startMs": 0.0,
+          "totalMs": 2000.0,
+          "leadMs": 700.0,
+          "wide": false
+        }
+      ]
+    }
+  ],
+  "captionSlot": [
+    {
+      "name": "wide panel: under the panel",
+      "page": [800.0, 1200.0],
+      "aspect": 0.5625,
+      "bubble": {
+        "speaker": null,
+        "text": "We have to hold the gate until the cavalry gets here",
+        "shout": false,
+        "tone": "normal",
+        "audioKey": null,
+        "tags": {
+          "onomatopoeia": [],
+          "ambience": "none",
+          "mood": "neutral"
+        },
+        "id": "b0043",
+        "page": 0,
+        "panelBbox": [24.0, 24.0, 752.0, 368.0],
+        "bubbleBbox": [546, 54, 60, 20],
+        "durationMs": 3000,
+        "leadMs": 450,
+        "camera": {
+          "from": [24.0, 24.0, 752.0, 368.0],
+          "to": [24.0, 24.0, 752.0, 368.0]
+        }
+      },
+      "prev": null,
+      "letters": [[546.0, 54.0, 60.0, 20.0]],
+      "height": 0.08,
+      "width": 0.7,
+      "floor": 0.8,
+      "band": 0.3,
+      "slot": {
+        "top": 0.537153757,
+        "overArt": false
+      }
+    },
+    {
+      "name": "tall panel: over the art, above its lower balloons",
+      "page": [800.0, 1200.0],
+      "aspect": 0.5625,
+      "bubble": {
+        "speaker": null,
+        "text": "Hika is just on the other side of those woods up ahead!",
+        "shout": false,
+        "tone": "normal",
+        "audioKey": null,
+        "tags": {
+          "onomatopoeia": [],
+          "ambience": "none",
+          "mood": "neutral"
+        },
+        "id": "b0040",
+        "page": 0,
+        "panelBbox": [24.0, 24.0, 440.0, 1150.0],
+        "bubbleBbox": [60, 60, 70, 30],
+        "durationMs": 3000,
+        "leadMs": 450,
+        "camera": {
+          "from": [24.0, 24.0, 440.0, 1150.0],
+          "to": [24.0, 24.0, 440.0, 1150.0]
+        }
+      },
+      "prev": null,
+      "letters": [
+        [60.0, 60.0, 70.0, 30.0],
+        [60.0, 900.0, 360.0, 200.0],
+        [40.0, 640.0, 380.0, 220.0]
+      ],
+      "height": 0.08,
+      "width": 0.7,
+      "floor": 0.8,
+      "band": 0.3,
+      "slot": {
+        "top": 0.63,
+        "overArt": true
+      }
+    },
+    {
+      "name": "tall panel: a narrow caption still clears them",
+      "page": [800.0, 1200.0],
+      "aspect": 0.5625,
+      "bubble": {
+        "speaker": null,
+        "text": "Hika is just on the other side of those woods up ahead!",
+        "shout": false,
+        "tone": "normal",
+        "audioKey": null,
+        "tags": {
+          "onomatopoeia": [],
+          "ambience": "none",
+          "mood": "neutral"
+        },
+        "id": "b0040",
+        "page": 0,
+        "panelBbox": [24.0, 24.0, 440.0, 1150.0],
+        "bubbleBbox": [60, 60, 70, 30],
+        "durationMs": 3000,
+        "leadMs": 450,
+        "camera": {
+          "from": [24.0, 24.0, 440.0, 1150.0],
+          "to": [24.0, 24.0, 440.0, 1150.0]
+        }
+      },
+      "prev": null,
+      "letters": [
+        [60.0, 60.0, 70.0, 30.0],
+        [60.0, 900.0, 360.0, 200.0],
+        [40.0, 640.0, 380.0, 220.0]
+      ],
+      "height": 0.06,
+      "width": 0.3,
+      "floor": 0.8,
+      "band": 0.3,
+      "slot": {
+        "top": 0.65,
+        "overArt": true
+      }
+    },
+    {
+      "name": "tall panel: lettering everywhere, no place",
+      "page": [800.0, 1200.0],
+      "aspect": 0.5625,
+      "bubble": {
+        "speaker": null,
+        "text": "Hika is just on the other side of those woods up ahead!",
+        "shout": false,
+        "tone": "normal",
+        "audioKey": null,
+        "tags": {
+          "onomatopoeia": [],
+          "ambience": "none",
+          "mood": "neutral"
+        },
+        "id": "b0040",
+        "page": 0,
+        "panelBbox": [24.0, 24.0, 440.0, 1150.0],
+        "bubbleBbox": [60, 60, 70, 30],
+        "durationMs": 3000,
+        "leadMs": 450,
+        "camera": {
+          "from": [24.0, 24.0, 440.0, 1150.0],
+          "to": [24.0, 24.0, 440.0, 1150.0]
+        }
+      },
+      "prev": null,
+      "letters": [
+        [60.0, 60.0, 70.0, 30.0],
+        [60.0, 900.0, 360.0, 200.0],
+        [40.0, 640.0, 380.0, 220.0],
+        [40.0, 120.0, 380.0, 500.0]
+      ],
+      "height": 0.1,
+      "width": 0.8,
+      "floor": 0.8,
+      "band": 0.3,
+      "slot": null
+    },
+    {
+      "name": "player band: under the panel",
+      "page": [800.0, 1200.0],
+      "aspect": 0.5625,
+      "bubble": {
+        "speaker": null,
+        "text": "Hika is just on the other side of those woods up ahead!",
+        "shout": false,
+        "tone": "normal",
+        "audioKey": null,
+        "tags": {
+          "onomatopoeia": [],
+          "ambience": "none",
+          "mood": "neutral"
+        },
+        "id": "b0040",
+        "page": 0,
+        "panelBbox": [24.0, 24.0, 440.0, 1150.0],
+        "bubbleBbox": [60, 60, 70, 30],
+        "durationMs": 3000,
+        "leadMs": 450,
+        "camera": {
+          "from": [24.0, 24.0, 440.0, 1150.0],
+          "to": [24.0, 24.0, 440.0, 1150.0]
+        }
+      },
+      "prev": null,
+      "letters": [[60.0, 60.0, 70.0, 30.0]],
+      "height": 0.07,
+      "width": 0.7,
+      "floor": 0.92,
+      "band": 0.2,
+      "slot": {
+        "top": 0.85,
+        "overArt": true
+      }
+    }
+  ],
+  "opensOnImpact": [
+    {
+      "name": "nothing",
+      "onomatopoeia": [],
+      "sounds": [],
+      "shakes": false
+    },
+    {
+      "name": "lettered effect",
+      "onomatopoeia": ["DOKA"],
+      "sounds": [],
+      "shakes": true
+    },
+    {
+      "name": "impact effect",
+      "onomatopoeia": [],
+      "sounds": [
+        {
+          "kind": "sfx",
+          "impact": true
+        }
+      ],
+      "shakes": true
+    },
+    {
+      "name": "wind, footsteps or hooves",
+      "onomatopoeia": [],
+      "sounds": [
+        {
+          "kind": "sfx",
+          "impact": false
+        }
+      ],
+      "shakes": false
+    },
+    {
+      "name": "older timeline: no flag",
+      "onomatopoeia": [],
+      "sounds": [
+        {
+          "kind": "sfx"
+        }
+      ],
+      "shakes": true
+    },
+    {
+      "name": "ambience on an old bubble",
+      "onomatopoeia": [],
+      "sounds": [
+        {
+          "kind": "ambience"
+        }
+      ],
+      "shakes": false
+    },
+    {
+      "name": "calm effect then a hit",
+      "onomatopoeia": [],
+      "sounds": [
+        {
+          "kind": "sfx",
+          "impact": false
+        },
+        {
+          "kind": "sfx",
+          "impact": true
+        }
+      ],
+      "shakes": true
+    }
+  ]
+}

@@ -82,6 +82,64 @@ Another address: `./gradlew :androidApp:assembleDebug -Pvovoscan.apiBaseUrl=http
 - Images are signed URLs, unchanged for a day: the image cache serves pages already seen.
   Downloading chapters for full offline reading is still to do.
 
+## Account (keys, reading model, costs)
+
+- `feature/account`: the user's own AI settings, one slice for the backend modules `provider-keys` and `settings`
+  (one settings area, the same "always the caller's own records" rule). Every signed-in user, Reader included.
+- Provider keys (`GET`, `POST`, `DELETE api/v1/provider-keys`): Anthropic and ElevenLabs, one active key each. The
+  secret is typed once and sent once, in the POST body (`AddProviderKeyBody`, whose `toString` hides it); it is never
+  stored (the `provider_key` table has no column for it), logged, queued or kept in ViewModel state:
+  `ProviderKeysViewModel` keeps it in a private draft emptied the moment it is sent, whatever the answer, and bumps
+  `secretFieldResets` so the UI empties its field. Only the hint (last 4 characters) is shown. Errors `KEY_REJECTED`,
+  `PROVIDER_BLOCKED`, `PROVIDER_UNAVAILABLE`, `BYOK_DISABLED`, 429 have calm messages (`AccountText`). Removal asks
+  first and is idempotent (`404 PROVIDER_KEY_NOT_FOUND` counts as removed). `enabled: false`: "Keys are turned off on
+  this server."
+- Reading model (`GET`, `PUT api/v1/settings/reading`): Haiku (default), Sonnet, Opus. The key list and the model are
+  kept on the device; every write needs the network ("You're offline…", never queued).
+- Costs (`GET api/v1/provider-keys/usage?from=`): online only; periods in the device's time zone (`DeviceTimeZone` in
+  `core/common`): last 7 days, last 30 days, this month.
+- ViewModels: `ProviderKeysViewModel`, `ReadingSettingsViewModel`, `UsageViewModel`.
+
+## Episodes
+
+- `feature/episodes`: a comic chapter of our catalog made into a voiced episode with the user's own keys, shared with
+  everyone who can see the chapter (`api/v1/episodes/chapters/{chapterId}`: `GET`, `POST` prepare, `POST …/reread`,
+  `GET …/events`, `GET …/watch`; the MP4 export is not in the app yet). Nobody pays twice: a usable render answers
+  `200` and nothing is queued. `canReread` from the API is the truth, never computed on the device.
+- Offline first: every answer and live snapshot is saved (`episode` table, last known episode per chapter; an older
+  `updatedAt` never replaces a newer one); the last watch (timeline + signed URLs) is kept and reused while its URLs
+  last more than 10 minutes, else refetched (and offline, played as it is).
+- Live progress: `follow()` reads `…/events` (`text/event-stream`, `event: snapshot` = the episode, `:` comment
+  heartbeats, `SseParser`) until the episode is ready or failed. No request timeout on the stream, 45 s without a byte
+  is a dead link. Reconnects at once when the server ends the stream (30-minute cap), with backoff (1, 2, 4… 30 s) when
+  it fails; after 3 failures (or `429 TOO_MANY_STREAMS`) polls `GET` every 10 s, trying the stream again every minute.
+  The screen stops following when it stops (`EpisodeIntent.Stop`).
+- `EpisodeViewModel(chapterId)`: no episode yet (Prepare, with the key notice), running (ANALYZE · OCR · VOICE ·
+  TIMELINE chips, step x/y), ready (Watch, Degraded / Silent / Outdated badges, "Prepare again" when outdated, reread
+  when `canReread`), failed (the server's error, "Try again"). `409 EPISODE_BUSY` follows the run in progress;
+  `422 EPISODE_NOT_SUPPORTED` (a book) hides the feature (`visible` false).
+- Which keys a run would use comes through the `KeyStatusProvider` port (hints only), wired in `shared` to the account
+  slice: episodes do not know about `account`.
+
+## Player core
+
+- `feature/episodes/domain/player`: the old web player's logic, ported line for line, never its rendering:
+  `Camera.kt` (camera.ts: panel-first framing, push-in, drift, long-panel pans, glides, dissolves, impact shakes,
+  caption legibility and placement), `Mix.kt` (mix.ts: bed and score crossfades, ducking, constant-power pan, sweeps,
+  repeat cap), `Captions.kt` (captions.ts: caption cards; JavaScript regexes written out as character tests so the JVM
+  and Kotlin/Native agree). Pure, deterministic.
+- Shared vectors: `feature/episodes/domain/src/commonTest/fixtures/{framing,mix,captions}.json` are copies of the
+  backend's `tests/fixtures/episodes/` (= the old `packages/shared/fixtures`): they keep every player and the MP4 export
+  identical. Copy them again when the export changes. The `generateVectors` task turns them into Kotlin strings, so the
+  same tests run on the JVM and on iOS.
+- `PlaybackPlan(watch)`: total duration, beats and pages, and `frame(t, stageW, stageH)` → `PlayerFrame` (page shot:
+  framing, stage transforms, panel outline, backdrop; the fading previous shot; the opening veil; caption cards; the
+  audio cues playing now with gain and pan). `captionPlacement(…)` places the caption block the native side measured.
+- `PlayerViewModel(chapterId, nextChapterId?)`: play, pause, seek, speed 0.75 / 1 / 1.25 / 1.5, mute, beat and page
+  navigation, end of chapter ("Next chapter →" when the opening screen gave one). The native side calls
+  `frame(frameTimeMs, stageW, stageH)` on every display frame and draws and plays exactly what it returns (audio: one
+  player per cue id). URLs are refetched 5 minutes before they expire, or on `PlayerIntent.MediaFailed`.
+
 ## iOS: known pitfalls
 
 - Text fields: `IntentField` keeps the text on the Swift side and sends each keystroke as an intent; reading back

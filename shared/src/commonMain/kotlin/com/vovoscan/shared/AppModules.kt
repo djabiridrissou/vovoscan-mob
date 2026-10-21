@@ -9,10 +9,17 @@ import com.vovoscan.core.security.SecureStore
 import com.vovoscan.core.sources.PluginLinkPolicy
 import com.vovoscan.core.sources.RulesHttp
 import com.vovoscan.core.sources.createRulesHttpClient
+import com.vovoscan.feature.account.di.accountModule
+import com.vovoscan.feature.account.domain.Provider
+import com.vovoscan.feature.account.domain.ProviderKeysRepository
 import com.vovoscan.feature.auth.di.SignOutCleanup
 import com.vovoscan.feature.auth.di.authModule
 import com.vovoscan.feature.catalog.di.catalogModule
 import com.vovoscan.feature.catalog.domain.CatalogRepository
+import com.vovoscan.feature.episodes.di.episodesModule
+import com.vovoscan.feature.episodes.domain.EpisodesRepository
+import com.vovoscan.feature.episodes.domain.KeyStatus
+import com.vovoscan.feature.episodes.domain.KeyStatusProvider
 import com.vovoscan.feature.library.di.libraryModule
 import com.vovoscan.feature.library.domain.LibraryRepository
 import com.vovoscan.feature.reader.di.readerModule
@@ -24,6 +31,8 @@ import com.vovoscan.feature.sources.domain.SourcesRepository
 import io.ktor.client.HttpClient
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import org.koin.core.module.Module
 import org.koin.dsl.module
@@ -65,6 +74,8 @@ fun appModules(
                     get<LibraryRepository>().clearLocal()
                     get<ReaderRepository>().clearLocal()
                     get<SourcesRepository>().clearLocal()
+                    get<ProviderKeysRepository>().clearLocal()
+                    get<EpisodesRepository>().clearLocal()
                 }
             }
             // A source left the list (third-party source removed, here or on another device): its catalog and
@@ -83,10 +94,28 @@ fun appModules(
                     scope.launch { library.saveProgress(sourceKey, titleId, chapterId, page) }
                 }
             }
+            // Episodes show which of the user's keys a run would use, without knowing the account slice.
+            single<KeyStatusProvider> { AccountKeyStatus(get()) }
         },
+        accountModule,
         authModule,
         catalogModule,
+        episodesModule,
         libraryModule,
         readerModule,
         sourcesModule,
     )
+
+/** The episodes' `KeyStatusProvider` port, served by the account slice's key list (hints only, never a secret). */
+private class AccountKeyStatus(
+    private val keys: ProviderKeysRepository,
+) : KeyStatusProvider {
+    override fun observe(): Flow<KeyStatus?> =
+        keys.observeKeys().map { list ->
+            list?.let { KeyStatus(it.enabled, it.keyFor(Provider.Anthropic)?.hint, it.keyFor(Provider.ElevenLabs)?.hint) }
+        }
+
+    override suspend fun refresh() {
+        keys.refreshKeys()
+    }
+}

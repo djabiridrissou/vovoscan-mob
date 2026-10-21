@@ -1,0 +1,206 @@
+[
+  {
+    "v": 1,
+    "chapterHash": "a3f1c2d4e5b6978877665544332211ffeeddccbbaa99887766554433221100aa",
+    "renderKey": "b4f1c2d4e5b6978877665544332211ffeeddccbbaa99887766554433221100bb",
+    "pages": [
+      {
+        "index": 0,
+        "width": 800,
+        "height": 1200
+      }
+    ],
+    "bubbles": [
+      {
+        "id": "b0001",
+        "page": 0,
+        "panelBbox": [10, 10, 780, 500],
+        "bubbleBbox": [40, 40, 200, 90],
+        "speaker": {
+          "clusterId": "c0"
+        },
+        "text": "We're not done yet!",
+        "display": null,
+        "shout": false,
+        "tone": "normal",
+        "audioKey": null,
+        "durationMs": 1800,
+        "leadMs": 0,
+        "tags": {
+          "onomatopoeia": [],
+          "ambience": "none",
+          "mood": "neutral"
+        },
+        "camera": {
+          "from": [10, 10, 780, 500],
+          "to": [33.4, 24.7, 733.2, 470]
+        },
+        "panelShape": null,
+        "detailBbox": null,
+        "keepBbox": [300, 60, 400, 380],
+        "sounds": [],
+        "pan": -0.2
+      },
+      {
+        "id": "b0002",
+        "page": 0,
+        "panelBbox": [10, 10, 780, 500],
+        "bubbleBbox": [40, 40, 200, 90],
+        "speaker": null,
+        "text": "We're not done yet!",
+        "display": null,
+        "shout": false,
+        "tone": "normal",
+        "audioKey": "chapters/x/audio/y.ogg",
+        "durationMs": 1800,
+        "leadMs": 0,
+        "tags": {
+          "onomatopoeia": [],
+          "ambience": "none",
+          "mood": "neutral"
+        },
+        "camera": {
+          "from": [10, 10, 780, 500],
+          "to": [33.4, 24.7, 733.2, 470]
+        },
+        "panelShape": null,
+        "detailBbox": null,
+        "keepBbox": null,
+        "sounds": [
+          {
+            "audioKey": "audio/ab/hooves.ogg",
+            "durationMs": 1500,
+            "kind": "sfx",
+            "spanMs": 1800,
+            "pan": 0.8,
+            "panEnd": -0.6,
+            "impact": true
+          }
+        ],
+        "pan": 0
+      }
+    ],
+    "ambienceSegments": [
+      {
+        "fromBubble": "b0001",
+        "toBubble": "b0002",
+        "ambience": "street"
+      }
+    ],
+    "beds": [
+      {
+        "audioKey": "audio/ab/ab.ogg",
+        "durationMs": 10000,
+        "startMs": 0,
+        "endMs": 3600
+      }
+    ],
+    "direction": "rtl",
+    "music": [
+      {
+        "audioKey": "audio/9a/9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a.ogg",
+        "durationMs": 60000,
+        "startMs": 0,
+        "endMs": 3600,
+        "mood": "tension"
+      }
+    ]
+  },
+  {
+    "v": 1,
+    "chapterHash": "a3f1c2d4e5b6978877665544332211ffeeddccbbaa99887766554433221100aa",
+    "renderKey": "b4f1c2d4e5b6978877665544332211ffeeddccbbaa99887766554433221100bb",
+    "pages": [
+      {
+        "index": 0,
+        "width": 800,
+        "height": 1200
+      }
+    ],
+    "bubbles": [
+      {
+        "id": "b0001",
+        "page": 0,
+        "panelBbox": [10, 10, 780, 500],
+        "bubbleBbox": [40, 40, 200, 90],
+        "speaker": {
+          "clusterId": "c0"
+        },
+        "text": "We're not done yet!",
+        "display": null,
+        "shout": false,
+        "tone": "normal",
+        "audioKey": null,
+        "durationMs": 1800,
+        "leadMs": 0,
+        "tags": {
+          "onomatopoeia": [],
+          "ambience": "none",
+          "mood": "neutral"
+        },
+        "camera": {
+          "from": [10, 10, 780, 500],
+          "to": [33.4, 24.7, 733.2, 470]
+        },
+        "panelShape": [
+          [10, 10],
+          [790, 10],
+          [790, 510],
+          [120, 510]
+        ],
+        "detailBbox": null,
+        "keepBbox": null,
+        "sounds": [
+          {
+            "audioKey": "audio/ab/abababababababababababababababababababababababababababababababab.ogg",
+            "durationMs": 2400,
+            "kind": "sfx",
+            "spanMs": 1800,
+            "pan": 0,
+            "panEnd": null,
+            "impact": false
+          }
+        ],
+        "pan": 0
+      },
+      {
+        "id": "b0002",
+        "page": 0,
+        "panelBbox": [10, 10, 780, 500],
+        "bubbleBbox": [40, 40, 200, 90],
+        "speaker": null,
+        "text": "We're not done yet!",
+        "display": null,
+        "shout": false,
+        "tone": "normal",
+        "audioKey": "chapters/x/audio/y.ogg",
+        "durationMs": 1800,
+        "leadMs": 0,
+        "tags": {
+          "onomatopoeia": [],
+          "ambience": "none",
+          "mood": "neutral"
+        },
+        "camera": {
+          "from": [10, 10, 780, 500],
+          "to": [33.4, 24.7, 733.2, 470]
+        },
+        "panelShape": null,
+        "detailBbox": [60, 40, 500, 300],
+        "keepBbox": null,
+        "sounds": [],
+        "pan": 0
+      }
+    ],
+    "ambienceSegments": [
+      {
+        "fromBubble": "b0001",
+        "toBubble": "b0002",
+        "ambience": "street"
+      }
+    ],
+    "beds": [],
+    "direction": "ltr",
+    "music": []
+  }
+]
