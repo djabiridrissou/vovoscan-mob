@@ -1,6 +1,6 @@
 package com.vovoscan.app.ui.common
 
-import android.app.Activity
+import androidx.activity.compose.LocalActivity
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -10,7 +10,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.window.layout.FoldingFeature
 import androidx.window.layout.WindowInfoTracker
@@ -27,7 +26,7 @@ val LocalAdaptive = staticCompositionLocalOf { Adaptive.of(width = 400f, height 
  */
 @Composable
 fun AdaptiveWindow(content: @Composable () -> Unit) {
-    val activity = LocalContext.current as? Activity
+    val activity = LocalActivity.current
     val density = LocalDensity.current
     var fold by remember { mutableStateOf<FoldingFeature?>(null) }
     if (activity != null) {
