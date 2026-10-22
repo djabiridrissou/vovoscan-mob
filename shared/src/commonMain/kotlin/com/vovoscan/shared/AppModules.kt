@@ -59,11 +59,16 @@ import com.vovoscan.feature.reader.domain.DownloadsRepository
 import com.vovoscan.feature.reader.domain.LastRead
 import com.vovoscan.feature.reader.domain.ReaderRepository
 import com.vovoscan.feature.reader.domain.ReaderSettingsRepository
+import com.vovoscan.feature.reader.domain.ReadingMode
 import com.vovoscan.feature.reader.domain.ReadingProgressSink
+import com.vovoscan.feature.reader.domain.SeriesKey
+import com.vovoscan.feature.reader.domain.SeriesModeSync
 import com.vovoscan.feature.reader.domain.TitleChapters
 import com.vovoscan.feature.reader.domain.TranslationQuote
 import com.vovoscan.feature.reader.domain.TranslationQuotes
 import com.vovoscan.feature.reader.domain.chapterLabel
+import com.vovoscan.feature.reader.domain.readingModeOfWire
+import com.vovoscan.feature.reader.domain.wire
 import com.vovoscan.feature.sources.di.sourcesModule
 import com.vovoscan.feature.sources.domain.SourceEngine
 import com.vovoscan.feature.sources.domain.SourceRemovedListener
@@ -277,6 +282,24 @@ fun appModules(
                         val result = reading.markCoached(kind.wire)
                         if (result is AppResult.Err && result.error.isMissingRoute()) slotMissing = true
                     }
+                }
+            }
+            // The reading mode chosen per series, on the account (the reader's database keeps a copy).
+            single<SeriesModeSync> {
+                val reading = get<ReadingSettingsRepository>()
+                object : SeriesModeSync {
+                    override suspend fun pull(): Map<SeriesKey, ReadingMode>? =
+                        (reading.seriesModes() as? AppResult.Ok)
+                            ?.value
+                            ?.mapNotNull { (key, mode) ->
+                                val series = SeriesKey.of(key) ?: return@mapNotNull null
+                                readingModeOfWire(mode)?.let { series to it }
+                            }?.toMap()
+
+                    override suspend fun push(
+                        series: SeriesKey,
+                        mode: ReadingMode?,
+                    ): Boolean = reading.setSeriesMode(series.sourceKey, series.titleId, mode?.wire) is AppResult.Ok
                 }
             }
             // What translating a chapter would cost (the reader's language picker quotes before paying).

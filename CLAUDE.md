@@ -385,8 +385,15 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
 - Overlay (red next, cyan previous, ink menu, ~1.5 s): on the first chapter of a kind whose coach was already seen,
   then when the zones change (layout, invert, or a mode that changes them), after the settings sheet closes; "Show tap zones" off
   never shows it.
+- Mode per series on the account (reader/SPEC.md §1): `GET /settings/reading` `seriesModes`
+  (`"<sourceKey>:<titleRef>"` → `long-strip | long-strip-gaps | paged-rtl | paged-ltr | paged-vertical`),
+  `PUT /settings/reading/series-mode {sourceKey, titleRef, mode|null}`; `SeriesModeSync` port (reader domain, wired in
+  `shared` to the account slice). `series_mode` is the account's cache: a choice is kept at once and sent, or kept as
+  pending (`seriesPending/…` rows) and sent at the next sync (each reader opening, `syncSeriesModes`); the account wins
+  everywhere else, a series reset elsewhere included; the device's choices from before are sent once
+  (`seriesMigrated`). Rules in `SeriesModeMerge` (pure). A server without the slot: the device's choices stand.
 - Settings sheet (gear in the top bar), kept on the device in the reader's database (`reader_setting` key-value
-  table, `series_mode`; migration `2.sqm`), no backend: mode for this series (+ Reset to default; "Default for this
+  table, `series_mode`; migration `2.sqm`), the series mode also on the account: mode for this series (+ Reset to default; "Default for this
   series: Vertical pages." unless a format default was chosen), default mode for manga / webtoon, tap zones, invert,
   show tap zones (on), tap scroll amount (75 %, strips and tall pages), double tap to zoom (off), keep screen awake
   (on), Android only: volume keys turn pages (off; down = next, up = previous) and invert them (off).

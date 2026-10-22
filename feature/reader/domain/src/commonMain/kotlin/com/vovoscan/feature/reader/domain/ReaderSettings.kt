@@ -128,12 +128,15 @@ interface ReaderSettingsRepository {
         titleId: String,
     ): Flow<ReadingMode?>
 
-    /** null: back to the default. */
+    /** null: back to the default. Kept on the device at once, sent to the account (again later if it can't go now). */
     suspend fun setSeriesMode(
         sourceKey: String,
         titleId: String,
         mode: ReadingMode?,
     )
+
+    /** Brings the device's series modes and the account's together (`SeriesModeMerge`); quiet offline. */
+    suspend fun syncSeriesModes() = Unit
 
     /** Where a chapter was left on this device (null: never opened, or erased). */
     suspend fun position(

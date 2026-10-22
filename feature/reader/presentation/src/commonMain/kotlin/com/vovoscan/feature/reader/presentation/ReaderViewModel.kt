@@ -650,6 +650,8 @@ class ReaderViewModel(
         ) { chapter, preferences, mode -> Triple(chapter, preferences, mode) }
             .onEach { (chapter, preferences, mode) -> show(chapter, preferences, mode) }
             .launchIn(viewModelScope)
+        // The account's modes per series (another device's choice shows here): the device's copy follows.
+        viewModelScope.launch { settings.syncSeriesModes() }
         repository
             .observeBook(sourceKey, chapterId)
             .onEach { book ->

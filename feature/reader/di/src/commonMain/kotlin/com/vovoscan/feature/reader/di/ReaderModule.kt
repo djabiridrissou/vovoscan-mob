@@ -27,6 +27,7 @@ import com.vovoscan.feature.reader.domain.DownloadScheduler
 import com.vovoscan.feature.reader.domain.DownloadsRepository
 import com.vovoscan.feature.reader.domain.ReaderRepository
 import com.vovoscan.feature.reader.domain.ReaderSettingsRepository
+import com.vovoscan.feature.reader.domain.SeriesModeSync
 import com.vovoscan.feature.reader.domain.TranslationQuotes
 import com.vovoscan.feature.reader.domain.TranslationsRepository
 import com.vovoscan.feature.reader.presentation.DownloadsViewModel
@@ -75,7 +76,9 @@ val readerModule =
             )
         }
         // Reading modes, tap zones and the other reader settings: on this device only.
-        single<ReaderSettingsRepository> { SqlReaderSettingsRepository(get(), get<AppDispatchers>().io) }
+        single<ReaderSettingsRepository> {
+            SqlReaderSettingsRepository(get(), get<AppDispatchers>().io, getOrNull() ?: SeriesModeSync.None)
+        }
         viewModel { (sourceKey: String, titleId: String, chapterId: String, startPage: Int) ->
             ReaderViewModel(
                 sourceKey,
