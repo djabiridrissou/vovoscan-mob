@@ -425,7 +425,8 @@ class EpisodeViewModel(
                     it.enabled && (it.anthropicHint == null || it.elevenLabsHint == null)
                 }?.let { EpisodeText.KEY_WARNING }
         mutableState.update { state ->
-            val base = exportState(state.copy(keyLines = keyLines, keyWarning = keyWarning), current)
+            // `comingSoon` is set again below only while the feature stays closed.
+            val base = exportState(state.copy(keyLines = keyLines, keyWarning = keyWarning, comingSoon = false), current)
             when {
                 unsupported -> EpisodeUiState(phase = EpisodePhase.Unsupported)
                 !allowed -> comingSoonState(base)
