@@ -74,7 +74,7 @@ class NextChapterViewModelTest {
             lang: String?,
         ): AppResult<NextChapters> {
             reads++
-            chapters.replaceAll { up ->
+            chapters.mapInPlace { up ->
                 when (up.translation?.status) {
                     TranslationStatus.Queued -> up.copy(translation = UpcomingTranslation(TranslationStatus.Running, 42, null, false))
                     TranslationStatus.Running ->
@@ -98,7 +98,7 @@ class NextChapterViewModelTest {
             val todo = chapters.take(count).filter { it.translation == null }
             if (todo.size * price > maxCredits) return AppResult.Err(AppError.Rejected("QUOTE_CHANGED", "The price changed."))
             prefetched += Triple(count, maxCredits, auto)
-            chapters.replaceAll { up ->
+            chapters.mapInPlace { up ->
                 if (up in todo) up.copy(translation = UpcomingTranslation(TranslationStatus.Queued, 0, null, true)) else up
             }
             return AppResult.Ok(dto(lang))
@@ -108,7 +108,7 @@ class NextChapterViewModelTest {
             chapterId: String,
             lang: String,
         ): AppResult<NextChapters> {
-            chapters.replaceAll { up -> if (up.translation?.cancellable == true) up.copy(translation = null) else up }
+            chapters.mapInPlace { up -> if (up.translation?.cancellable == true) up.copy(translation = null) else up }
             return AppResult.Ok(dto(lang))
         }
 
@@ -294,7 +294,7 @@ class NextChapterViewModelTest {
             vm.onIntent(NextChapterIntent.LanguageShown("fr"))
             advanceUntilIdle()
             server.price = 15
-            server.chapters.replaceAll { it.copy(credits = 15) }
+            server.chapters.mapInPlace { it.copy(credits = 15) }
             vm.onIntent(NextChapterIntent.PrepareNext)
             advanceUntilIdle()
             assertTrue(server.prefetched.isEmpty())
@@ -361,4 +361,9 @@ class NextChapterViewModelTest {
         assertTrue(strip.copy(progress = 1f).onEndCard)
         assertEquals(0f, ReaderUiState().readShare)
     }
+}
+
+/** `replaceAll` is JVM-only: the same for every target. */
+private inline fun <T> MutableList<T>.mapInPlace(transform: (T) -> T) {
+    for (i in indices) this[i] = transform(this[i])
 }

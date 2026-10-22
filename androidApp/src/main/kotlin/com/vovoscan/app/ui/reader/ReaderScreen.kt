@@ -414,7 +414,7 @@ fun ReaderScreen(
             var shown by remember { mutableStateOf(nextState.toast) }
             nextState.toast?.let { shown = it }
             shown?.let {
-                NextToastView(it, nextAction(NextChapterIntent.PrepareNext)) { next.onIntent(NextChapterIntent.DismissToast) }
+                NextToastView(it, nextAction(NextChapterIntent.PrepareNext), onDismiss = { next.onIntent(NextChapterIntent.DismissToast) })
             }
         }
         // How to read, the first time a chapter of its kind opens: any tap closes it.
