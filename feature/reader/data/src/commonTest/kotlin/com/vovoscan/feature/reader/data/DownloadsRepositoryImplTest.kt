@@ -11,7 +11,9 @@ import com.vovoscan.core.testing.respondJson
 import com.vovoscan.core.testing.testHttpClient
 import com.vovoscan.feature.reader.data.db.ReaderDatabase
 import com.vovoscan.feature.reader.domain.ChapterDownload
+import com.vovoscan.feature.reader.domain.DownloadActivity
 import com.vovoscan.feature.reader.domain.DownloadBlock
+import com.vovoscan.feature.reader.domain.DownloadScheduler
 import com.vovoscan.feature.reader.domain.DownloadState
 import com.vovoscan.feature.reader.domain.DownloadableChapter
 import com.vovoscan.feature.reader.domain.DownloadableTitle
@@ -23,6 +25,7 @@ import io.ktor.client.request.HttpResponseData
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
@@ -33,6 +36,8 @@ import kotlinx.serialization.json.jsonObject
 import okio.FileSystem
 import okio.Path
 import okio.Path.Companion.toPath
+import kotlin.io.encoding.Base64
+import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.random.Random
 import kotlin.test.AfterTest
 import kotlin.test.Test
@@ -41,6 +46,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
+@OptIn(ExperimentalEncodingApi::class)
 class DownloadsRepositoryImplTest {
     private val jpeg = byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 1, 2, 3, 4, 5)
     private val png = byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47, 9, 9)
@@ -64,6 +70,29 @@ class DownloadsRepositoryImplTest {
             """"number":{"css":":self","then":[{"regex":"Chapter ([0-9.]+)"},"number"]}}}},""" +
             """"content":{"comic":{"request":{"url":"https://comics.inkwell.example/read/{{unitId}}","type":"html"},""" +
             """"list":{"css":"div.reader img"},"item":{"url":{"css":":self","attr":"data-src","then":["absUrl"]}}}}}"""
+
+    private val book =
+        """{"data":{"id":"b1","titleId":"t9","titleName":"Letters","kind":"book","number":1,"name":"Full text","format":"text",""" +
+            """"pages":[],"document":{"url":"https://api.test/media/documents/d1?sig=x","mediaType":"application/epub+zip"}}}"""
+    private val epub = Base64.decode(EpubFixture.base64)
+    private val letters =
+        DownloadableTitle("vovoscan", "t9", "Letters", isBook = true, listOf(DownloadableChapter("b1", 1.0, "Full text")), null)
+
+    /** What the queue asked the platform for. */
+    private class RecordingScheduler : DownloadScheduler {
+        val calls = mutableListOf<String>()
+
+        override fun schedule(
+            wifiOnly: Boolean,
+            replace: Boolean,
+        ) {
+            calls += "schedule wifiOnly=$wifiOnly" + if (replace) " replace" else ""
+        }
+
+        override fun cancel() {
+            calls += "cancel"
+        }
+    }
 
     private val seriesPage = """<h1>Ink Road</h1><ul class="chapters"><li><a href="/read/12">Chapter 2</a></li></ul>"""
 
@@ -90,6 +119,7 @@ class DownloadsRepositoryImplTest {
 
     private fun TestScope.setup(
         network: NetworkState = NetworkState(online = true, unmetered = true),
+        scheduler: DownloadScheduler = DownloadScheduler.None,
         rules: suspend MockRequestHandleScope.(HttpRequestData) -> HttpResponseData = { respond("", HttpStatusCode.NotFound) },
         api: suspend MockRequestHandleScope.(HttpRequestData) -> HttpResponseData,
     ): Setup {
@@ -128,7 +158,7 @@ class DownloadsRepositoryImplTest {
                 ),
             )
         return Setup(
-            DownloadsRepositoryImpl(remote, readerLocal, local, files, monitor, backgroundScope, io) { 1_000L },
+            DownloadsRepositoryImpl(remote, readerLocal, local, files, monitor, backgroundScope, io, scheduler) { 1_000L },
             ReaderRepositoryImpl(remote, readerLocal, EpubParser(), io, DownloadedPages(local, files)),
             readerLocal,
             monitor,
@@ -139,6 +169,9 @@ class DownloadsRepositoryImplTest {
     private fun MockRequestHandleScope.internal(request: HttpRequestData): HttpResponseData =
         when {
             request.url.encodedPath == "/api/v1/catalog/chapters/c2" -> respondJson(chapter)
+            request.url.encodedPath == "/api/v1/catalog/chapters/b1" -> respondJson(book)
+            request.url.encodedPath.startsWith("/media/documents/") ->
+                respond(epub, HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/epub+zip"))
             request.url.encodedPath.startsWith(
                 "/media/pages/",
             ) -> respond(jpeg, HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "image/jpeg"))
@@ -387,6 +420,168 @@ class DownloadsRepositoryImplTest {
                     .isEmpty(),
             )
             assertNull(s.reader.observeBook("gutenberg", "1342").first())
+        }
+
+    @Test
+    fun aBookNeverOpenedIsDownloadedAndSavedAsOpeningItWould() =
+        runTest {
+            val s = setup { internal(it) }
+            assertNull(s.reader.observeBook("vovoscan", "b1").first())
+            s.downloads.enqueue(letters, letters.chapters)
+            // The queue row goes once the sections are saved: then it is a saved book, as an opened one.
+            val saved =
+                s.downloads
+                    .observeTitle("vovoscan", "t9")
+                    .first { list -> list.singleOrNull()?.state == DownloadState.Done }
+                    .single()
+            assertTrue(saved.isBook)
+            assertEquals("Full text", saved.label)
+            assertTrue(saved.bytes > 0)
+            assertTrue(
+                s.reader
+                    .observeBook("vovoscan", "b1")
+                    .first()!!
+                    .sections
+                    .isNotEmpty(),
+            )
+            // Offline, the reader opens it from the device (no new request needed).
+            assertEquals(
+                com.vovoscan.core.common.AppResult
+                    .Ok(Unit),
+                s.reader.loadBook("vovoscan", "b1"),
+            )
+            assertTrue(
+                s.downloads
+                    .observeActivity()
+                    .first()
+                    .let { !it.busy },
+            )
+            assertEquals(emptyList(), files())
+        }
+
+    @Test
+    fun aBookThatIsNotAnEpubFails() =
+        runTest {
+            val s =
+                setup { request ->
+                    if (request.url.encodedPath.startsWith(
+                            "/media/documents/",
+                        )
+                    ) {
+                        respond("<html/>", HttpStatusCode.OK)
+                    } else {
+                        internal(request)
+                    }
+                }
+            s.downloads.enqueue(letters, letters.chapters)
+            val failed = s.awaitState(DownloadState.Failed)
+            assertTrue(failed.isBook)
+            assertEquals("Not an EPUB file.", failed.error)
+            assertNull(s.reader.observeBook("vovoscan", "b1").first())
+        }
+
+    @Test
+    fun aBookWaitsForWifiLikeAChapter() =
+        runTest {
+            val s = setup(network = NetworkState(online = true, unmetered = false)) { internal(it) }
+            s.downloads.enqueue(letters, letters.chapters)
+            s.awaitState(DownloadState.Waiting)
+            assertEquals(
+                DownloadActivity(books = 1, current = s.only(), block = DownloadBlock.NotOnWifi),
+                s.downloads.observeActivity().first(),
+            )
+            s.network.set(NetworkState(online = true, unmetered = true))
+            s.downloads.observeTitle("vovoscan", "t9").first { list -> list.singleOrNull()?.state == DownloadState.Done }
+        }
+
+    @Test
+    fun pausingPutsTheChapterBackInTheQueueAndDrainingFinishesItAtTheFirstMissingPage() =
+        runTest {
+            val gate = CompletableDeferred<Unit>()
+            val pageRequests = mutableListOf<String>()
+            val s =
+                setup { request ->
+                    if (request.url.encodedPath.startsWith("/media/pages/")) pageRequests += request.url.encodedPath
+                    if (request.url.encodedPath == "/media/pages/p1") gate.await()
+                    internal(request)
+                }
+            s.downloads.enqueue(griot, griot.chapters.filter { it.id == "c2" })
+            s.downloads.observeAll().first { it.singleOrNull()?.pagesDone == 1 }
+
+            // The system is about to suspend the app: stop cleanly, nothing failed.
+            s.downloads.pause()
+            val paused = s.only()
+            assertEquals(DownloadState.Queued to 1, paused.state to paused.pagesDone)
+            gate.complete(Unit)
+
+            // Background work runs it again: only the missing page is fetched.
+            assertNull(s.downloads.drain())
+            assertEquals(DownloadState.Done, s.only().state)
+            assertEquals(listOf("/media/pages/p0", "/media/pages/p1", "/media/pages/p1"), pageRequests)
+            assertEquals(2, files().size)
+        }
+
+    @Test
+    fun drainingSaysWhyTheQueueWaits() =
+        runTest {
+            val s = setup(network = NetworkState(online = true, unmetered = false)) { internal(it) }
+            assertNull(s.downloads.drain())
+            s.downloads.enqueue(griot, griot.chapters.filter { it.id == "c2" })
+            assertEquals(DownloadBlock.NotOnWifi, s.downloads.drain())
+            s.network.set(NetworkState(online = false, unmetered = false))
+            assertEquals(
+                DownloadBlock.NoConnection,
+                s.downloads
+                    .observeActivity()
+                    .first { it.block == DownloadBlock.NoConnection }
+                    .block,
+            )
+            s.network.set(NetworkState(online = true, unmetered = true))
+            assertNull(s.downloads.drain())
+            assertEquals(DownloadState.Done, s.only().state)
+        }
+
+    @Test
+    fun thePlatformIsAskedToKeepTheQueueGoing() =
+        runTest {
+            val scheduler = RecordingScheduler()
+            val s = setup(network = NetworkState(online = true, unmetered = false), scheduler = scheduler) { internal(it) }
+            s.downloads.enqueue(griot, griot.chapters.filter { it.id == "c2" })
+            s.awaitState(DownloadState.Waiting)
+            assertEquals(listOf("schedule wifiOnly=true"), scheduler.calls)
+            // The network it needs changed: what was scheduled is replaced.
+            s.downloads.setWifiOnly(false)
+            s.awaitState(DownloadState.Done)
+            assertEquals(listOf("schedule wifiOnly=true", "schedule wifiOnly=false replace"), scheduler.calls)
+            // Nothing left: a change of setting schedules nothing.
+            s.downloads.setWifiOnly(true)
+            assertEquals(2, scheduler.calls.size)
+        }
+
+    @Test
+    fun cancellingTheQueueKeepsWhatIsOnTheDevice() =
+        runTest {
+            val scheduler = RecordingScheduler()
+            val s = setup(network = NetworkState(online = true, unmetered = false), scheduler = scheduler) { internal(it) }
+            s.downloads.setWifiOnly(false)
+            s.downloads.enqueue(griot, griot.chapters.filter { it.id == "c2" })
+            s.awaitState(DownloadState.Done)
+            s.downloads.setWifiOnly(true)
+            s.downloads.enqueue(griot, griot.chapters.filter { it.id == "c1" })
+            s.downloads.enqueue(letters, letters.chapters)
+            s.downloads.observeActivity().first { it.remaining == 2 && it.block == DownloadBlock.NotOnWifi }
+
+            s.downloads.cancelAll()
+            assertEquals(
+                listOf("c2" to DownloadState.Done),
+                s.downloads
+                    .observeAll()
+                    .first()
+                    .map { it.chapterId to it.state },
+            )
+            assertEquals(2, files().size)
+            assertEquals("cancel", scheduler.calls.last())
+            assertEquals(DownloadActivity(), s.downloads.observeActivity().first())
         }
 
     @Test

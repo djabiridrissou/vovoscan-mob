@@ -82,17 +82,11 @@ class ReaderRepositoryImpl(
         if (local.observeBook(sourceKey, chapterId).first() != null) return AppResult.Ok(Unit)
         val url =
             local.chapter(sourceKey, chapterId)?.documentUrl
-                ?: return AppResult.Err(AppError.Rejected("NO_BOOK_FILE", "This book has no file yet."))
-        val bytes =
-            when (val downloaded = remote.download(sourceKey, url)) {
-                is AppResult.Err -> return downloaded
-                is AppResult.Ok -> downloaded.value
-            }
+                ?: return AppResult.Err(NoBookFile)
         val sections =
-            try {
-                withContext(io) { epub.parse(bytes) }
-            } catch (e: InvalidEpub) {
-                return AppResult.Err(AppError.Rejected("INVALID_BOOK", e.message ?: "This book file can't be opened."))
+            when (val fetched = fetchBook(remote, epub, io, sourceKey, url)) {
+                is AppResult.Err -> return fetched
+                is AppResult.Ok -> fetched.value
             }
         local.saveBook(sourceKey, chapterId, sections)
         return AppResult.Ok(Unit)
@@ -108,3 +102,26 @@ class ReaderRepositoryImpl(
 
     override suspend fun clearSource(sourceKey: String) = local.clearSource(sourceKey)
 }
+
+/** A book's file, fetched once and read into sanitized sections: opening a book, or downloading it from the queue. */
+internal suspend fun fetchBook(
+    remote: ReaderRemoteDataSource,
+    epub: EpubParser,
+    io: CoroutineDispatcher,
+    sourceKey: String,
+    url: String,
+): AppResult<List<ParsedSection>> {
+    val bytes =
+        when (val downloaded = remote.download(sourceKey, url)) {
+            is AppResult.Err -> return downloaded
+            is AppResult.Ok -> downloaded.value
+        }
+    return try {
+        AppResult.Ok(withContext(io) { epub.parse(bytes) })
+    } catch (e: InvalidEpub) {
+        AppResult.Err(AppError.Rejected("INVALID_BOOK", e.message ?: "This book file can't be opened."))
+    }
+}
+
+/** No file to fetch for this book (the source gave none). */
+internal val NoBookFile = AppError.Rejected("NO_BOOK_FILE", "This book has no file yet.")

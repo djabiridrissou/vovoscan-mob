@@ -46,8 +46,9 @@ CREATE TABLE series_mode (
     PRIMARY KEY (source_key, title_id)
 );
 
--- Comic chapters chosen for offline reading, in the order they were asked for (one downloads at a time).
--- state: queued | waiting | downloading | done | failed.
+-- Chapters chosen for offline reading, in the order they were asked for (one downloads at a time).
+-- state: queued | waiting | downloading | done | failed. kind: comic (pages as files) | book (its file, stored as
+-- sections in book_section; the row goes once the book is saved, the saved book then shows as any opened book).
 CREATE TABLE download (
     chapter_key TEXT NOT NULL PRIMARY KEY,
     source_key TEXT NOT NULL,
@@ -59,7 +60,8 @@ CREATE TABLE download (
     state TEXT NOT NULL,
     page_count INTEGER NOT NULL,
     error TEXT,
-    requested_at INTEGER NOT NULL
+    requested_at INTEGER NOT NULL,
+    kind TEXT NOT NULL DEFAULT 'comic'
 );
 
 -- A downloaded page: its file, relative to the downloads folder (the iOS container's path changes with updates).
@@ -143,14 +145,14 @@ SELECT setting_value FROM reader_setting WHERE name = ?;
 
 downloads:
 SELECT d.chapter_key, d.source_key, d.title_id, d.chapter_id, d.title_name, d.label, d.number, d.state, d.page_count, d.error,
-       COUNT(p.page_index) AS pages_done, TOTAL(p.bytes) AS bytes
+       d.kind, COUNT(p.page_index) AS pages_done, TOTAL(p.bytes) AS bytes
 FROM download d LEFT JOIN download_page p ON p.chapter_key = d.chapter_key
 GROUP BY d.chapter_key
 ORDER BY d.title_name, d.number;
 
 titleDownloads:
 SELECT d.chapter_key, d.source_key, d.title_id, d.chapter_id, d.title_name, d.label, d.number, d.state, d.page_count, d.error,
-       COUNT(p.page_index) AS pages_done, TOTAL(p.bytes) AS bytes
+       d.kind, COUNT(p.page_index) AS pages_done, TOTAL(p.bytes) AS bytes
 FROM download d LEFT JOIN download_page p ON p.chapter_key = d.chapter_key
 WHERE d.source_key = ? AND d.title_id = ?
 GROUP BY d.chapter_key
@@ -163,8 +165,12 @@ nextQueued:
 SELECT * FROM download WHERE state = 'queued' ORDER BY requested_at, number LIMIT 1;
 
 putDownload:
-INSERT OR IGNORE INTO download (chapter_key, source_key, title_id, chapter_id, title_name, label, number, state, page_count, error, requested_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, 'queued', 0, NULL, ?);
+INSERT OR IGNORE INTO download (chapter_key, source_key, title_id, chapter_id, title_name, label, number, state, page_count, error, requested_at, kind)
+VALUES (?, ?, ?, ?, ?, ?, ?, 'queued', 0, NULL, ?, ?);
+
+-- What is still to download (background work, the notification's Cancel).
+unfinishedDownloads:
+SELECT source_key, chapter_id FROM download WHERE state IN ('queued', 'waiting', 'downloading');
 
 setDownloadState:
 UPDATE download SET state = ?, error = ? WHERE chapter_key = ?;
@@ -199,7 +205,7 @@ DELETE FROM download_page WHERE chapter_key IN (SELECT chapter_key FROM download
 clearDownloadsOf:
 DELETE FROM download WHERE source_key = ?;
 
--- Books opened on this device: their sections are kept, readable offline.
+-- Books opened (or downloaded) on this device: their sections are kept, readable offline.
 savedBooks:
 SELECT c.chapter_key, c.source_key, c.title_id, c.id, c.title_name, c.name, c.number, TOTAL(LENGTH(CAST(s.html AS BLOB))) AS bytes
 FROM reader_chapter c JOIN book_section s ON s.chapter_key = c.chapter_key
