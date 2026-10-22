@@ -78,6 +78,26 @@ object CategoryUnion {
         return names.map { (key, name) -> CategoryOption(name, ids.getValue(key), formats[key]) }
     }
 
+    /**
+     * The format categories first, whatever the sources and their order: one per entry of [formats] (in that order),
+     * the sources' own category for it when one has it (its format, or its name, case-insensitive), else one that
+     * files every source's titles by that format. Then the other categories, in [union]'s order.
+     */
+    fun formatsFirst(
+        union: List<CategoryOption>,
+        formats: List<Pair<ReadingFormat, String>>,
+    ): List<CategoryOption> {
+        val used = mutableSetOf<CategoryOption>()
+        val first =
+            formats.map { (format, name) ->
+                val own =
+                    union.firstOrNull { it.format == format && it !in used }
+                        ?: union.firstOrNull { it.format == null && it.name.equals(name, ignoreCase = true) && it !in used }
+                own?.also { used += it } ?: CategoryOption(name, emptyMap(), format)
+            }
+        return first + union.filter { it !in used }
+    }
+
     /** The option of that name (case-insensitive), if the selected sources have it. */
     fun find(
         options: List<CategoryOption>,

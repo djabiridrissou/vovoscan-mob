@@ -292,10 +292,19 @@ private struct FilterSheet: View {
                         model.send(CatalogIntentSelectCategory(name: nil))
                         dismiss()
                     }
-                    ForEach(model.state.categories, id: \.name) { category in
-                        CheckRow(label: category.name, checked: category.selected) {
-                            model.send(CatalogIntentSelectCategory(name: category.name))
-                            dismiss()
+                    // The formats first (every source's comics and books), then each source's own categories under its name.
+                    ForEach(Array(model.state.categoryGroups.enumerated()), id: \.offset) { _, group in
+                        if let title = group.title {
+                            Text(title.uppercased())
+                                .font(.brandBody(12, weight: .bold)).tracking(1.2)
+                                .foregroundStyle(Color.brandMuted)
+                                .padding(.top, 14)
+                        }
+                        ForEach(group.choices, id: \.name) { category in
+                            CheckRow(label: category.name, checked: category.selected) {
+                                model.send(CatalogIntentSelectCategory(name: category.name))
+                                dismiss()
+                            }
                         }
                     }
                 }

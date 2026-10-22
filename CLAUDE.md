@@ -166,6 +166,10 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   name, trimmed and case-insensitive (`CategoryUnion`), each source asked with its own id for that name; sources
   without it are left out while the filter is on (`categoryNote`: "Project Gutenberg has no “Webtoon” category, so
   it's left out.").
+  The formats come first whatever sources are on (`CategoryUnion.formatsFirst`: Manga, Webtoon, Book; our own
+  category for it when a source has one by format or name, else one that files every source's titles by format, plugin
+  comics included), then each source's own categories under its name (`categoryGroups`, the sheet's sections). With our
+  source switched off the sheet used to show only the first source's genres, so no format filter was reachable.
 - Errors per source never break the page: `problems` (one `SourceProblem` per failing source, `StaleReason`) make one
   notice line (`CatalogNotices`): no network → the offline line; one source read → its own line as before; several →
   "Project Gutenberg isn't answering right now." / "X couldn't be read. It may need an update." (Retry when one is

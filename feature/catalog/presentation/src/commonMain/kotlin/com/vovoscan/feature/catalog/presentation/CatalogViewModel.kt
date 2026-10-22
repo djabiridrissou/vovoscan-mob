@@ -132,6 +132,15 @@ data class CategoryChoice(
     val selected: Boolean,
 )
 
+/**
+ * A section of the category sheet: the formats first (no [title]: Manga, Webtoon, Book), then each selected source's
+ * own categories under its name, in the reader's order of sources.
+ */
+data class CategoryGroup(
+    val title: String?,
+    val choices: List<CategoryChoice>,
+)
+
 data class CatalogUiState(
     /** The visible sources, in the reader's order; `selected` as the filter has it ("All": every one). */
     val sources: List<SourceOption> = emptyList(),
@@ -139,6 +148,8 @@ data class CatalogUiState(
     /** "All sources", "Project Gutenberg", "2 sources". */
     val sourceFilterLabel: String = CatalogSelection.ALL_SOURCES,
     val categories: List<CategoryChoice> = emptyList(),
+    /** [categories] as the sheet shows them: the formats, then each source's own categories under its name. */
+    val categoryGroups: List<CategoryGroup> = emptyList(),
     /** The category in use (its name), null for every category. */
     val category: String? = null,
     /** Sources left out by the category filter ("Project Gutenberg has no “Webtoon” category, so it's left out."). */
@@ -299,6 +310,8 @@ class CatalogViewModel(
         val selected: List<CatalogSource>,
         val options: List<CategoryOption>,
         val category: CategoryOption?,
+        /** Each selected source's own categories, as read (the sheet groups them under the source). */
+        val sourceCategories: List<Pair<String, List<SourceCategory>>> = emptyList(),
     ) {
         val readings: List<Reading>
             get() =
@@ -536,8 +549,34 @@ class CatalogViewModel(
         }
 
     private fun Plan.resolve(categories: List<Pair<String, List<SourceCategory>>>): Plan {
-        val union = CategoryUnion.of(categories)
-        return copy(options = union, category = CategoryUnion.find(union, filter.categoryName))
+        val options = CategoryUnion.formatsFirst(CategoryUnion.of(categories), formatNames())
+        return copy(options = options, category = CategoryUnion.find(options, filter.categoryName), sourceCategories = categories)
+    }
+
+    private fun formatNames() =
+        listOf(
+            ReadingFormat.Manga to t("catalog.formatManga"),
+            ReadingFormat.Webtoon to t("catalog.formatWebtoon"),
+            ReadingFormat.Text to t("catalog.formatBook"),
+        )
+
+    /** The formats (the first options), then each source's other categories under its name; empty groups left out. */
+    private fun groups(next: Plan): List<CategoryGroup> {
+        val formats = next.options.take(formatNames().size)
+        val chosen = next.category?.name
+
+        fun choice(option: CategoryOption) = CategoryChoice(option.name, option.name == chosen)
+        val names = next.visible.associate { it.key to it.name }
+        val genres =
+            next.sourceCategories.mapNotNull { (key, list) ->
+                val own =
+                    list
+                        .mapNotNull { c -> CategoryUnion.find(next.options, c.name)?.takeIf { it !in formats } }
+                        .distinct()
+                        .map(::choice)
+                own.takeIf { it.isNotEmpty() }?.let { CategoryGroup(names[key] ?: key, it) }
+            }
+        return listOf(CategoryGroup(null, formats.map(::choice))) + genres
     }
 
     /** A new plan: the filters' rows, and when what is read changed, the listings to show and reload. */
@@ -559,6 +598,7 @@ class CatalogViewModel(
                 allSources = CatalogSelection.isAll(next.visible, next.filter),
                 sourceFilterLabel = CatalogSelection.label(next.visible, next.filter),
                 categories = next.options.map { o -> CategoryChoice(o.name, o.name == next.category?.name) },
+                categoryGroups = groups(next),
                 category = next.category?.name,
                 categoryNote = next.category?.let { c -> CatalogNotices.categoryLeftOut(c.name, missing) },
             )

@@ -209,20 +209,81 @@ class CatalogViewModelTest {
             assertEquals("Project Gutenberg has no “Webtoon” category, so it's left out.", vm.state.value.categoryNote)
             assertEquals(1, vm.state.value.sourcesRead)
 
-            // One source selected: its own categories only.
+            // One source selected: the formats first (its "book" stands for Book), then its own categories.
             vm.onIntent(CatalogIntent.SelectSource("gutenberg"))
             advanceUntilIdle()
             assertEquals(
-                listOf("Fiction", "book"),
+                listOf("Manga", "Webtoon", "book", "Fiction"),
                 vm.state.value.categories
                     .map { it.name },
             )
-            assertNull(vm.state.value.category)
-            assertEquals("All categories", vm.state.value.categoryFilterLabel)
+            // A format is offered whatever the sources: the choice stays.
+            assertEquals("Webtoon", vm.state.value.category)
 
             vm.onIntent(CatalogIntent.SelectCategory(null))
             advanceUntilIdle()
             assertNull(repository.filter.value.categoryName)
+            assertEquals("All categories", vm.state.value.categoryFilterLabel)
+        }
+
+    @Test
+    fun theFormatsComeFirstWhateverSourcesAreOnThenEachSourcesOwnCategories() =
+        runTest(dispatcher) {
+            // Our own source switched off: a book source with genres comes first, then a comic source with none.
+            val shelf = CatalogSource("shelf", "Shelf")
+            val inkwell = CatalogSource("inkwell", "Inkwell")
+            val repository =
+                FakeCatalog().apply {
+                    categories["shelf"] =
+                        listOf(SourceCategory("f", "Fiction"), SourceCategory("p", "Poetry"), SourceCategory("d", "Drama"))
+                    remote["shelf" to null] = listOf(listOf(title("shelf", "s1", ReadingFormat.Text)))
+                    remote["inkwell" to null] =
+                        listOf(listOf(title("inkwell", "i1", ReadingFormat.Webtoon), title("inkwell", "i2", ReadingFormat.Manga)))
+                }
+            val vm = CatalogViewModel(repository)
+            vm.onIntent(CatalogIntent.SourcesChanged(listOf(shelf, inkwell)))
+            advanceUntilIdle()
+
+            val groups = vm.state.value.categoryGroups
+            assertEquals(listOf(null, "Shelf"), groups.map { it.title })
+            assertEquals(listOf("Manga", "Webtoon", "Book"), groups[0].choices.map { it.name })
+            assertEquals(listOf("Fiction", "Poetry", "Drama"), groups[1].choices.map { it.name })
+            assertEquals(
+                listOf("Manga", "Webtoon", "Book", "Fiction", "Poetry", "Drama"),
+                vm.state.value.categories
+                    .map { it.name },
+            )
+
+            // A format files every source's titles by their format, plugin comics included.
+            vm.onIntent(CatalogIntent.SelectCategory("Webtoon"))
+            advanceUntilIdle()
+            assertEquals(listOf("i1"), ids(vm))
+            assertEquals(
+                listOf(false, true, false),
+                vm.state.value.categoryGroups[0]
+                    .choices
+                    .map { it.selected },
+            )
+            assertNull(vm.state.value.categoryNote)
+
+            // A source's own category: that source only, the other one is left out.
+            vm.onIntent(CatalogIntent.SelectCategory("Poetry"))
+            advanceUntilIdle()
+            assertTrue(("shelf" to "p") in repository.refreshed)
+            assertEquals("Inkwell has no “Poetry” category, so it's left out.", vm.state.value.categoryNote)
+        }
+
+    @Test
+    fun ourOwnCategoriesStandForTheFormatsWhicheverSourceComesFirst() =
+        runTest(dispatcher) {
+            val vm = CatalogViewModel(twoSources())
+            vm.onIntent(CatalogIntent.SourcesChanged(listOf(gutenberg, vovoscan)))
+            advanceUntilIdle()
+            val groups = vm.state.value.categoryGroups
+            // Gutenberg's "book" is the Book format (one choice), its Fiction under its name.
+            assertEquals(listOf(null, "Project Gutenberg"), groups.map { it.title })
+            assertEquals(listOf("Manga", "Webtoon", "book"), groups[0].choices.map { it.name })
+            assertEquals(listOf("Fiction"), groups[1].choices.map { it.name })
         }
 
     @Test

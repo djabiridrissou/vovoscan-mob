@@ -449,8 +449,18 @@ private fun CategoryRows(
     send: (CatalogIntent) -> Unit,
 ) {
     CheckRow(I18n.text("catalog.allCategories"), state.category == null) { send(CatalogIntent.SelectCategory(null)) }
-    state.categories.forEach { category ->
-        CheckRow(category.name, category.selected) { send(CatalogIntent.SelectCategory(category.name)) }
+    // The formats first (every source's comics and books), then each source's own categories under its name.
+    state.categoryGroups.forEach { group ->
+        group.title?.let { title ->
+            Text(
+                title.uppercase(),
+                style = MaterialTheme.typography.labelMedium.copy(color = Brand.Muted),
+                modifier = Modifier.padding(top = 14.dp, bottom = 2.dp),
+            )
+        }
+        group.choices.forEach { category ->
+            CheckRow(category.name, category.selected) { send(CatalogIntent.SelectCategory(category.name)) }
+        }
     }
 }
 
