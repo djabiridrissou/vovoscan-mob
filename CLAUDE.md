@@ -86,15 +86,17 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   category)`: `{{category}}` is the chosen category's id (empty, so not sent, while browsing everything); `categories()`
   reads the manifest's fixed list or its own request (`list` + `item {id, name}`).
 - Page images' Referer (`content.comic.referer`, `SourceManifest.imageReferer`: settings and `{{lang}}` only, http(s)):
-  `RulesSource.downloadImage` sends it (downloads: `ReaderRemoteDataSource.downloadPage`); a book file
-  (`download`) never does. Image loaders that know nothing of sources ask `ImageReferers.refererFor(url)` (shared
+  `RulesSource.downloadImage` sends it (downloads: `ReaderRemoteDataSource.downloadPage`), to the declared hosts only,
+  hop by hop; a book file (`download`) never does. Page images themselves may come from any public http(s) host the
+  rules produce (per-chapter image servers built with `let` and `format`, like the server's FETCH:
+  `RulesHttp.get(anyPublicHost = true)`), still never the local network nor the session. Image loaders that know nothing of sources ask `ImageReferers.refererFor(url)` (shared
   `imageRefererFor`), a host → Referer table of the rule-based sources (first in the user's order wins a host),
   kept up to date by `ImageRefererSync` (started at launch by `VovoscanApplication` / `initKoin`): Android's Coil
   `ImageLoader` has an interceptor (`ui/common/ImageLoading.kt`), iOS registers `SourceRefererProtocol` (a `URLProtocol`
   for the shared session behind AsyncImage, replaying the request with `Referer` on a cookie-less session of its own).
   Only those hosts get it, covers included; never the API.
 - `RulesHttp`: a separate client, **without the vovoscan session or cookies**, redirects followed by hand and
-  limited to declared hosts (manifest + URL-type settings), rate capped by the manifest. Limits by what is fetched
+  limited to declared hosts (manifest + URL-type settings; page images excepted, above), rate capped by the manifest. Limits by what is fetched
   (`Transfer`): a page of the source (JSON, HTML, XML) 30 s and 5 MB, an image 2 min and 30 MB, a book file 10 min and
   100 MB; 30 s without a byte fails any of them. Responses are streamed: a file announced too large is refused from its
   headers, and a body is read at most one byte past the limit. Never the local network
@@ -335,6 +337,9 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   (manga / webtoon), else the format's own style (reader/SPEC.md §1b, shared with the web reader): a webtoon
   `LongStrip` ("Continuous"), a manga `PagedRightToLeft`, a comic `PagedLeftToRight`.
   Switching keeps the page.
+- A rule-based title page that names no format is a webtoon when its genres say so (`formatHint`: "long strip",
+  "longstrip", "webtoon(s)", "manhwa", "manhua", "vertical", "vertical scroll", trimmed, any case; the server's
+  `STRIP_TAGS`).
 - Format recognition (`ComicFormat`: `Manga` right to left, `Webtoon`, `Comic` left to right when paged): the source's
   word first (our API's `format`; a plugin's own labels "Long Strip", "Web Comic", manhwa, manhua, BD; an original
   language `ko` / `zh` = webtoon), then the pages' shape: most sized pages taller than 2.5 × their width
