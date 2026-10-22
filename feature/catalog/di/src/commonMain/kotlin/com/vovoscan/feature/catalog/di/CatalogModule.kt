@@ -1,13 +1,16 @@
 package com.vovoscan.feature.catalog.di
 
 import com.vovoscan.core.common.AppDispatchers
+import com.vovoscan.core.common.SystemClock
 import com.vovoscan.core.database.DatabaseDriverFactory
 import com.vovoscan.feature.catalog.data.ApiCatalogRemoteDataSource
+import com.vovoscan.feature.catalog.data.ApiRatingsRemoteDataSource
 import com.vovoscan.feature.catalog.data.ApiSearchRemoteDataSource
 import com.vovoscan.feature.catalog.data.CatalogLocalDataSource
 import com.vovoscan.feature.catalog.data.CatalogRemoteDataSource
 import com.vovoscan.feature.catalog.data.CatalogRepositoryImpl
 import com.vovoscan.feature.catalog.data.OnDeviceCatalogRemoteDataSource
+import com.vovoscan.feature.catalog.data.RatingsRepositoryImpl
 import com.vovoscan.feature.catalog.data.RoutingCatalogRemoteDataSource
 import com.vovoscan.feature.catalog.data.SearchRepositoryImpl
 import com.vovoscan.feature.catalog.data.SqlCatalogLocalDataSource
@@ -15,6 +18,8 @@ import com.vovoscan.feature.catalog.data.db.CatalogDatabase
 import com.vovoscan.feature.catalog.domain.CatalogRepository
 import com.vovoscan.feature.catalog.domain.ChapterTranslations
 import com.vovoscan.feature.catalog.domain.EpisodeFeature
+import com.vovoscan.feature.catalog.domain.Favorites
+import com.vovoscan.feature.catalog.domain.RatingsRepository
 import com.vovoscan.feature.catalog.domain.SearchRepository
 import com.vovoscan.feature.catalog.presentation.CatalogViewModel
 import com.vovoscan.feature.catalog.presentation.SearchPrivacyViewModel
@@ -38,6 +43,10 @@ val catalogModule =
         single<CatalogRepository> { CatalogRepositoryImpl(get(), get()) }
         // Search learned from picks (server `search`); picks wait in the catalog's database while offline.
         single<SearchRepository> { SearchRepositoryImpl(ApiSearchRemoteDataSource(get()), get(), get<AppDispatchers>().io) }
+        // The account's ratings (queued offline) and everyone's numbers, in the catalog's database.
+        single<RatingsRepository> {
+            RatingsRepositoryImpl(ApiRatingsRemoteDataSource(get()), get(), get<AppDispatchers>().io, SystemClock)
+        }
         viewModelOf(::CatalogViewModel)
         viewModelOf(::SearchPrivacyViewModel)
         viewModel { (sourceKey: String, titleId: String) ->
@@ -48,6 +57,8 @@ val catalogModule =
                 get(),
                 getOrNull() ?: ChapterTranslations.None,
                 getOrNull() ?: EpisodeFeature.Off,
+                get(),
+                getOrNull() ?: Favorites.None,
             )
         }
     }

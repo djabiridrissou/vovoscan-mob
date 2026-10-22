@@ -15,11 +15,16 @@ import com.vovoscan.feature.catalog.domain.ChapterTranslationBadge
 import com.vovoscan.feature.catalog.domain.ChapterTranslations
 import com.vovoscan.feature.catalog.domain.ContentKind
 import com.vovoscan.feature.catalog.domain.EpisodeFeature
+import com.vovoscan.feature.catalog.domain.Favorites
 import com.vovoscan.feature.catalog.domain.INTERNAL_SOURCE
+import com.vovoscan.feature.catalog.domain.MarkedTitle
+import com.vovoscan.feature.catalog.domain.RatingsRepository
 import com.vovoscan.feature.catalog.domain.ReadingFormat
 import com.vovoscan.feature.catalog.domain.ReadingResume
 import com.vovoscan.feature.catalog.domain.ResumePoint
+import com.vovoscan.feature.catalog.domain.Stars
 import com.vovoscan.feature.catalog.domain.TitleDetail
+import com.vovoscan.feature.catalog.domain.TitleStats
 import com.vovoscan.feature.catalog.domain.TitleTranslationBadges
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -110,7 +115,38 @@ data class TitleDetailUiState(
     val episodeChapters: Int = 0,
     /** Only the chapters with an episode are listed. */
     val episodesOnly: Boolean = false,
+    /** The account's rating, 1 to 5 in half steps; null: not rated. */
+    val myRating: Double? = null,
+    /** Everyone's numbers last read (each null below 3 accounts). */
+    val stats: TitleStats? = null,
+    /** "Could not save your rating.": the stars were put back. */
+    val ratingError: String? = null,
 ) {
+    /** "★ 4.3 (12)" and "♥ 30" next to the title, only when known. */
+    val ratingLine: String? get() = MarkText.ratingLine(stats)
+    val favoriteLine: String? get() = MarkText.favoriteLine(stats)
+
+    /** "Rated 4.3 out of 5 by 12 readers" (screen readers read it for [ratingLine]). */
+    val ratedBy: String? get() = MarkText.ratedBy(stats)
+
+    /** The five stars once the title is known (a rating names the title). */
+    val showStars: Boolean get() = name.isNotEmpty()
+
+    /** Each star's fill for the account's rating: 1, 0.5 or 0. */
+    val starFills: List<Double> get() = Stars.fills(myRating)
+
+    /** The stars while a finger is on them ([x] across the five, 0..1), before the score is set. */
+    fun previewFills(x: Double): List<Double> = Stars.fills(Stars.at(x))
+
+    /** "4.5 out of 5 stars" / "Not rated": the stars' value for screen readers (an adjustable control). */
+    val ratingValue: String get() = MarkText.stars(myRating)
+    val ratingTitle: String get() = t("marks.yourRating")
+
+    /** "Tap a star to rate" while not rated. */
+    val rateHint: String? get() = if (myRating == null) t("marks.rateHint") else null
+    val showClear: Boolean get() = myRating != null
+    val clearLabel: String get() = t("marks.clear")
+
     /** The "▶ Episodes (3)" chip, shown only when a chapter has one. */
     val showEpisodesFilter: Boolean get() = episodeChapters > 0
     val episodesChip: String get() = t("catalog.chapterEpisodes", "count" to episodeChapters)
@@ -165,6 +201,19 @@ sealed interface TitleDetailIntent {
 
     /** "▶ Episodes": only the chapters with an episode, or every chapter again. */
     data object ToggleEpisodes : TitleDetailIntent
+
+    /** A tap or a drag let go on the stars, [x] across the five (0..1): the half under the finger. */
+    data class RateAt(
+        val x: Double,
+    ) : TitleDetailIntent
+
+    /** The screen reader's adjustable action: half a star up or down (down from one star takes it back). */
+    data class StepRating(
+        val up: Boolean,
+    ) : TitleDetailIntent
+
+    /** "Clear": the rating taken back. */
+    data object ClearRating : TitleDetailIntent
 }
 
 /** Title page: name, description, chapters. Readable offline once it has been opened. */
@@ -175,8 +224,11 @@ class TitleDetailViewModel(
     private val resume: ReadingResume = ReadingResume { flowOf(emptyList()) },
     private val translations: ChapterTranslations = ChapterTranslations.None,
     private val video: EpisodeFeature = EpisodeFeature.Off,
+    private val ratings: RatingsRepository = RatingsRepository.None,
+    private val favorites: Favorites = Favorites.None,
 ) : ViewModel() {
     private var videoOn = false
+    private var statsAsked = false
     private val mutableState = MutableStateFlow(TitleDetailUiState())
     val state: StateFlow<TitleDetailUiState> = mutableState.asStateFlow()
     private var known = false
@@ -203,6 +255,28 @@ class TitleDetailViewModel(
                 mutableState.update { it.copy(newestFirst = newestFirst) }
             }
         }.launchIn(viewModelScope)
+        val key = MarkedTitle(sourceKey, titleId).key
+        ratings
+            .observeRatings()
+            .map { it[key] }
+            .onEach { score -> mutableState.update { it.copy(myRating = score) } }
+            .launchIn(viewModelScope)
+        ratings
+            .observeStats()
+            .map { it[key] }
+            .onEach { numbers -> mutableState.update { it.copy(stats = numbers) } }
+            .launchIn(viewModelScope)
+        // Everyone's numbers: our catalog's titles, or a title of a source read on the device the server already knows
+        // from this account (followed or rated); opening a title never tells it more.
+        combine(favorites.observe(), ratings.observeRatings()) { marks, rated -> key in marks.followed || key in rated }
+            .onEach { known ->
+                if (!statsAsked && (sourceKey == INTERNAL_SOURCE || known)) {
+                    statsAsked = true
+                    viewModelScope.launch {
+                        if (ratings.refreshStats(listOf(MarkedTitle(sourceKey, titleId))) is AppResult.Err) statsAsked = false
+                    }
+                }
+            }.launchIn(viewModelScope)
         refresh()
     }
 
@@ -218,6 +292,9 @@ class TitleDetailViewModel(
                 open(intent.chapterId, ChapterTarget.Episode) { it.offersEpisodes }
             is TitleDetailIntent.OpenHandled ->
                 mutableState.update { if (it.open?.seq == intent.seq) it.copy(open = null) else it }
+            is TitleDetailIntent.RateAt -> rate(Stars.at(intent.x))
+            is TitleDetailIntent.StepRating -> rate(Stars.step(state.value.myRating, intent.up))
+            TitleDetailIntent.ClearRating -> rate(null)
             TitleDetailIntent.ToggleEpisodes -> {
                 val (detail, newestFirst, at) = shown ?: return
                 mutableState.update { now ->
@@ -230,6 +307,16 @@ class TitleDetailViewModel(
                     }
                 }
             }
+        }
+    }
+
+    private fun rate(score: Double?) {
+        val now = state.value
+        if (!now.showStars || score == now.myRating) return
+        mutableState.update { it.copy(ratingError = null) }
+        viewModelScope.launch {
+            val result = ratings.rate(MarkedTitle(sourceKey, titleId), now.name, score)
+            if (result is AppResult.Err) mutableState.update { it.copy(ratingError = t("marks.ratingError")) }
         }
     }
 

@@ -66,8 +66,10 @@ import com.vovoscan.app.ui.common.EmptyStateCard
 import com.vovoscan.app.ui.common.EpisodeBadge
 import com.vovoscan.app.ui.common.ErrorText
 import com.vovoscan.app.ui.common.GhostButton
+import com.vovoscan.app.ui.common.HeartButton
 import com.vovoscan.app.ui.common.Kicker
 import com.vovoscan.app.ui.common.LocalAdaptive
+import com.vovoscan.app.ui.common.MarkLines
 import com.vovoscan.app.ui.common.OfflineNotice
 import com.vovoscan.app.ui.common.ToggleChip
 import com.vovoscan.app.ui.theme.Brand
@@ -164,6 +166,7 @@ fun CatalogScreen(
                         )
                     }
                     state.error?.let { ErrorText(it) }
+                    state.favoriteError?.let { ErrorText(it) }
                     // The last title read, opened where it was left.
                     state.resume?.takeIf { state.results == null }?.let { resume ->
                         ResumeBanner(resume) { onResume(resume.sourceKey, resume.titleId, resume.chapterId, resume.page) }
@@ -182,7 +185,11 @@ fun CatalogScreen(
                 }
             }
             items(state.visible, key = { it.sourceKey + "/" + it.id }) { card ->
-                TitleTile(card, state.popularLabel) { open(card.sourceKey, card.id) }
+                TitleTile(
+                    card,
+                    state.popularLabel,
+                    onHeart = { viewModel.onIntent(CatalogIntent.ToggleFavorite(card.sourceKey, card.id)) },
+                ) { open(card.sourceKey, card.id) }
             }
             if (state.canLoadMore && state.results == null) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
@@ -497,6 +504,7 @@ private fun CheckRow(
 private fun TitleTile(
     card: TitleCard,
     popularLabel: String,
+    onHeart: () -> Unit,
     onClick: () -> Unit,
 ) {
     Column(
@@ -508,7 +516,9 @@ private fun TitleTile(
     ) {
         Box(Modifier.fillMaxWidth().aspectRatio(3f / 4f).background(Brand.Line)) {
             AsyncImage(card.coverUrl, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
-            card.episodeBadge?.let { EpisodeBadge(it, Modifier.align(Alignment.TopEnd).padding(8.dp)) }
+            // The heart in the corner (its own tap: it never opens the card), the episode badge under it.
+            HeartButton(card.favorite, card.favoriteAction, Modifier.align(Alignment.TopEnd).padding(6.dp), onHeart)
+            card.episodeBadge?.let { EpisodeBadge(it, Modifier.align(Alignment.TopEnd).padding(top = 54.dp, end = 8.dp)) }
             Column(Modifier.align(Alignment.TopStart).padding(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(
                     card.formatLabel,
@@ -544,6 +554,7 @@ private fun TitleTile(
         }
         Column(Modifier.padding(12.dp)) {
             Text(card.name, style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            MarkLines(card.ratingLine, card.favoriteLine)
             Text(card.status, style = MaterialTheme.typography.bodySmall)
         }
     }

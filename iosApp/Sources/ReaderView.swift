@@ -229,6 +229,7 @@ struct ReaderView: View {
                 return .handled
             }
             .task { await model.observe() }
+            .task { await model.observeFollow() }
             .task { await translation.observe() }
             .task { await next.observe() }
             .onChange(of: translation.state.shown, initial: true) { _, shown in next.send(NextChapterIntentLanguageShown(code: shown)) }
@@ -1310,7 +1311,15 @@ private struct TransitionCardView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(card.heading).font(.brandBody(13)).foregroundStyle(Color.brandMuted)
-            Text(card.target).font(.brandDisplay(18)).foregroundStyle(Color.brandPaper)
+            HStack(alignment: .top) {
+                Text(card.target).font(.brandDisplay(18)).foregroundStyle(Color.brandPaper)
+                Spacer(minLength: 8)
+                // "Finished: Chapter 3": the heart next to the way on.
+                if card.forward, !model.state.titleName.isEmpty {
+                    HeartButton(on: model.follow.favorite, label: model.follow.favoriteAction) { model.toggleFavorite() }
+                        .accessibilityIdentifier("reader.heart")
+                }
+            }
             // Reading in a language: the way on in it (prepare, follow, the original), never a dead end.
             if card.forward, let nextChapter {
                 NextEndContent(next: nextChapter)

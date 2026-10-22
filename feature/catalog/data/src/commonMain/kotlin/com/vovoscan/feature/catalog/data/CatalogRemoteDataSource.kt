@@ -36,6 +36,10 @@ data class TitleSummaryDto(
     val episodeCount: Int = 0,
     /** false: listed by the device itself, which can't know [episodeCount] (the saved count stays). */
     @Transient val episodesKnown: Boolean = true,
+    /** Everyone's numbers (our catalog's listings only; each null below 3 accounts). */
+    val ratingAvg: Double? = null,
+    val ratingCount: Int? = null,
+    val favoriteCount: Int? = null,
 )
 
 @Serializable

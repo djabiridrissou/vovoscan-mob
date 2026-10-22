@@ -62,6 +62,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
@@ -109,12 +110,14 @@ import coil3.size.Size
 import com.vovoscan.app.MainActivity
 import com.vovoscan.app.ui.common.ErrorText
 import com.vovoscan.app.ui.common.GhostButton
+import com.vovoscan.app.ui.common.HeartButton
 import com.vovoscan.app.ui.common.LanguageDock
 import com.vovoscan.app.ui.common.LocalAdaptive
 import com.vovoscan.app.ui.common.PrimaryButton
 import com.vovoscan.app.ui.common.content
 import com.vovoscan.app.ui.theme.Brand
 import com.vovoscan.core.common.i18n.I18n
+import com.vovoscan.feature.library.presentation.FollowViewModel
 import com.vovoscan.feature.reader.domain.ReaderKey
 import com.vovoscan.feature.reader.domain.ReaderPage
 import com.vovoscan.feature.reader.domain.TallPages
@@ -168,6 +171,13 @@ fun ReaderScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val onIntent = viewModel::onIntent
+    // The library's heart for this title, on the end card (two features side by side, unaware of each other).
+    val follow: FollowViewModel = koinViewModel(key = "follow:$sourceKey/$titleId") { parametersOf(sourceKey, titleId) }
+    val followState by follow.state.collectAsStateWithLifecycle()
+    val heart =
+        state.titleName.takeIf { it.isNotEmpty() }?.let { name ->
+            EndCardHeart(followState.favorite, followState.favoriteAction) { follow.toggleFavorite(name, null) }
+        }
     var settingsOpen by rememberSaveable { mutableStateOf(false) }
     // The reader's language, any comic: any time from the bar, free when already made, quoted first. A source's chapter
     // is translated on its copy on the server, which then opens here in that language.
@@ -293,6 +303,7 @@ fun ReaderScreen(
                     LocalPageLettering provides { translationState.letteringFor(it) },
                     LocalReaderLanguageAction provides languageAction,
                     LocalNextChapter provides nextUi,
+                    LocalEndCardHeart provides heart,
                 ) {
                     ComicReader(state, onIntent)
                 }
@@ -742,6 +753,15 @@ private fun PagedPage(
     }
 }
 
+/** The title's heart on the end card: on or off, what a tap does (for TalkBack), the toggle. */
+class EndCardHeart(
+    val on: Boolean,
+    val label: String,
+    val toggle: () -> Unit,
+)
+
+val LocalEndCardHeart = staticCompositionLocalOf<EndCardHeart?> { null }
+
 /** "Finished: Chapter 3" / "Next: Chapter 4 · The last gate" and "Next chapter →". */
 @Composable
 internal fun TransitionCardView(
@@ -759,7 +779,11 @@ internal fun TransitionCardView(
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Text(card.heading, style = MaterialTheme.typography.bodySmall.copy(color = Brand.Muted))
-            Text(card.target, style = MaterialTheme.typography.titleMedium)
+            Row(verticalAlignment = Alignment.Top) {
+                Text(card.target, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                // "Finished: Chapter 3": the heart next to the way on.
+                LocalEndCardHeart.current?.takeIf { card.forward }?.let { HeartButton(it.on, it.label, onClick = it.toggle) }
+            }
             // Reading in a language: the way on in it (prepare, follow, the original), never a dead end.
             val nextUi = LocalNextChapter.current?.takeIf { card.forward }
             nextUi?.let { NextEndContent(it) }

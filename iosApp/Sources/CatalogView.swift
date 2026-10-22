@@ -56,6 +56,7 @@ struct CatalogView: View {
                         OfflineNotice(text: notice, onRetry: model.state.canRetry ? { model.send(CatalogIntentRefresh.shared) } : nil)
                     }
                     if let error = model.state.error { ErrorText(text: error) }
+                    if let error = model.state.favoriteError { ErrorText(text: error) }
                     // The last title read, opened where it was left.
                     if let resume = model.state.resume, model.state.results == nil {
                         NavigationLink(value: AppRoute.reader(ReaderRoute(sourceKey: resume.sourceKey, titleId: resume.titleId, chapterId: resume.chapterId, startPage: Int(resume.page)))) {
@@ -85,6 +86,14 @@ struct CatalogView: View {
                                 // From search results, opening a title teaches the search (the view model decides).
                                 .simultaneousGesture(TapGesture().onEnded { opened(card.sourceKey, card.id) })
                                 .matchedTransitionSource(id: route, in: zoom)
+                                // Outside the link: the heart never opens the card.
+                                .overlay(alignment: .topTrailing) {
+                                    HeartButton(on: card.favorite, label: card.favoriteAction) {
+                                        model.send(CatalogIntentToggleFavorite(sourceKey: card.sourceKey, titleId: card.id))
+                                    }
+                                    .padding(6)
+                                    .accessibilityIdentifier("catalog.heart.\(card.key)")
+                                }
                                 .riseIn(index)
                         }
                         // The shape of the grid while the first page of every source loads.
@@ -470,9 +479,11 @@ private struct TitleTile: View {
                 Color.brandLine
                 CoverImage(card: card)
                 if let badge = card.episodeBadge {
+                    // Under the heart (top right, drawn by the grid over the tile).
                     EpisodeBadge(label: badge)
                         .frame(maxWidth: .infinity, alignment: .topTrailing)
-                        .padding(8)
+                        .padding(.top, 54)
+                        .padding(.trailing, 8)
                 }
                 VStack(alignment: .leading, spacing: 4) {
                     Text(card.formatLabel)
@@ -512,6 +523,9 @@ private struct TitleTile: View {
             .clipped()
             VStack(alignment: .leading, spacing: 2) {
                 Text(card.name).font(.brandBody(15)).foregroundStyle(Color.brandPaper).lineLimit(2)
+                if card.ratingLine != nil || card.favoriteLine != nil {
+                    MarkLines(rating: card.ratingLine, favorite: card.favoriteLine, size: 12)
+                }
                 Text(card.status).font(.brandBody(13)).foregroundStyle(Color.brandMuted)
             }
             .padding(12)
@@ -521,6 +535,54 @@ private struct TitleTile: View {
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.brandLine, lineWidth: 2))
         .contentShape(RoundedRectangle(cornerRadius: 12))
         .accessibilityElement(children: .combine)
+    }
+}
+
+/// The heart: round, 40 pt, ink glass; red and filled when on, a pop when it changes (none under Reduce Motion), a
+/// haptic on every tap.
+struct HeartButton: View {
+    let on: Bool
+    let label: String
+    let action: () -> Void
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var pop = false
+
+    var body: some View {
+        Button {
+            Haptics.tap()
+            if !reduceMotion {
+                withAnimation(.spring(response: 0.22, dampingFraction: 0.45)) { pop = true }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) { withAnimation(.easeOut(duration: 0.15)) { pop = false } }
+            }
+            action()
+        } label: {
+            Image(systemName: on ? "heart.fill" : "heart")
+                .font(.system(size: 18, weight: .bold))
+                .foregroundStyle(on ? Color.brandRed : Color.brandPaper)
+                .scaleEffect(pop ? 1.3 : 1)
+                .frame(width: 40, height: 40)
+                .background(.ultraThinMaterial, in: Circle())
+                .background(Color.brandInk.opacity(0.55), in: Circle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(label)
+        .accessibilityAddTraits(on ? .isSelected : [])
+    }
+}
+
+/// "★ 4.3 (12)  ♥ 30": everyone's numbers, only those known (the yellow star, the red heart).
+struct MarkLines: View {
+    let rating: String?
+    let favorite: String?
+    var size: CGFloat = 13
+
+    var body: some View {
+        HStack(spacing: 10) {
+            if let rating { Text(rating).foregroundStyle(Color.brandYellow) }
+            if let favorite { Text(favorite).foregroundStyle(Color.brandRed) }
+        }
+        .font(.brandBody(size, weight: .bold))
+        .lineLimit(1)
     }
 }
 

@@ -15,6 +15,13 @@ data class LibraryEntry(
     val updatedAt: Long,
     /** Changed on the device, not sent yet. */
     val pendingSync: Boolean,
+    /** In the favourites (the heart). */
+    val favorite: Boolean = false,
+    /** When the heart was given (ms), while [favorite]. */
+    val favoritedAt: Long? = null,
+    /** Our catalog's titles: released chapters, and those after the last one read (the server's word; null otherwise). */
+    val chapterCount: Int? = null,
+    val newChapters: Int? = null,
 )
 
 /** What a title screen knows about the title when following it (name and cover kept for the library). */
@@ -45,6 +52,21 @@ interface LibraryRepository {
         titleRef: String,
     )
 
+    fun isFavorite(
+        sourceKey: String,
+        titleRef: String,
+    ): Flow<Boolean>
+
+    /**
+     * The heart, applied at once and queued like the library (its own clock): giving it follows the title, taking it
+     * back keeps it followed. Err only when the server refused it for good (the heart is then put back as it was);
+     * offline it waits in the queue and the answer is Ok.
+     */
+    suspend fun setFavorite(
+        title: TitleRef,
+        favorite: Boolean,
+    ): AppResult<Unit>
+
     suspend fun saveProgress(
         sourceKey: String,
         titleRef: String,
@@ -56,4 +78,20 @@ interface LibraryRepository {
     suspend fun sync(): AppResult<Unit>
 
     suspend fun clearLocal()
+}
+
+/**
+ * Port: chapters after the last one read for a title of a source read on the device (the server only counts our own
+ * catalog's), from the device's copy of the title; null when it isn't known. Wired by the app to the catalog.
+ */
+fun interface NewChapters {
+    suspend fun count(
+        sourceKey: String,
+        titleRef: String,
+        lastChapterRef: String?,
+    ): Int?
+
+    companion object {
+        val Unknown = NewChapters { _, _, _ -> null }
+    }
 }

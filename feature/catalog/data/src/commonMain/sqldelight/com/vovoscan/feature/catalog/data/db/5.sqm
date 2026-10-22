@@ -1,0 +1,24 @@
+-- v5 → v6: everyone's numbers on titles (favourites and ratings contract) and the account's own ratings.
+-- Everyone's numbers on a title as last read (each null below 3 accounts), so cards show them offline.
+CREATE TABLE title_stats (
+    source_key TEXT NOT NULL,
+    title_id TEXT NOT NULL,
+    rating_avg REAL,
+    rating_count INTEGER,
+    favorite_count INTEGER,
+    PRIMARY KEY (source_key, title_id)
+);
+
+-- The account's own ratings (1 to 5, half steps; score null = taken back). A row changed here and not sent yet is
+-- `pending` (one per title, the latest wins): the row is its own queue. `previous_score`: the score before the pending
+-- change, put back if the server refuses it.
+CREATE TABLE my_rating (
+    source_key TEXT NOT NULL,
+    title_ref TEXT NOT NULL,
+    title_name TEXT NOT NULL,
+    score REAL,
+    updated_at INTEGER NOT NULL,
+    pending INTEGER NOT NULL DEFAULT 0,
+    previous_score REAL,
+    PRIMARY KEY (source_key, title_ref)
+);

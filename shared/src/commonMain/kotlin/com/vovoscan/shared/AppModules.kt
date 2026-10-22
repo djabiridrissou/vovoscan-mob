@@ -40,6 +40,9 @@ import com.vovoscan.feature.catalog.domain.ChapterTranslations
 import com.vovoscan.feature.catalog.domain.ContentKind
 import com.vovoscan.feature.catalog.domain.ContentPolicy
 import com.vovoscan.feature.catalog.domain.EpisodeFeature
+import com.vovoscan.feature.catalog.domain.Favorites
+import com.vovoscan.feature.catalog.domain.LibraryMarks
+import com.vovoscan.feature.catalog.domain.MarkedTitle
 import com.vovoscan.feature.catalog.domain.ReadingResume
 import com.vovoscan.feature.catalog.domain.ResumePoint
 import com.vovoscan.feature.catalog.domain.ResumePoints
@@ -53,6 +56,8 @@ import com.vovoscan.feature.episodes.domain.RunCost
 import com.vovoscan.feature.episodes.domain.RunQuotes
 import com.vovoscan.feature.library.di.libraryModule
 import com.vovoscan.feature.library.domain.LibraryRepository
+import com.vovoscan.feature.library.domain.NewChapters
+import com.vovoscan.feature.library.domain.TitleRef
 import com.vovoscan.feature.reader.di.readerModule
 import com.vovoscan.feature.reader.domain.ChapterHeading
 import com.vovoscan.feature.reader.domain.ChapterHeadings
@@ -279,6 +284,38 @@ fun appModules(
             single<ContentPolicy> {
                 val auth = get<AuthRepository>()
                 ContentPolicy { auth.session.map { it?.showAdult == true }.distinctUntilChanged() }
+            }
+            // The heart on catalog cards, kept by the library (giving it follows the title), without the catalog knowing it.
+            single<Favorites> {
+                val library = get<LibraryRepository>()
+                object : Favorites {
+                    override fun observe() =
+                        library
+                            .observe()
+                            .map { entries ->
+                                LibraryMarks(
+                                    favorites = entries.filter { it.favorite }.mapTo(HashSet()) { "${it.sourceKey}/${it.titleRef}" },
+                                    followed = entries.mapTo(HashSet()) { "${it.sourceKey}/${it.titleRef}" },
+                                )
+                            }.distinctUntilChanged()
+
+                    override suspend fun set(
+                        title: MarkedTitle,
+                        name: String,
+                        coverUrl: String?,
+                        favorite: Boolean,
+                    ) = library.setFavorite(TitleRef(title.sourceKey, title.id, name, coverUrl), favorite)
+                }
+            }
+            // "+3 new" in the library for a source read on the device: chapters numbered after the last one read, from
+            // the device's copy of the title page (the server counts our own catalog's).
+            single<NewChapters> {
+                val catalog = get<CatalogRepository>()
+                NewChapters { sourceKey, titleId, lastChapterRef ->
+                    val chapters = catalog.observeTitle(sourceKey, titleId).first()?.chapters ?: return@NewChapters null
+                    val last = lastChapterRef?.let { ref -> chapters.firstOrNull { it.id == ref } } ?: return@NewChapters null
+                    chapters.count { it.number > last.number }
+                }
             }
             // What a run would cost, from the account's credits wallet (a server without credits: no quote).
             single<RunQuotes> {

@@ -26,6 +26,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.unit.dp
@@ -35,8 +36,11 @@ import coil3.compose.AsyncImage
 import com.vovoscan.app.ui.common.EpisodeBadge
 import com.vovoscan.app.ui.common.ErrorText
 import com.vovoscan.app.ui.common.GhostButton
+import com.vovoscan.app.ui.common.HeartButton
+import com.vovoscan.app.ui.common.MarkLines
 import com.vovoscan.app.ui.common.OfflineNotice
 import com.vovoscan.app.ui.common.PrimaryButton
+import com.vovoscan.app.ui.common.StarRating
 import com.vovoscan.app.ui.common.ToggleChip
 import com.vovoscan.app.ui.downloads.DownloadControl
 import com.vovoscan.app.ui.sources.BrandAlert
@@ -110,12 +114,53 @@ fun TitleScreen(
                 if (state.unavailable && state.canRetry) GhostButton(I18n.text("common.tryAgain"), detail::refresh)
                 Text(state.name, style = MaterialTheme.typography.headlineSmall)
                 Text(state.meta, style = MaterialTheme.typography.bodySmall)
+                MarkLines(
+                    state.ratingLine,
+                    state.favoriteLine,
+                    Modifier.clearAndSetSemantics {
+                        contentDescription = listOfNotNull(state.ratedBy, state.favoriteLine).joinToString(", ")
+                    },
+                )
                 // Where this account left the title (this device or another), otherwise chapter 1.
                 state.readAction?.let { action ->
                     PrimaryButton(action.label, { onRead(action.chapterId, action.page, action.language) })
                     Text(action.detail, style = MaterialTheme.typography.bodySmall, color = Brand.Muted)
                 }
-                if (state.name.isNotEmpty()) GhostButton(followState.label, { follow.toggle(state.name, state.coverUrl) })
+                if (state.name.isNotEmpty()) {
+                    GhostButton(followState.label, { follow.toggle(state.name, state.coverUrl) })
+                    // The heart, labelled: "Add to favourites" / "Favourite" (it follows the title too).
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        HeartButton(followState.favorite, followState.favoriteAction) { follow.toggleFavorite(state.name, state.coverUrl) }
+                        Text(
+                            followState.favoriteLabel,
+                            style = MaterialTheme.typography.labelLarge.copy(color = if (followState.favorite) Brand.Red else Brand.Paper),
+                            modifier = Modifier.clearAndSetSemantics { },
+                        )
+                    }
+                    followState.error?.let { ErrorText(it) }
+                }
+                if (state.showStars) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        StarRating(
+                            fills = state.starFills,
+                            preview = state::previewFills,
+                            title = state.ratingTitle,
+                            value = state.ratingValue,
+                            score = state.myRating,
+                            onRate = { detail.onIntent(TitleDetailIntent.RateAt(it)) },
+                            onStep = { detail.onIntent(TitleDetailIntent.StepRating(it)) },
+                        )
+                        state.rateHint?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = Brand.Muted) }
+                        if (state.showClear) {
+                            Text(
+                                state.clearLabel,
+                                style = MaterialTheme.typography.labelLarge.copy(color = Brand.Muted),
+                                modifier = Modifier.clickable(role = Role.Button) { detail.onIntent(TitleDetailIntent.ClearRating) },
+                            )
+                        }
+                    }
+                    state.ratingError?.let { ErrorText(it) }
+                }
                 Text(state.synopsis, style = MaterialTheme.typography.bodyMedium)
                 if (state.genres.isNotEmpty()) Text(state.genres.joinToString(" ✦ "), style = MaterialTheme.typography.bodySmall)
                 DownloadsBlock(downloadState, downloads::onIntent) { confirmDelete = "*" }

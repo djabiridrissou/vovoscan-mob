@@ -679,6 +679,30 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   catalog, wired in `shared`); a chapter ready in it, and "Continue / Start reading" on it, open translated
   (`ChapterRow.openLanguage`, `ReadAction.language`).
 
+## Favourites and ratings
+
+- The heart is the library's (`LibraryEntry.favorite`, its own clock `favorite_updated_at`): `LibraryRepository.setFavorite`
+  applies it at once, queues it in `favorite_outbox` (one per title, the latest wins; library migration `2.sqm`) and
+  `sync()` sends it (`PUT`/`DELETE api/v1/favorites/{key}/{ref}`, never `library/favorites/…`: "favorites" is a valid
+  source key). Giving it follows the title; taking it back keeps it followed; removing the title takes it away. A refusal
+  puts the heart back and answers Err ("Could not update your favourites."); `FAVORITE_NOT_FOUND` on a removal is done.
+  A progress write never undoes a heart (the library's answers keep the heart's own clock).
+- Hearts on catalog cards (round, 40 pt/dp, top right, the episode badge under it; never opens the card), on the title
+  page (`FollowUiState.favoriteLabel`: "Add to favourites" / "Favourite"), on the reader's end card (the app puts a
+  `FollowViewModel` next to the reader) and on library rows. The catalog reaches the library through the `Favorites` port.
+- Library: Favourites first (most recently favourited first), then Following (`LibraryUiState.sections`); "+3 new"
+  (`LibraryRow.newBadge`, yellow, tilted): the server's `newChapters` for our catalog, else the `NewChapters` port
+  (chapters numbered after the last one read, from the device's copy of the title page).
+- Ratings (catalog slice, `RatingsRepository`): 1 to 5 stars in half steps (`Stars`: the half under the finger, steps,
+  fills), `my_rating` is its own queue (`pending`, `previous_score` put back on a refusal), `PUT`/`DELETE
+  api/v1/ratings/{key}/{ref}`, `GET ratings?updatedSince=` pulled on each sync (catalog opening, every rating).
+- Everyone's numbers (`title_stats`, catalog migration `5.sqm`): null below 3 accounts, shown only when known
+  ("★ 4.3 (12)", "♥ 30", `MarkText.compactCount`: 1.2k, 46k, 2M). Our catalog's listings carry them; `POST
+  ratings/stats` (100 a call) is asked for a source read on the device only for titles the server already knows from this
+  account: followed, rated, or a typed search's results. Browsing a source never tells the server what it lists.
+- Title page stars: a tap rates the half under the finger, a drag previews (`previewFills`) and rates where it is let go,
+  "Clear" takes it back; VoiceOver an adjustable element, TalkBack a slider, both "4.5 out of 5 stars".
+
 ## Screens (account and episodes)
 
 - Settings (4th tab, gear on both): Keys (two provider slots, add / replace / remove with a confirmation, privacy note;

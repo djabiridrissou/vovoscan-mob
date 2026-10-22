@@ -62,6 +62,30 @@ CREATE TABLE source_category (
     PRIMARY KEY (source_key, id)
 );
 
+-- Everyone's numbers on a title as last read (each null below 3 accounts), so cards show them offline.
+CREATE TABLE title_stats (
+    source_key TEXT NOT NULL,
+    title_id TEXT NOT NULL,
+    rating_avg REAL,
+    rating_count INTEGER,
+    favorite_count INTEGER,
+    PRIMARY KEY (source_key, title_id)
+);
+
+-- The account's own ratings (1 to 5, half steps; score null = taken back). A row changed here and not sent yet is
+-- `pending` (one per title, the latest wins): the row is its own queue. `previous_score`: the score before the pending
+-- change, put back if the server refuses it.
+CREATE TABLE my_rating (
+    source_key TEXT NOT NULL,
+    title_ref TEXT NOT NULL,
+    title_name TEXT NOT NULL,
+    score REAL,
+    updated_at INTEGER NOT NULL,
+    pending INTEGER NOT NULL DEFAULT 0,
+    previous_score REAL,
+    PRIMARY KEY (source_key, title_ref)
+);
+
 -- The catalog's filter, remembered on the device (keys `sources`, `category`).
 CREATE TABLE catalog_setting (
     key TEXT NOT NULL PRIMARY KEY,
@@ -180,3 +204,44 @@ DELETE FROM catalog_entry WHERE source_key = ?;
 
 clearCursorsOf:
 DELETE FROM listing_cursor WHERE source_key = ?;
+
+putStats:
+INSERT OR REPLACE INTO title_stats (source_key, title_id, rating_avg, rating_count, favorite_count) VALUES (?, ?, ?, ?, ?);
+
+allStats:
+SELECT * FROM title_stats;
+
+clearStats:
+DELETE FROM title_stats;
+
+clearStatsOf:
+DELETE FROM title_stats WHERE source_key = ?;
+
+ratings:
+SELECT source_key, title_ref, score FROM my_rating WHERE score IS NOT NULL;
+
+ratingOf:
+SELECT * FROM my_rating WHERE source_key = ? AND title_ref = ?;
+
+insertRating:
+INSERT OR IGNORE INTO my_rating (source_key, title_ref, title_name, score, updated_at, pending) VALUES (?, ?, ?, NULL, 0, 0);
+
+-- A rating given here: the score the server knows is kept aside the first time (every right-hand side reads the old row).
+rateLocal:
+UPDATE my_rating SET previous_score = CASE WHEN pending = 0 THEN score ELSE previous_score END, score = ?, title_name = ?,
+updated_at = ?, pending = 1 WHERE source_key = ? AND title_ref = ?;
+
+pendingRatings:
+SELECT * FROM my_rating WHERE pending = 1 ORDER BY updated_at;
+
+-- The server's state, unless a newer change waits here.
+serverRating:
+UPDATE my_rating SET score = ?, title_name = ?, updated_at = ?, pending = 0, previous_score = NULL
+WHERE source_key = ? AND title_ref = ? AND (pending = 0 OR updated_at <= ?);
+
+-- Refused for good: back to what the server knows, unless a newer change waits here.
+revertRating:
+UPDATE my_rating SET score = previous_score, pending = 0, previous_score = NULL WHERE source_key = ? AND title_ref = ? AND updated_at = ?;
+
+clearRatings:
+DELETE FROM my_rating;

@@ -366,6 +366,8 @@ class SqlCatalogLocalDataSource(
                 queries.clearCursors()
                 queries.clearCategories()
                 queries.clearSettings()
+                queries.clearStats()
+                queries.clearRatings()
             }
         }
 
@@ -377,6 +379,7 @@ class SqlCatalogLocalDataSource(
                 queries.clearEntriesOf(sourceKey)
                 queries.clearCursorsOf(sourceKey)
                 queries.clearCategoriesOf(sourceKey)
+                queries.clearStatsOf(sourceKey)
             }
         }
 
@@ -400,6 +403,10 @@ class SqlCatalogLocalDataSource(
         queries.updateSummary(it.name, cover, it.kind, format, it.status, it.contentRating, sourceKey, it.id)
         // Listed by the device itself: the count the server gave stays.
         if (it.episodesKnown) queries.setEpisodeCount(it.episodeCount.toLong(), sourceKey, it.id)
+        // Our catalog's listings carry everyone's numbers (favourites and ratings contract); other sources are asked apart.
+        if (sourceKey == INTERNAL_SOURCE) {
+            queries.putStats(sourceKey, it.id, it.ratingAvg, it.ratingCount?.toLong(), it.favoriteCount?.toLong())
+        }
     }
 
     private companion object {

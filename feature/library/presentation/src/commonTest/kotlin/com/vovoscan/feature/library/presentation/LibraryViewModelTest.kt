@@ -5,6 +5,7 @@ import com.vovoscan.core.common.AppResult
 import com.vovoscan.core.common.Freshness
 import com.vovoscan.feature.library.domain.LibraryEntry
 import com.vovoscan.feature.library.domain.LibraryRepository
+import com.vovoscan.feature.library.domain.NewChapters
 import com.vovoscan.feature.library.domain.TitleRef
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -44,6 +45,28 @@ class LibraryViewModelTest {
         ) {
             entries.value = entries.value.filterNot { it.sourceKey == sourceKey && it.titleRef == titleRef }
         }
+
+        var refuse = false
+
+        override fun isFavorite(
+            sourceKey: String,
+            titleRef: String,
+        ) = entries.map { list -> list.any { it.sourceKey == sourceKey && it.titleRef == titleRef && it.favorite } }
+
+        override suspend fun setFavorite(
+            title: TitleRef,
+            favorite: Boolean,
+        ): AppResult<Unit> {
+            if (refuse) return AppResult.Err(AppError.Rejected("TITLE_NOT_FOUND", "Title not found."))
+            val others = entries.value.filterNot { it.sourceKey == title.sourceKey && it.titleRef == title.id }
+            val current =
+                entries.value.firstOrNull { it.sourceKey == title.sourceKey && it.titleRef == title.id }
+                    ?: LibraryEntry(title.sourceKey, title.id, title.name, title.coverUrl, null, 0, 1L, pendingSync = true)
+            entries.value = others + current.copy(favorite = favorite, favoritedAt = if (favorite) clock++ else null)
+            return AppResult.Ok(Unit)
+        }
+
+        private var clock = 10L
 
         override suspend fun saveProgress(
             sourceKey: String,
@@ -107,6 +130,89 @@ class LibraryViewModelTest {
             assertTrue(
                 vm.state.value.rows
                     .none { it.sourceRemoved },
+            )
+        }
+
+    @Test
+    fun theHeartFollowsTheTitleAndTheLibraryListsFavouritesFirst() =
+        runTest {
+            val library = FakeLibrary()
+            library.entries.value =
+                listOf(
+                    LibraryEntry("vovoscan", "a", "Ink Road", null, "c1", 0, 3L, false, chapterCount = 5, newChapters = 3),
+                    LibraryEntry("vovoscan", "b", "Tide Road", null, null, 0, 2L, false),
+                )
+            val vm = LibraryViewModel(library)
+            assertEquals(
+                listOf("Following"),
+                vm.state.value.sections
+                    .map { it.title },
+            )
+            assertEquals(
+                "+3 new",
+                vm.state.value.rows
+                    .first()
+                    .newBadge,
+            )
+
+            // A heart on a title not followed yet follows it.
+            val follow = FollowViewModel("gutenberg", "1342", library)
+            assertEquals("Add to favourites", follow.state.value.favoriteLabel)
+            follow.toggleFavorite("Pride and Prejudice", null)
+            assertTrue(follow.state.value.favorite && follow.state.value.followed)
+            assertEquals("Favourite", follow.state.value.favoriteLabel)
+            assertEquals("Remove from favourites", follow.state.value.favoriteAction)
+            vm.onIntent(LibraryIntent.ToggleFavorite("vovoscan", "b"))
+
+            val (favorites, following) = vm.state.value.sections
+            assertEquals("Favourites", favorites.title)
+            // Most recently favourited first.
+            assertEquals(listOf("b", "1342"), favorites.rows.map { it.titleId })
+            assertEquals(listOf("a"), following.rows.map { it.titleId })
+
+            // Taking the heart back keeps the title followed.
+            follow.toggleFavorite("Pride and Prejudice", null)
+            assertTrue(follow.state.value.followed)
+            assertEquals(false, follow.state.value.favorite)
+        }
+
+    @Test
+    fun aRefusedHeartSaysSo() =
+        runTest {
+            val library = FakeLibrary().apply { refuse = true }
+            val follow = FollowViewModel("vovoscan", "gone", library)
+            follow.toggleFavorite("Gone", null)
+            assertEquals(false, follow.state.value.favorite)
+            assertEquals("Could not update your favourites.", follow.state.value.error)
+        }
+
+    @Test
+    fun newChaptersOfASourceReadOnTheDeviceAreCountedFromItsCopy() =
+        runTest {
+            val library = FakeLibrary()
+            library.entries.value = listOf(LibraryEntry("gutenberg", "1342", "Pride and Prejudice", null, "c2", 0, 1L, false))
+            val asked = mutableListOf<String?>()
+            val vm =
+                LibraryViewModel(library) { _, _, last ->
+                    asked += last
+                    4
+                }
+            assertEquals(
+                "+4 new",
+                vm.state.value.rows
+                    .single()
+                    .newBadge,
+            )
+            // Counted once per last chapter read.
+            library.entries.value = library.entries.value.map { it.copy(updatedAt = 2L) }
+            assertEquals(listOf<String?>("c2"), asked)
+            // Nothing new: no badge.
+            val none = LibraryViewModel(library, NewChapters { _, _, _ -> 0 })
+            assertEquals(
+                null,
+                none.state.value.rows
+                    .single()
+                    .newBadge,
             )
         }
 }

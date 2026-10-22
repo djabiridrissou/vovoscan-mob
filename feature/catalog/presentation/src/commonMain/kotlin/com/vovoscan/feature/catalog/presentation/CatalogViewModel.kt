@@ -16,7 +16,11 @@ import com.vovoscan.feature.catalog.domain.CategoryUnion
 import com.vovoscan.feature.catalog.domain.ContentKind
 import com.vovoscan.feature.catalog.domain.ContentPolicy
 import com.vovoscan.feature.catalog.domain.EpisodeFeature
+import com.vovoscan.feature.catalog.domain.Favorites
 import com.vovoscan.feature.catalog.domain.INTERNAL_SOURCE
+import com.vovoscan.feature.catalog.domain.LibraryMarks
+import com.vovoscan.feature.catalog.domain.MarkedTitle
+import com.vovoscan.feature.catalog.domain.RatingsRepository
 import com.vovoscan.feature.catalog.domain.ReadingFormat
 import com.vovoscan.feature.catalog.domain.ReadingResume
 import com.vovoscan.feature.catalog.domain.ResumePoint
@@ -27,6 +31,7 @@ import com.vovoscan.feature.catalog.domain.SourceCategory
 import com.vovoscan.feature.catalog.domain.SuggestReason
 import com.vovoscan.feature.catalog.domain.SuggestedTitle
 import com.vovoscan.feature.catalog.domain.TitleDetail
+import com.vovoscan.feature.catalog.domain.TitleStats
 import com.vovoscan.feature.catalog.domain.TitleSummary
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
@@ -67,7 +72,16 @@ data class TitleCard(
     val popular: Boolean = false,
     /** "▶ 3": chapters with an episode (red badge, top right of the cover); null without one or without `video`. */
     val episodeBadge: String? = null,
+    /** In the favourites: the heart in the corner is red. */
+    val favorite: Boolean = false,
+    /** "★ 4.3 (12)" under the name, when 3 accounts or more rated it. */
+    val ratingLine: String? = null,
+    /** "♥ 30" under the name, when 3 accounts or more gave it the heart. */
+    val favoriteLine: String? = null,
 ) {
+    /** What the heart does, for screen readers: "Add to favourites" / "Remove from favourites". */
+    val favoriteAction: String get() = t(if (favorite) "marks.favoriteRemove" else "marks.favoriteAdd")
+
     /**
      * The card's identity on screen, whatever its badges say: a card whose format, status or cover changes stays the
      * same view (iOS: the zoom transition's source tile must outlive the title page it opened).
@@ -186,6 +200,12 @@ data class CatalogUiState(
     val showEpisodesFilter: Boolean = false,
     /** Only titles with an episode (the chip is red). */
     val episodesOnly: Boolean = false,
+    /** The titles with the heart ("<sourceKey>/<id>"). */
+    val favoriteKeys: Set<String> = emptySet(),
+    /** Everyone's numbers last read, by "<sourceKey>/<id>". */
+    val stats: Map<String, TitleStats> = emptyMap(),
+    /** "Could not update your favourites.": the heart was put back. */
+    val favoriteError: String? = null,
 ) {
     /** "▶ Episodes". */
     val episodesLabel: String get() = t("catalog.episodesFilter")
@@ -196,7 +216,16 @@ data class CatalogUiState(
     val popularLabel: String get() = t("search.popular")
 
     val visible: List<TitleCard>
-        get() = (results ?: cards).distinctBy { it.key }.map { if (it.key in startedKeys) it.copy(started = true) else it }
+        get() =
+            (results ?: cards).distinctBy { it.key }.map {
+                val numbers = stats[it.key]
+                it.copy(
+                    started = it.started || it.key in startedKeys,
+                    favorite = it.key in favoriteKeys,
+                    ratingLine = MarkText.ratingLine(numbers),
+                    favoriteLine = MarkText.favoriteLine(numbers),
+                )
+            }
 
     /** "Reading": the mark on a started title's card. */
     val startedLabel: String get() = t("catalog.started")
@@ -254,6 +283,12 @@ sealed interface CatalogIntent {
         val key: String,
     ) : CatalogIntent
 
+    /** The heart on a card: on (the title is followed too) or off. Never opens the card. */
+    data class ToggleFavorite(
+        val sourceKey: String,
+        val titleId: String,
+    ) : CatalogIntent
+
     /** That source alone. */
     data class SelectSource(
         val key: String,
@@ -300,6 +335,8 @@ class CatalogViewModel(
     private val content: ContentPolicy = ContentPolicy.ShowAll,
     private val search: SearchRepository = SearchRepository.None,
     private val video: EpisodeFeature = EpisodeFeature.Off,
+    private val favorites: Favorites = Favorites.None,
+    private val ratings: RatingsRepository = RatingsRepository.None,
 ) : ViewModel() {
     /** The account has the `video` feature: episode badges and the Episodes filter. */
     private var videoOn = false
@@ -384,6 +421,13 @@ class CatalogViewModel(
     private var listingsJob: Job? = null
     private val categoriesAsked = mutableSetOf<String>()
 
+    /** The library's hearts and follows, and the titles rated: what the server already knows of this account. */
+    private var marks = LibraryMarks()
+    private var rated: Set<String> = emptySet()
+
+    /** Titles whose numbers were asked while the screen lives (once each). */
+    private val statsAsked = mutableSetOf<String>()
+
     /** The mix of the grid (`CatalogMerge`): kept while the screen lives, drawn again on pull to refresh. */
     private val seed = MutableStateFlow(Random.nextLong())
 
@@ -412,9 +456,22 @@ class CatalogViewModel(
                 showAdult = adult
                 if (changed && state.value.query.isNotBlank()) search(state.value.query)
             }.launchIn(viewModelScope)
+        combine(favorites.observe(), ratings.observeRatings()) { m, r -> m to r.keys }
+            .onEach { (m, r) ->
+                marks = m
+                rated = r
+                mutableState.update { it.copy(favoriteKeys = m.favorites) }
+                askStats(state.value.cards, typed = false)
+            }.launchIn(viewModelScope)
+        ratings
+            .observeStats()
+            .onEach { numbers -> mutableState.update { it.copy(stats = numbers) } }
+            .launchIn(viewModelScope)
         viewModelScope.launch { filter.value = repository.observeFilter().first() }
         // Picks made offline go out as soon as the catalog opens online.
         viewModelScope.launch { search.sendPending() }
+        // Ratings given offline go out as soon as the catalog opens online.
+        viewModelScope.launch { ratings.sync() }
         val selection =
             combine(visible.filterNotNull(), filter.filterNotNull(), video.enabled().distinctUntilChanged()) { v, f, on ->
                 videoOn = on
@@ -456,6 +513,7 @@ class CatalogViewModel(
                 }
             is CatalogIntent.SelectCategory -> changeFilter { it.copy(categoryName = intent.name?.trim()?.takeIf { n -> n.isNotEmpty() }) }
             CatalogIntent.ToggleEpisodes -> if (videoOn) changeFilter { it.copy(episodesOnly = !it.episodesOnly) }
+            is CatalogIntent.ToggleFavorite -> toggleFavorite(intent.sourceKey, intent.titleId)
             is CatalogIntent.SearchFocused -> {
                 blurJob?.cancel()
                 if (intent.focused) {
@@ -478,6 +536,41 @@ class CatalogViewModel(
             is CatalogIntent.TitleOpened -> {
                 closeSuggestions()
                 picked(intent.sourceKey, intent.titleId)
+            }
+        }
+    }
+
+    private fun toggleFavorite(
+        sourceKey: String,
+        titleId: String,
+    ) {
+        val card = state.value.visible.firstOrNull { it.sourceKey == sourceKey && it.id == titleId } ?: return
+        mutableState.update { it.copy(favoriteError = null) }
+        viewModelScope.launch {
+            val result = favorites.set(MarkedTitle(sourceKey, titleId), card.name, card.coverUrl, !card.favorite)
+            if (result is AppResult.Err) mutableState.update { it.copy(favoriteError = t("marks.favoriteError")) }
+        }
+    }
+
+    /**
+     * Everyone's numbers for cards of sources read on the device, only for titles the server already knows from this
+     * account (followed, rated, or a typed search's results): browsing never tells it what a source lists. Our catalog's
+     * listings carry their numbers.
+     */
+    private fun askStats(
+        cards: List<TitleCard>,
+        typed: Boolean,
+    ) {
+        val wanted =
+            cards.filter {
+                it.sourceKey != INTERNAL_SOURCE && (typed || it.key in marks.followed || it.key in rated) && it.key !in statsAsked
+            }
+        if (wanted.isEmpty()) return
+        statsAsked += wanted.map { it.key }
+        viewModelScope.launch {
+            // Not answered (offline): asked again with the next cards.
+            if (ratings.refreshStats(wanted.map { MarkedTitle(it.sourceKey, it.id) }) is AppResult.Err) {
+                statsAsked -= wanted.map { it.key }.toSet()
             }
         }
     }
@@ -672,6 +765,7 @@ class CatalogViewModel(
                     mutableState.update {
                         it.copy(cards = shown.map { t -> card(t, names) }, safeNote = safeNote(hiddenInListing))
                     }
+                    askStats(state.value.cards, typed = false)
                 }.launchIn(viewModelScope)
         mutableState.update { it.copy(sourcesRead = nextReadings.size, problems = emptyList(), canLoadMore = false) }
         refresh(categoriesToo = false)
@@ -865,6 +959,7 @@ class CatalogViewModel(
                             ),
                     )
                 }
+                askStats(state.value.results.orEmpty(), typed = true)
                 followResultFormats(titles, names)
             }
     }
