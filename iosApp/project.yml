@@ -20,7 +20,7 @@ targets:
       testTargets: [VovoscanAudioTests]
     sources:
       - Sources
-      # Dela Gothic One and Space Grotesk (scripts/fetch-fonts.sh); if missing, the system font is used instead.
+      # Dela Gothic One and Space Grotesk (Regular, Medium, Bold), bundled with their OFL licences.
       - path: Fonts
         buildPhase: resources
     info:
@@ -34,7 +34,7 @@ targets:
         UILaunchScreen: {}
         UIStatusBarStyle: UIStatusBarStyleLightContent
         UIUserInterfaceStyle: Dark
-        UIAppFonts: [DelaGothicOne-Regular.ttf, SpaceGrotesk.ttf]
+        UIAppFonts: [DelaGothicOne-Regular.ttf, SpaceGrotesk-Regular.ttf, SpaceGrotesk-Medium.ttf, SpaceGrotesk-Bold.ttf]
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
         # The share sheet's "Save Video" for an episode's MP4 (adds to Photos, never reads it).
         NSPhotoLibraryAddUsageDescription: Saves the episode videos you choose to keep in Photos.

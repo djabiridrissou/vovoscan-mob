@@ -34,7 +34,7 @@ struct LetteringOverlay: View {
                     }
                     let box = CGSize(width: size.width * item.textRect.w, height: size.height * item.textRect.h)
                     Text(item.text)
-                        .font(.custom("SpaceGrotesk-Regular", size: max(8, min(box.height * 0.42, 34))).weight(.bold))
+                        .font(.custom("SpaceGrotesk-Bold", size: max(8, min(box.height * 0.42, 34))))
                         .foregroundStyle(Color(hexString: item.ink))
                         .multilineTextAlignment(.center)
                         .minimumScaleFactor(0.2)

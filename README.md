@@ -9,7 +9,7 @@ a local copy so it works offline. Brand: `brand/BRAND.md` (copy of the shared br
 ```bash
 ./gradlew check :androidApp:assembleDebug
 ./gradlew -p build-logic test
-scripts/fetch-fonts.sh                     # brand fonts (otherwise, the system font)
+scripts/check-fonts.sh                     # brand fonts bundled (OFL), both copies identical
 cd iosApp && xcodegen && open Vovoscan.xcodeproj
 cd iosApp && xcodebuild test -project Vovoscan.xcodeproj -scheme Vovoscan \
   -destination 'platform=iOS Simulator,name=iPhone 16 Pro,OS=18.6' -derivedDataPath build -only-testing:VovoscanAudioTests
