@@ -10,6 +10,7 @@ import com.vovoscan.feature.reader.data.DownloadedPages
 import com.vovoscan.feature.reader.data.DownloadsLocalDataSource
 import com.vovoscan.feature.reader.data.DownloadsRepositoryImpl
 import com.vovoscan.feature.reader.data.EpubParser
+import com.vovoscan.feature.reader.data.NextChaptersRepositoryImpl
 import com.vovoscan.feature.reader.data.OnDeviceReaderRemoteDataSource
 import com.vovoscan.feature.reader.data.PageFiles
 import com.vovoscan.feature.reader.data.ReaderLocalDataSource
@@ -25,12 +26,14 @@ import com.vovoscan.feature.reader.domain.ChapterPanels
 import com.vovoscan.feature.reader.domain.CoachSync
 import com.vovoscan.feature.reader.domain.DownloadScheduler
 import com.vovoscan.feature.reader.domain.DownloadsRepository
+import com.vovoscan.feature.reader.domain.NextChaptersRepository
 import com.vovoscan.feature.reader.domain.ReaderRepository
 import com.vovoscan.feature.reader.domain.ReaderSettingsRepository
 import com.vovoscan.feature.reader.domain.SeriesModeSync
 import com.vovoscan.feature.reader.domain.TranslationQuotes
 import com.vovoscan.feature.reader.domain.TranslationsRepository
 import com.vovoscan.feature.reader.presentation.DownloadsViewModel
+import com.vovoscan.feature.reader.presentation.NextChapterViewModel
 import com.vovoscan.feature.reader.presentation.ReaderViewModel
 import com.vovoscan.feature.reader.presentation.TitleDownloadsViewModel
 import com.vovoscan.feature.reader.presentation.TranslationViewModel
@@ -97,6 +100,9 @@ val readerModule =
         viewModelOf(::DownloadsViewModel)
         // Translations of our catalog's chapters: read fresh from the API, lettering laid out in shared code.
         single { TranslationsRepositoryImpl(get()) } binds arrayOf(TranslationsRepository::class, ChapterPanels::class)
+        // What comes after a chapter of our catalog in the reading language (next-chapter contract).
+        single<NextChaptersRepository> { NextChaptersRepositoryImpl(get()) }
+        viewModel { (sourceKey: String, chapterId: String) -> NextChapterViewModel(sourceKey, chapterId, get()) }
         // (source, chapter, title, language to open in): a source's chapter is translated on its copy on the server.
         viewModel { params ->
             TranslationViewModel(
