@@ -59,6 +59,8 @@ object EpisodeText {
     const val KEY_WARNING = "Add the missing key in Settings."
     const val KEYS_DISABLED = "Keys are turned off on this server: the episode will be unread and silent."
     const val COST_NOTE = "Your own keys pay for this run. Everyone can watch the result."
+    const val PLATFORM_NOTE =
+        "What your keys don't cover runs on the platform's keys, paid from your wallet. Everyone can watch the result."
     const val OFFLINE_WRITE = "You're offline. Connect to the internet to prepare this episode."
     const val NO_PAGES = "This chapter has no pages yet."
     const val CHAPTER_NOT_FOUND = "This chapter isn't available."
@@ -71,11 +73,26 @@ object EpisodeText {
     /** Codes saying the feature isn't open to this account (the server's feature flags). */
     val FEATURE_OFF_CODES = setOf("FEATURE_DISABLED", "FEATURE_COMING_SOON")
 
-    fun anthropicLine(hint: String?): String =
-        if (hint != null) "Your Anthropic key (•••• $hint) reads the bubbles." else "No Anthropic key: the bubbles stay unread."
+    /** [platform]: the platform's keys run what the account's own don't (paid in credits). */
+    fun anthropicLine(
+        hint: String?,
+        platform: Boolean = false,
+    ): String =
+        when {
+            hint != null -> "Your Anthropic key (•••• $hint) reads the bubbles."
+            platform -> "The platform's key reads the bubbles."
+            else -> "No Anthropic key: the bubbles stay unread."
+        }
 
-    fun elevenLabsLine(hint: String?): String =
-        if (hint != null) "Your ElevenLabs key (•••• $hint) voices the lines." else "No ElevenLabs key: the episode stays silent."
+    fun elevenLabsLine(
+        hint: String?,
+        platform: Boolean = false,
+    ): String =
+        when {
+            hint != null -> "Your ElevenLabs key (•••• $hint) voices the lines."
+            platform -> "The platform's key voices the lines."
+            else -> "No ElevenLabs key: the episode stays silent."
+        }
 
     /** "3 / 12 pages", "4 / 30 lines", "Queued", "Step 2 / 5". */
     fun progress(progress: StageProgress?): String? {
@@ -105,6 +122,7 @@ object EpisodeText {
         when {
             cost.alreadyAvailable -> "Already made: it costs nothing."
             cost.coveredByOwnKeys -> "Your own keys pay: no credit spent."
+            cost.credits == 0L -> "No credit needed for this run."
             cost.credits == 1L -> "Costs 1 credit from your wallet."
             else -> "Costs ${cost.credits} credits from your wallet."
         }

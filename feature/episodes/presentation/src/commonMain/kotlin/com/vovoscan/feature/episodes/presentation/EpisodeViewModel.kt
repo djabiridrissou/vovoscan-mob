@@ -496,16 +496,22 @@ class EpisodeViewModel(
     private fun render() {
         val current = episode
         val status = keyStatus
+        // The quote says whether the platform's keys (and the wallet) run what the account's own keys don't.
+        val platform = cost?.let { !it.coveredByOwnKeys && !it.alreadyAvailable } == true
         val keyLines =
             when {
                 status == null -> emptyList()
-                !status.enabled -> listOf(EpisodeText.KEYS_DISABLED)
-                else -> listOf(EpisodeText.anthropicLine(status.anthropicHint), EpisodeText.elevenLabsLine(status.elevenLabsHint))
+                !status.enabled && !platform -> listOf(EpisodeText.KEYS_DISABLED)
+                else ->
+                    listOf(
+                        EpisodeText.anthropicLine(status.anthropicHint.takeIf { status.enabled }, platform),
+                        EpisodeText.elevenLabsLine(status.elevenLabsHint.takeIf { status.enabled }, platform),
+                    )
             }
         val keyWarning =
             status
                 ?.takeIf {
-                    it.enabled && (it.anthropicHint == null || it.elevenLabsHint == null)
+                    !platform && it.enabled && (it.anthropicHint == null || it.elevenLabsHint == null)
                 }?.let { EpisodeText.KEY_WARNING }
         mutableState.update { state ->
             // `comingSoon` is set again below only while the feature stays closed.
@@ -551,7 +557,18 @@ class EpisodeViewModel(
     private fun Language.matches(needle: String): Boolean =
         native.lowercase().contains(needle) || name.lowercase().contains(needle) || code.lowercase() == needle
 
-    private fun EpisodeUiState.withCost() = copy(costLine = if (canPrepare || canReread) cost?.let(EpisodeText::cost) else null)
+    private fun EpisodeUiState.withCost() =
+        copy(
+            costLine = if (canPrepare || canReread) cost?.let(EpisodeText::cost) else null,
+            costNote =
+                if (cost?.let { !it.coveredByOwnKeys && !it.alreadyAvailable } ==
+                    true
+                ) {
+                    EpisodeText.PLATFORM_NOTE
+                } else {
+                    EpisodeText.COST_NOTE
+                },
+        )
 
     /** Not open to this account: one calm line, no action, nothing that would spend a key or a credit. */
     private fun comingSoonState(base: EpisodeUiState) =

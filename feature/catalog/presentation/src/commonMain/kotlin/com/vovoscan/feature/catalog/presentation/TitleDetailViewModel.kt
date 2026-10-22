@@ -136,7 +136,7 @@ class TitleDetailViewModel(
                     } else {
                         ChapterRow(
                             id = chapter.id,
-                            label = listOfNotNull("Chapter ${chapter.label}", chapter.name).joinToString(" · "),
+                            label = chapterLabel(chapter.label, chapter.name),
                             meta =
                                 if (chapter.pageCount ==
                                     0
@@ -151,4 +151,24 @@ class TitleDetailViewModel(
                     }
                 },
         )
+}
+
+/**
+ * "Chapter 3 · The Well"; a name that only repeats the number ("Chapter 3", "Ch. 3", "3") is not shown twice.
+ */
+internal fun chapterLabel(
+    label: String,
+    name: String?,
+): String {
+    val heading = "Chapter $label"
+    val trimmed = name?.trim().orEmpty()
+    val bare =
+        trimmed
+            .lowercase()
+            .removePrefix("chapter")
+            .removePrefix("chapitre")
+            .removePrefix("ch.")
+            .removePrefix("ch")
+            .trim()
+    return if (trimmed.isEmpty() || bare == label.lowercase()) heading else "$heading · $trimmed"
 }

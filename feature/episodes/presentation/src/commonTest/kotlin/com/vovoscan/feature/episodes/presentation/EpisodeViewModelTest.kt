@@ -31,6 +31,7 @@ import kotlin.test.assertTrue
 class EpisodeViewModelTest {
     private val dispatcher = StandardTestDispatcher()
     private val bothKeys = FakeKeyStatus(KeyStatus(true, "abcd", "9876"))
+    private val noKeys = FakeKeyStatus(KeyStatus(true, null, null))
 
     @BeforeTest
     fun setUp() = Dispatchers.setMain(dispatcher)
@@ -83,6 +84,27 @@ class EpisodeViewModelTest {
             val own = EpisodeViewModel("c2", FakeEpisodes(), bothKeys, EpisodeAccess.Open, RunQuotes { _, _ -> RunCost(12, true, false) })
             advanceUntilIdle()
             assertEquals("Your own keys pay: no credit spent.", own.state.value.costLine)
+        }
+
+    @Test
+    fun withoutKeysThePlatformRunIsSaidPlainly() =
+        runTest(dispatcher) {
+            val vm = EpisodeViewModel("c1", FakeEpisodes(), noKeys, EpisodeAccess.Open, RunQuotes { _, _ -> RunCost(0, false, false) })
+            advanceUntilIdle()
+            val state = vm.state.value
+            assertEquals("No credit needed for this run.", state.costLine)
+            assertEquals(listOf("The platform's key reads the bubbles.", "The platform's key voices the lines."), state.keyLines)
+            assertNull(state.keyWarning)
+            assertEquals(EpisodeText.PLATFORM_NOTE, state.costNote)
+            // No quote (a server without credits): the missing keys are said as they are.
+            val bare = EpisodeViewModel("c2", FakeEpisodes(), noKeys)
+            advanceUntilIdle()
+            assertEquals(
+                "No Anthropic key: the bubbles stay unread.",
+                bare.state.value.keyLines
+                    .first(),
+            )
+            assertEquals(EpisodeText.COST_NOTE, bare.state.value.costNote)
         }
 
     @Test
