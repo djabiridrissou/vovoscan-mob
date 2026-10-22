@@ -46,6 +46,7 @@ import com.vovoscan.app.ui.common.GhostButton
 import com.vovoscan.app.ui.common.Kicker
 import com.vovoscan.app.ui.common.OfflineNotice
 import com.vovoscan.app.ui.theme.Brand
+import com.vovoscan.core.common.i18n.I18n
 import com.vovoscan.feature.catalog.presentation.CatalogIntent
 import com.vovoscan.feature.catalog.presentation.CatalogSource
 import com.vovoscan.feature.catalog.presentation.CatalogUiState
@@ -78,8 +79,8 @@ fun CatalogScreen(
     ) {
         item(span = { GridItemSpan(maxLineSpan) }) {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Kicker("Catalog")
-                Text("Pick a title.", style = MaterialTheme.typography.headlineSmall)
+                Kicker(I18n.text("nav.catalog"))
+                Text(I18n.text("catalog.headline"), style = MaterialTheme.typography.headlineSmall)
                 if (state.showSourceFilter || state.showCategoryFilter) {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         if (state.showSourceFilter) FilterButton(state.sourceFilterLabel, !state.allSources) { sheet = Sheet.Sources }
@@ -92,7 +93,7 @@ fun CatalogScreen(
                     }
                 }
                 state.categoryNote?.let { Text(it, style = MaterialTheme.typography.bodySmall.copy(color = Brand.Muted)) }
-                BrandField("Search", state.query, { viewModel.onIntent(CatalogIntent.Query(it)) })
+                BrandField(I18n.text("common.search"), state.query, { viewModel.onIntent(CatalogIntent.Query(it)) })
                 state.offlineNotice?.let {
                     OfflineNotice(
                         it,
@@ -109,21 +110,23 @@ fun CatalogScreen(
                         onOpenSources,
                     )
                 } else if (state.empty) {
-                    EmptyStateCard(state.emptyMessage, "Pull down to check again.")
+                    EmptyStateCard(state.emptyMessage, I18n.text("catalog.pullToRefresh"))
                 }
             }
         }
         items(state.visible, key = { it.sourceKey + "/" + it.id }) { card -> TitleTile(card) { onOpenTitle(card.sourceKey, card.id) } }
         if (state.canLoadMore && state.results == null) {
             item(span = { GridItemSpan(maxLineSpan) }) {
-                GhostButton(if (state.loadingMore) "Loading…" else "Load more", { viewModel.onIntent(CatalogIntent.LoadMore) })
+                GhostButton(if (state.loadingMore) I18n.text("common.loading") else I18n.text("catalog.loadMore"), {
+                    viewModel.onIntent(CatalogIntent.LoadMore)
+                })
             }
         }
     }
     when (sheet) {
-        Sheet.Sources -> FilterSheet("Sources", onDismiss = { sheet = null }) { SourceRows(state, viewModel::onIntent) }
+        Sheet.Sources -> FilterSheet(I18n.text("nav.sources"), onDismiss = { sheet = null }) { SourceRows(state, viewModel::onIntent) }
         Sheet.Categories ->
-            FilterSheet("Categories", onDismiss = { sheet = null }) {
+            FilterSheet(I18n.text("catalog.categories"), onDismiss = { sheet = null }) {
                 CategoryRows(state) {
                     viewModel.onIntent(it)
                     sheet =
@@ -187,7 +190,7 @@ private fun SourceRows(
     state: CatalogUiState,
     send: (CatalogIntent) -> Unit,
 ) {
-    CheckRow("All", state.allSources) { send(CatalogIntent.ShowAllSources) }
+    CheckRow(I18n.text("catalog.all"), state.allSources) { send(CatalogIntent.ShowAllSources) }
     state.sources.forEach { source -> CheckRow(source.name, source.selected) { send(CatalogIntent.ToggleSource(source.key)) } }
 }
 
@@ -196,7 +199,7 @@ private fun CategoryRows(
     state: CatalogUiState,
     send: (CatalogIntent) -> Unit,
 ) {
-    CheckRow("All categories", state.category == null) { send(CatalogIntent.SelectCategory(null)) }
+    CheckRow(I18n.text("catalog.allCategories"), state.category == null) { send(CatalogIntent.SelectCategory(null)) }
     state.categories.forEach { category ->
         CheckRow(category.name, category.selected) { send(CatalogIntent.SelectCategory(category.name)) }
     }

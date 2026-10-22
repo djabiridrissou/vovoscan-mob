@@ -54,6 +54,7 @@ import com.vovoscan.app.ui.sources.SourcesScreen
 import com.vovoscan.app.ui.theme.Brand
 import com.vovoscan.app.ui.theme.VovoscanTheme
 import com.vovoscan.app.ui.title.TitleScreen
+import com.vovoscan.core.common.i18n.I18n
 import com.vovoscan.feature.auth.presentation.SessionViewModel
 import com.vovoscan.feature.catalog.presentation.TitleDetailViewModel
 import com.vovoscan.feature.reader.domain.DownloadsRepository
@@ -139,13 +140,17 @@ class MainActivity : ComponentActivity() {
 
 /** The four tabs, an icon over each label (the iOS tab bar's symbols, drawn in `AppIcons`). */
 private enum class Tab(
-    val label: String,
+    private val labelKey: String,
     val icon: () -> ImageVector,
 ) {
-    Catalog("Catalog", { AppIcons.Catalog }),
-    Library("Library", { AppIcons.Library }),
-    Sources("Sources", { AppIcons.Sources }),
-    Settings("Settings", { AppIcons.Settings }),
+    Catalog("nav.catalog", { AppIcons.Catalog }),
+    Library("nav.library", { AppIcons.Library }),
+    Sources("nav.sources", { AppIcons.Sources }),
+    Settings("nav.settings", { AppIcons.Settings }),
+    ;
+
+    /** Read on every composition: the activity is recreated when the app's language changes. */
+    val label: String get() = I18n.text(labelKey)
 }
 
 /**

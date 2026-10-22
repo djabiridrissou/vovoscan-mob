@@ -31,6 +31,7 @@ import com.vovoscan.app.ui.common.Kicker
 import com.vovoscan.app.ui.common.OfflineNotice
 import com.vovoscan.app.ui.sources.BrandAlert
 import com.vovoscan.app.ui.theme.Brand
+import com.vovoscan.core.common.i18n.I18n
 import com.vovoscan.feature.reader.presentation.DownloadAction
 import com.vovoscan.feature.reader.presentation.DownloadGroup
 import com.vovoscan.feature.reader.presentation.DownloadRow
@@ -56,9 +57,9 @@ fun DownloadsScreen(
     ) {
         item {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                GhostButton("← Back", onBack)
-                Kicker("Downloads")
-                Text("Read offline.", style = MaterialTheme.typography.headlineSmall)
+                GhostButton(I18n.text("common.backArrow"), onBack)
+                Kicker(I18n.text("downloads.title"))
+                Text(I18n.text("downloads.headline"), style = MaterialTheme.typography.headlineSmall)
                 if (state.total.isNotEmpty()) Text(state.total, style = MaterialTheme.typography.bodySmall)
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
@@ -95,9 +96,9 @@ fun DownloadsScreen(
         val parts = target.split("|")
         val title = parts[0] == "title"
         BrandAlert(
-            title = if (title) "Delete the downloads?" else "Delete this download?",
-            message = "Reading it will need the network again.",
-            confirmLabel = "Delete",
+            title = if (title) I18n.text("downloads.deleteAllTitle") else I18n.text("downloads.deleteOneTitle"),
+            message = I18n.text("downloads.needsNetwork"),
+            confirmLabel = I18n.text("common.delete"),
             onConfirm = {
                 viewModel.onIntent(
                     if (title) DownloadsIntent.DeleteTitle(parts[1], parts[2]) else DownloadsIntent.Act(parts[0], parts[1]),
@@ -131,7 +132,7 @@ private fun Group(
                 Text(group.meta, style = MaterialTheme.typography.bodySmall)
             }
             Text(
-                "Delete",
+                I18n.text("common.delete"),
                 style = MaterialTheme.typography.labelLarge.copy(color = Brand.Muted),
                 modifier = Modifier.clickable(onClick = onDeleteTitle).padding(start = 12.dp, top = 6.dp, bottom = 6.dp),
             )
@@ -147,7 +148,7 @@ private fun Group(
                 }
                 if (row.removable) {
                     Text(
-                        "Remove",
+                        I18n.text("common.remove"),
                         style = MaterialTheme.typography.labelLarge.copy(color = Brand.Muted),
                         modifier = Modifier.clickable { onRemove(row) }.padding(horizontal = 8.dp, vertical = 6.dp),
                     )

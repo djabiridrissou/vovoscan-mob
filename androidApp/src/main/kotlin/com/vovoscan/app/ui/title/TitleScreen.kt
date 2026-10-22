@@ -36,6 +36,7 @@ import com.vovoscan.app.ui.common.PrimaryButton
 import com.vovoscan.app.ui.downloads.DownloadControl
 import com.vovoscan.app.ui.sources.BrandAlert
 import com.vovoscan.app.ui.theme.Brand
+import com.vovoscan.core.common.i18n.I18n
 import com.vovoscan.feature.catalog.presentation.TitleDetailViewModel
 import com.vovoscan.feature.library.presentation.FollowViewModel
 import com.vovoscan.feature.reader.presentation.DownloadAction
@@ -81,22 +82,27 @@ fun TitleScreen(
         }
         item {
             Column(Modifier.padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                GhostButton("← Back", onBack)
+                GhostButton(I18n.text("common.backArrow"), onBack)
                 if (state.unavailable) {
-                    Text("This title isn't saved on this device yet.", style = MaterialTheme.typography.bodyMedium)
+                    Text(I18n.text("catalog.titleNotSaved"), style = MaterialTheme.typography.bodyMedium)
                 }
                 state.notice?.let { OfflineNotice(it, onRetry = if (state.canRetry) detail::refresh else null) }
                 state.error?.let { ErrorText(it) }
-                if (state.unavailable && state.canRetry) GhostButton("Try again", detail::refresh)
+                if (state.unavailable && state.canRetry) GhostButton(I18n.text("common.tryAgain"), detail::refresh)
                 Text(state.name, style = MaterialTheme.typography.headlineSmall)
                 Text(state.meta, style = MaterialTheme.typography.bodySmall)
                 // Resume where the reader left off, otherwise start at the first chapter (the list runs newest to oldest).
                 val resume = followState.resumeChapterId
                 when {
                     resume != null ->
-                        PrimaryButton(followState.resumeLabel(state.isBook) ?: "Continue →", { onRead(resume, followState.resumePage) })
+                        PrimaryButton(
+                            followState.resumeLabel(state.isBook) ?: I18n.text("library.continueArrow"),
+                            { onRead(resume, followState.resumePage) },
+                        )
                     state.chapters.isNotEmpty() ->
-                        PrimaryButton(if (state.isBook) "Read →" else "Start reading →", { onRead(state.chapters.last().id, 0) })
+                        PrimaryButton(if (state.isBook) I18n.text("catalog.readArrow") else I18n.text("catalog.startReading"), {
+                            onRead(state.chapters.last().id, 0)
+                        })
                 }
                 if (state.name.isNotEmpty()) GhostButton(followState.label, { follow.toggle(state.name, state.coverUrl) })
                 Text(state.synopsis, style = MaterialTheme.typography.bodyMedium)
@@ -104,7 +110,7 @@ fun TitleScreen(
                 DownloadsBlock(downloadState, downloads::onIntent) { confirmDelete = "*" }
                 if (state.chapters.isNotEmpty()) {
                     Text(
-                        if (state.isBook) "Contents" else "Chapters",
+                        if (state.isBook) I18n.text("catalog.contents") else I18n.text("catalog.chapters"),
                         style = MaterialTheme.typography.titleMedium,
                     )
                 }
@@ -133,7 +139,7 @@ fun TitleScreen(
                 // A comic of our catalog: the chapter's voiced episode, next to reading it.
                 if (state.offersEpisodes) {
                     Text(
-                        "Episode",
+                        I18n.text("episode.kicker"),
                         style = MaterialTheme.typography.labelSmall.copy(color = Brand.Paper),
                         modifier =
                             Modifier
@@ -155,14 +161,14 @@ fun TitleScreen(
     confirmDelete?.let { target ->
         val all = target == "*"
         BrandAlert(
-            title = if (all) downloadState.deleteAllTitle else "Delete this download?",
+            title = if (all) downloadState.deleteAllTitle else I18n.text("downloads.deleteOneTitle"),
             message =
                 if (all) {
                     downloadState.deleteAllMessage
                 } else {
                     "${state.chapterLabel(target)} will need the network again."
                 },
-            confirmLabel = "Delete",
+            confirmLabel = I18n.text("common.delete"),
             onConfirm = {
                 downloads.onIntent(if (all) TitleDownloadsIntent.DeleteAll else TitleDownloadsIntent.Act(target))
                 confirmDelete = null

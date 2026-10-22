@@ -37,6 +37,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import com.vovoscan.app.ui.theme.Brand
+import com.vovoscan.core.common.i18n.I18n
 
 /**
  * Brand primary button: red background, ink text, ink border, hard paper shadow with no blur.
@@ -163,7 +164,7 @@ fun OfflineNotice(
         Text(text, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
         if (onRetry != null) {
             Text(
-                "Retry",
+                I18n.text("common.retry"),
                 style = MaterialTheme.typography.labelLarge.copy(color = Brand.Red),
                 modifier = Modifier.clickable(onClick = onRetry).padding(start = 12.dp, top = 4.dp, bottom = 4.dp),
             )

@@ -42,6 +42,7 @@ import com.vovoscan.app.ui.common.Kicker
 import com.vovoscan.app.ui.common.OfflineNotice
 import com.vovoscan.app.ui.theme.Brand
 import com.vovoscan.core.common.Freshness
+import com.vovoscan.core.common.i18n.I18n
 import com.vovoscan.feature.sources.presentation.RepositoryRow
 import com.vovoscan.feature.sources.presentation.SourceRow
 import com.vovoscan.feature.sources.presentation.SourcesIntent
@@ -70,16 +71,16 @@ fun SourcesScreen(
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(Modifier.weight(1f)) { Kicker("Sources") }
+                        Box(Modifier.weight(1f)) { Kicker(I18n.text("nav.sources")) }
                         SmallAction("+ Add") { onAdd(null) }
                     }
-                    Text("Choose what you read.", style = MaterialTheme.typography.headlineSmall)
+                    Text(I18n.text("sources.headline"), style = MaterialTheme.typography.headlineSmall)
                     Text(
-                        "Sources read on your device are fetched by your phone, never through vovoscan.",
+                        I18n.text("sources.onDeviceNote"),
                         style = MaterialTheme.typography.bodySmall,
                     )
                     state.updatesLabel?.let { UpdatesBanner(it) }
-                    if (state.checkingUpdates) WorkingNotice("Checking for updates…")
+                    if (state.checkingUpdates) WorkingNotice(I18n.text("sources.checkingUpdates"))
                     state.pendingNotice?.let { OfflineNotice(it) }
                     state.error?.let { MessageBanner(it, error = true) { viewModel.onIntent(SourcesIntent.DismissMessage) } }
                     state.notice?.let { MessageBanner(it, error = false) { viewModel.onIntent(SourcesIntent.DismissMessage) } }
@@ -93,7 +94,13 @@ fun SourcesScreen(
                 )
             }
             if (state.repositories.isNotEmpty()) {
-                item { Text("Repositories", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 12.dp)) }
+                item {
+                    Text(
+                        I18n.text("sources.repositories"),
+                        style = MaterialTheme.typography.titleMedium,
+                        modifier = Modifier.padding(top = 12.dp),
+                    )
+                }
                 items(state.repositories, key = { "repo:" + it.id }) { repo ->
                     RepositoryRowItem(
                         repo = repo,
@@ -135,7 +142,12 @@ private fun SourceRowItem(
             }
             Text(row.kindsLabel, style = MaterialTheme.typography.bodySmall, maxLines = 1)
             Text(row.engineLabel, style = MaterialTheme.typography.bodySmall, maxLines = 1)
-            if (row.needsSettings) Text("Settings needed", style = MaterialTheme.typography.bodySmall.copy(color = Brand.Yellow))
+            if (row.needsSettings) {
+                Text(
+                    I18n.text("sources.settingsNeededShort"),
+                    style = MaterialTheme.typography.bodySmall.copy(color = Brand.Yellow),
+                )
+            }
         }
         Arrow("↑", row.canMoveUp) { onIntent(SourcesIntent.MoveUp(row.key)) }
         Arrow("↓", row.canMoveDown) { onIntent(SourcesIntent.MoveDown(row.key)) }
@@ -179,7 +191,7 @@ private fun RepositoryRowItem(
             )
             DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, containerColor = Brand.Ink2) {
                 DropdownMenuItem(
-                    text = { Text("Remove", style = MaterialTheme.typography.bodyMedium.copy(color = Brand.Danger)) },
+                    text = { Text(I18n.text("common.remove"), style = MaterialTheme.typography.bodyMedium.copy(color = Brand.Danger)) },
                     onClick = {
                         menu = false
                         onRemove()

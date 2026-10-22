@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import coil3.compose.SubcomposeAsyncImage
 import com.vovoscan.app.ui.common.BrandField
 import com.vovoscan.app.ui.theme.Brand
+import com.vovoscan.core.common.i18n.I18n
 import com.vovoscan.feature.sources.domain.SettingType
 import com.vovoscan.feature.sources.presentation.SettingFieldUi
 import com.vovoscan.feature.sources.presentation.SourceInfoUi
@@ -84,7 +85,7 @@ fun OriginChip(
 
 /** Red "Update" badge, ink text. */
 @Composable
-fun UpdateBadge(label: String = "Update") {
+fun UpdateBadge(label: String = I18n.text("sources.update")) {
     Text(
         label,
         style = MaterialTheme.typography.labelSmall.copy(color = Brand.Ink),
@@ -178,7 +179,7 @@ fun SourceInfoBlock(info: SourceInfoUi) {
         if (meta.isNotEmpty()) Text(meta.joinToString(" ✦ "), style = MaterialTheme.typography.bodySmall)
         if (info.rightsLabel != null || info.rightsNotes != null) {
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text("Rights", style = MaterialTheme.typography.labelLarge)
+                Text(I18n.text("sources.rights"), style = MaterialTheme.typography.labelLarge)
                 info.rightsLabel?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
                 info.rightsNotes?.let { Text(it, style = MaterialTheme.typography.bodySmall.copy(color = Brand.TextSoft)) }
                 info.rightsDisclaimer?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
@@ -186,7 +187,7 @@ fun SourceInfoBlock(info: SourceInfoUi) {
         }
         if (info.hostsLabel != null) {
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text("This source connects your phone to:", style = MaterialTheme.typography.labelLarge)
+                Text(I18n.text("sources.connectsTo"), style = MaterialTheme.typography.labelLarge)
                 info.hosts.forEach { Text("✦ $it", style = MaterialTheme.typography.bodySmall.copy(color = Brand.TextSoft)) }
             }
         }
@@ -242,7 +243,9 @@ fun BrandAlert(
             TextButton(onClick = onConfirm) { Text(confirmLabel, style = MaterialTheme.typography.labelLarge.copy(color = Brand.Red)) }
         },
         dismissButton = {
-            TextButton(onClick = onCancel) { Text("Cancel", style = MaterialTheme.typography.labelLarge.copy(color = Brand.Paper)) }
+            TextButton(
+                onClick = onCancel,
+            ) { Text(I18n.text("common.cancel"), style = MaterialTheme.typography.labelLarge.copy(color = Brand.Paper)) }
         },
     )
 }

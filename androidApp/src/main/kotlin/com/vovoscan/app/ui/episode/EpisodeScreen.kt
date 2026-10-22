@@ -51,6 +51,7 @@ import com.vovoscan.app.ui.common.Kicker
 import com.vovoscan.app.ui.common.OfflineNotice
 import com.vovoscan.app.ui.common.PrimaryButton
 import com.vovoscan.app.ui.theme.Brand
+import com.vovoscan.core.common.i18n.I18n
 import com.vovoscan.feature.episodes.presentation.EpisodeIntent
 import com.vovoscan.feature.episodes.presentation.EpisodePhase
 import com.vovoscan.feature.episodes.presentation.EpisodeUiState
@@ -96,8 +97,8 @@ fun EpisodeScreen(
     ) {
         item {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                GhostButton("← Back", onBack)
-                Kicker("Episode")
+                GhostButton(I18n.text("common.backArrow"), onBack)
+                Kicker(I18n.text("episode.kicker"))
                 if (titleName.isNotEmpty()) Text(titleName, style = MaterialTheme.typography.bodySmall)
                 if (chapterLabel.isNotEmpty()) Text(chapterLabel, style = MaterialTheme.typography.headlineSmall)
                 state.offlineNotice?.let { OfflineNotice(it) }
@@ -169,7 +170,7 @@ private fun EpisodeCard(
         state.notice?.let { Text(it, style = MaterialTheme.typography.bodySmall.copy(color = Brand.Paper)) }
         state.error?.let { ErrorText(it) }
         if (state.phase == EpisodePhase.Unavailable) {
-            GhostButton("Try again", { send(EpisodeIntent.Refresh) })
+            GhostButton(I18n.text("common.tryAgain"), { send(EpisodeIntent.Refresh) })
         }
     }
 }
@@ -217,12 +218,16 @@ private fun LanguageSheet(
         containerColor = Brand.Ink2,
     ) {
         Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 20.dp, vertical = 8.dp)) {
-            Text("Episode language", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(bottom = 8.dp))
+            Text(
+                I18n.text("episode.languageTitle"),
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.padding(bottom = 8.dp),
+            )
             BrandField(
-                label = "Search",
+                label = I18n.text("common.search"),
                 value = state.languageQuery,
                 onValueChange = { send(EpisodeIntent.LanguageQuery(it)) },
-                placeholder = "Search a language",
+                placeholder = I18n.text("common.searchLanguage"),
             )
             LazyColumn(Modifier.fillMaxWidth().padding(top = 8.dp)) {
                 items(state.languageOptions, key = { it.code ?: "" }) { option ->
@@ -273,7 +278,7 @@ private fun VideoSection(
     Column(Modifier.fillMaxWidth().padding(top = 6.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Box(Modifier.fillMaxWidth().height(1.dp).background(Brand.Line))
         Spacer(Modifier.height(4.dp))
-        Text("Video", style = MaterialTheme.typography.labelSmall.copy(color = Brand.Muted))
+        Text(I18n.text("episode.video"), style = MaterialTheme.typography.labelSmall.copy(color = Brand.Muted))
         state.exportLabel?.let { Text(it, style = MaterialTheme.typography.bodyLarge) }
         state.exportDetail?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
         state.exportProgress?.let { progress ->
@@ -325,6 +330,6 @@ private fun LiveDot() {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Box(Modifier.size(8.dp).background(Brand.Cyan, CircleShape))
         Spacer(Modifier.width(6.dp))
-        Text("LIVE", style = MaterialTheme.typography.labelSmall.copy(color = Brand.Cyan))
+        Text(I18n.text("episode.live"), style = MaterialTheme.typography.labelSmall.copy(color = Brand.Cyan))
     }
 }

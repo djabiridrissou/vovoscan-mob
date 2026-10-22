@@ -19,6 +19,7 @@ import com.vovoscan.app.ui.common.GhostButton
 import com.vovoscan.app.ui.common.OfflineNotice
 import com.vovoscan.app.ui.common.PrimaryButton
 import com.vovoscan.app.ui.theme.Brand
+import com.vovoscan.core.common.i18n.I18n
 import com.vovoscan.feature.sources.presentation.SourceDetailIntent
 import com.vovoscan.feature.sources.presentation.SourceDetailViewModel
 import com.vovoscan.feature.sources.presentation.SourceLabels
@@ -43,7 +44,7 @@ fun SourceDetailScreen(
             .padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        GhostButton("← Back", onBack)
+        GhostButton(I18n.text("common.backArrow"), onBack)
         if (state.pendingSync) OfflineNotice(SourceLabels.PENDING)
         state.error?.let { MessageBanner(it, error = true) { send(SourceDetailIntent.DismissMessage) } }
         state.notice?.let { MessageBanner(it, error = false) { send(SourceDetailIntent.DismissMessage) } }
@@ -52,12 +53,12 @@ fun SourceDetailScreen(
 
         state.update?.let { update ->
             SourceCard {
-                Text("Update available", style = MaterialTheme.typography.titleMedium)
+                Text(I18n.text("sources.updateAvailable"), style = MaterialTheme.typography.titleMedium)
                 Text(update.versionLabel, style = MaterialTheme.typography.bodyMedium)
                 update.changes?.let { Text(it, style = MaterialTheme.typography.bodySmall.copy(color = Brand.TextSoft)) }
                 update.newHostsLabel?.let { Text(it, style = MaterialTheme.typography.bodySmall.copy(color = Brand.Yellow)) }
                 PrimaryButton(
-                    if (state.working) "Updating…" else "${update.actionLabel} →",
+                    if (state.working) I18n.text("sources.updating") else "${update.actionLabel} →",
                     { send(SourceDetailIntent.Update) },
                     modifier = Modifier.padding(top = 4.dp, bottom = 6.dp),
                     enabled = !state.working,
@@ -66,27 +67,27 @@ fun SourceDetailScreen(
         }
 
         if (state.settings.isNotEmpty()) {
-            Text("Settings", style = MaterialTheme.typography.titleMedium)
+            Text(I18n.text("nav.settings"), style = MaterialTheme.typography.titleMedium)
             state.settingsNotice?.let { Text(it, style = MaterialTheme.typography.bodySmall.copy(color = Brand.Yellow)) }
             if (state.settingsEditable) {
                 state.settings.forEach { field ->
                     SettingInput(field) { send(SourceDetailIntent.SettingChanged(field.name, it)) }
                 }
-                PrimaryButton("Save →", { send(SourceDetailIntent.SaveSettings) }, enabled = state.canSaveSettings)
+                PrimaryButton(I18n.text("common.saveArrow"), { send(SourceDetailIntent.SaveSettings) }, enabled = state.canSaveSettings)
             } else {
                 state.settings.forEach { SettingValue(it) }
             }
         }
 
         GhostButton(state.visibilityLabel, { send(SourceDetailIntent.ToggleVisibility) })
-        if (state.canRemove) GhostButton("Remove", { send(SourceDetailIntent.Remove) })
+        if (state.canRemove) GhostButton(I18n.text("common.remove"), { send(SourceDetailIntent.Remove) })
     }
 
     state.hostsConfirmation?.let { message ->
         BrandAlert(
-            title = "New connections",
+            title = I18n.text("sources.newConnections"),
             message = message,
-            confirmLabel = "Continue",
+            confirmLabel = I18n.text("common.continue"),
             onConfirm = { send(SourceDetailIntent.ConfirmHosts) },
             onCancel = { send(SourceDetailIntent.CancelHosts) },
         )
@@ -95,7 +96,7 @@ fun SourceDetailScreen(
         BrandAlert(
             title = state.removalTitle,
             message = state.removalMessage,
-            confirmLabel = "Remove",
+            confirmLabel = I18n.text("common.remove"),
             onConfirm = { send(SourceDetailIntent.ConfirmRemove) },
             onCancel = { send(SourceDetailIntent.CancelRemove) },
         )

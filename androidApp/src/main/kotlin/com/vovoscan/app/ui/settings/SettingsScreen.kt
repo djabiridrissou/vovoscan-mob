@@ -46,6 +46,7 @@ import com.vovoscan.app.ui.common.Kicker
 import com.vovoscan.app.ui.common.OfflineNotice
 import com.vovoscan.app.ui.common.PrimaryButton
 import com.vovoscan.app.ui.theme.Brand
+import com.vovoscan.core.common.i18n.I18n
 import com.vovoscan.feature.account.presentation.ProviderKeysIntent
 import com.vovoscan.feature.account.presentation.ProviderKeysUiState
 import com.vovoscan.feature.account.presentation.ProviderKeysViewModel
@@ -77,8 +78,8 @@ fun SettingsScreen(
     ) {
         item {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Kicker("Settings")
-                Text("Your keys, your episodes.", style = MaterialTheme.typography.headlineSmall)
+                Kicker(I18n.text("nav.settings"))
+                Text(I18n.text("settings.headline"), style = MaterialTheme.typography.headlineSmall)
             }
         }
 
@@ -95,7 +96,7 @@ fun SettingsScreen(
         }
 
         // Keys.
-        item { SectionTitle("Keys") }
+        item { SectionTitle(I18n.text("settings.keys")) }
         item {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 keysState.offlineNotice?.let { OfflineNotice(it) }
@@ -109,7 +110,7 @@ fun SettingsScreen(
         if (keysState.formOpen) item { KeyForm(keysState, keys::onIntent) }
 
         // Reading model.
-        item { SectionTitle("Reading model") }
+        item { SectionTitle(I18n.text("settings.readingModel")) }
         item {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 readingState.offlineNotice?.let { OfflineNotice(it) }
@@ -141,7 +142,7 @@ fun SettingsScreen(
         }
 
         // Costs.
-        item { SectionTitle("Costs") }
+        item { SectionTitle(I18n.text("settings.costs")) }
         item {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -150,10 +151,10 @@ fun SettingsScreen(
                     }
                 }
                 when {
-                    usageState.loading -> Text("Loading the costs…", style = MaterialTheme.typography.bodySmall)
+                    usageState.loading -> Text(I18n.text("usage.loading"), style = MaterialTheme.typography.bodySmall)
                     usageState.error != null -> {
                         ErrorText(usageState.error.orEmpty())
-                        GhostButton("Try again", { usage.onIntent(UsageIntent.Refresh) })
+                        GhostButton(I18n.text("common.tryAgain"), { usage.onIntent(UsageIntent.Refresh) })
                     }
                     usageState.empty -> Text(usageState.emptyLabel, style = MaterialTheme.typography.bodyMedium)
                 }
@@ -195,7 +196,7 @@ fun SettingsScreen(
         item { Text(usageState.footnote, style = MaterialTheme.typography.bodySmall) }
 
         item { Spacer(Modifier.height(8.dp)) }
-        item { GhostButton("Sign out", onSignOut) }
+        item { GhostButton(I18n.text("common.signOut"), onSignOut) }
     }
 
     keysState.removal?.let { prompt ->
@@ -242,7 +243,11 @@ private fun KeySlot(
         if (state.enabled) {
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.padding(top = 4.dp)) {
                 GhostButton(slot.actionLabel, { send(ProviderKeysIntent.OpenForm(slot.provider)) }, Modifier.weight(1f))
-                if (key != null) GhostButton("Remove", { send(ProviderKeysIntent.AskRemove(key.id)) }, Modifier.weight(1f))
+                if (key !=
+                    null
+                ) {
+                    GhostButton(I18n.text("common.remove"), { send(ProviderKeysIntent.AskRemove(key.id)) }, Modifier.weight(1f))
+                }
             }
         }
     }
@@ -272,7 +277,7 @@ private fun KeyForm(
     ) {
         Text(state.formTitle, style = MaterialTheme.typography.titleMedium)
         Column(Modifier.fillMaxWidth()) {
-            Text("Key", style = MaterialTheme.typography.bodySmall)
+            Text(I18n.text("keys.key"), style = MaterialTheme.typography.bodySmall)
             Spacer(Modifier.height(6.dp))
             OutlinedTextField(
                 value = secret,
@@ -305,7 +310,7 @@ private fun KeyForm(
             state.secretError?.let { ErrorText(it) }
         }
         BrandField(
-            label = "Label",
+            label = I18n.text("keys.label"),
             value = label,
             onValueChange = {
                 label = it
@@ -316,7 +321,7 @@ private fun KeyForm(
         )
         state.formError?.let { ErrorText(it) }
         PrimaryButton(state.submitLabel, { send(ProviderKeysIntent.Submit) }, enabled = state.canSubmit)
-        GhostButton("Cancel", { send(ProviderKeysIntent.CloseForm) })
+        GhostButton(I18n.text("common.cancel"), { send(ProviderKeysIntent.CloseForm) })
     }
 }
 

@@ -36,6 +36,7 @@ import com.vovoscan.app.ui.common.GhostButton
 import com.vovoscan.app.ui.common.Kicker
 import com.vovoscan.app.ui.common.OfflineNotice
 import com.vovoscan.app.ui.theme.Brand
+import com.vovoscan.core.common.i18n.I18n
 import com.vovoscan.feature.library.presentation.LibraryIntent
 import com.vovoscan.feature.library.presentation.LibraryViewModel
 import com.vovoscan.feature.reader.presentation.DownloadsViewModel
@@ -67,8 +68,8 @@ fun LibraryScreen(
     ) {
         item {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Kicker("Library")
-                Text("Keep reading.", style = MaterialTheme.typography.headlineSmall)
+                Kicker(I18n.text("nav.library"))
+                Text(I18n.text("library.headline"), style = MaterialTheme.typography.headlineSmall)
                 GhostButton(downloadsState.entryLabel + " →", onOpenDownloads)
                 state.pendingNotice?.let { OfflineNotice(it) }
                 state.error?.let { ErrorText(it) }
@@ -83,8 +84,8 @@ fun LibraryScreen(
                     } else {
                         EmptyStateCard(
                             state.emptyMessage,
-                            "Follow a title from its page: it lands here, on every device.",
-                            "Browse the catalog →",
+                            I18n.text("library.emptyMessage"),
+                            I18n.text("library.browse"),
                             onOpenCatalog,
                         )
                     }
@@ -114,7 +115,7 @@ fun LibraryScreen(
                 Spacer(Modifier.width(14.dp))
             }
         }
-        item { GhostButton("Sync now", { viewModel.onIntent(LibraryIntent.Sync) }) }
-        item { GhostButton("Sign out", onSignOut) }
+        item { GhostButton(I18n.text("library.syncNow"), { viewModel.onIntent(LibraryIntent.Sync) }) }
+        item { GhostButton(I18n.text("common.signOut"), onSignOut) }
     }
 }

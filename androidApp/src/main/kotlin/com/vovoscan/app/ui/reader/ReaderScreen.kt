@@ -76,6 +76,7 @@ import com.vovoscan.app.ui.common.ErrorText
 import com.vovoscan.app.ui.common.GhostButton
 import com.vovoscan.app.ui.common.PrimaryButton
 import com.vovoscan.app.ui.theme.Brand
+import com.vovoscan.core.common.i18n.I18n
 import com.vovoscan.feature.reader.domain.ReaderPage
 import com.vovoscan.feature.reader.domain.TapAction
 import com.vovoscan.feature.reader.presentation.ReaderCommand
@@ -138,9 +139,9 @@ fun ReaderScreen(
         when {
             state.unavailable ->
                 Column(Modifier.align(Alignment.Center).padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("This chapter isn't saved on this device yet.", style = MaterialTheme.typography.bodyMedium)
+                    Text(I18n.text("reader.notSaved"), style = MaterialTheme.typography.bodyMedium)
                     state.error?.let { ErrorText(it) }
-                    GhostButton("Try again", { onIntent(ReaderIntent.Retry) })
+                    GhostButton(I18n.text("common.tryAgain"), { onIntent(ReaderIntent.Retry) })
                 }
             state.isBook -> BookReader(state, onIntent) { onOpenChapter(it, 0) }
             state.items.isEmpty() -> Unit
@@ -514,7 +515,7 @@ private fun PageImage(
     }
     AsyncImage(
         model = request,
-        contentDescription = "Page ${page.index + 1}",
+        contentDescription = I18n.textWith("library.page", mapOf("n" to page.index + 1)),
         contentScale = scale,
         onSuccess = { success ->
             val image = success.result.image
@@ -573,19 +574,26 @@ private fun BottomBar(
         Text(state.positionLabel, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
         if (state.isBook && state.canGoForward) {
             Text(
-                "Next section →",
+                I18n.text("reader.nextSection"),
                 style = MaterialTheme.typography.labelLarge.copy(color = Brand.Red),
                 modifier = Modifier.clickable { onIntent(ReaderIntent.Next) },
             )
             return@Row
         }
         state.previousChapterId?.let { previous ->
-            Text("← Previous", style = MaterialTheme.typography.bodySmall, modifier = Modifier.clickable { onOpenChapter(previous) })
+            Text(
+                I18n.text("reader.previousArrow"),
+                style = MaterialTheme.typography.bodySmall,
+                modifier =
+                    Modifier.clickable {
+                        onOpenChapter(previous)
+                    },
+            )
             Spacer(Modifier.width(20.dp))
         }
         state.nextChapterId?.let { next ->
             Text(
-                "Next →",
+                I18n.text("reader.nextArrow"),
                 style = MaterialTheme.typography.labelLarge.copy(color = Brand.Red),
                 modifier = Modifier.clickable { onOpenChapter(next) },
             )
@@ -609,7 +617,7 @@ private fun BookReader(
         when {
             state.preparingBook || document == null ->
                 Text(
-                    if (state.preparingBook) "Opening the book…" else "",
+                    if (state.preparingBook) I18n.text("reader.openingBook") else "",
                     style = MaterialTheme.typography.bodySmall,
                     modifier = Modifier.align(Alignment.Center),
                 )
@@ -644,7 +652,7 @@ private fun BookReader(
         }
         if (state.atEnd && state.nextChapterId != null && document != null) {
             Box(Modifier.align(Alignment.BottomCenter).padding(16.dp)) {
-                PrimaryButton(state.nextLabel ?: "Next →", { onOpenChapter(state.nextChapterId!!) })
+                PrimaryButton(state.nextLabel ?: I18n.text("reader.nextArrow"), { onOpenChapter(state.nextChapterId!!) })
             }
         }
     }

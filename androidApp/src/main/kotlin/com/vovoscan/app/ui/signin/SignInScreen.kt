@@ -25,6 +25,7 @@ import com.vovoscan.app.ui.common.ErrorText
 import com.vovoscan.app.ui.common.GhostButton
 import com.vovoscan.app.ui.common.LogoMark
 import com.vovoscan.app.ui.common.PrimaryButton
+import com.vovoscan.core.common.i18n.I18n
 import com.vovoscan.feature.auth.presentation.SignInIntent
 import com.vovoscan.feature.auth.presentation.SignInMode
 import com.vovoscan.feature.auth.presentation.SignInViewModel
@@ -49,14 +50,25 @@ fun SignInScreen(viewModel: SignInViewModel = koinViewModel()) {
         }
         Spacer(Modifier.height(16.dp))
         Text(state.title, style = MaterialTheme.typography.displaySmall)
-        Text("Your scans, fully voiced.", style = MaterialTheme.typography.bodySmall)
+        Text(I18n.text("auth.tagline"), style = MaterialTheme.typography.bodySmall)
         if (state.mode == SignInMode.Invite) {
-            BrandField("Invite code", state.inviteCode, { viewModel.onIntent(SignInIntent.InviteCode(it)) }, state.inviteError)
-            BrandField("Display name", state.displayName, { viewModel.onIntent(SignInIntent.DisplayName(it)) })
+            BrandField(
+                I18n.text("auth.inviteCode"),
+                state.inviteCode,
+                { viewModel.onIntent(SignInIntent.InviteCode(it)) },
+                state.inviteError,
+            )
+            BrandField(I18n.text("auth.displayName"), state.displayName, { viewModel.onIntent(SignInIntent.DisplayName(it)) })
         }
-        BrandField("Email", state.email, { viewModel.onIntent(SignInIntent.Email(it)) }, state.emailError, KeyboardType.Email)
         BrandField(
-            "Password",
+            I18n.text("auth.email"),
+            state.email,
+            { viewModel.onIntent(SignInIntent.Email(it)) },
+            state.emailError,
+            KeyboardType.Email,
+        )
+        BrandField(
+            I18n.text("auth.password"),
             state.password,
             { viewModel.onIntent(SignInIntent.Password(it)) },
             state.passwordError,

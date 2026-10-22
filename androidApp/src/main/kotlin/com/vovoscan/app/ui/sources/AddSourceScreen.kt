@@ -44,6 +44,7 @@ import com.vovoscan.app.ui.common.GhostButton
 import com.vovoscan.app.ui.common.Kicker
 import com.vovoscan.app.ui.common.PrimaryButton
 import com.vovoscan.app.ui.theme.Brand
+import com.vovoscan.core.common.i18n.I18n
 import com.vovoscan.feature.sources.presentation.AddSourceIntent
 import com.vovoscan.feature.sources.presentation.AddSourceStep
 import com.vovoscan.feature.sources.presentation.AddSourceUiState
@@ -97,9 +98,9 @@ fun AddSourceScreen(
     ) {
         item {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                GhostButton("← Back", onBack)
-                Kicker("Sources")
-                Text("Add a source.", style = MaterialTheme.typography.headlineSmall)
+                GhostButton(I18n.text("common.backArrow"), onBack)
+                Kicker(I18n.text("nav.sources"))
+                Text(I18n.text("sources.addHeadline"), style = MaterialTheme.typography.headlineSmall)
                 state.officialOffers.forEach { OfficialCard(it) { send(AddSourceIntent.EnableOfficial(it.key)) } }
                 Warning(state.warning)
                 state.error?.let { MessageBanner(it, error = true) { send(AddSourceIntent.DismissMessage) } }
@@ -133,15 +134,15 @@ fun AddSourceScreen(
                 }
         }
         if (state.step == AddSourceStep.Preview || state.step == AddSourceStep.Repository) {
-            item { GhostButton("Use another link", { send(AddSourceIntent.Reset) }) }
+            item { GhostButton(I18n.text("sources.anotherLink"), { send(AddSourceIntent.Reset) }) }
         }
     }
 
     state.hostsConfirmation?.let { message ->
         BrandAlert(
-            title = "New connections",
+            title = I18n.text("sources.newConnections"),
             message = message,
-            confirmLabel = "Continue",
+            confirmLabel = I18n.text("common.continue"),
             onConfirm = { send(AddSourceIntent.ConfirmHosts) },
             onCancel = { send(AddSourceIntent.CancelHosts) },
         )
@@ -171,14 +172,16 @@ private fun LinkInput(
     val loading = state.step == AddSourceStep.Loading
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         BrandField(
-            "Link to a source or repository",
+            I18n.text("sources.linkLabel"),
             state.link,
             { send(AddSourceIntent.LinkChanged(it)) },
             keyboard = KeyboardType.Uri,
             placeholder = "https://",
         )
-        PrimaryButton(if (loading) "Checking…" else "Add →", { send(AddSourceIntent.SubmitLink) }, enabled = state.canSubmit)
-        GhostButton("Choose a .vovo file", { if (!loading) onPickFile() })
+        PrimaryButton(if (loading) I18n.text("common.checking") else I18n.text("sources.addArrow"), {
+            send(AddSourceIntent.SubmitLink)
+        }, enabled = state.canSubmit)
+        GhostButton(I18n.text("sources.chooseFile"), { if (!loading) onPickFile() })
     }
 }
 
@@ -195,13 +198,13 @@ private fun PreviewCard(
         preview.statusLabel?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
         preview.actionLabel?.let { label ->
             PrimaryButton(
-                if (state.installing) "Installing…" else "$label →",
+                if (state.installing) I18n.text("sources.installing") else "$label →",
                 { send(AddSourceIntent.Install) },
                 modifier = Modifier.padding(top = 4.dp, bottom = 6.dp),
                 enabled = !state.installing,
             )
         }
-        if (state.installedKey == preview.info.key) GhostButton("Open source", { onOpenSource(preview.info.key) })
+        if (state.installedKey == preview.info.key) GhostButton(I18n.text("sources.open"), { onOpenSource(preview.info.key) })
     }
 }
 
@@ -257,16 +260,16 @@ private fun SettingsSheet(
                 .padding(horizontal = 20.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            Text(state.settingsTitle ?: "Settings", style = MaterialTheme.typography.titleMedium)
+            Text(state.settingsTitle ?: I18n.text("nav.settings"), style = MaterialTheme.typography.titleMedium)
             state.settingsForm.forEach { field ->
                 SettingInput(field) { send(AddSourceIntent.SettingChanged(field.name, it)) }
             }
             PrimaryButton(
-                if (state.installing) "Installing…" else "Confirm →",
+                if (state.installing) I18n.text("sources.installing") else I18n.text("common.confirmArrow"),
                 { send(AddSourceIntent.ConfirmSettings) },
                 enabled = !state.installing,
             )
-            GhostButton("Cancel", { send(AddSourceIntent.CancelSettings) })
+            GhostButton(I18n.text("common.cancel"), { send(AddSourceIntent.CancelSettings) })
         }
     }
 }

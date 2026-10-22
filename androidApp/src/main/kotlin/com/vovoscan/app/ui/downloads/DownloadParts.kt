@@ -13,6 +13,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import com.vovoscan.app.ui.common.AppIcons
 import com.vovoscan.app.ui.theme.Brand
+import com.vovoscan.core.common.i18n.I18n
 import com.vovoscan.feature.reader.presentation.DownloadAction
 import com.vovoscan.feature.reader.presentation.DownloadRow
 import com.vovoscan.feature.reader.presentation.DownloadStatus
@@ -35,21 +36,21 @@ fun DownloadControl(
             DownloadStatus.NotDownloaded ->
                 Icon(
                     AppIcons.Download,
-                    contentDescription = "Download",
+                    contentDescription = I18n.text("downloads.a11yDownload"),
                     tint = Brand.Muted,
                     modifier = Modifier.size(26.dp),
                 )
             DownloadStatus.Done ->
                 Icon(
                     AppIcons.Downloaded,
-                    contentDescription = "Downloaded. Delete",
+                    contentDescription = I18n.text("downloads.a11yDelete"),
                     tint = Brand.Paper,
                     modifier = Modifier.size(26.dp),
                 )
             DownloadStatus.Failed ->
                 Icon(
                     AppIcons.Failed,
-                    contentDescription = "Failed. Try again",
+                    contentDescription = I18n.text("downloads.a11yRetry"),
                     tint = Brand.Danger,
                     modifier = Modifier.size(26.dp),
                 )
@@ -61,7 +62,12 @@ fun DownloadControl(
                     strokeWidth = 2.5.dp,
                     modifier = Modifier.size(26.dp),
                 )
-                Icon(AppIcons.Stop, contentDescription = "Stop the download", tint = Brand.Paper, modifier = Modifier.size(26.dp))
+                Icon(
+                    AppIcons.Stop,
+                    contentDescription = I18n.text("downloads.a11yStop"),
+                    tint = Brand.Paper,
+                    modifier = Modifier.size(26.dp),
+                )
             }
         }
     }
