@@ -170,9 +170,9 @@ class ImmersiveReaderTest {
     fun aStripIsRecognisedFromItsImagesAndNeverReadAsPages() =
         runTest(dispatcher) {
             // The source calls it a manga and the reader chose paged manga: until the images arrive, that is the mode.
-            val unsized = manga.copy(sourceKey = "toonspace", pages = manga.pages.map { it.copy(width = 0, height = 0) })
+            val unsized = manga.copy(sourceKey = "inkwell-press", pages = manga.pages.map { it.copy(width = 0, height = 0) })
             val settings = PositionSettings(ReaderPreferences(tapZonesSeen = true, mangaMode = ReadingMode.PagedRightToLeft))
-            val vm = reader(settings = settings, sourceKey = "toonspace", chapter = unsized)
+            val vm = reader(settings = settings, sourceKey = "inkwell-press", chapter = unsized)
             assertEquals(ReadingMode.PagedRightToLeft, vm.state.value.mode)
             assertEquals("Manga ✦ right to left", vm.state.value.formatLabel)
             // The first image is an 800 x 14 000 strip: a Korean webtoon, read top to bottom at full width.
@@ -186,8 +186,8 @@ class ImmersiveReaderTest {
     fun pagesOfUnknownSizeTakeTheirImagesShape() =
         runTest(dispatcher) {
             // A source read on the device gives no sizes: placeholders (0.7) until each image has loaded.
-            val strip = manga.copy(sourceKey = "toonspace", pages = manga.pages.map { it.copy(width = 0, height = 0) })
-            val vm = reader(sourceKey = "toonspace", chapter = strip)
+            val strip = manga.copy(sourceKey = "inkwell-press", pages = manga.pages.map { it.copy(width = 0, height = 0) })
+            val vm = reader(sourceKey = "inkwell-press", chapter = strip)
             // Page 0 is a 400 x 1600 strip: taller than the screen, read in two steps (from -24 clamped to 0, then 616).
             vm.onIntent(ReaderIntent.PageSized(0, 400, 1600))
             assertTrue(
