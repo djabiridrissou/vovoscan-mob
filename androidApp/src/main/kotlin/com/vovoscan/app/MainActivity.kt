@@ -13,14 +13,18 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -32,6 +36,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
@@ -42,7 +48,9 @@ import androidx.lifecycle.repeatOnLifecycle
 import com.vovoscan.app.ui.account.AccountScreen
 import com.vovoscan.app.ui.account.PreferencesScreen
 import com.vovoscan.app.ui.catalog.CatalogScreen
+import com.vovoscan.app.ui.common.AdaptiveWindow
 import com.vovoscan.app.ui.common.AppIcons
+import com.vovoscan.app.ui.common.LocalAdaptive
 import com.vovoscan.app.ui.downloads.DownloadsScreen
 import com.vovoscan.app.ui.episode.EpisodeScreen
 import com.vovoscan.app.ui.library.LibraryScreen
@@ -57,6 +65,7 @@ import com.vovoscan.app.ui.sources.SourcesScreen
 import com.vovoscan.app.ui.theme.Brand
 import com.vovoscan.app.ui.theme.VovoscanTheme
 import com.vovoscan.app.ui.title.TitleScreen
+import com.vovoscan.core.common.Navigation
 import com.vovoscan.core.common.i18n.I18n
 import com.vovoscan.feature.auth.presentation.DeletionBannerUi
 import com.vovoscan.feature.auth.presentation.SessionViewModel
@@ -110,7 +119,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         setContent {
             VovoscanTheme {
-                Root()
+                AdaptiveWindow { Root() }
             }
         }
         // A new app language rebuilds every screen in it (the ViewModels survive; their labels are read on draw).
@@ -253,113 +262,204 @@ private fun Root(session: SessionViewModel = koinViewModel()) {
             )
             return@Column
         }
-        Column(Modifier.weight(1f)) {
-            val title = openTitle?.split("|")
-            val source = openSource?.split("|", limit = 2)
-            val episodeRoute = openEpisode?.split("|")
-            val episode = episodeRoute?.first()
-            if (title != null && episode != null) {
-                BackHandler { openEpisode = null }
-                // The title page's own ViewModel (same key): chapter label and the next chapter in reading order.
-                val detail: TitleDetailViewModel =
-                    koinViewModel(key = "title:${title[0]}/${title[1]}") { parametersOf(title[0], title[1]) }
-                val titleState by detail.state.collectAsStateWithLifecycle()
-                EpisodeScreen(
-                    chapterId = episode,
-                    titleName = titleState.name,
-                    chapterLabel = titleState.chapterLabel(episode),
-                    onBack = { openEpisode = null },
-                    onWatch = { language -> openPlayer = "$episode|${titleState.nextChapterId(episode).orEmpty()}|$language" },
-                    language = episodeRoute.getOrNull(1).orEmpty(),
-                )
-            } else if (title != null) {
-                BackHandler { openTitle = null }
-                TitleScreen(
-                    sourceKey = title[0],
-                    titleId = title[1],
-                    onBack = { openTitle = null },
-                    onRead = { chapter, page -> openReader = "${title[0]}|${title[1]}|$chapter|$page" },
-                    onEpisode = { openEpisode = it },
-                )
-            } else if (tab == Tab.Library && openDownloads) {
-                BackHandler { openDownloads = false }
-                DownloadsScreen(onBack = { openDownloads = false }, onOpenTitle = { source, id -> openTitle = "$source|$id" })
-            } else if (tab == Tab.Sources && source != null) {
-                BackHandler { openSource = null }
-                when (source[0]) {
-                    "add-source" ->
-                        AddSourceScreen(
-                            repositoryId = source.getOrNull(1),
-                            onBack = { openSource = null },
-                            onOpenSource = { openSource = "source-detail|$it" },
-                        )
-                    else -> SourceDetailScreen(sourceKey = source[1], onBack = { openSource = null })
-                }
-            } else {
-                when (tab) {
-                    Tab.Catalog ->
-                        CatalogScreen(
-                            onOpenTitle = { source, id -> openTitle = "$source|$id" },
-                            onOpenSources = { tab = Tab.Sources },
-                            onResume = { source, id, chapter, page -> openReader = "$source|$id|$chapter|$page" },
-                        )
-                    Tab.Library ->
-                        LibraryScreen(
-                            onOpenTitle = { source, id -> openTitle = "$source|$id" },
-                            onOpenDownloads = { openDownloads = true },
-                            onOpenSources = { tab = Tab.Sources },
-                            onOpenCatalog = { tab = Tab.Catalog },
-                            onSignOut = session::signOut,
-                        )
-                    Tab.Sources ->
-                        SourcesScreen(
-                            onAdd = { repository -> openSource = if (repository == null) "add-source" else "add-source|$repository" },
-                            onOpenSource = { openSource = "source-detail|$it" },
-                        )
-                    Tab.Settings ->
-                        when (openSettings) {
-                            "account" -> {
-                                BackHandler { openSettings = null }
-                                AccountScreen(onBack = { openSettings = null })
+        val adaptive = LocalAdaptive.current
+        val select: (Tab) -> Unit = { entry ->
+            tab = entry
+            openTitle = null
+            openEpisode = null
+            openSource = null
+            openDownloads = false
+            openSettings = null
+        }
+        val isSelected: (Tab) -> Boolean = { entry -> entry == tab && openTitle == null && (entry != Tab.Sources || openSource == null) }
+        Row(Modifier.weight(1f)) {
+            // A tablet or an unfolded foldable: the tabs on the side (a rail, or a sidebar when wide).
+            if (adaptive.navigation != Navigation.BottomBar) {
+                SideTabs(adaptive.navigation == Navigation.Sidebar, isSelected, select)
+            }
+            Column(Modifier.weight(1f)) {
+                val title = openTitle?.split("|")
+                val source = openSource?.split("|", limit = 2)
+                val episodeRoute = openEpisode?.split("|")
+                val episode = episodeRoute?.first()
+                if (title != null && episode != null) {
+                    BackHandler { openEpisode = null }
+                    // The title page's own ViewModel (same key): chapter label and the next chapter in reading order.
+                    val detail: TitleDetailViewModel =
+                        koinViewModel(key = "title:${title[0]}/${title[1]}") { parametersOf(title[0], title[1]) }
+                    val titleState by detail.state.collectAsStateWithLifecycle()
+                    EpisodeScreen(
+                        chapterId = episode,
+                        titleName = titleState.name,
+                        chapterLabel = titleState.chapterLabel(episode),
+                        onBack = { openEpisode = null },
+                        onWatch = { language -> openPlayer = "$episode|${titleState.nextChapterId(episode).orEmpty()}|$language" },
+                        language = episodeRoute.getOrNull(1).orEmpty(),
+                    )
+                } else if (title != null) {
+                    BackHandler { openTitle = null }
+                    TitleScreen(
+                        sourceKey = title[0],
+                        titleId = title[1],
+                        onBack = { openTitle = null },
+                        onRead = { chapter, page -> openReader = "${title[0]}|${title[1]}|$chapter|$page" },
+                        onEpisode = { openEpisode = it },
+                    )
+                } else if (tab == Tab.Library && openDownloads) {
+                    BackHandler { openDownloads = false }
+                    DownloadsScreen(onBack = { openDownloads = false }, onOpenTitle = { source, id -> openTitle = "$source|$id" })
+                } else if (tab == Tab.Sources && source != null) {
+                    BackHandler { openSource = null }
+                    when (source[0]) {
+                        "add-source" ->
+                            AddSourceScreen(
+                                repositoryId = source.getOrNull(1),
+                                onBack = { openSource = null },
+                                onOpenSource = { openSource = "source-detail|$it" },
+                            )
+                        else -> SourceDetailScreen(sourceKey = source[1], onBack = { openSource = null })
+                    }
+                } else {
+                    when (tab) {
+                        Tab.Catalog ->
+                            CatalogScreen(
+                                onOpenTitle = { source, id -> openTitle = "$source|$id" },
+                                onOpenSources = { tab = Tab.Sources },
+                                onResume = { source, id, chapter, page -> openReader = "$source|$id|$chapter|$page" },
+                            )
+                        Tab.Library ->
+                            LibraryScreen(
+                                onOpenTitle = { source, id -> openTitle = "$source|$id" },
+                                onOpenDownloads = { openDownloads = true },
+                                onOpenSources = { tab = Tab.Sources },
+                                onOpenCatalog = { tab = Tab.Catalog },
+                                onSignOut = session::signOut,
+                            )
+                        Tab.Sources ->
+                            SourcesScreen(
+                                onAdd = { repository -> openSource = if (repository == null) "add-source" else "add-source|$repository" },
+                                onOpenSource = { openSource = "source-detail|$it" },
+                            )
+                        Tab.Settings ->
+                            when (openSettings) {
+                                "account" -> {
+                                    BackHandler { openSettings = null }
+                                    AccountScreen(onBack = { openSettings = null })
+                                }
+                                "preferences" -> {
+                                    BackHandler { openSettings = null }
+                                    PreferencesScreen(onBack = { openSettings = null }, onReplayTutorial = session::replayTutorial)
+                                }
+                                else ->
+                                    SettingsScreen(
+                                        onSignOut = session::signOut,
+                                        accountDetail = user?.email.orEmpty(),
+                                        onOpenAccount = { openSettings = "account" },
+                                        onOpenPreferences = { openSettings = "preferences" },
+                                    )
                             }
-                            "preferences" -> {
-                                BackHandler { openSettings = null }
-                                PreferencesScreen(onBack = { openSettings = null }, onReplayTutorial = session::replayTutorial)
-                            }
-                            else ->
-                                SettingsScreen(
-                                    onSignOut = session::signOut,
-                                    accountDetail = user?.email.orEmpty(),
-                                    onOpenAccount = { openSettings = "account" },
-                                    onOpenPreferences = { openSettings = "preferences" },
-                                )
-                        }
+                    }
                 }
             }
         }
-        Row(Modifier.fillMaxWidth().background(Brand.Ink2)) {
-            Tab.entries.forEach { entry ->
-                val selected = entry == tab && openTitle == null && (entry != Tab.Sources || openSource == null)
-                val color = if (selected) Brand.Red else Brand.Muted
-                Column(
-                    Modifier
-                        .weight(1f)
-                        .clickable {
-                            tab = entry
-                            openTitle = null
-                            openEpisode = null
-                            openSource = null
-                            openDownloads = false
-                            openSettings = null
-                        }.padding(top = 10.dp, bottom = 8.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(3.dp),
-                ) {
-                    Icon(entry.icon(), contentDescription = null, tint = color, modifier = Modifier.size(24.dp))
-                    Text(
-                        entry.label,
-                        style = MaterialTheme.typography.labelSmall.copy(color = color, fontSize = 11.sp, letterSpacing = 0.4.sp),
+        if (adaptive.navigation == Navigation.BottomBar) BottomTabs(isSelected, select)
+    }
+}
+
+/** Phones: the tabs along the bottom, an icon over each label. */
+@Composable
+private fun BottomTabs(
+    isSelected: (Tab) -> Boolean,
+    onSelect: (Tab) -> Unit,
+) {
+    Row(Modifier.fillMaxWidth().background(Brand.Ink2)) {
+        Tab.entries.forEach { entry ->
+            val color = if (isSelected(entry)) Brand.Red else Brand.Muted
+            Column(
+                Modifier
+                    .weight(1f)
+                    .clickable { onSelect(entry) }
+                    .padding(top = 10.dp, bottom = 8.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(3.dp),
+            ) {
+                Icon(entry.icon(), contentDescription = null, tint = color, modifier = Modifier.size(24.dp))
+                Text(
+                    entry.label,
+                    style = MaterialTheme.typography.labelSmall.copy(color = color, fontSize = 11.sp, letterSpacing = 0.4.sp),
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Tablets and unfolded foldables: the same tabs down the start edge, a rail (icon over label) or, when the window is
+ * wide, a sidebar (icon beside label). The selected tab carries a red bar on its edge.
+ */
+@Composable
+private fun SideTabs(
+    wide: Boolean,
+    isSelected: (Tab) -> Boolean,
+    onSelect: (Tab) -> Unit,
+) {
+    Column(
+        Modifier
+            .fillMaxHeight()
+            .width(if (wide) 220.dp else 84.dp)
+            .background(Brand.Ink2)
+            .padding(top = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        if (wide) {
+            Text(
+                "vovoscan",
+                style = MaterialTheme.typography.titleLarge.copy(color = Brand.Paper),
+                modifier = Modifier.padding(start = 20.dp, bottom = 16.dp),
+            )
+        }
+        Tab.entries.forEach { entry ->
+            val selected = isSelected(entry)
+            val color = if (selected) Brand.Red else Brand.Muted
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .clickable(onClickLabel = entry.label) { onSelect(entry) }
+                    .semantics { this.selected = selected },
+            ) {
+                if (selected) {
+                    Box(
+                        Modifier
+                            .align(Alignment.CenterStart)
+                            .width(3.dp)
+                            .height(28.dp)
+                            .background(Brand.Red),
                     )
+                }
+                if (wide) {
+                    Row(
+                        Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(14.dp),
+                    ) {
+                        Icon(entry.icon(), contentDescription = null, tint = color, modifier = Modifier.size(24.dp))
+                        Text(
+                            entry.label,
+                            style = MaterialTheme.typography.labelLarge.copy(color = if (selected) Brand.Paper else Brand.Muted),
+                        )
+                    }
+                } else {
+                    Column(
+                        Modifier.fillMaxWidth().padding(vertical = 12.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(3.dp),
+                    ) {
+                        Icon(entry.icon(), contentDescription = null, tint = color, modifier = Modifier.size(24.dp))
+                        Text(
+                            entry.label,
+                            style = MaterialTheme.typography.labelSmall.copy(color = color, fontSize = 11.sp, letterSpacing = 0.4.sp),
+                        )
+                    }
                 }
             }
         }

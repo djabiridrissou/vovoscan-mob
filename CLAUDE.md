@@ -416,6 +416,26 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   sits under the reader's tap detector and takes the tap itself (the button consumes it, no tap zone fires; checked
   on the Pixel 7 with a page whose file was missing: the page loaded on Retry and took its tall shape).
 
+## Large screens (iPad, tablets, foldables)
+
+- Shared rules, never the device's name: `core/common/Adaptive.kt` (`Adaptive.of(width, height, hinge)` → width class at
+  600 / 840 dp, navigation BottomBar / Rail / Sidebar, tile width, readable width 720, two panes, posture Flat / Book /
+  Tabletop, a separating vertical hinge) and `feature/reader/domain/Spreads.kt` (`Spreads.fit`: two pages from 600 wide
+  and 1.15 width / height, or across a vertical hinge; `Spreads.of`: the cover, chapter cards, double spreads and strips
+  (`STRIP_ALONE`, height ≥ 2 × width) stand alone, other pages pair; `ReaderKeys`: arrows follow the page direction,
+  space / page keys turn, Escape closes).
+- Reader: paged horizontal modes show `ReaderUiState.spreads` (setting "Two pages side by side", `doublePages`, on);
+  the native side reports `Viewport(width, height, verticalHinge)` and keys as `ReaderIntent.Key`; `positionLabel`
+  "4–5 / 19"; `ReaderCommand.Close` for Escape.
+- iOS: native on iPad (`TARGETED_DEVICE_FAMILY` 1,2, every orientation), `TabView` with `Tab` and `.sidebarAdaptable`,
+  ⌘1-4 (`TabShortcuts`), `.readableWidth()` on text screens, cards lift under the pointer (`.hoverEffect(.lift)`),
+  spreads in `HorizontalPages`, keys through `onKeyPress` (`ReaderKeyMap`).
+- Android: `AdaptiveWindow` (`ui/common/WindowLayout.kt`: window size + Jetpack WindowManager `FoldingFeature`, the only
+  way to know the hinge; `androidx.window`) provides `LocalAdaptive`; tabs as a rail or a sidebar (`SideTabs`) from
+  600 dp; the activity handles size, orientation and fold changes itself (`configChanges`), so folding or unfolding
+  keeps the screen and the reading position; spreads in `HorizontalPager` with the hinge's gap between the pages;
+  keys through `onPreviewKeyEvent`.
+
 ## Account (keys, reading model, costs)
 
 - `feature/account`: the user's own AI settings, one slice for the backend modules `provider-keys` and `settings`

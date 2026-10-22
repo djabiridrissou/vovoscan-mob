@@ -63,6 +63,7 @@ import com.vovoscan.app.ui.common.EmptyStateCard
 import com.vovoscan.app.ui.common.ErrorText
 import com.vovoscan.app.ui.common.GhostButton
 import com.vovoscan.app.ui.common.Kicker
+import com.vovoscan.app.ui.common.LocalAdaptive
 import com.vovoscan.app.ui.common.OfflineNotice
 import com.vovoscan.app.ui.theme.Brand
 import com.vovoscan.core.common.i18n.I18n
@@ -100,7 +101,7 @@ fun CatalogScreen(
     LaunchedEffect(state.query) { if (floating) grid.animateScrollToItem(0) }
     Box(Modifier.fillMaxSize()) {
         LazyVerticalGrid(
-            columns = GridCells.Adaptive(150.dp),
+            columns = GridCells.Adaptive(LocalAdaptive.current.minTileWidth.dp),
             contentPadding = PaddingValues(20.dp),
             horizontalArrangement = Arrangement.spacedBy(14.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
