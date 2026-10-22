@@ -44,9 +44,9 @@ data class ReaderPreferences(
 
 object ReadingModes {
     /**
-     * Per-series override, then the user's default for the format, then the format rule. Books stay books. Pages
-     * shaped as a strip ([strip]) are always read continuously unless the series was set otherwise: a strip is never
-     * shrunk into a page.
+     * Per-series override, then the user's default for the format, then the format rule. Books stay books. A webtoon
+     * (declared, or pages shaped as a strip: [strip]) is always read continuously, whatever was chosen: a strip is
+     * never shrunk into a page (reader/SPEC.md §1b); only the gap between its pages is a choice.
      */
     fun resolve(
         chapterMode: ReadingMode,
@@ -56,12 +56,10 @@ object ReadingModes {
         strip: Boolean = false,
     ): ReadingMode {
         if (chapterMode == ReadingMode.Book) return ReadingMode.Book
+        val webtoon = strip || format == ComicFormat.Webtoon
+        if (webtoon) return seriesMode?.takeIf { it.isStrip } ?: preferences.webtoonMode?.takeIf { it.isStrip } ?: ReadingMode.LongStrip
         if (seriesMode != null && seriesMode != ReadingMode.Book) return seriesMode
-        val chosen = preferences.defaultFor(if (strip) ComicFormat.Webtoon else format)?.takeIf { it != ReadingMode.Book }
-        return when {
-            strip && chosen?.isStrip != true -> ReadingMode.LongStrip
-            else -> chosen ?: format.defaultMode
-        }
+        return preferences.defaultFor(format)?.takeIf { it != ReadingMode.Book } ?: format.defaultMode
     }
 }
 

@@ -283,21 +283,27 @@ class ReaderTapsTest {
             // A webtoon reads continuously by default (reader/SPEC.md §1b).
             assertEquals(ReadingMode.LongStrip, vm.state.value.mode)
             assertEquals(4, vm.state.value.currentItem)
+            assertEquals(0, vm.state.value.pageGap)
+            // A webtoon only scrolls (reader/SPEC.md §1b): its sheet offers the strip modes, a paged choice is ignored.
+            assertEquals(
+                listOf(ReadingMode.LongStrip, ReadingMode.LongStripGaps),
+                vm.state.value.settings.seriesModes
+                    .map { it.mode },
+            )
             vm.onIntent(ReaderIntent.SetMode(ReadingMode.PagedVertical))
             advanceUntilIdle()
-            assertEquals(ReadingMode.PagedVertical, vm.state.value.mode)
-            vm.onIntent(ReaderIntent.SetMode(ReadingMode.LongStrip))
-            advanceUntilIdle()
             assertEquals(ReadingMode.LongStrip, vm.state.value.mode)
-            assertEquals(0, vm.state.value.pageGap)
-            assertEquals(ReadingMode.LongStrip, settings.series.value["vovoscan/t1"])
+            vm.onIntent(ReaderIntent.SetMode(ReadingMode.LongStripGaps))
+            advanceUntilIdle()
+            assertEquals(ReadingMode.LongStripGaps, vm.state.value.mode)
+            assertEquals(ReadingMode.LongStripGaps, settings.series.value["vovoscan/t1"])
             assertEquals(3, vm.state.value.currentIndex)
             assertEquals(4, vm.state.value.currentItem)
             assertTrue(vm.state.value.settings.canResetSeries)
             assertTrue(
                 vm.state.value.settings.seriesModes
                     .single { it.selected }
-                    .mode == ReadingMode.LongStrip,
+                    .mode == ReadingMode.LongStripGaps,
             )
             assertEquals("Default for this series: Continuous.", vm.state.value.settings.seriesHint)
             // The format default applies once the series goes back to it.

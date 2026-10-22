@@ -21,7 +21,13 @@ class ReadingModesTest {
         assertEquals(ReadingMode.LongStrip, ReadingModes.resolve(webtoon, ComicFormat.Webtoon, null, none))
         val prefs = none.copy(webtoonMode = ReadingMode.LongStripGaps, mangaMode = ReadingMode.PagedLeftToRight)
         assertEquals(ReadingMode.LongStripGaps, ReadingModes.resolve(webtoon, ComicFormat.Webtoon, null, prefs))
-        assertEquals(ReadingMode.PagedVertical, ReadingModes.resolve(webtoon, ComicFormat.Webtoon, ReadingMode.PagedVertical, prefs))
+        // A webtoon never turns pages, even chosen for the series; its gap is a choice.
+        assertEquals(ReadingMode.LongStripGaps, ReadingModes.resolve(webtoon, ComicFormat.Webtoon, ReadingMode.PagedVertical, prefs))
+        assertEquals(ReadingMode.LongStrip, ReadingModes.resolve(webtoon, ComicFormat.Webtoon, ReadingMode.LongStrip, prefs))
+        assertEquals(
+            ReadingMode.PagedVertical,
+            ReadingModes.resolve(ReadingMode.LongStrip, ComicFormat.Manga, ReadingMode.PagedVertical, prefs),
+        )
         assertEquals(ReadingMode.PagedLeftToRight, ReadingModes.resolve(ReadingMode.PagedRightToLeft, ComicFormat.Manga, null, prefs))
         assertEquals(ReadingMode.LongStrip, ReadingModes.resolve(ReadingMode.LongStrip, ComicFormat.Manga, null, none))
     }
