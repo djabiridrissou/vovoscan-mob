@@ -41,6 +41,9 @@ struct ReaderView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var settingsOpen = false
     @State private var languagesOpen = false
+    /// The push that opened this reader has finished (a sheet waits for it), and the "Translate" picker was shown once.
+    @State private var pushSettled = false
+    @State private var pickerShown = false
     @State private var keysOpen = false
     /// The bottom bar's height: the language dock sits above it while the bars show.
     @State private var bottomBarHeight: CGFloat = 0
@@ -219,7 +222,18 @@ struct ReaderView: View {
         // Keep the screen awake while reading (setting, on by default).
         .onChange(of: model.state.keepScreenOn, initial: true) { _, on in UIApplication.shared.isIdleTimerDisabled = on }
         .onDisappear { UIApplication.shared.isIdleTimerDisabled = false }
-        .onAppear { if route.pickLanguage && translation.state.available { languagesOpen = true } }
+        // Opened from a chapter's "Translate": the picker once the push has settled and the languages are known. A
+        // sheet presented during the push transition left an invisible layer over the app (no tap, no Back).
+        .task {
+            try? await Task.sleep(for: .milliseconds(600))
+            pushSettled = true
+        }
+        .onChange(of: pushSettled && translation.state.available) { _, ready in
+            if ready && route.pickLanguage && !pickerShown {
+                pickerShown = true
+                languagesOpen = true
+            }
+        }
         .sheet(isPresented: $languagesOpen) {
             LanguageSheet(translation: translation)
                 .presentationDetents([.medium, .large])

@@ -3,7 +3,7 @@ import SwiftUI
 
 struct CatalogView: View {
     /// The catalog tab's navigation: a suggested title is pushed once its list is closed (see `openSuggested`).
-    @Binding var path: NavigationPath
+    @Environment(\.push) private var push
     @StateObject private var model = CatalogModel()
     @StateObject private var sources = SourcesModel()
     @State private var query = ""
@@ -57,7 +57,7 @@ struct CatalogView: View {
                     if let error = model.state.error { ErrorText(text: error) }
                     // The last title read, opened where it was left.
                     if let resume = model.state.resume, model.state.results == nil {
-                        NavigationLink(value: ReaderRoute(sourceKey: resume.sourceKey, titleId: resume.titleId, chapterId: resume.chapterId, startPage: Int(resume.page))) {
+                        NavigationLink(value: AppRoute.reader(ReaderRoute(sourceKey: resume.sourceKey, titleId: resume.titleId, chapterId: resume.chapterId, startPage: Int(resume.page)))) {
                             ResumeBanner(card: resume)
                         }
                         .buttonStyle(PressableCardStyle())
@@ -79,7 +79,7 @@ struct CatalogView: View {
                         // stays the same view, so the zoom transition's source survives under the open title page.
                         ForEach(Array(model.state.visible.enumerated()), id: \.element.key) { index, card in
                             let route = TitleRoute(sourceKey: card.sourceKey, titleId: card.id)
-                            NavigationLink(value: route) { TitleTile(card: card, popularLabel: model.state.popularLabel) }
+                            NavigationLink(value: AppRoute.title(route)) { TitleTile(card: card, popularLabel: model.state.popularLabel) }
                                 .buttonStyle(PressableCardStyle())
                                 // From search results, opening a title teaches the search (the view model decides).
                                 .simultaneousGesture(TapGesture().onEnded { opened(card.sourceKey, card.id) })
@@ -159,10 +159,8 @@ struct CatalogView: View {
                 .presentationDetents([.medium, .large])
                 .presentationBackground(Color.brandInk2)
         }
-        .navigationDestination(for: TitleRoute.self) { route in
-            TitleView(route: route).navigationTransition(.zoom(sourceID: route, in: zoom))
-        }
-        .navigationDestination(for: ReaderRoute.self) { ReaderContainer(route: $0) }
+        // The stack's only destinations (pushed screens register none): a title zooms out of its tile.
+        .navigationDestination(for: AppRoute.self) { AppRouteView(route: $0, zoom: zoom) }
         .task { await model.observe() }
         .task { await sources.observe() }
     }
@@ -185,7 +183,7 @@ struct CatalogView: View {
         floatingFocus = false
         opened(sourceKey, titleId)
         searchFloating = false
-        path.append(TitleRoute(sourceKey: sourceKey, titleId: titleId))
+        push(.title(TitleRoute(sourceKey: sourceKey, titleId: titleId)))
     }
 
     private static let top = "catalog-top"

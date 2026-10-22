@@ -12,10 +12,8 @@ struct TitleView: View {
     @StateObject private var model: TitleModel
     /// A delete waiting for its confirmation: a chapter id, or "*" for every download of the title.
     @State private var confirmDelete: String?
-    /// Opened by a chapter's "Translate": the reader on its language picker.
-    @State private var pickLanguage: ReaderRoute?
-    /// Opened by a chapter's "Episode": its episode card.
-    @State private var episode: EpisodeRoute?
+    /// The tab's stack: the pills push onto it (this page registers no destination of its own).
+    @Environment(\.push) private var push
 
     private let route: TitleRoute
 
@@ -59,7 +57,7 @@ struct TitleView: View {
                     Text(model.state.meta).font(.brandBody(13)).foregroundStyle(Color.brandMuted)
                     // Where this account left the title (this device or another), otherwise chapter 1.
                     if let action = model.state.readAction {
-                        NavigationLink(value: read(action.chapterId, Int(action.page), language: action.language)) {
+                        NavigationLink(value: AppRoute.reader(read(action.chapterId, Int(action.page), language: action.language))) {
                             VStack(spacing: 2) {
                                 Text(action.label)
                                 Text(action.detail).font(.brandBody(12, weight: .bold)).opacity(0.75).lineLimit(1)
@@ -96,7 +94,7 @@ struct TitleView: View {
                     ForEach(model.state.chapters, id: \.id) { chapter in
                         let download = model.downloads.row(chapterId: chapter.id)
                         HStack(spacing: 10) {
-                            NavigationLink(value: read(chapter.id, language: chapter.openLanguage)) {
+                            NavigationLink(value: AppRoute.reader(read(chapter.id, language: chapter.openLanguage))) {
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(chapter.label).font(.brandBody(15)).foregroundStyle(Color.brandPaper)
                                     if !chapter.meta.isEmpty {
@@ -146,20 +144,17 @@ struct TitleView: View {
         .readableWidth()
         .background(Color.brandInk)
         .refreshable { model.refresh() }
-        // The pills open through the view model, with destinations of this page's own (never a value link: two
-        // value links in a row next to the chapter's own link lost their taps).
+        // The pills open through the view model: each command is pushed on the tab's path once, then answered.
         .onChange(of: model.state.open?.seq) { _, _ in
             guard let open = model.state.open else { return }
             switch open.target {
             case .translate:
-                pickLanguage = ReaderRoute(sourceKey: route.sourceKey, titleId: route.titleId, chapterId: open.chapterId, startPage: 0, pickLanguage: true)
+                push(.reader(ReaderRoute(sourceKey: route.sourceKey, titleId: route.titleId, chapterId: open.chapterId, startPage: 0, pickLanguage: true)))
             case .episode:
-                episode = EpisodeRoute(chapterId: open.chapterId, title: model.state)
+                push(.episode(EpisodeRoute(chapterId: open.chapterId, title: model.state)))
             }
             model.openHandled(open.seq)
         }
-        .navigationDestination(item: $pickLanguage) { ReaderContainer(route: $0) }
-        .navigationDestination(item: $episode) { EpisodeContainer(route: $0) }
         .task { await model.observe() }
         .task { await model.observeFollow() }
         .task { await model.observeDownloads() }

@@ -669,8 +669,7 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   next to reading it → Episode card → Watch → full-screen player. Any comic, any source: a "Translate" chip per row
   (`offersTranslation`) opens the reader on its language picker (iOS `ReaderRoute.pickLanguage`, Android
   `ReaderScreen(openLanguages = true)`). Both pills go through the view model (`TitleDetailIntent.Translate` /
-  `Episode` → `state.open` → the screen opens it once and answers `OpenHandled(seq)`); iOS opens them with the page's
-  own `navigationDestination(item:)`, never value links next to the chapter's (they lost their taps). `nextChapterId(…)` (reading order) gives "Next
+  `Episode` → `state.open` → the screen opens it once and answers `OpenHandled(seq)`); iOS pushes them on the tab's path. `nextChapterId(…)` (reading order) gives "Next
   chapter →"; at the end it swaps the card for the next chapter's (Android `openEpisode`, iOS `EpisodeContainer`).
 - Episode card: Start / Stop on start / stop (Android lifecycle) or appear / disappear (iOS): live events only while it
   is visible. Video: Android saves through `DownloadManager` (`Movies/vovoscan`, Android 10+; the app's own Movies
@@ -745,7 +744,13 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   binding computed from a dictionary), copies every keystroke into the form's `[name: text]` record, does not resend
   a value Kotlin already has (a field filled on appear would mark the form edited), and Save / Confirm resend every
   recorded value before the intent.
-- Grids of cards are keyed by the title (`TitleCard.key`), never by the whole card: a title page saving its format or
+- Navigation (`iosApp/Sources/Navigation.swift`): one typed path per tab (`[AppRoute]`: title, reader, episode,
+  downloads; catalog and library, owned by `RootView`), one `navigationDestination(for: AppRoute.self)` at the stack's
+  root, links of `AppRoute` values and `\.push` for pushes from code. No destination is registered inside a pushed view
+  (`navigationDestination(item:)` on the title page mixed with the path: later opens did nothing). A sheet is never
+  presented while a push runs (the reader's "Translate" picker waits 600 ms): one shown in `onAppear` left an
+  invisible layer over the app, no tap and no Back.
+- Grids and lists are keyed by the title (`TitleCard.key`, the library's `rowKey`), never by the whole card (`TitleCard.key`), never by the whole card: a title page saving its format or
   status replaced the catalog tile that was its zoom transition's source while the page opened, and the page then took
   no tap (only Back worked).
 - No Kotlin property named `description` in an exported state: on iOS it is `toString()` (NSObject).

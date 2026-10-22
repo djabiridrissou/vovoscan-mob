@@ -46,8 +46,9 @@ struct LocaleRoot: View {
 struct RootView: View {
     @StateObject private var session = SessionModel()
     @State private var tab: AppTab = .catalog
-    /// The catalog's navigation: the tutorial ends by opening a title there.
-    @State private var catalogPath = NavigationPath()
+    /// Each tab's navigation, one typed path (see `AppRoute`): the tutorial ends by opening a title in the catalog's.
+    @State private var catalogPath: [AppRoute] = []
+    @State private var libraryPath: [AppRoute] = []
 
     init() { Self.styleBars() }
 
@@ -58,10 +59,12 @@ struct RootView: View {
                 // iPhone: the tab bar. iPad: the floating tab bar, which turns into a sidebar (same tabs, same state).
                 TabView(selection: $tab) {
                     Tab(L("nav.catalog"), systemImage: "square.grid.2x2", value: AppTab.catalog) {
-                        NavigationStack(path: $catalogPath) { CatalogView(path: $catalogPath) }
+                        NavigationStack(path: $catalogPath) { CatalogView() }
+                            .environment(\.push, PushAction { catalogPath.append($0) })
                     }
                     Tab(L("nav.library"), systemImage: "books.vertical", value: AppTab.library) {
-                        NavigationStack { LibraryView(onSignOut: session.signOut) }
+                        NavigationStack(path: $libraryPath) { LibraryView(onSignOut: session.signOut) }
+                            .environment(\.push, PushAction { libraryPath.append($0) })
                     }
                     Tab(L("nav.sources"), systemImage: "square.stack.3d.up", value: AppTab.sources) {
                         NavigationStack { SourcesView() }
@@ -82,7 +85,7 @@ struct RootView: View {
                 .fullScreenCover(isPresented: Binding(get: { session.showTutorial }, set: { if !$0 { session.tutorialClosed() } })) {
                     OnboardingView(onClose: session.tutorialClosed, openTab: { tab = $0 }, openTitle: { route in
                         tab = .catalog
-                        catalogPath = NavigationPath([route])
+                        catalogPath = [.title(route)]
                     })
                 }
                 .transition(.opacity)

@@ -13,7 +13,7 @@ struct LibraryView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
                 ScreenHeader(kicker: L("nav.library"), title: L("library.headline"))
-                NavigationLink(value: DownloadsRoute()) { Text(downloads.state.entryLabel + " →") }
+                NavigationLink(value: AppRoute.downloads) { Text(downloads.state.entryLabel + " →") }
                     .buttonStyle(GhostButtonStyle())
                 if let notice = model.state.pendingNotice { OfflineNotice(text: notice) }
                 if let error = model.state.error { ErrorText(text: error) }
@@ -30,8 +30,9 @@ struct LibraryView: View {
                                        actionLabel: L("library.browse")) { openTab(.catalog) }
                     }
                 }
-                ForEach(Array(model.state.rows.enumerated()), id: \.element) { index, row in
-                    NavigationLink(value: TitleRoute(sourceKey: row.sourceKey, titleId: row.titleId)) {
+                // By title, never by position or by the whole row (its progress changes): a tap opens the row tapped.
+                ForEach(Array(model.state.rows.enumerated()), id: \.element.rowKey) { index, row in
+                    NavigationLink(value: AppRoute.title(TitleRoute(sourceKey: row.sourceKey, titleId: row.titleId))) {
                         HStack(spacing: 14) {
                             AsyncImage(url: row.coverUrl.flatMap(URL.init(string:))) { image in
                                 image.resizable().scaledToFill()
@@ -66,9 +67,8 @@ struct LibraryView: View {
         }
         .background(Color.brandInk)
         .refreshable { model.send(LibraryIntentSync.shared) }
-        .navigationDestination(for: TitleRoute.self) { TitleView(route: $0) }
-        .navigationDestination(for: ReaderRoute.self) { ReaderContainer(route: $0) }
-        .navigationDestination(for: DownloadsRoute.self) { _ in DownloadsView() }
+        // The stack's only destinations (pushed screens register none).
+        .navigationDestination(for: AppRoute.self) { AppRouteView(route: $0) }
         // Two features side by side, unaware of each other: titles of a source no longer listed show "Source removed".
         .onAppear { model.send(LibraryIntentSourcesChanged(keys: sources.state.sourceKeys)) }
         .onChange(of: sources.state.sourceKeys) { _, keys in model.send(LibraryIntentSourcesChanged(keys: keys)) }
@@ -76,4 +76,9 @@ struct LibraryView: View {
         .task { await sources.observe() }
         .task { await downloads.observe() }
     }
+}
+
+private extension LibraryRow {
+    /// One row per title.
+    var rowKey: String { "\(sourceKey)/\(titleId)" }
 }
