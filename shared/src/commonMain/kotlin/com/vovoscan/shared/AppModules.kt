@@ -52,6 +52,8 @@ import com.vovoscan.feature.reader.domain.ReaderRepository
 import com.vovoscan.feature.reader.domain.ReaderSettingsRepository
 import com.vovoscan.feature.reader.domain.ReadingProgressSink
 import com.vovoscan.feature.reader.domain.TitleChapters
+import com.vovoscan.feature.reader.domain.TranslationQuote
+import com.vovoscan.feature.reader.domain.TranslationQuotes
 import com.vovoscan.feature.reader.domain.chapterLabel
 import com.vovoscan.feature.sources.di.sourcesModule
 import com.vovoscan.feature.sources.domain.SourceEngine
@@ -233,6 +235,15 @@ fun appModules(
                 RunQuotes { chapterId, lang ->
                     (wallet.quote(QuoteKind.Episode, chapterId, lang.ifEmpty { null }) as? AppResult.Ok)?.value?.let {
                         RunCost(it.credits, it.coveredByOwnKeys, it.alreadyAvailable, it.maxCredits, it.fundable, it.metered, it.unfunded)
+                    }
+                }
+            }
+            // What translating a chapter would cost (the reader's language picker quotes before paying).
+            single<TranslationQuotes> {
+                val wallet = get<WalletRepository>()
+                TranslationQuotes { chapterId, lang ->
+                    (wallet.quote(QuoteKind.Translation, chapterId, lang) as? AppResult.Ok)?.value?.let {
+                        TranslationQuote(it.credits, it.maxCredits, it.coveredByOwnKeys, it.alreadyAvailable, it.fundable)
                     }
                 }
             }

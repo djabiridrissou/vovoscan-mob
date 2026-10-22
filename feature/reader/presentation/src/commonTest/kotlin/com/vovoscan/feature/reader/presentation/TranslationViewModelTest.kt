@@ -6,6 +6,8 @@ import com.vovoscan.feature.reader.domain.ChapterTranslation
 import com.vovoscan.feature.reader.domain.PixelBox
 import com.vovoscan.feature.reader.domain.TranslatedPage
 import com.vovoscan.feature.reader.domain.TranslatedText
+import com.vovoscan.feature.reader.domain.TranslationQuote
+import com.vovoscan.feature.reader.domain.TranslationQuotes
 import com.vovoscan.feature.reader.domain.TranslationStatus
 import com.vovoscan.feature.reader.domain.TranslationsRepository
 import kotlinx.coroutines.Dispatchers
@@ -21,6 +23,7 @@ import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -103,6 +106,71 @@ class TranslationViewModelTest {
             advanceUntilIdle()
             assertEquals(TranslationText.NO_CREDITS, vm.state.value.error)
             assertFalse(vm.state.value.translated)
+        }
+
+    @Test
+    fun aNewLanguageIsQuotedBeforeAnythingIsPaid() =
+        runTest(dispatcher) {
+            val repo = FakeTranslations()
+            repo.requestResult = AppResult.Ok(ChapterTranslation("yo", TranslationStatus.Queued, null))
+            val quotes = TranslationQuotes { _, _ -> TranslationQuote(12, 20, false, false, true) }
+            val vm = TranslationViewModel("vovoscan", "c1", repo, quotes)
+            advanceUntilIdle()
+            vm.onIntent(TranslationIntent.Choose("yo"))
+            advanceUntilIdle()
+            val offer = assertNotNull(vm.state.value.offer)
+            assertEquals("Translate into Yorùbá?", offer.title)
+            assertEquals("About 12 credits from your wallet. It's made once, then free for every reader.", offer.line)
+            assertTrue(offer.canTranslate)
+            assertEquals(0, repo.requests)
+            vm.onIntent(TranslationIntent.ConfirmOffer)
+            advanceTimeBy(100)
+            assertEquals(1, repo.requests)
+            assertNull(vm.state.value.offer)
+            assertTrue(vm.state.value.working)
+        }
+
+    @Test
+    fun ownKeysAreFreeAndAWalletThatCantPayLeadsToTheKeys() =
+        runTest(dispatcher) {
+            val repo = FakeTranslations()
+            var quote = TranslationQuote(0, 0, true, false, true)
+            val vm = TranslationViewModel("vovoscan", "c1", repo, { _, _ -> quote })
+            advanceUntilIdle()
+            vm.onIntent(TranslationIntent.Choose("ee"))
+            advanceUntilIdle()
+            assertEquals(
+                "Your own key pays for it: no credits used. It's made once, then free for every reader.",
+                vm.state.value.offer
+                    ?.line,
+            )
+            assertNull(
+                vm.state.value.offer
+                    ?.addKeyLabel,
+            )
+            vm.onIntent(TranslationIntent.DismissOffer)
+            assertNull(vm.state.value.offer)
+            quote = TranslationQuote(40, 60, false, false, false)
+            vm.onIntent(TranslationIntent.Choose("ee"))
+            advanceUntilIdle()
+            val offer = assertNotNull(vm.state.value.offer)
+            assertFalse(offer.canTranslate)
+            assertEquals("Add a key", offer.addKeyLabel)
+            vm.onIntent(TranslationIntent.ConfirmOffer)
+            advanceUntilIdle()
+            assertEquals(0, repo.requests)
+        }
+
+    @Test
+    fun aLanguageAlreadyMadeSomewhereSwitchesWithoutAsking() =
+        runTest(dispatcher) {
+            val repo = FakeTranslations()
+            val vm = TranslationViewModel("vovoscan", "c1", repo, { _, _ -> TranslationQuote(0, 0, false, true, true) })
+            advanceUntilIdle()
+            vm.onIntent(TranslationIntent.Choose("fr"))
+            advanceUntilIdle()
+            assertNull(vm.state.value.offer)
+            assertTrue(vm.state.value.translated)
         }
 
     @Test

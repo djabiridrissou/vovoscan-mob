@@ -92,11 +92,29 @@ struct LanguageSheet: View {
     @ObservedObject var translation: TranslationModel
     @Environment(\.dismiss) private var dismiss
     @State private var query = ""
+    /** "Add a key" from an offer: the keys, pushed inside the sheet (the reader stays where it was). */
+    @State private var keysOpen = false
 
     var body: some View {
         let state = translation.state
         NavigationStack {
             List {
+                if let checking = state.checking {
+                    HStack(spacing: 8) {
+                        ProgressView().controlSize(.small).tint(Color.brandCyan)
+                        Text(checking).font(.brandBody(13)).foregroundStyle(Color.brandMuted)
+                    }
+                    .listRowBackground(Color.brandInk2)
+                }
+                if let offer = state.offer {
+                    OfferCard(offer: offer, translate: {
+                        Haptics.press()
+                        translation.send(TranslationIntentConfirmOffer.shared)
+                    }, cancel: {
+                        translation.send(TranslationIntentDismissOffer.shared)
+                    }, addKey: { keysOpen = true })
+                    .listRowBackground(Color.brandInk2)
+                }
                 if let progress = state.progressLabel {
                     Label(progress, systemImage: "waveform").font(.brandBody(13, weight: .bold)).foregroundStyle(Color.brandCyan)
                         .listRowBackground(Color.brandInk2)
@@ -116,7 +134,7 @@ struct LanguageSheet: View {
                     Button {
                         Haptics.select()
                         translation.send(TranslationIntentChoose(code: option.code))
-                        // A language already made shows at once; one being made keeps the sheet for its progress.
+                        // A language already made shows at once; a new one keeps the sheet for its cost and progress.
                         if option.ready { dismiss() }
                     } label: {
                         HStack(spacing: 12) {
@@ -149,8 +167,40 @@ struct LanguageSheet: View {
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) { Button(L("common.done")) { dismiss() } }
             }
+            .navigationDestination(isPresented: $keysOpen) { KeysScreen() }
         }
         .onAppear { query = state.query }
-        .onDisappear { translation.send(TranslationIntentDismissMessage.shared) }
+        .onDisappear {
+            translation.send(TranslationIntentDismissMessage.shared)
+            translation.send(TranslationIntentDismissOffer.shared)
+        }
+    }
+}
+
+/// "Translate into Yorùbá?": what it costs this account, then Translate / Add a key / Not now. Nothing is paid before.
+private struct OfferCard: View {
+    let offer: TranslationOffer
+    let translate: () -> Void
+    let cancel: () -> Void
+    let addKey: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(offer.title).font(.brandDisplay(18)).foregroundStyle(Color.brandPaper)
+            Text(offer.line).font(.brandBody(14)).foregroundStyle(offer.canTranslate ? Color.brandPaper : Color.brandYellow)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 10) {
+                if offer.canTranslate {
+                    Button(offer.translateLabel, action: translate).buttonStyle(PrimaryButtonStyle())
+                }
+                if let label = offer.addKeyLabel {
+                    Button(label, action: addKey).buttonStyle(GhostButtonStyle())
+                }
+                Button(offer.cancelLabel, action: cancel)
+                    .font(.brandBody(13, weight: .bold)).foregroundStyle(Color.brandMuted)
+            }
+        }
+        .padding(.vertical, 6)
+        .accessibilityElement(children: .contain)
     }
 }

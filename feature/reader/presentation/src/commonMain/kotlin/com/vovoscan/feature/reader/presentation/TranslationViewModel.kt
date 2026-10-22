@@ -10,6 +10,7 @@ import com.vovoscan.core.common.userMessage
 import com.vovoscan.feature.reader.domain.ChapterTranslation
 import com.vovoscan.feature.reader.domain.Lettering
 import com.vovoscan.feature.reader.domain.LetteringLayout
+import com.vovoscan.feature.reader.domain.TranslationQuotes
 import com.vovoscan.feature.reader.domain.TranslationStatus
 import com.vovoscan.feature.reader.domain.TranslationsRepository
 import kotlinx.coroutines.Job
@@ -33,6 +34,22 @@ data class LanguageOption(
     val selected: Boolean,
 )
 
+/**
+ * A language nobody has made yet, before anything is paid: what it costs this account, and what can be done
+ * ("Translate", or "Add a key" when the wallet can't pay). Never a dead end.
+ */
+data class TranslationOffer(
+    val code: String,
+    val title: String,
+    val line: String,
+    /** False when nobody can pay (no key, wallet short): only "Add a key" and "Not now". */
+    val canTranslate: Boolean,
+    val translateLabel: String,
+    val cancelLabel: String,
+    /** Shown when the account's own key would make it free (always when it can't be paid). */
+    val addKeyLabel: String?,
+)
+
 data class TranslationUiState(
     /** Translations exist for chapters of our catalog only: elsewhere the reader shows no language button. */
     val available: Boolean = false,
@@ -50,6 +67,10 @@ data class TranslationUiState(
     val error: String? = null,
     /** Lettering of every translated page, by page index. */
     val lettering: Map<Int, List<Lettering>> = emptyMap(),
+    /** "Translate into Yoruba?" with its cost, while the reader decides. */
+    val offer: TranslationOffer? = null,
+    /** "Checking the cost…" while the quote comes. */
+    val checking: String? = null,
 ) {
     /** What to draw over page [index] (empty for the original lettering). */
     fun letteringFor(index: Int): List<Lettering> = lettering[index] ?: emptyList()
@@ -69,6 +90,12 @@ sealed interface TranslationIntent {
 
     data object Retry : TranslationIntent
 
+    /** "Translate" on the offer: the translation starts, paid as the offer said. */
+    data object ConfirmOffer : TranslationIntent
+
+    /** "Not now" (or the sheet closed): nothing is asked, the page stays as it was. */
+    data object DismissOffer : TranslationIntent
+
     data object DismissMessage : TranslationIntent
 }
 
@@ -81,6 +108,7 @@ class TranslationViewModel(
     private val sourceKey: String,
     private val chapterId: String,
     private val repository: TranslationsRepository,
+    private val quotes: TranslationQuotes = TranslationQuotes.None,
 ) : ViewModel() {
     private val mutableState = MutableStateFlow(TranslationUiState(available = sourceKey == INTERNAL_SOURCE))
     val state: StateFlow<TranslationUiState> = mutableState.asStateFlow()
@@ -101,14 +129,69 @@ class TranslationViewModel(
                 mutableState.update { it.copy(query = intent.value) }
                 render()
             }
-            is TranslationIntent.Choose -> choose(intent.code)
+            is TranslationIntent.Choose -> offerOrChoose(intent.code)
             TranslationIntent.Retry -> choose(state.value.selected)
+            TranslationIntent.ConfirmOffer ->
+                state.value.offer
+                    ?.takeIf { it.canTranslate }
+                    ?.let { choose(it.code) }
+            TranslationIntent.DismissOffer -> {
+                quoteJob?.cancel()
+                mutableState.update { it.copy(offer = null, checking = null) }
+            }
             TranslationIntent.DismissMessage -> mutableState.update { it.copy(notice = null, error = null) }
         }
     }
 
+    private var quoteJob: Job? = null
+
+    /**
+     * A language already made (or the original) shows at once, free. One nobody made yet is quoted first: own key →
+     * free, else its credits; started only on "Translate". Without a quote (no credits on the server, offline) it is
+     * asked straight away and the server's answer says the rest.
+     */
+    private fun offerOrChoose(code: String?) {
+        quoteJob?.cancel()
+        mutableState.update { it.copy(offer = null, checking = null) }
+        if (code == null ||
+            Language.of(code) == null ||
+            known[code]?.status == TranslationStatus.Ready ||
+            known[code]?.status?.inProgress == true
+        ) {
+            return choose(code)
+        }
+        mutableState.update { it.copy(checking = TranslationText.CHECKING) }
+        quoteJob =
+            viewModelScope.launch {
+                val quote = quotes.quote(chapterId, code)
+                mutableState.update { it.copy(checking = null) }
+                if (quote == null || quote.alreadyAvailable) return@launch choose(code)
+                val language = Language.of(code)?.native ?: code
+                mutableState.update {
+                    it.copy(
+                        offer =
+                            TranslationOffer(
+                                code = code,
+                                title = t("translation.offer.title", "language" to language),
+                                line =
+                                    when {
+                                        quote.coveredByOwnKeys -> t("translation.offer.ownKeys")
+                                        quote.fundable -> t("translation.offer.credits", "credits" to quote.credits)
+                                        else -> t("translation.offer.short")
+                                    },
+                                canTranslate = quote.fundable || quote.coveredByOwnKeys,
+                                translateLabel = t("translation.offer.translate"),
+                                cancelLabel = t("translation.offer.cancel"),
+                                addKeyLabel = if (quote.coveredByOwnKeys) null else t("translation.offer.addKey"),
+                            ),
+                    )
+                }
+            }
+    }
+
     private fun choose(code: String?) {
         job?.cancel()
+        mutableState.update { it.copy(offer = null) }
         if (code == null || Language.of(code) == null) {
             mutableState.update { it.copy(selected = null, lettering = emptyMap(), working = false, progressLabel = null, error = null) }
             render()
@@ -227,6 +310,7 @@ object TranslationText {
     val OFFLINE: String get() = t("translation.offline")
     val NO_CREDITS: String get() = t("translation.noCredits")
     val PAUSED: String get() = t("translation.paused")
+    val CHECKING: String get() = t("translation.offer.checking")
     val DAILY_CAP: String get() = t("translation.dailyCap")
     val NOT_READABLE: String get() = t("translation.notReadable")
 

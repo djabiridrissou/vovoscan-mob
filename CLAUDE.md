@@ -525,7 +525,7 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   `SpeedLines` (deterministic, drawn with `Canvas`). Ink tab and navigation bars, red selection, a selection haptic per
   tab. Every animation is skipped under Reduce Motion.
 
-## Translated reader (`TranslationViewModel`, `iosApp/Sources/TranslationViews.swift`)
+## Translated reader (`TranslationViewModel`, iOS `TranslationViews.swift`, Android `ui/reader/{Lettering,TranslationSheet}.kt`)
 
 - Chapters of our catalog only (`sourceKey == "vovoscan"`): a language button in the reader's top bar opens a
   searchable picker (own name, English name or code), languages already made first ("Ready": shared, free).
@@ -538,6 +538,13 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   balloon's interior when known, ellipse for round balloons) and the rectangle the translation is fitted in, as
   fractions of the page. iOS draws them in `LetteringOverlay` over each `PageImage` (any mode, any zoom). `Language.ALL`
   (`core/common`) mirrors the server's `LANGUAGES` (48 entries).
+
+- Any time, from the reader's bar: a language already made switches at once (free); one nobody made yet is quoted first
+  (`TranslationQuotes` port, wired in `shared` to `POST api/v1/quotes` kind `translation`): `TranslationOffer` "Translate
+  into Yorùbá?" with "Your own key pays for it", "About 12 credits", or, when nobody can pay, "Add a key" (the keys open
+  inside the sheet, the reader stays); nothing is asked before "Translate". Then progress, and the page swaps its
+  lettering. Android draws it with `LetteringOverlay` over every page (`LocalPageLettering`, in a box of the page's
+  shape).
 
 ## Screens (account and episodes)
 

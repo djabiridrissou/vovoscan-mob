@@ -25,6 +25,7 @@ import com.vovoscan.feature.reader.domain.DownloadScheduler
 import com.vovoscan.feature.reader.domain.DownloadsRepository
 import com.vovoscan.feature.reader.domain.ReaderRepository
 import com.vovoscan.feature.reader.domain.ReaderSettingsRepository
+import com.vovoscan.feature.reader.domain.TranslationQuotes
 import com.vovoscan.feature.reader.domain.TranslationsRepository
 import com.vovoscan.feature.reader.presentation.DownloadsViewModel
 import com.vovoscan.feature.reader.presentation.ReaderViewModel
@@ -80,5 +81,12 @@ val readerModule =
         viewModelOf(::DownloadsViewModel)
         // Translations of our catalog's chapters: read fresh from the API, lettering laid out in shared code.
         single { TranslationsRepositoryImpl(get()) } binds arrayOf(TranslationsRepository::class, ChapterPanels::class)
-        viewModel { (sourceKey: String, chapterId: String) -> TranslationViewModel(sourceKey, chapterId, get()) }
+        viewModel { (sourceKey: String, chapterId: String) ->
+            TranslationViewModel(
+                sourceKey,
+                chapterId,
+                get(),
+                getOrNull() ?: TranslationQuotes.None,
+            )
+        }
     }

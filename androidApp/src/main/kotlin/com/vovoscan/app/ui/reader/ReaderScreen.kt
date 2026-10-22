@@ -43,6 +43,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -105,6 +106,7 @@ import com.vovoscan.feature.reader.presentation.ReaderUiState
 import com.vovoscan.feature.reader.presentation.ReaderViewModel
 import com.vovoscan.feature.reader.presentation.TapOverlay
 import com.vovoscan.feature.reader.presentation.TransitionCard
+import com.vovoscan.feature.reader.presentation.TranslationViewModel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -134,6 +136,11 @@ fun ReaderScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val onIntent = viewModel::onIntent
     var settingsOpen by rememberSaveable { mutableStateOf(false) }
+    // The reader's language (chapters of our catalog): any time from the bar, free when already made, quoted first.
+    val translation: TranslationViewModel =
+        koinViewModel(key = "translation:$sourceKey/$chapterId") { parametersOf(sourceKey, chapterId) }
+    val translationState by translation.state.collectAsStateWithLifecycle()
+    var languagesOpen by rememberSaveable { mutableStateOf(false) }
 
     // Keep the screen awake while reading (setting, on by default).
     val view = LocalView.current
@@ -188,7 +195,10 @@ fun ReaderScreen(
                 }
             state.isBook -> BookReader(state, onIntent) { onOpenChapter(it, 0) }
             state.items.isEmpty() -> Unit
-            else -> ComicReader(state, onIntent)
+            else ->
+                CompositionLocalProvider(LocalPageLettering provides { translationState.letteringFor(it) }) {
+                    ComicReader(state, onIntent)
+                }
         }
         state.tapOverlay.let { overlay ->
             AnimatedVisibility(overlay != null, enter = fadeIn(), exit = fadeOut()) {
@@ -241,6 +251,9 @@ fun ReaderScreen(
                 Modifier.align(Alignment.TopCenter),
                 onWatch = { onIntent(ReaderIntent.ReadWithVoice) },
                 onHelp = { onIntent(ReaderIntent.ShowCoach) },
+                language = {
+                    if (!state.isBook && translationState.available) LanguageButton(translationState) { languagesOpen = true }
+                },
             )
             BottomBar(state, onIntent, { onOpenChapter(it, 0) }, Modifier.align(Alignment.BottomCenter))
         }
@@ -255,6 +268,7 @@ fun ReaderScreen(
             shown?.let { CoachOverlay(it) { onIntent(ReaderIntent.DismissCoach) } }
         }
     }
+    if (languagesOpen) TranslationSheet(translationState, translation::onIntent) { languagesOpen = false }
     if (settingsOpen && !state.isBook) {
         ReaderSettingsSheet(state.settings, onIntent) {
             settingsOpen = false
@@ -747,21 +761,31 @@ internal fun PageImage(
         }
         return
     }
-    AsyncImage(
-        model = request,
-        contentDescription = I18n.textWith("library.page", mapOf("n" to page.index + 1)),
-        contentScale = scale,
-        onSuccess = { success ->
-            val image = success.result.image
-            if (image.width > 0 && image.height > 0) {
-                loadedRatio = image.width.toFloat() / image.height
-                if (!page.hasSize) onSize?.invoke(image.width, image.height)
-                onLoadedRatio(image.width.toFloat() / image.height)
+    // The reader's language: the translated lettering over the page, in a box of the page's own shape (the image
+    // may be fitted inside a larger area).
+    val lettering = LocalPageLettering.current(page.index)
+    Box(contentAlignment = Alignment.Center) {
+        AsyncImage(
+            model = request,
+            contentDescription = I18n.textWith("library.page", mapOf("n" to page.index + 1)),
+            contentScale = scale,
+            onSuccess = { success ->
+                val image = success.result.image
+                if (image.width > 0 && image.height > 0) {
+                    loadedRatio = image.width.toFloat() / image.height
+                    if (!page.hasSize) onSize?.invoke(image.width, image.height)
+                    onLoadedRatio(image.width.toFloat() / image.height)
+                }
+            },
+            onError = { failed = true },
+            modifier = sized.background(Brand.Ink2),
+        )
+        if (lettering.isNotEmpty()) {
+            Box(Modifier.matchParentSize(), contentAlignment = Alignment.Center) {
+                LetteringOverlay(lettering, Modifier.aspectRatio(ratio))
             }
-        },
-        onError = { failed = true },
-        modifier = sized.background(Brand.Ink2),
-    )
+        }
+    }
 }
 
 @Composable
@@ -772,6 +796,7 @@ private fun TopBar(
     modifier: Modifier,
     onWatch: () -> Unit = {},
     onHelp: () -> Unit = {},
+    language: @Composable () -> Unit = {},
 ) {
     Row(
         modifier.fillMaxWidth().background(Brand.Ink.copy(alpha = 0.92f)).padding(horizontal = 16.dp, vertical = 12.dp),
@@ -793,6 +818,7 @@ private fun TopBar(
                         .padding(start = 16.dp, top = 4.dp, bottom = 4.dp),
             )
         }
+        language()
         val help = I18n.text("reader.coach.show")
         Text(
             "?",
