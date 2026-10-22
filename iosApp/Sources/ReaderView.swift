@@ -431,7 +431,7 @@ private struct PageImage: View {
             } else if loader.failed {
                 VStack(spacing: 12) {
                     Text(L("reader.pageFailed")).font(.brandBody(14)).foregroundStyle(Color.brandMuted)
-                    Button(L("common.tryAgain")) { loader.load(page.url) }.buttonStyle(GhostButtonStyle()).frame(width: 160)
+                    Button(L("common.retry")) { loader.load(page.url) }.buttonStyle(GhostButtonStyle()).frame(width: 160)
                 }
                 .padding(24)
             }

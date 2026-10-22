@@ -461,6 +461,7 @@
   "reader.nextUnknown": "Next: the next chapter",
   "reader.notSaved": "This chapter isn't saved on this device yet.",
   "reader.openingBook": "Opening the book…",
+  "reader.pageFailed": "This page didn’t load.",
   "reader.part": "Part {n}",
   "reader.previous": "Previous: {chapter}",
   "reader.previousArrow": "← Previous",

@@ -500,10 +500,10 @@ private fun PageImage(
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Text("This page didn't load.", style = MaterialTheme.typography.bodyMedium.copy(color = Brand.Muted))
+            Text(text("reader.pageFailed"), style = MaterialTheme.typography.bodyMedium.copy(color = Brand.Muted))
             Spacer(Modifier.size(12.dp))
             GhostButton(
-                "Retry",
+                text("common.retry"),
                 onClick = {
                     failed = false
                     attempt++
