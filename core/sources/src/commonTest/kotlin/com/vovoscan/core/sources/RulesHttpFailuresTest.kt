@@ -61,9 +61,10 @@ class RulesHttpFailuresTest {
                     respond("", HttpStatusCode.OK)
                 }
             val json =
-                Json.parseToJsonElement(
-                    """{"key":"lan","name":"LAN","hosts":["127.0.0.1","comics.inkwell.example"],"settings":{"base":{"type":"url"}}}""",
-                ).jsonObject
+                Json
+                    .parseToJsonElement(
+                        """{"key":"lan","name":"LAN","hosts":["127.0.0.1","comics.inkwell.example"],"settings":{"base":{"type":"url"}}}""",
+                    ).jsonObject
             val lan = SourceManifest("lan", json, mapOf("base" to "https://192.168.1.10"))
             assertEquals(setOf("comics.inkwell.example"), lan.allowedHosts)
             val http = RulesHttp(createRulesHttpClient(engine), online)
