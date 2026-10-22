@@ -205,6 +205,12 @@ class CatalogViewModelTest {
                     ?.toSet(),
             )
             assertEquals(2, repository.searched.size)
+
+            // A space around the query (iOS autocorrect adds one) is not sent.
+            repository.searched.clear()
+            vm.onIntent(CatalogIntent.Query("g1 "))
+            advanceUntilIdle()
+            assertEquals(listOf("g1", "g1"), repository.searched.map { it.second })
             vm.onIntent(CatalogIntent.Query(""))
             assertNull(vm.state.value.results)
         }

@@ -59,8 +59,15 @@ data class ReaderPage(
     val width: Int,
     val height: Int,
 ) {
-    /** Width / height, to reserve space before the image arrives (no layout jump). */
-    val aspectRatio: Float get() = if (height > 0 && width > 0) width.toFloat() / height else 0.7f
+    /**
+     * The size is known before the image arrives: our own pages (the API sends it). A source read on the device
+     * usually doesn't say: the reader then shows a placeholder and takes the image's own size once it has loaded,
+     * never this placeholder's shape (a webtoon strip squeezed into it would be unreadable).
+     */
+    val hasSize: Boolean get() = width > 0 && height > 0
+
+    /** Width / height, to reserve space before the image arrives (no layout jump); the placeholder's without a size. */
+    val aspectRatio: Float get() = if (hasSize) width.toFloat() / height else 0.7f
 }
 
 data class ReaderChapter(

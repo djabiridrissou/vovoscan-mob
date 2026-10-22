@@ -106,7 +106,7 @@ data class CatalogUiState(
     val emptyMessage: String
         get() =
             when {
-                results != null -> "No title matches “$query”."
+                results != null -> "No title matches “${query.trim()}”."
                 category != null -> "No titles in “$category” yet."
                 else -> "No titles yet. Check back soon."
             }
@@ -359,7 +359,12 @@ class CatalogViewModel(
         searchJob =
             viewModelScope.launch {
                 delay(SEARCH_DEBOUNCE_MS)
-                val found = current.map { reading -> async { repository.search(reading.source.key, query, reading.categoryId) } }.awaitAll()
+                // The field keeps what was typed; sources get it without the spaces around (iOS autocorrect adds one).
+                val found =
+                    current
+                        .map { reading ->
+                            async { repository.search(reading.source.key, query.trim(), reading.categoryId) }
+                        }.awaitAll()
                 val titles = CatalogMerge.mix(found.map { it.titles }, Random(seed.value))
                 mutableState.update {
                     it.copy(

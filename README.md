@@ -267,9 +267,17 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   Sign-out and a removed source erase the series modes; the device-wide preferences stay.
 - Android: `HorizontalPager` (reversed for right to left) / `VerticalPager` / `LazyColumn`, `detectTapGestures`
   around them, volume keys through `MainActivity.onKeyDown`/`onKeyUp` while the reader is on screen. Pages taller than
-  4096 px are decoded as software bitmaps (a hardware bitmap of an 800 × 14 000 webtoon page never drew). iOS: paging
-  `ScrollView` (`scrollTargetBehavior(.paging)`, right-to-left layout direction) / `ScrollView` + `ScrollPosition`,
-  one `SpatialTapGesture` on the container.
+  4096 px, and pages of unknown height, are decoded as software bitmaps (a hardware bitmap of an 800 × 14 000 webtoon
+  page never drew). iOS: paging `ScrollView` (`scrollTargetBehavior(.paging)`, right-to-left layout direction) /
+  `ScrollView` + `ScrollPosition`, one `SpatialTapGesture` on the container.
+- Page size (`ReaderPage.hasSize`): our pages come with their size, so the space is reserved and nothing jumps. A source
+  read on the device usually sends none (0 × 0): the page shows a placeholder (0.7, portrait) until the image has loaded,
+  then takes **the image's own shape** (Android: Coil's `onSuccess`; iOS: `PageLoader`, which fetches through the shared
+  session so the cache and `SourceRefererProtocol` still apply). Never the placeholder's shape: a webtoon strip squeezed
+  into it was a thin band on iOS and cropped to its top on Android. iOS keeps the page a frame of known ratio at full
+  width: in the strip's `LazyVStack`, a view sized from an image or a colour with no height proposed collapses (pages
+  then took no height at all). The loader starts again when the page's URL changes (the saved copy of a chapter shows
+  first, the fresh one may bring new signed links). A page that fails shows "This page didn't load." and Retry.
 
 ## Account (keys, reading model, costs)
 

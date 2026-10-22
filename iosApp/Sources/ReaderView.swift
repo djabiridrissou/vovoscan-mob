@@ -397,21 +397,82 @@ private struct TapZonesOverlay: View {
     }
 }
 
-/// Space is reserved from the known dimensions: no jump when the image arrives.
+/// Known size (our pages): space reserved from it, no jump when the image arrives. Unknown (a source read on the
+/// device usually doesn't say): a placeholder's shape until the image has loaded, then the image's own shape, never
+/// the placeholder's (a webtoon strip squeezed into it would be a thin unreadable band). A page that fails says so and
+/// can be tried again. The shape is always a frame of known ratio at full width: in the strip's lazy stack, a view that
+/// sizes itself from an image or a colour with no height proposed collapses.
 private struct PageImage: View {
     let page: ReaderPage
     var fit = false
+    @StateObject private var loader = PageLoader()
 
     var body: some View {
-        AsyncImage(url: URL(string: page.url)) { image in
-            image.resizable().aspectRatio(contentMode: .fit)
-        } placeholder: {
+        ZStack {
             Color.brandInk2
+            if let image = loader.image {
+                Image(uiImage: image).resizable().aspectRatio(contentMode: .fit)
+            } else if loader.failed {
+                VStack(spacing: 12) {
+                    Text("This page didn't load.").font(.brandBody(14)).foregroundStyle(Color.brandMuted)
+                    Button("Retry") { loader.load(page.url) }.buttonStyle(GhostButtonStyle()).frame(width: 160)
+                }
+                .padding(24)
+            }
         }
-        .aspectRatio(CGFloat(page.aspectRatio), contentMode: .fit)
+        .aspectRatio(ratio, contentMode: .fit)
         .frame(maxWidth: .infinity, maxHeight: fit ? .infinity : nil)
+        .onAppear { loader.show(page.url) }
+        // The saved copy of a chapter shows first; the fresh one may bring new signed links.
+        .onChange(of: page.url) { _, url in loader.show(url) }
         .accessibilityLabel("Page \(page.index + 1)")
     }
+
+    private var ratio: CGFloat {
+        if page.hasSize { return CGFloat(page.aspectRatio) }
+        if let size = loader.image?.size, size.width > 0, size.height > 0 { return size.width / size.height }
+        return CGFloat(page.aspectRatio)
+    }
+}
+
+/// One page's image, fetched through the shared session (its cache, and the source's Referer from
+/// `SourceRefererProtocol`, as AsyncImage had), so its real size is known once it has loaded.
+@MainActor
+private final class PageLoader: ObservableObject {
+    @Published private(set) var image: UIImage?
+    @Published private(set) var failed = false
+    private var task: Task<Void, Never>?
+    private var address: String?
+
+    /// Loads `url` unless it is already the one shown (or loading).
+    func show(_ url: String) {
+        guard url != address else { return }
+        image = nil
+        load(url)
+    }
+
+    func load(_ address: String) {
+        self.address = address
+        task?.cancel()
+        failed = false
+        guard let url = URL(string: address) else {
+            failed = true
+            return
+        }
+        task = Task {
+            do {
+                let (data, response) = try await URLSession.shared.data(from: url)
+                let status = (response as? HTTPURLResponse)?.statusCode ?? 200
+                let decoded = (200 ..< 300).contains(status) ? await Task.detached { UIImage(data: data) }.value : nil
+                guard !Task.isCancelled else { return }
+                if let decoded { image = decoded } else { failed = true }
+            } catch {
+                if !Task.isCancelled { failed = true }
+            }
+        }
+    }
+
+    deinit { task?.cancel() }
 }
 
 /// Book: one section at a time, in a web view with JavaScript off and no navigation. The HTML is already sanitised
