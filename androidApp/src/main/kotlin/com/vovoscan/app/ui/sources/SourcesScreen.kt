@@ -15,7 +15,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -44,7 +43,6 @@ import com.vovoscan.app.ui.common.OfflineNotice
 import com.vovoscan.app.ui.theme.Brand
 import com.vovoscan.core.common.Freshness
 import com.vovoscan.feature.sources.presentation.RepositoryRow
-import com.vovoscan.feature.sources.presentation.SourceChip
 import com.vovoscan.feature.sources.presentation.SourceRow
 import com.vovoscan.feature.sources.presentation.SourcesIntent
 import com.vovoscan.feature.sources.presentation.SourcesViewModel
@@ -229,29 +227,4 @@ private fun Arrow(
         style = MaterialTheme.typography.titleMedium.copy(color = if (enabled) Brand.Paper else Brand.Line),
         modifier = Modifier.clickable(enabled = enabled, onClick = onClick).padding(horizontal = 10.dp, vertical = 6.dp),
     )
-}
-
-/** Source picker at the top of the catalog: the visible sources, in the chosen order. */
-@Composable
-fun SourcePicker(
-    chips: List<SourceChip>,
-    selected: String,
-    onSelect: (String) -> Unit,
-) {
-    if (chips.size < 2) return
-    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        items(chips, key = { it.key }) { chip ->
-            val active = chip.key == selected
-            Text(
-                chip.name,
-                style = MaterialTheme.typography.labelLarge.copy(color = if (active) Brand.Ink else Brand.Paper),
-                modifier =
-                    Modifier
-                        .background(if (active) Brand.Red else Brand.Ink2, RoundedCornerShape(999.dp))
-                        .border(1.dp, if (active) Brand.Red else Brand.Line, RoundedCornerShape(999.dp))
-                        .clickable { onSelect(chip.key) }
-                        .padding(horizontal = 14.dp, vertical = 8.dp),
-            )
-        }
-    }
 }

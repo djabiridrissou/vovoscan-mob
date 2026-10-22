@@ -57,6 +57,12 @@ interface ReaderRemoteDataSource {
         sourceKey: String,
         url: String,
     ): AppResult<ByteArray>
+
+    /** A comic page's image (downloads): with the source's Referer when its manifest declares one. */
+    suspend fun downloadPage(
+        sourceKey: String,
+        url: String,
+    ): AppResult<ByteArray> = download(sourceKey, url)
 }
 
 /** `GET api/v1/catalog/chapters/{id}`; a book's file is a signed vovoscan URL. */
@@ -134,6 +140,11 @@ class OnDeviceReaderRemoteDataSource(
         url: String,
     ): AppResult<ByteArray> = manifests.manifest(sourceKey)?.let { RulesSource(it, http).download(url) } ?: unknown()
 
+    override suspend fun downloadPage(
+        sourceKey: String,
+        url: String,
+    ): AppResult<ByteArray> = manifests.manifest(sourceKey)?.let { RulesSource(it, http).downloadImage(url) } ?: unknown()
+
     private fun <T> unknown(): AppResult<T> =
         AppResult.Err(AppError.Rejected("SOURCE_NOT_FOUND", "This source isn't available on this device yet."))
 }
@@ -156,4 +167,9 @@ class RoutingReaderRemoteDataSource(
         sourceKey: String,
         url: String,
     ) = pick(sourceKey).download(sourceKey, url)
+
+    override suspend fun downloadPage(
+        sourceKey: String,
+        url: String,
+    ) = pick(sourceKey).downloadPage(sourceKey, url)
 }

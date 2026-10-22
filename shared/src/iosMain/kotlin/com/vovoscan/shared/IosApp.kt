@@ -73,6 +73,8 @@ fun initKoin(
     runBlocking { KoinPlatform.getKoin().get<AuthRepository>().restore() }
     // Chapters left downloading when the app stopped carry on.
     KoinPlatform.getKoin().get<DownloadsRepository>().resume()
+    // Page images of sources that ask for a Referer (the URL protocol of the iOS app reads `ImageReferers`).
+    KoinPlatform.getKoin().get<ImageRefererSync>().start()
 }
 
 /**

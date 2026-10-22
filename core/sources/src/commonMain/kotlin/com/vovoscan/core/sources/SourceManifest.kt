@@ -30,6 +30,25 @@ data class SourceManifest(
             ?.jsonPrimitive
             ?.int ?: 30
 
+    /**
+     * `content.comic.referer` rendered with the settings and the device's language: the Referer sent with this
+     * source's page images (and only to its allowed hosts). Null when the manifest declares none, or when it does not
+     * render to an http(s) address.
+     */
+    val imageReferer: String?
+        get() {
+            val template =
+                json["content"]
+                    ?.jsonObject
+                    ?.get("comic")
+                    ?.jsonObject
+                    ?.get("referer")
+                    ?.jsonPrimitive
+                    ?.contentOrNull ?: return null
+            val rendered = Template.render(template, mapOf("settings" to settings, "lang" to deviceLanguage())).trim()
+            return rendered.takeIf { hostOf(it) != null && (it.startsWith("https://") || it.startsWith("http://")) }
+        }
+
     /** Hosts the device may contact: those in the manifest and those from url-type settings. */
     val allowedHosts: Set<String>
         get() {

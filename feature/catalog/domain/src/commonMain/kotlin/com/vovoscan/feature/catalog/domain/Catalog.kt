@@ -70,23 +70,71 @@ data class TitleDetail(
     val chapters: List<Chapter>,
 )
 
+/** A category of a source: its own id (sent to the source) and the name the reader sees. */
+data class SourceCategory(
+    val id: String,
+    val name: String,
+)
+
+/** A title of a source's listing, with the page it came in on (the merged catalog goes page by page). */
+data class ListedTitle(
+    val title: TitleSummary,
+    val page: Int,
+)
+
 /**
- * A source's catalog, offline first: screens read the local database (`observe…`), `refresh…` replaces it
- * with what the source says (the vovoscan API for the internal source, the device itself for the others).
+ * What the catalog shows, remembered on the device: every visible source (`sourceKeys` empty: "All", so a source
+ * shown later joins in) or some of them, and a category by name (matched case-insensitively across sources), or none.
+ */
+data class CatalogFilter(
+    val sourceKeys: List<String> = emptyList(),
+    val categoryName: String? = null,
+)
+
+/**
+ * Each source's catalog, offline first: screens read the local database (`observe…`), `refresh…` replaces it
+ * with what the source says (the vovoscan API for the internal source, the device itself for the others). A source
+ * has one listing per category (`categoryId`), and one for everything (`null`).
  */
 interface CatalogRepository {
-    fun observeTitles(sourceKey: String): Flow<List<TitleSummary>>
+    fun observeListing(
+        sourceKey: String,
+        categoryId: String? = null,
+    ): Flow<List<ListedTitle>>
 
     /** Reloads the first page; true if more pages remain. */
-    suspend fun refreshTitles(sourceKey: String): AppResult<Boolean>
+    suspend fun refreshListing(
+        sourceKey: String,
+        categoryId: String? = null,
+    ): AppResult<Boolean>
 
-    suspend fun loadMoreTitles(sourceKey: String): AppResult<Boolean>
+    /** The next page, when there is one; true if more pages remain. */
+    suspend fun loadMoreListing(
+        sourceKey: String,
+        categoryId: String? = null,
+    ): AppResult<Boolean>
+
+    /** True while the saved listing has pages left to load (known before any network answer). */
+    suspend fun hasMore(
+        sourceKey: String,
+        categoryId: String? = null,
+    ): Boolean
 
     /** Searches the source; offline (or the source isn't answering), searches the titles already saved on the device. */
     suspend fun search(
         sourceKey: String,
         query: String,
+        categoryId: String? = null,
     ): SearchResult
+
+    /** The source's categories as last read (none until then, or when it has none). */
+    fun observeCategories(sourceKey: String): Flow<List<SourceCategory>>
+
+    suspend fun refreshCategories(sourceKey: String): AppResult<Unit>
+
+    fun observeFilter(): Flow<CatalogFilter>
+
+    suspend fun saveFilter(filter: CatalogFilter)
 
     fun observeTitle(
         sourceKey: String,

@@ -66,7 +66,8 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
 
 - `feature/sources`: the user's active sources (`GET api/v1/catalog/sources`), visible or not, in their order;
   choices applied locally then sent (`PUT`, replayed if they could not go out). At least one stays visible.
-  "Sources" screen and catalog picker (`SourcePicker`), wired together by the app.
+  "Sources" screen; its visible sources (in order) feed the catalog's source filter (`CatalogIntent.SourcesChanged`,
+  wired by the app).
 - Two engines, chosen by `sourceKey` in the remote data sources (`Routing…RemoteDataSource`):
   - `vovoscan` (internal): read through our API.
   - rule-based source (e.g. Project Gutenberg): **the device interprets the manifest and makes the requests
@@ -74,8 +75,18 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
     its progress.
 - `core/sources`: manifest (v1 contract, copy of `vovo-plugin/schema`), JSONPath, `{{settings.x}}` templates,
   CSS selectors (Ksoup) over HTML **and XML** (Atom/OPDS) responses, transforms, `RulesSource` (catalog, title
-  page, pages, book URL). Catalog pagination: plain `{{page}}`, `startIndex` (`base + (page-1)*pageSize`) and
-  `cursor` (next-page value extracted from each response, sent as a query parameter).
+  page, pages, book URL, `categories()`). Catalog pagination: plain `{{page}}`, `startIndex` (`base + (page-1)*pageSize`)
+  and `cursor` (next-page value extracted from each response, sent as a query parameter). `catalog(page, search,
+  category)`: `{{category}}` is the chosen category's id (empty, so not sent, while browsing everything); `categories()`
+  reads the manifest's fixed list or its own request (`list` + `item {id, name}`).
+- Page images' Referer (`content.comic.referer`, `SourceManifest.imageReferer`: settings and `{{lang}}` only, http(s)):
+  `RulesSource.downloadImage` sends it (downloads: `ReaderRemoteDataSource.downloadPage`); a book file
+  (`download`) never does. Image loaders that know nothing of sources ask `ImageReferers.refererFor(url)` (shared
+  `imageRefererFor`), a host → Referer table of the rule-based sources (first in the user's order wins a host),
+  kept up to date by `ImageRefererSync` (started at launch by `VovoscanApplication` / `initKoin`): Android's Coil
+  `ImageLoader` has an interceptor (`ui/common/ImageLoading.kt`), iOS registers `SourceRefererProtocol` (a `URLProtocol`
+  for the shared session behind AsyncImage, replaying the request with `Referer` on a cookie-less session of its own).
+  Only those hosts get it, covers included; never the API.
 - `RulesHttp`: a separate client, **without the vovoscan session or cookies**, redirects followed by hand and
   limited to declared hosts (manifest + URL-type settings), rate capped by the manifest. A failure is `Network` only
   when `NetworkMonitor` says the device is offline; otherwise (exception, timeout, any error status)
@@ -83,7 +94,6 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
 - Regexes in shared code: escape `{` and `}` (`\{\{…\}\}`). Android's ICU engine rejects a bare `}` that the JVM
   tests and iOS accept: `Template`'s placeholder regex made every rule-based source crash the Android app.
 - Catalog, title pages and chapters are keyed by `(sourceKey, id)`: two sources never mix.
-  The catalog follows the first visible source until the reader picks another one (`SourcesChanged`).
 - Tests: `core/sources/src/commonTest/.../Fixtures.kt` copies the manifests (change them with `vovo-plugin`).
 - Third-party sources (user plugins, spec v1): added from a link (single manifest or `repo.json`, GitHub pages
   resolved to raw files) or a `.vovo` file, private to the user, not reviewed by vovoscan. `core/sources` has the
@@ -92,6 +102,30 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   table (so `ManifestProvider` serves them), queues writes in `plugin_outbox` (`PUT/DELETE api/v1/plugins`,
   `api/v1/plugin-repositories`), keeps verified updates in `plugin_extra`. Removal goes through the
   `SourceRemovedListener` port, wired in `shared` to the catalog and reader caches.
+
+## Catalog (every source at once)
+
+- One grid for the selected sources ("All": every visible source, in the user's order; a source shown later joins
+  in). Each source keeps its own listing per category in `catalog_entry (source_key, listing, title_id, page, rank)`
+  (`listing` = the category id, `''` for everything) with `listing_cursor` (next page); migration `2.sqm` turned the
+  old per-source rank into the `''` listings. `CatalogMerge.merge`: page 1 of every source interleaved one title at a
+  time (round-robin, the user's order), then page 2 of every source…; "Load more" asks the next page of every source
+  that has one, so a new round is appended and nothing on screen moves. Search goes to every source read (page 1
+  each, round-robin), offline per source as before.
+- Filters (`CatalogFilter`, remembered in `catalog_setting`): sources (`ShowAllSources`, `ToggleSource`: from "All" a
+  tap keeps that source alone; none left or every one chosen is "All"; `CatalogSelection`), and a category by name.
+  Categories: the internal source's from `GET api/v1/catalog/sources/vovoscan/categories` (`key` = id, `?category=`
+  on the titles), a rule-based source's from its manifest; cached in `source_category`. Several sources: the union by
+  name, trimmed and case-insensitive (`CategoryUnion`), each source asked with its own id for that name; sources
+  without it are left out while the filter is on (`categoryNote`: "Project Gutenberg has no “Webtoon” category, so
+  it's left out.").
+- Errors per source never break the page: `problems` (one `SourceProblem` per failing source, `StaleReason`) make one
+  notice line (`CatalogNotices`): no network → the offline line; one source read → its own line as before; several →
+  "Project Gutenberg isn't answering right now." / "X couldn't be read. It may need an update." (Retry when one is
+  down). The others' titles show; offline, every saved listing shows.
+- Cards carry the source's name (small badge under the format badge). Screens: a "All sources ▾" / "2 sources ▾" /
+  name button and a category button (red when they narrow the catalog) open a sheet (Android `ModalBottomSheet`, iOS
+  `.sheet`): "All" + the sources with checkmarks, or "All categories" + the categories.
 
 ## Reader
 
@@ -121,9 +155,9 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
 - Queue: in the app's `CoroutineScope`, one chapter at a time, page by page; resumed at launch (`resume()`, from
   `VovoscanApplication` / `initKoin`), interrupted chapters start again at their first missing page. It runs while the
   app runs (no WorkManager / background URLSession). Each chapter is fetched again first (`remote.chapter`, saved for
-  the reader), then its pages through `ReaderRemoteDataSource.download`: signed API links (internal source) or the
-  source's hosts through `RulesHttp` (allowed hosts only, never the session). Every change to a chapter's rows and files
-  happens under one lock: a chapter removed while it downloads leaves nothing behind.
+  the reader), then its pages through `ReaderRemoteDataSource.downloadPage`: signed API links (internal source) or the
+  source's hosts through `RulesHttp` (allowed hosts only, never the session; with the source's page-image Referer).
+  Every change to a chapter's rows and files happens under one lock: a chapter removed while it downloads leaves nothing behind.
 - Network: no connection, or "Wi-Fi only" on a metered network (`NetworkState.unmetered`: Android `NOT_METERED`, iOS not
   expensive and not constrained; a personal hotspot counts as mobile data) → `waiting`, and it carries on by itself.
   A failure while online → `failed` with the reason ("The download stopped. Try again.", or the source's refusal);

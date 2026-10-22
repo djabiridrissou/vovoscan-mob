@@ -3,32 +3,48 @@ package com.vovoscan.feature.catalog.data
 import app.cash.sqldelight.coroutines.asFlow
 import app.cash.sqldelight.coroutines.mapToList
 import com.vovoscan.feature.catalog.data.db.CatalogDatabase
+import com.vovoscan.feature.catalog.domain.CatalogFilter
 import com.vovoscan.feature.catalog.domain.Chapter
 import com.vovoscan.feature.catalog.domain.ContentKind
+import com.vovoscan.feature.catalog.domain.ListedTitle
 import com.vovoscan.feature.catalog.domain.ReadingFormat
+import com.vovoscan.feature.catalog.domain.SourceCategory
 import com.vovoscan.feature.catalog.domain.TitleDetail
 import com.vovoscan.feature.catalog.domain.TitleSummary
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 
-/** Local source: the feature's SQLDelight database, read by the screens; one catalog per source. */
+/**
+ * Local source: the feature's SQLDelight database, read by the screens. One listing per source and category
+ * (`categoryId` null: everything), the sources' categories, the catalog's filter.
+ */
 interface CatalogLocalDataSource {
-    fun observeCatalog(sourceKey: String): Flow<List<TitleSummary>>
+    fun observeListing(
+        sourceKey: String,
+        categoryId: String?,
+    ): Flow<List<ListedTitle>>
 
-    /** Stores a page of a source's catalog; page 1 starts over from scratch. */
+    /** Stores a page of a listing; page 1 starts it over from scratch. */
     suspend fun saveCatalogPage(
         sourceKey: String,
         page: TitlesPage,
+        categoryId: String? = null,
     )
 
     /** Next page to request, null if everything is already here. */
-    suspend fun nextPage(sourceKey: String): Int?
+    suspend fun nextPage(
+        sourceKey: String,
+        categoryId: String? = null,
+    ): Int?
 
+    /** Titles saved for the source (in that category's listing when one is given). */
     suspend fun searchLocal(
         sourceKey: String,
         query: String,
+        categoryId: String? = null,
     ): List<TitleSummary>
 
     /** Also keeps search results: the title page then opens offline. */
@@ -36,6 +52,17 @@ interface CatalogLocalDataSource {
         sourceKey: String,
         items: List<TitleSummaryDto>,
     )
+
+    fun observeCategories(sourceKey: String): Flow<List<SourceCategory>>
+
+    suspend fun saveCategories(
+        sourceKey: String,
+        categories: List<SourceCategory>,
+    )
+
+    fun observeFilter(): Flow<CatalogFilter>
+
+    suspend fun saveFilter(filter: CatalogFilter)
 
     fun observeDetail(
         sourceKey: String,
@@ -49,7 +76,7 @@ interface CatalogLocalDataSource {
 
     suspend fun clear()
 
-    /** Erases one source's catalog, titles and chapters (the source was removed). */
+    /** Erases one source's listings, titles, chapters and categories (the source was removed). */
     suspend fun clearSource(sourceKey: String)
 }
 
@@ -59,29 +86,42 @@ class SqlCatalogLocalDataSource(
 ) : CatalogLocalDataSource {
     private val queries get() = database.catalogQueries
 
-    override fun observeCatalog(sourceKey: String): Flow<List<TitleSummary>> =
-        queries.catalogTitles(sourceKey, ::summary).asFlow().mapToList(io)
+    override fun observeListing(
+        sourceKey: String,
+        categoryId: String?,
+    ): Flow<List<ListedTitle>> =
+        queries
+            .listingTitles(sourceKey, listing(categoryId)) { key, id, name, cover, kind, format, status, page ->
+                ListedTitle(summary(key, id, name, cover, kind, format, status), page.toInt())
+            }.asFlow()
+            .mapToList(io)
 
     override suspend fun saveCatalogPage(
         sourceKey: String,
         page: TitlesPage,
+        categoryId: String?,
     ) = withContext(io) {
+        val listing = listing(categoryId)
         queries.transaction {
             val first = page.page <= 1
-            if (first) queries.clearRanks(sourceKey)
-            var rank = if (first) 0L else (queries.maxRank(sourceKey).executeAsOne().max_rank ?: -1L) + 1
+            if (first) queries.clearListing(sourceKey, listing)
+            var rank = if (first) 0L else (queries.maxRank(sourceKey, listing).executeAsOne().max_rank ?: -1L) + 1
             page.items.forEach {
                 upsertSummary(sourceKey, it)
-                queries.setRank(rank++, sourceKey, it.id)
+                // A title already listed on an earlier page keeps its place (sites shift while paging).
+                queries.putEntry(sourceKey, listing, it.id, page.page.toLong(), rank++)
             }
-            queries.putCursor(sourceKey, if (page.hasNext) (page.page + 1).toLong() else null)
+            queries.putCursor(sourceKey, listing, if (page.hasNext) (page.page + 1).toLong() else null)
         }
     }
 
-    override suspend fun nextPage(sourceKey: String): Int? =
+    override suspend fun nextPage(
+        sourceKey: String,
+        categoryId: String?,
+    ): Int? =
         withContext(io) {
             queries
-                .cursor(sourceKey)
+                .cursor(sourceKey, listing(categoryId))
                 .executeAsOneOrNull()
                 ?.next_page
                 ?.toInt()
@@ -90,12 +130,56 @@ class SqlCatalogLocalDataSource(
     override suspend fun searchLocal(
         sourceKey: String,
         query: String,
-    ): List<TitleSummary> = withContext(io) { queries.searchTitles(sourceKey, query, ::summary).executeAsList() }
+        categoryId: String?,
+    ): List<TitleSummary> =
+        withContext(io) {
+            if (categoryId == null) {
+                queries.searchTitles(sourceKey, query, ::summary).executeAsList()
+            } else {
+                queries.searchListing(sourceKey, categoryId, query, ::summary).executeAsList()
+            }
+        }
 
     override suspend fun saveSummaries(
         sourceKey: String,
         items: List<TitleSummaryDto>,
     ) = withContext(io) { queries.transaction { items.forEach { upsertSummary(sourceKey, it) } } }
+
+    override fun observeCategories(sourceKey: String): Flow<List<SourceCategory>> =
+        queries.categoriesOf(sourceKey) { id, name -> SourceCategory(id, name) }.asFlow().mapToList(io)
+
+    override suspend fun saveCategories(
+        sourceKey: String,
+        categories: List<SourceCategory>,
+    ) = withContext(io) {
+        queries.transaction {
+            queries.clearCategoriesOf(sourceKey)
+            categories.forEachIndexed { position, it -> queries.insertCategory(sourceKey, it.id, it.name, position.toLong()) }
+        }
+    }
+
+    override fun observeFilter(): Flow<CatalogFilter> =
+        queries.allSettings().asFlow().mapToList(io).map { rows ->
+            val values = rows.associate { it.key to it.setting_value }
+            CatalogFilter(
+                sourceKeys = values[SOURCES].splitList(),
+                categoryName = values[CATEGORY]?.takeIf { it.isNotBlank() },
+            )
+        }
+
+    override suspend fun saveFilter(filter: CatalogFilter) =
+        withContext(io) {
+            queries.transaction {
+                if (filter.sourceKeys.isEmpty()) {
+                    queries.deleteSetting(
+                        SOURCES,
+                    )
+                } else {
+                    queries.putSetting(SOURCES, filter.sourceKeys.joinList())
+                }
+                filter.categoryName?.takeIf { it.isNotBlank() }?.let { queries.putSetting(CATEGORY, it) } ?: queries.deleteSetting(CATEGORY)
+            }
+        }
 
     override fun observeDetail(
         sourceKey: String,
@@ -135,7 +219,10 @@ class SqlCatalogLocalDataSource(
             queries.transaction {
                 queries.clearChapters()
                 queries.clearTitles()
-                queries.clearCursor()
+                queries.clearEntries()
+                queries.clearCursors()
+                queries.clearCategories()
+                queries.clearSettings()
             }
         }
 
@@ -144,7 +231,9 @@ class SqlCatalogLocalDataSource(
             queries.transaction {
                 queries.clearChaptersOfSource(sourceKey)
                 queries.clearTitlesOf(sourceKey)
-                queries.clearCursorOf(sourceKey)
+                queries.clearEntriesOf(sourceKey)
+                queries.clearCursorsOf(sourceKey)
+                queries.clearCategoriesOf(sourceKey)
             }
         }
 
@@ -155,7 +244,15 @@ class SqlCatalogLocalDataSource(
         queries.insertSummary(sourceKey, it.id, it.name, it.coverUrl, it.kind, it.format, it.status)
         queries.updateSummary(it.name, it.coverUrl, it.kind, it.format, it.status, sourceKey, it.id)
     }
+
+    private companion object {
+        const val SOURCES = "sources"
+        const val CATEGORY = "category"
+    }
 }
+
+/** The listing of everything is '' (a category id is never empty). */
+private fun listing(categoryId: String?) = categoryId.orEmpty()
 
 private const val SEPARATOR = "\u001F"
 
