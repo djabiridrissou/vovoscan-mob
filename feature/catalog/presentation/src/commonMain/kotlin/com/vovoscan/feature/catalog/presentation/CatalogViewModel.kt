@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.vovoscan.core.common.AppResult
 import com.vovoscan.core.common.Freshness
 import com.vovoscan.core.common.StaleReason
+import com.vovoscan.core.common.i18n.t
 import com.vovoscan.core.common.userMessage
 import com.vovoscan.feature.catalog.domain.CatalogFilter
 import com.vovoscan.feature.catalog.domain.CatalogMerge
@@ -106,9 +107,9 @@ data class CatalogUiState(
     val emptyMessage: String
         get() =
             when {
-                results != null -> "No title matches “${query.trim()}”."
-                category != null -> "No titles in “$category” yet."
-                else -> "No titles yet. Check back soon."
+                results != null -> t("catalog.noMatch", "query" to query.trim())
+                category != null -> t("catalog.noneInCategory", "category" to category)
+                else -> t("catalog.none")
             }
 
     /**
@@ -406,7 +407,13 @@ class CatalogViewModel(
             // Anything else (not a source problem): an error line, naming the source when several are read.
             error =
                 other?.let { (reading, error) ->
-                    if (readings.size > 1) "${reading.source.name}: ${error.userMessage()}" else error.userMessage()
+                    if (readings.size >
+                        1
+                    ) {
+                        t("catalog.sourceError", "name" to reading.source.name, "message" to error.userMessage())
+                    } else {
+                        error.userMessage()
+                    }
                 },
         )
     }
@@ -422,11 +429,11 @@ class CatalogViewModel(
         coverUrl = title.coverUrl,
         formatLabel =
             when {
-                title.kind == ContentKind.Book -> "BOOK"
-                title.format == ReadingFormat.Webtoon -> "WEBTOON"
-                else -> "MANGA"
+                title.kind == ContentKind.Book -> t("catalog.badgeBook")
+                title.format == ReadingFormat.Webtoon -> t("catalog.badgeWebtoon")
+                else -> t("catalog.badgeManga")
             },
-        status = title.status.replaceFirstChar { it.uppercase() },
+        status = statusLabel(title.status),
     )
 
     private companion object {

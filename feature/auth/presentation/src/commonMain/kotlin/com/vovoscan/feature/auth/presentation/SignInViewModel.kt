@@ -3,6 +3,7 @@ package com.vovoscan.feature.auth.presentation
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.vovoscan.core.common.AppResult
+import com.vovoscan.core.common.i18n.t
 import com.vovoscan.core.common.userMessage
 import com.vovoscan.feature.auth.domain.AuthRepository
 import com.vovoscan.feature.auth.domain.Credentials
@@ -26,9 +27,9 @@ data class SignInUiState(
     val submitting: Boolean = false,
     val error: String? = null,
 ) {
-    val title: String get() = if (mode == SignInMode.SignIn) "Sign in." else "Redeem your invite."
-    val submitLabel: String get() = if (mode == SignInMode.SignIn) "Sign in →" else "Create my account →"
-    val switchLabel: String get() = if (mode == SignInMode.SignIn) "I have an invite" else "I already have an account"
+    val title: String get() = t(if (mode == SignInMode.SignIn) "auth.signInTitle" else "auth.redeemTitle")
+    val submitLabel: String get() = t(if (mode == SignInMode.SignIn) "auth.signInSubmit" else "auth.redeemSubmit")
+    val switchLabel: String get() = t(if (mode == SignInMode.SignIn) "auth.haveInvite" else "auth.haveAccount")
 }
 
 sealed interface SignInIntent {

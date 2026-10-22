@@ -1,6 +1,7 @@
 package com.vovoscan.feature.catalog.presentation
 
 import com.vovoscan.core.common.StaleReason
+import com.vovoscan.core.common.i18n.t
 import com.vovoscan.feature.catalog.domain.CatalogFilter
 
 /** A visible source, in the reader's order (from the Sources screen, wired by the app). */
@@ -56,11 +57,11 @@ object CatalogSelection {
     ): String {
         if (isAll(visible, filter)) return ALL_SOURCES
         val selected = selected(visible, filter)
-        return if (selected.size == 1) selected.single().name else "${selected.size} sources"
+        return if (selected.size == 1) selected.single().name else t("catalog.sourcesCount", "count" to selected.size)
     }
 
-    const val ALL_SOURCES = "All sources"
-    const val ALL_CATEGORIES = "All categories"
+    val ALL_SOURCES: String get() = t("catalog.allSources")
+    val ALL_CATEGORIES: String get() = t("catalog.allCategories")
 }
 
 /** The one notice line of the catalog, whatever number of sources failed. */
@@ -81,10 +82,8 @@ object CatalogNotices {
         val down = problems.filter { it.reason is StaleReason.SourceDown }.map { it.sourceName }
         val unreadable = problems.filter { it.reason == StaleReason.SourceUnreadable }.map { it.sourceName }
         return listOfNotNull(
-            down.takeIf { it.isNotEmpty() }?.let { "${names(it)} ${if (it.size == 1) "isn't" else "aren't"} answering right now." },
-            unreadable.takeIf { it.isNotEmpty() }?.let {
-                "${names(it)} couldn't be read. ${if (it.size == 1) "It" else "They"} may need an update."
-            },
+            down.takeIf { it.isNotEmpty() }?.let { t("catalog.sourcesDown", "names" to names(it), "count" to it.size) },
+            unreadable.takeIf { it.isNotEmpty() }?.let { t("catalog.sourcesUnreadable", "names" to names(it), "count" to it.size) },
         ).joinToString(" ")
     }
 
@@ -94,9 +93,9 @@ object CatalogNotices {
         unavailable: List<String>,
     ): String? =
         when {
-            offline -> "Offline: searching titles saved on this device."
+            offline -> t("catalog.searchOffline")
             unavailable.isNotEmpty() ->
-                "${names(unavailable)} ${if (unavailable.size == 1) "isn't" else "aren't"} answering right now. Searching what's saved."
+                t("catalog.searchSourcesDown", "names" to names(unavailable), "count" to unavailable.size)
             else -> null
         }
 
@@ -107,8 +106,7 @@ object CatalogNotices {
     ): String? =
         when (missing.size) {
             0 -> null
-            1 -> "${missing.single()} has no “$category” category, so it's left out."
-            else -> "${names(missing)} have no “$category” category, so they're left out."
+            else -> t("catalog.categoryLeftOut", "names" to names(missing), "count" to missing.size, "category" to category)
         }
 
     /** "A", "A and B", "A, B and C". */
@@ -116,6 +114,6 @@ object CatalogNotices {
         when (list.size) {
             0 -> ""
             1 -> list.single()
-            else -> list.dropLast(1).joinToString(", ") + " and " + list.last()
+            else -> list.dropLast(1).joinToString(", ") + t("common.and") + list.last()
         }
 }

@@ -5,6 +5,8 @@ import androidx.lifecycle.viewModelScope
 import com.vovoscan.core.common.AppResult
 import com.vovoscan.core.common.Freshness
 import com.vovoscan.core.common.StaleReason
+import com.vovoscan.core.common.i18n.I18n
+import com.vovoscan.core.common.i18n.t
 import com.vovoscan.core.common.userMessage
 import com.vovoscan.feature.catalog.domain.CatalogRepository
 import com.vovoscan.feature.catalog.domain.ContentKind
@@ -121,32 +123,27 @@ class TitleDetailViewModel(
             meta =
                 listOfNotNull(
                     when {
-                        detail.summary.kind == ContentKind.Book -> "BOOK"
-                        detail.summary.format == ReadingFormat.Webtoon -> "WEBTOON"
-                        else -> "MANGA"
+                        detail.summary.kind == ContentKind.Book -> t("catalog.badgeBook")
+                        detail.summary.format == ReadingFormat.Webtoon -> t("catalog.badgeWebtoon")
+                        else -> t("catalog.badgeManga")
                     },
-                    detail.summary.status.replaceFirstChar { it.uppercase() },
+                    statusLabel(detail.summary.status),
                     detail.authors.joinToString(", ").ifBlank { null },
                 ).joinToString(" ✦ "),
             genres = detail.genres,
             chapters =
                 detail.chapters.map { chapter ->
                     if (detail.summary.kind == ContentKind.Book) {
-                        ChapterRow(id = chapter.id, label = chapter.name ?: "Part ${chapter.label}", meta = "Book")
+                        ChapterRow(
+                            id = chapter.id,
+                            label = chapter.name ?: t("reader.part", "n" to chapter.label),
+                            meta = t("reader.modeBook"),
+                        )
                     } else {
                         ChapterRow(
                             id = chapter.id,
                             label = chapterLabel(chapter.label, chapter.name),
-                            meta =
-                                if (chapter.pageCount ==
-                                    0
-                                ) {
-                                    ""
-                                } else if (chapter.pageCount == 1) {
-                                    "1 page"
-                                } else {
-                                    "${chapter.pageCount} pages"
-                                },
+                            meta = if (chapter.pageCount == 0) "" else t("catalog.pages", "count" to chapter.pageCount),
                         )
                     }
                 },
@@ -160,7 +157,7 @@ internal fun chapterLabel(
     label: String,
     name: String?,
 ): String {
-    val heading = "Chapter $label"
+    val heading = t("reader.chapter", "n" to label)
     val trimmed = name?.trim().orEmpty()
     val bare =
         trimmed
@@ -171,4 +168,10 @@ internal fun chapterLabel(
             .removePrefix("ch")
             .trim()
     return if (trimmed.isEmpty() || bare == label.lowercase()) heading else "$heading · $trimmed"
+}
+
+/** A source's status in the UI locale when it is a known one ("ongoing", "completed"…), else as the source wrote it. */
+internal fun statusLabel(status: String): String {
+    val key = "catalog.status" + status.trim().lowercase().replaceFirstChar { it.uppercase() }
+    return if (I18n.has(key)) t(key) else status.replaceFirstChar { it.uppercase() }
 }
