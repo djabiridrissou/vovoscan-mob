@@ -1,5 +1,6 @@
 package com.vovoscan.feature.sources.presentation
 
+import com.vovoscan.core.common.i18n.t
 import com.vovoscan.feature.sources.domain.PluginCandidate
 import com.vovoscan.feature.sources.domain.SettingField
 import com.vovoscan.feature.sources.domain.SettingType
@@ -52,30 +53,30 @@ data class SettingFieldUi(
 
 /** User-facing copy shared by the sources screens. */
 object SourceLabels {
-    const val THIRD_PARTY_WARNING = "vovoscan doesn't review third-party sources. You're responsible for what you read with them."
-    const val RIGHTS_DISCLAIMER = "Claimed by the author, not checked by vovoscan"
-    const val REMOVE_MESSAGE = "Titles you follow stay in your library."
-    const val OFFICIAL = "Official"
-    const val THIRD_PARTY = "Third-party"
-    const val INSTALL = "Install"
-    const val INSTALLED = "Installed"
-    const val UPDATE = "Update"
-    const val SETTINGS_NEEDED = "Fill in the required settings to use this source."
-    const val KEEP_ONE_VISIBLE = "Keep at least one source visible."
-    const val PENDING = "Your changes will sync when you're back online."
-    const val TURN_ON = "Turn on"
-    const val INTERNAL_SUMMARY = "vovoscan's own manga, webtoons and books, read and voiced in your language."
-    const val INTERNAL_ENGINE = "vovoscan's catalog"
-    const val ON_DEVICE_ENGINE = "Read on your device"
+    val THIRD_PARTY_WARNING: String get() = t("sources.thirdPartyWarning")
+    val RIGHTS_DISCLAIMER: String get() = t("sources.rightsDisclaimer")
+    val REMOVE_MESSAGE: String get() = t("sources.removeMessage")
+    val OFFICIAL: String get() = t("sources.official")
+    val THIRD_PARTY: String get() = t("sources.thirdParty")
+    val INSTALL: String get() = t("sources.install")
+    val INSTALLED: String get() = t("sources.installed")
+    val UPDATE: String get() = t("sources.update")
+    val SETTINGS_NEEDED: String get() = t("sources.settingsNeeded")
+    val KEEP_ONE_VISIBLE: String get() = t("sources.keepOneVisible")
+    val PENDING: String get() = t("sources.pending")
+    val TURN_ON: String get() = t("sources.turnOn")
+    val INTERNAL_SUMMARY: String get() = t("sources.internalSummary")
+    val INTERNAL_ENGINE: String get() = t("sources.internalEngine")
+    val ON_DEVICE_ENGINE: String get() = t("sources.onDeviceEngine")
 
-    fun turnedOn(name: String) = "$name is on. Its titles are in the catalog."
+    fun turnedOn(name: String) = t("sources.turnedOn", "name" to name)
 
     fun kind(kind: String) =
         when (kind) {
-            "comic" -> "Manga"
-            "book" -> "Books"
-            "audiobook" -> "Audiobooks"
-            "video" -> "Videos"
+            "comic" -> t("sources.kindComic")
+            "book" -> t("sources.kindBook")
+            "audiobook" -> t("sources.kindAudiobook")
+            "video" -> t("sources.kindVideo")
             else -> kind
         }
 
@@ -86,17 +87,16 @@ object SourceLabels {
     fun rights(basis: String?) =
         when (basis) {
             null -> null
-            "public-domain" -> "Public domain"
-            "licensed" -> "Licensed"
+            "public-domain" -> t("sources.rightsPublicDomain")
+            "licensed" -> t("sources.rightsLicensed")
             else -> basis.replace('-', ' ').replaceFirstChar { it.uppercase() }
         }
 
-    fun hosts(hosts: List<String>) =
-        hosts.takeIf { it.isNotEmpty() }?.let { "This source connects your phone to: ${it.joinToString(", ")}" }
+    fun hosts(hosts: List<String>) = hosts.takeIf { it.isNotEmpty() }?.let { t("sources.hosts", "hosts" to it.joinToString(", ")) }
 
-    fun newHosts(hosts: List<String>) = hosts.takeIf { it.isNotEmpty() }?.let { "This version also connects to: ${it.joinToString(", ")}" }
+    fun newHosts(hosts: List<String>) = hosts.takeIf { it.isNotEmpty() }?.let { t("sources.newHosts", "hosts" to it.joinToString(", ")) }
 
-    fun version(version: String) = "Version $version"
+    fun version(version: String) = t("sources.version", "version" to version)
 
     fun shortVersion(version: String) = "v$version"
 
@@ -115,16 +115,15 @@ object SourceLabels {
         repositoryName: String?,
     ) = when (origin) {
         SourceOrigin.Official -> OFFICIAL
-        SourceOrigin.Repository -> repositoryName ?: "From a repository"
-        SourceOrigin.Link -> "Added from a link"
-        SourceOrigin.File -> "Added from a file"
+        SourceOrigin.Repository -> repositoryName ?: t("sources.fromRepository")
+        SourceOrigin.Link -> t("sources.fromLink")
+        SourceOrigin.File -> t("sources.fromFile")
     }
 
     fun sourceCount(count: Int?) =
         when (count) {
             null -> null
-            1 -> "1 source"
-            else -> "$count sources"
+            else -> t("sources.count", "count" to count)
         }
 }
 

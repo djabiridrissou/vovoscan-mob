@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.vovoscan.core.common.AppError
 import com.vovoscan.core.common.AppResult
+import com.vovoscan.core.common.i18n.t
 import com.vovoscan.core.common.userMessage
 import com.vovoscan.feature.sources.domain.PluginCandidate
 import com.vovoscan.feature.sources.domain.PluginsRepository
@@ -37,7 +38,7 @@ data class SourceDetailUiState(
     val info: SourceInfoUi? = null,
     val enabled: Boolean = false,
     /** "Hide" or "Show". */
-    val visibilityLabel: String = "Hide",
+    val visibilityLabel: String = t("sources.hide"),
     val update: SourceUpdateUi? = null,
     /** Step 2 of an update reaching new hosts: the question to confirm (ConfirmHosts / CancelHosts). */
     val hostsConfirmation: String? = null,
@@ -195,7 +196,7 @@ class SourceDetailViewModel(
                 is AppResult.Ok -> {
                     updating = null
                     edits = emptyMap()
-                    mutableState.update { it.copy(notice = "${candidate.info.name} updated.") }
+                    mutableState.update { it.copy(notice = t("sources.updatedNotice", "name" to candidate.info.name)) }
                 }
             }
             render()
@@ -227,7 +228,7 @@ class SourceDetailViewModel(
                 is AppResult.Err -> mutableState.update { it.copy(error = result.error.userMessage()) }
                 is AppResult.Ok -> {
                     edits = emptyMap()
-                    mutableState.update { it.copy(notice = "Settings saved.") }
+                    mutableState.update { it.copy(notice = t("sources.settingsSaved")) }
                 }
             }
             render()
@@ -270,7 +271,7 @@ class SourceDetailViewModel(
                 gone = false,
                 info = current.toInfo(),
                 enabled = current.enabled,
-                visibilityLabel = if (current.enabled) "Hide" else "Show",
+                visibilityLabel = t(if (current.enabled) "sources.hide" else "sources.show"),
                 update =
                     current.update?.let { u ->
                         SourceUpdateUi(SourceLabels.version(u.version), u.changes, SourceLabels.newHosts(u.newHosts))
@@ -279,13 +280,13 @@ class SourceDetailViewModel(
                 settingsEditable = current.thirdParty,
                 settingsNotice =
                     when {
-                        updating != null && missing.isNotEmpty() -> "Fill in the new settings to finish the update."
+                        updating != null && missing.isNotEmpty() -> t("sources.fillNewSettings")
                         missing.isNotEmpty() -> SourceLabels.SETTINGS_NEEDED
                         else -> null
                     },
                 settingsDirty = edits.isNotEmpty() || (updating != null && missing.isNotEmpty()),
                 canRemove = current.thirdParty,
-                removalTitle = "Remove ${current.name}?",
+                removalTitle = t("sources.removeTitle", "name" to current.name),
                 pendingSync = current.pendingSync,
             )
         }

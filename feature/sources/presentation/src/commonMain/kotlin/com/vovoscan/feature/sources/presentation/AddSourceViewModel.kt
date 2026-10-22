@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.vovoscan.core.common.AppError
 import com.vovoscan.core.common.AppResult
+import com.vovoscan.core.common.i18n.t
 import com.vovoscan.core.common.userMessage
 import com.vovoscan.feature.sources.domain.EntryStatus
 import com.vovoscan.feature.sources.domain.PluginCandidate
@@ -369,7 +370,7 @@ class AddSourceViewModel(
         mutableState.update {
             it.copy(
                 settingsForm = candidate.info.settings.map { field -> field.toUi(values[field.name].orEmpty(), errors[field.name]) },
-                settingsTitle = "Settings for ${candidate.info.name}",
+                settingsTitle = t("sources.settingsFor", "name" to candidate.info.name),
             )
         }
     }
@@ -402,7 +403,7 @@ class AddSourceViewModel(
                     is AppResult.Ok -> {
                         val name = candidate.info.name
                         base.copy(
-                            notice = if (candidate.isUpdate) "$name updated." else "$name installed.",
+                            notice = t(if (candidate.isUpdate) "sources.updatedNotice" else "sources.installedNotice", "name" to name),
                             installedKey = candidate.info.key,
                             preview = if (candidate == previewed) preview(candidate, done = true) else state.preview,
                         )
@@ -433,7 +434,9 @@ class AddSourceViewModel(
             when {
                 done -> null to SourceLabels.INSTALLED
                 candidate.blocker != null -> null to candidate.blocker
-                candidate.isUpdate -> SourceLabels.UPDATE to "${SourceLabels.shortVersion(candidate.installedVersion.orEmpty())} installed"
+                candidate.isUpdate ->
+                    SourceLabels.UPDATE to
+                        t("sources.versionInstalled", "version" to SourceLabels.shortVersion(candidate.installedVersion.orEmpty()))
                 candidate.installedVersion != null -> null to SourceLabels.INSTALLED
                 else -> SourceLabels.INSTALL to null
             }
@@ -495,7 +498,7 @@ class AddSourceViewModel(
             statusLabel =
                 when (status) {
                     EntryStatus.Installed -> SourceLabels.INSTALLED
-                    EntryStatus.Unavailable -> entry.problem ?: "Already available as an official source."
+                    EntryStatus.Unavailable -> entry.problem ?: t("sources.alreadyOfficial")
                     else -> null
                 },
             busy = entry.key == busyKey,

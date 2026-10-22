@@ -2,6 +2,7 @@ package com.vovoscan.feature.sources.domain
 
 import com.vovoscan.core.common.AppResult
 import com.vovoscan.core.common.HostPolicy
+import com.vovoscan.core.common.i18n.t
 import kotlinx.coroutines.flow.Flow
 
 /** Who reads the source: the vovoscan server (our titles) or the device (rules manifest, content never on our side). */
@@ -263,10 +264,10 @@ fun interface SourceRemovedListener {
 
 /** Settings checks shared by the install form and the detail screen. */
 object SettingsRules {
-    const val REQUIRED = "Required."
-    const val HTTPS = "Use an https:// address."
-    const val PUBLIC = "Use a public internet address, not one on a local network."
-    const val INTEGER = "Enter a whole number."
+    val REQUIRED: String get() = t("sources.setting.required")
+    val HTTPS: String get() = t("sources.setting.https")
+    val PUBLIC: String get() = t("sources.setting.public")
+    val INTEGER: String get() = t("sources.setting.integer")
 
     fun missing(
         spec: List<SettingField>,
