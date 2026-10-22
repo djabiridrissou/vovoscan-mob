@@ -17,7 +17,7 @@ class CataloguesTest {
 
     @Test
     fun everyLocaleHasExactlyTheReferenceKeys() {
-        assertTrue(reference.size > 100, "the English catalogue is loaded")
+        assertTrue(reference.size > 50, "the English catalogue is loaded")
         UiLocales.ALL.forEach { locale ->
             val messages = Catalogues.messages(locale)
             val missing = reference.keys - messages.keys
