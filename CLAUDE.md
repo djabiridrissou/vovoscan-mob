@@ -671,7 +671,8 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   `ReaderScreen(openLanguages = true)`). Both pills go through the view model (`TitleDetailIntent.Translate` /
   `Episode` → `state.open` → the screen opens it once and answers `OpenHandled(seq)`); iOS pushes them on the tab's path. `nextChapterId(…)` (reading order) gives "Next
   chapter →"; at the end it swaps the card for the next chapter's (Android `openEpisode`, iOS `EpisodeContainer`).
-- Episode card: Start / Stop on start / stop (Android lifecycle) or appear / disappear (iOS): live events only while it
+- Episode card: always a way out (iOS shows its navigation bar explicitly, so the back button and the edge swipe stay
+  after the reader hid the bar; in the source's sheet, Close, `episode.close`). Start / Stop on start / stop (Android lifecycle) or appear / disappear (iOS): live events only while it
   is visible. Video: Android saves through `DownloadManager` (`Movies/vovoscan`, Android 10+; the app's own Movies
   folder on 8-9); iOS downloads to a temporary file and opens the share sheet (Save Video needs
   `NSPhotoLibraryAddUsageDescription`, set in `project.yml`).

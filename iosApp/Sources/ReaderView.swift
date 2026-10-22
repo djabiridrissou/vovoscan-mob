@@ -1786,7 +1786,8 @@ private struct SourceEpisodeSheet: View {
                     language: language,
                     sourceKey: episode.sourceKey,
                     titleId: episode.titleId
-                )
+                ),
+                inSheet: true
             ) { next, lang in
                 chapterId = next
                 language = lang
