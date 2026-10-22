@@ -21,6 +21,7 @@ import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -261,27 +262,43 @@ class DownloadsRepositoryImpl(
         }
     }
 
+    /**
+     * A failure that may pass (no answer, a dropped connection, an unexpected answer) is tried again twice, after 5 s
+     * then 30 s, before the chapter is marked failed: in the background nobody is there to tap "Try again" (the network
+     * is often still settling when the system starts the app after a reboot). A refusal fails at once.
+     */
     private suspend fun download(item: QueuedDownload) {
+        var attempt = 0
+        while (true) {
+            val error = attempt(item) ?: return
+            val transient = error == AppError.Network || error is AppError.Unknown || error is AppError.SourceUnavailable
+            if (!transient || attempt >= RETRY_DELAYS_MS.size || !network.state.value.online) return failed(item.key, error)
+            delay(RETRY_DELAYS_MS[attempt++])
+        }
+    }
+
+    /** One try: null when it is done (or was removed meanwhile), else why it failed. */
+    private suspend fun attempt(item: QueuedDownload): AppError? {
         val key = item.key
         try {
-            if (!awaitNetwork(key)) return
+            if (!awaitNetwork(key)) return null
             val chapter =
                 when (val loaded = remote.chapter(item.sourceKey, item.titleId, item.chapterId)) {
-                    is AppResult.Err -> return failed(key, loaded.error)
+                    is AppResult.Err -> return loaded.error
                     is AppResult.Ok -> loaded.value
                 }
             // The reader opens it offline from this copy.
             readerLocal.save(item.sourceKey, chapter)
             if (item.isBook) return downloadBook(item, chapter)
-            if (chapter.pages.isEmpty()) return failed(key, AppError.Rejected("NO_PAGES", "This chapter has no pages to download."))
+            if (chapter.pages.isEmpty()) return AppError.Rejected("NO_PAGES", "This chapter has no pages to download.")
             local.setPageCount(key, chapter.pages.size)
             val done = local.pages(key)
             for (page in chapter.pages.sortedBy { it.index }) {
                 if (done[page.index]?.let(files::exists) == true) continue
-                if (!awaitNetwork(key)) return
+                if (!awaitNetwork(key)) return null
                 val bytes =
                     when (val fetched = remote.downloadPage(item.sourceKey, page.url)) {
-                        is AppResult.Err -> return failed(key, fetched.error)
+                        is AppResult.Err -> return fetched.error
                         is AppResult.Ok -> fetched.value
                     }
                 val kept =
@@ -292,13 +309,14 @@ class DownloadsRepositoryImpl(
                         local.putPage(key, page.index, file, bytes.size.toLong())
                         true
                     }
-                if (!kept) return
+                if (!kept) return null
             }
             local.setState(key, DownloadState.Done, null)
+            return null
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            local.setState(key, DownloadState.Failed, FAILED)
+            return AppError.Unknown(e.message ?: "download")
         }
     }
 
@@ -306,20 +324,21 @@ class DownloadsRepositoryImpl(
     private suspend fun downloadBook(
         item: QueuedDownload,
         chapter: ReaderChapterDto,
-    ) {
+    ): AppError? {
         val key = item.key
         // Opened meanwhile: it is already on the device.
         if (readerLocal.observeBook(item.sourceKey, item.chapterId).first() != null) {
             lock.withLock { if (local.download(key) != null) local.finishBook(key, null) }
-            return
+            return null
         }
-        val url = chapter.document?.url ?: return failed(key, NoBookFile)
+        val url = chapter.document?.url ?: return NoBookFile
         val sections =
             when (val fetched = fetchBook(remote, epub, io, item.sourceKey, url)) {
-                is AppResult.Err -> return failed(key, fetched.error)
+                is AppResult.Err -> return fetched.error
                 is AppResult.Ok -> fetched.value
             }
         lock.withLock { if (local.download(key) != null) local.finishBook(key, sections) }
+        return null
     }
 
     /**
@@ -365,6 +384,7 @@ class DownloadsRepositoryImpl(
     private companion object {
         const val FAILED = "The download stopped. Try again."
         const val PAUSE_WAIT_MS = 2_000L
+        val RETRY_DELAYS_MS = listOf(5_000L, 30_000L)
 
         val DownloadState.unfinished: Boolean
             get() = this == DownloadState.Queued || this == DownloadState.Waiting || this == DownloadState.Downloading

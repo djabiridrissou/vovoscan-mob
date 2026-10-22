@@ -344,6 +344,25 @@ class DownloadsRepositoryImplTest {
         }
 
     @Test
+    fun aFailureThatPassesIsTriedAgainByItself() =
+        runTest {
+            var failures = 1
+            val s =
+                setup { request ->
+                    if (failures > 0 && request.url.encodedPath == "/api/v1/catalog/chapters/c2") {
+                        failures--
+                        respond("", HttpStatusCode.BadGateway)
+                    } else {
+                        internal(request)
+                    }
+                }
+            s.downloads.enqueue(griot, griot.chapters.filter { it.id == "c2" })
+            // No "Try again" needed: in the background nobody would tap it.
+            s.awaitState(DownloadState.Done)
+            assertEquals(2, files().size)
+        }
+
+    @Test
     fun theQueueRunsInOrderAndSkipsWhatIsAlreadyQueued() =
         runTest {
             val s =

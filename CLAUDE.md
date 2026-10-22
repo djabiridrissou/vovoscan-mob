@@ -167,8 +167,10 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   behind.
 - Network: no connection, or "Wi-Fi only" on a metered network (`NetworkState.unmetered`: Android `NOT_METERED`, iOS not
   expensive and not constrained; a personal hotspot counts as mobile data) → `waiting`, and it carries on by itself.
-  A failure while online → `failed` with the reason ("The download stopped. Try again.", or the source's refusal);
-  "Retry" queues it again.
+  A failure while online that may pass (no answer, dropped connection, unexpected answer) is tried again by itself
+  twice (after 5 s, then 30 s: in the background nobody can tap Retry, and right after a reboot the network is often
+  still settling); then, or at once for a refusal, `failed` with the reason ("The download stopped. Try again.", or
+  the source's refusal); "Retry" queues it again.
 - Reader: local files first. `ReaderRepositoryImpl` maps a downloaded page to its `file://` URL (percent-encoded) when
   the file is on disk, else keeps the network URL. Coil and AsyncImage read `file://` URLs.
 - Books: opened once, their sections are in the database; the title page and Downloads show them as "Saved on this
