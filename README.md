@@ -66,7 +66,8 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
 
 - `feature/sources`: the user's active sources (`GET api/v1/catalog/sources`), visible or not, in their order;
   choices applied locally then sent (`PUT`, replayed if they could not go out). At least one stays visible.
-  "Sources" screen and catalog picker (`SourcePicker`), wired together by the app.
+  "Sources" screen; its visible sources (in order) feed the catalog's source filter (`CatalogIntent.SourcesChanged`,
+  wired by the app).
 - Two engines, chosen by `sourceKey` in the remote data sources (`Routing…RemoteDataSource`):
   - `vovoscan` (internal): read through our API.
   - rule-based source (e.g. Project Gutenberg): **the device interprets the manifest and makes the requests
@@ -74,8 +75,18 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
     its progress.
 - `core/sources`: manifest (v1 contract, copy of `vovo-plugin/schema`), JSONPath, `{{settings.x}}` templates,
   CSS selectors (Ksoup) over HTML **and XML** (Atom/OPDS) responses, transforms, `RulesSource` (catalog, title
-  page, pages, book URL). Catalog pagination: plain `{{page}}`, `startIndex` (`base + (page-1)*pageSize`) and
-  `cursor` (next-page value extracted from each response, sent as a query parameter).
+  page, pages, book URL, `categories()`). Catalog pagination: plain `{{page}}`, `startIndex` (`base + (page-1)*pageSize`)
+  and `cursor` (next-page value extracted from each response, sent as a query parameter). `catalog(page, search,
+  category)`: `{{category}}` is the chosen category's id (empty, so not sent, while browsing everything); `categories()`
+  reads the manifest's fixed list or its own request (`list` + `item {id, name}`).
+- Page images' Referer (`content.comic.referer`, `SourceManifest.imageReferer`: settings and `{{lang}}` only, http(s)):
+  `RulesSource.downloadImage` sends it (downloads: `ReaderRemoteDataSource.downloadPage`); a book file
+  (`download`) never does. Image loaders that know nothing of sources ask `ImageReferers.refererFor(url)` (shared
+  `imageRefererFor`), a host → Referer table of the rule-based sources (first in the user's order wins a host),
+  kept up to date by `ImageRefererSync` (started at launch by `VovoscanApplication` / `initKoin`): Android's Coil
+  `ImageLoader` has an interceptor (`ui/common/ImageLoading.kt`), iOS registers `SourceRefererProtocol` (a `URLProtocol`
+  for the shared session behind AsyncImage, replaying the request with `Referer` on a cookie-less session of its own).
+  Only those hosts get it, covers included; never the API.
 - `RulesHttp`: a separate client, **without the vovoscan session or cookies**, redirects followed by hand and
   limited to declared hosts (manifest + URL-type settings), rate capped by the manifest. A failure is `Network` only
   when `NetworkMonitor` says the device is offline; otherwise (exception, timeout, any error status)
@@ -83,7 +94,6 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
 - Regexes in shared code: escape `{` and `}` (`\{\{…\}\}`). Android's ICU engine rejects a bare `}` that the JVM
   tests and iOS accept: `Template`'s placeholder regex made every rule-based source crash the Android app.
 - Catalog, title pages and chapters are keyed by `(sourceKey, id)`: two sources never mix.
-  The catalog follows the first visible source until the reader picks another one (`SourcesChanged`).
 - Tests: `core/sources/src/commonTest/.../Fixtures.kt` copies the manifests (change them with `vovo-plugin`).
 - Third-party sources (user plugins, spec v1): added from a link (single manifest or `repo.json`, GitHub pages
   resolved to raw files) or a `.vovo` file, private to the user, not reviewed by vovoscan. `core/sources` has the
@@ -92,6 +102,30 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   table (so `ManifestProvider` serves them), queues writes in `plugin_outbox` (`PUT/DELETE api/v1/plugins`,
   `api/v1/plugin-repositories`), keeps verified updates in `plugin_extra`. Removal goes through the
   `SourceRemovedListener` port, wired in `shared` to the catalog and reader caches.
+
+## Catalog (every source at once)
+
+- One grid for the selected sources ("All": every visible source, in the user's order; a source shown later joins
+  in). Each source keeps its own listing per category in `catalog_entry (source_key, listing, title_id, page, rank)`
+  (`listing` = the category id, `''` for everything) with `listing_cursor` (next page); migration `2.sqm` turned the
+  old per-source rank into the `''` listings. `CatalogMerge.merge`: page 1 of every source interleaved one title at a
+  time (round-robin, the user's order), then page 2 of every source…; "Load more" asks the next page of every source
+  that has one, so a new round is appended and nothing on screen moves. Search goes to every source read (page 1
+  each, round-robin), offline per source as before.
+- Filters (`CatalogFilter`, remembered in `catalog_setting`): sources (`ShowAllSources`, `ToggleSource`: from "All" a
+  tap keeps that source alone; none left or every one chosen is "All"; `CatalogSelection`), and a category by name.
+  Categories: the internal source's from `GET api/v1/catalog/sources/vovoscan/categories` (`key` = id, `?category=`
+  on the titles), a rule-based source's from its manifest; cached in `source_category`. Several sources: the union by
+  name, trimmed and case-insensitive (`CategoryUnion`), each source asked with its own id for that name; sources
+  without it are left out while the filter is on (`categoryNote`: "Project Gutenberg has no “Webtoon” category, so
+  it's left out.").
+- Errors per source never break the page: `problems` (one `SourceProblem` per failing source, `StaleReason`) make one
+  notice line (`CatalogNotices`): no network → the offline line; one source read → its own line as before; several →
+  "Project Gutenberg isn't answering right now." / "X couldn't be read. It may need an update." (Retry when one is
+  down). The others' titles show; offline, every saved listing shows.
+- Cards carry the source's name (small badge under the format badge). Screens: a "All sources ▾" / "2 sources ▾" /
+  name button and a category button (red when they narrow the catalog) open a sheet (Android `ModalBottomSheet`, iOS
+  `.sheet`): "All" + the sources with checkmarks, or "All categories" + the categories.
 
 ## Reader
 
@@ -111,35 +145,87 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
 - In the reader slice (it knows how to get a chapter's pages from both engines): `DownloadsRepository` (domain),
   `DownloadsRepositoryImpl` + `SqlDownloadsLocalDataSource` + `PageFiles` (data), `TitleDownloadsViewModel` and
   `DownloadsViewModel` (presentation). Tables `download` (queue: state `queued | waiting | downloading | done | failed`,
-  page count, error, time asked) and `download_page` (page index → file path relative to the folder, bytes); migration
-  `3.sqm`. Wi-Fi only is `download_wifi_only` in `reader_setting` (on by default).
+  page count, error, time asked, kind `comic | book`) and `download_page` (page index → file path relative to the folder,
+  bytes); migrations `3.sqm`, `4.sqm` (kind). Wi-Fi only is `download_wifi_only` in `reader_setting` (on by default).
 - Storage: the app's own storage, never the photo library. Android `files/downloads`, iOS
   `Library/Application Support/Downloads` (excluded from iCloud backup), from `AppFolders` (`core/database`). Layout
   `<sha256(sourceKey)[0..24]>/<sha256(sourceKey/chapterId)[0..24]>/0007.webp` (extension from the image's signature):
   third-party ids never become paths, a source or a chapter is one folder. Paths are kept relative (the iOS container
   moves with app updates). Each page is written to `.part` then moved into place.
 - Queue: in the app's `CoroutineScope`, one chapter at a time, page by page; resumed at launch (`resume()`, from
-  `VovoscanApplication` / `initKoin`), interrupted chapters start again at their first missing page. It runs while the
-  app runs (no WorkManager / background URLSession). Each chapter is fetched again first (`remote.chapter`, saved for
-  the reader), then its pages through `ReaderRemoteDataSource.download`: signed API links (internal source) or the
-  source's hosts through `RulesHttp` (allowed hosts only, never the session). Every change to a chapter's rows and files
-  happens under one lock: a chapter removed while it downloads leaves nothing behind.
+  `VovoscanApplication` / `initKoin`) and when the app comes back on screen, interrupted chapters start again at their
+  first missing page. The shared queue is the only downloader and the source of truth; the platforms only keep it
+  alive in the background (below) through `drain()` (run until nothing is left, or say why it waits), `pause()` (stop
+  cleanly before the app is suspended: the chapter goes back to `queued`, never `failed`; waits at most 2 s) and the
+  `DownloadScheduler` port (called with the network it needs whenever there is work, `replace` when Wi-Fi only
+  changes). `observeActivity()` (chapters and books left, the one downloading, the block) feeds the notification
+  (`DownloadText.notification`: "Downloading 2 chapters…", "Le Griot de Guerre ✦ Chapter 3 ✦ 12 / 19"). `cancelAll()`
+  forgets what is not on the device yet. Each chapter is fetched again first (`remote.chapter`, saved for
+  the reader), then its pages through `ReaderRemoteDataSource.downloadPage`: signed API links (internal source) or the
+  source's hosts through `RulesHttp` (allowed hosts only, never the session; with the source's page-image Referer).
+  Every change to a chapter's rows and files happens under one lock: a chapter removed while it downloads leaves nothing
+  behind.
 - Network: no connection, or "Wi-Fi only" on a metered network (`NetworkState.unmetered`: Android `NOT_METERED`, iOS not
   expensive and not constrained; a personal hotspot counts as mobile data) → `waiting`, and it carries on by itself.
   A failure while online → `failed` with the reason ("The download stopped. Try again.", or the source's refusal);
   "Retry" queues it again.
 - Reader: local files first. `ReaderRepositoryImpl` maps a downloaded page to its `file://` URL (percent-encoded) when
   the file is on disk, else keeps the network URL. Coil and AsyncImage read `file://` URLs.
-- Books need no download: opened once, their sections are in the database; the title page and Downloads show them as
-  "Saved on this device" (size of the sections), and deleting removes the sections.
+- Books: opened once, their sections are in the database; the title page and Downloads show them as "Saved on this
+  device" (size of the sections), and deleting removes the sections. A book never opened (internal source or a
+  rule-based source such as Project Gutenberg) can be downloaded from its title page ("Download the book", or a part's
+  control; "Download the rest (n)" when some parts are saved): it joins the same queue (Wi-Fi only respected, shown in
+  Downloads) as a `book` row; the queue fetches the chapter (document URL), the file (`fetchBook`, shared with
+  opening), reads it into sections (`EpubParser`, stoppable between sections) and saves them with the row's removal in
+  one transaction, so it then shows exactly as an opened book. "Remove from this device" appears once something is
+  saved. Limit: `RulesHttp` gives a request 30 s (`core/sources`), so a very large file on a slow link (Pride and
+  Prejudice with images is 25 MB on Gutenberg) fails with "isn't answering"; opening it has the same limit.
 - Title page (catalog + reader, wired by the app; `TitleChapters` port in `shared`: chapters from the catalog, the
   chapter being read from the library): a control per chapter (download arrow; cyan progress ring with a stop square;
   check = downloaded, tap to delete after a confirmation; failed = retry), "Download next 5" (from the chapter being
   read, else from the first, skipping what is on the device), "Download all (n)" (when more than the next ones),
   "Delete downloads" (confirmed), a summary ("3 of 12 downloaded ✦ 1 in the queue ✦ 42 MB") and why the queue waits.
+  A book: "Download the book", a control per part, "In the queue" / "Downloading" / "Saved on this device ✦ 820 KB",
+  "Remove from this device" (labels and confirmation from `TitleDownloadsUiState`).
 - Downloads screen (Library → "Downloads ✦ 42 MB"): by title (tap opens the title page), size per chapter and in
   total, cancel / retry / remove / delete, delete a title's downloads, the Wi-Fi only switch.
 - Sign-out (`SignOutCleanup`) and a removed source (`SourceRemovedListener`) erase the rows and the files.
+- Android background (`androidApp/.../downloads/BackgroundDownloads.kt`): `WorkManagerDownloadScheduler` enqueues one
+  unique work "downloads" (`APPEND_OR_REPLACE` so work queued while a worker finishes is not lost, nothing added while
+  one already waits; `REPLACE` when Wi-Fi only changes), constraint `CONNECTED` or `UNMETERED` (Wi-Fi only), expedited
+  when the quota allows, linear backoff 30 s. `DownloadWorker` (a `CoroutineWorker`) calls `drain()`: success when the
+  queue is empty, retry when it waits for a network the constraint did not foresee. It runs as a foreground service of
+  type `dataSync` (manifest: `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_DATA_SYNC`, WorkManager's
+  `SystemForegroundService` merged with the type) with a silent progress notification (channel "Downloads") and a
+  Cancel action (`CancelDownloadsReceiver` → `cancelAll()`); the notification is cleared when the worker ends. Stopped
+  by the system while no activity is started (network lost, time limit), the worker pauses the queue; WorkManager runs
+  it again, after a kill or a reboot too (WorkManager persists the work). `POST_NOTIFICATIONS` is asked once at the
+  first download (`MainActivity`, Android 13+); refused, the downloads go on and nothing shows. Limits (Android's
+  rules): a foreground service cannot start from the background (Android 12+), so a worker started by WorkManager
+  while the app is in the background (after a reboot, a retry, Wi-Fi back) runs as plain work, which the system may
+  stop after about 10 minutes and run again later; `dataSync` foreground services get 6 hours a day (Android 15+);
+  "Force stop" in the settings cancels the work until the app is opened again. Checked on the API 37 emulator: the
+  notification ("Downloading 8 chapters…", "Les Heures ✦ Chapter 17 · Le Puits ✦ 6 / 8", Cancel), the queue finishing
+  in the background, the worker stopped when Wi-Fi went (Wi-Fi only) and run again when it came back.
+- iOS background (`iosApp/Sources/BackgroundDownloads.swift`, `BackgroundQueue` in `IosApp.kt`): leaving the app with
+  work in the queue asks for `beginBackgroundTask` time (about 30 s on current iOS) and lets the shared queue go on;
+  when the time runs out (or the queue waits for the network) it calls `pause()` (ending the task within 3 s whatever
+  happens), so nothing is marked failed, and back on screen `resume()` carries on. It also submits a
+  `BGProcessingTask` (`<bundle id>.downloads`, network required) and a `BGAppRefreshTask` (`….downloads.refresh`,
+  15 min) that run `drain()` until the task expires, then pause and submit again if work is left
+  (`UIBackgroundModes` `processing` + `fetch`, `BGTaskSchedulerPermittedIdentifiers`, from `project.yml`). Why not a
+  background `URLSession`: pages of rule-based sources must go through `RulesHttp` (declared hosts, redirects followed
+  by hand, the manifest's rate cap, never the session), which a system-run session cannot honour; every chapter needs
+  an in-process step first (its page list and signed links, from the API or the rules engine) and a book a parse, so a
+  background session could only carry the files of the chapter already resolved, with iOS throttling the relaunches
+  needed for the next one, and the queue's states would be split between the database and `nsurlsessiond`. Limits:
+  after about 30 s in the background the queue pauses until iOS runs a background task (when it chooses: often on
+  power and idle, never after the user force-quits the app) or the app is opened; background tasks never run in the
+  simulator (`submit` answers `BGTaskSchedulerErrorDomain` 1), so only the background time and the pause were checked
+  there (iPhone 16 Pro, iOS 18.6: a Gutenberg book and Shakespeare's complete works finished in the background, the
+  next book paused at the 30 s mark as `queued` and finished on return). iOS 26's `BGContinuedProcessingTask` (a
+  user-started task with system progress UI) would fit better and is not used yet (deployment target 18.4, no iOS 26
+  simulator for this app).
 
 ## Reader: modes, tap zones, settings (comics, modelled on Mihon)
 
