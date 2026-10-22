@@ -386,7 +386,7 @@ class ImmersiveReaderTest {
     @Test
     fun aResumeNeverSavesItsOwnPlacementBack() =
         runTest(dispatcher) {
-            val settings = PositionSettings(ReaderPreferences(coachSeen = ALL_COACHES, tapZonesSeen = true))
+            val settings = PositionSettings(ReaderPreferences(coachSeen = ALL_COACHES, tapZonesSeen = true, mangaMode = CONTINUOUS))
             settings.positions["vovoscan/c3"] = ReadingPosition(2, 0.25f)
             val vm = reader(settings = settings, startPage = 2)
             val restore = vm.glide()
