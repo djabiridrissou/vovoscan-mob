@@ -50,8 +50,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -72,6 +74,9 @@ import com.vovoscan.feature.catalog.presentation.CatalogSource
 import com.vovoscan.feature.catalog.presentation.CatalogUiState
 import com.vovoscan.feature.catalog.presentation.CatalogViewModel
 import com.vovoscan.feature.catalog.presentation.ResumeCard
+import com.vovoscan.feature.catalog.presentation.SuggestionKind
+import com.vovoscan.feature.catalog.presentation.SuggestionRow
+import com.vovoscan.feature.catalog.presentation.SuggestionSection
 import com.vovoscan.feature.catalog.presentation.TitleCard
 import com.vovoscan.feature.sources.presentation.SourcesViewModel
 import org.koin.compose.viewmodel.koinViewModel
@@ -92,6 +97,20 @@ fun CatalogScreen(
     val visible = sourcesState.chips.map { CatalogSource(it.key, it.name) }
     LaunchedEffect(visible) { viewModel.onIntent(CatalogIntent.SourcesChanged(visible)) }
     var sheet by remember { mutableStateOf<Sheet?>(null) }
+    val focusManager = LocalFocusManager.current
+    // Opening a title from search results or a suggestion teaches the search (the view model decides which).
+    val open: (String, String) -> Unit = { sourceKey, titleId ->
+        viewModel.onIntent(CatalogIntent.TitleOpened(sourceKey, titleId))
+        onOpenTitle(sourceKey, titleId)
+    }
+    val choose: (SuggestionRow) -> Unit = { row ->
+        focusManager.clearFocus()
+        if (row.kind == SuggestionKind.Title) {
+            open(row.sourceKey.orEmpty(), row.titleId.orEmpty())
+        } else {
+            viewModel.onIntent(CatalogIntent.UseSearch(row.text))
+        }
+    }
     val grid = rememberLazyGridState()
     // Scrolled past the search field: it folds into a floating magnifier; a tap floats the field over the catalog.
     val folded by remember { derivedStateOf { grid.firstVisibleItemIndex > 0 } }
@@ -125,7 +144,13 @@ fun CatalogScreen(
                     }
                     state.categoryNote?.let { Text(it, style = MaterialTheme.typography.bodySmall.copy(color = Brand.Muted)) }
                     state.safeNote?.let { Text(it, style = MaterialTheme.typography.bodySmall.copy(color = Brand.Muted)) }
-                    BrandField(I18n.text("common.search"), state.query, { viewModel.onIntent(CatalogIntent.Query(it)) })
+                    BrandField(
+                        I18n.text("common.search"),
+                        state.query,
+                        { viewModel.onIntent(CatalogIntent.Query(it)) },
+                        modifier = Modifier.onFocusChanged { viewModel.onIntent(CatalogIntent.SearchFocused(it.isFocused)) },
+                    )
+                    if (state.showSuggestions && !floating) SuggestionList(state.suggestions, choose)
                     state.offlineNotice?.let {
                         OfflineNotice(
                             it,
@@ -150,7 +175,9 @@ fun CatalogScreen(
                     }
                 }
             }
-            items(state.visible, key = { it.sourceKey + "/" + it.id }) { card -> TitleTile(card) { onOpenTitle(card.sourceKey, card.id) } }
+            items(state.visible, key = { it.sourceKey + "/" + it.id }) { card ->
+                TitleTile(card, state.popularLabel) { open(card.sourceKey, card.id) }
+            }
             if (state.canLoadMore && state.results == null) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
                     GhostButton(if (state.loadingMore) I18n.text("common.loading") else I18n.text("catalog.loadMore"), {
@@ -192,7 +219,18 @@ fun CatalogScreen(
             exit = slideOutVertically { -it } + fadeOut(),
             modifier = Modifier.align(Alignment.TopCenter),
         ) {
-            FloatingSearch(state.query, { viewModel.onIntent(CatalogIntent.Query(it)) }) { floating = false }
+            Column {
+                FloatingSearch(
+                    state.query,
+                    { viewModel.onIntent(CatalogIntent.Query(it)) },
+                    { viewModel.onIntent(CatalogIntent.SearchFocused(it)) },
+                ) { floating = false }
+                if (state.showSuggestions) {
+                    Box(Modifier.background(Brand.Ink.copy(alpha = 0.92f)).padding(horizontal = 16.dp).padding(bottom = 8.dp)) {
+                        SuggestionList(state.suggestions, choose)
+                    }
+                }
+            }
         }
     }
     when (sheet) {
@@ -214,6 +252,7 @@ fun CatalogScreen(
 private fun FloatingSearch(
     query: String,
     onQuery: (String) -> Unit,
+    onFocus: (Boolean) -> Unit,
     onClose: () -> Unit,
 ) {
     val focus = remember { FocusRequester() }
@@ -237,13 +276,79 @@ private fun FloatingSearch(
             textStyle = MaterialTheme.typography.bodyLarge.copy(color = Brand.Paper),
             cursorBrush = SolidColor(Brand.Red),
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-            modifier = Modifier.weight(1f).focusRequester(focus),
+            modifier = Modifier.weight(1f).focusRequester(focus).onFocusChanged { onFocus(it.isFocused) },
         )
         Text(
             "✕",
             style = MaterialTheme.typography.titleMedium.copy(color = Brand.Paper),
             modifier = Modifier.clickable(onClickLabel = I18n.text("common.close"), onClick = onClose).padding(4.dp),
         )
+    }
+}
+
+/**
+ * Under the search field while it has the focus: "Your searches" (↺), "Others searched", "Titles" (cover, name,
+ * "Popular ✦ source"). A search fills the field and runs; a title opens.
+ */
+@Composable
+private fun SuggestionList(
+    sections: List<SuggestionSection>,
+    onChoose: (SuggestionRow) -> Unit,
+) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(Brand.Ink2)
+            .border(1.dp, Brand.Line, RoundedCornerShape(12.dp))
+            .padding(vertical = 6.dp),
+    ) {
+        sections.forEach { section ->
+            Text(
+                section.title,
+                style = MaterialTheme.typography.labelSmall.copy(color = Brand.Muted),
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
+            )
+            section.rows.forEach { row -> SuggestionLine(row) { onChoose(row) } }
+        }
+    }
+}
+
+@Composable
+private fun SuggestionLine(
+    row: SuggestionRow,
+    onClick: () -> Unit,
+) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        when (row.kind) {
+            SuggestionKind.Title ->
+                AsyncImage(
+                    row.coverUrl,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.size(30.dp, 40.dp).clip(RoundedCornerShape(4.dp)).background(Brand.Line),
+                )
+            SuggestionKind.Recent -> Text("↺", style = MaterialTheme.typography.titleMedium.copy(color = Brand.Muted))
+            SuggestionKind.Query -> Icon(AppIcons.Search, contentDescription = null, tint = Brand.Muted, modifier = Modifier.size(18.dp))
+        }
+        Column(Modifier.weight(1f)) {
+            Text(row.text, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            row.detail?.takeIf { it.isNotEmpty() }?.let {
+                Text(
+                    it,
+                    style = MaterialTheme.typography.bodySmall.copy(color = Brand.Muted),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
     }
 }
 
@@ -375,6 +480,7 @@ private fun CheckRow(
 @Composable
 private fun TitleTile(
     card: TitleCard,
+    popularLabel: String,
     onClick: () -> Unit,
 ) {
     Column(
@@ -399,6 +505,17 @@ private fun TitleTile(
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.background(Brand.Ink.copy(alpha = 0.85f)).padding(horizontal = 6.dp, vertical = 2.dp),
                 )
+                if (card.popular) {
+                    Text(
+                        popularLabel,
+                        style = MaterialTheme.typography.labelSmall.copy(color = Brand.Red),
+                        modifier =
+                            Modifier
+                                .background(Brand.Ink.copy(alpha = 0.85f))
+                                .border(1.dp, Brand.Red)
+                                .padding(horizontal = 6.dp, vertical = 2.dp),
+                    )
+                }
                 if (card.started) {
                     Text(
                         I18n.text("catalog.started"),

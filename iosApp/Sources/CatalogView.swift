@@ -14,6 +14,8 @@ struct CatalogView: View {
     /// The magnifier was tapped: the search field floats over the top of the catalog.
     @State private var searchFloating = false
     @FocusState private var floatingFocus: Bool
+    /// The search field at the top has the focus: its suggestions show under it.
+    @FocusState private var fieldFocus: Bool
     private let columns = [GridItem(.adaptive(minimum: 150), spacing: 14)]
 
     var body: some View {
@@ -33,6 +35,11 @@ struct CatalogView: View {
                         Text(note).font(.brandBody(13)).foregroundStyle(Color.brandMuted)
                     }
                     IntentField(label: L("common.search"), text: $query, value: model.state.query) { model.send(CatalogIntentQuery(value: $0)) }
+                        .focused($fieldFocus)
+                        .submitLabel(.search)
+                    if model.state.showSuggestions && !searchFloating {
+                        SuggestionList(sections: model.state.suggestions, onSearch: useSearch, onTitle: opened)
+                    }
                     if let notice = model.state.offlineNotice {
                         OfflineNotice(text: notice, onRetry: model.state.canRetry ? { model.send(CatalogIntentRefresh.shared) } : nil)
                     }
@@ -59,8 +66,10 @@ struct CatalogView: View {
                     LazyVGrid(columns: columns, spacing: 14) {
                         ForEach(Array(model.state.visible.enumerated()), id: \.element) { index, card in
                             let route = TitleRoute(sourceKey: card.sourceKey, titleId: card.id)
-                            NavigationLink(value: route) { TitleTile(card: card) }
+                            NavigationLink(value: route) { TitleTile(card: card, popularLabel: model.state.popularLabel) }
                                 .buttonStyle(PressableCardStyle())
+                                // From search results, opening a title teaches the search (the view model decides).
+                                .simultaneousGesture(TapGesture().onEnded { opened(card.sourceKey, card.id) })
                                 .matchedTransitionSource(id: route, in: zoom)
                                 .riseIn(index)
                         }
@@ -86,9 +95,20 @@ struct CatalogView: View {
             }
             .safeAreaInset(edge: .top, spacing: 0) {
                 if searchFloating {
-                    floatingSearch
-                        .transition(reduceMotion ? .opacity : .move(edge: .top).combined(with: .opacity))
+                    VStack(spacing: 0) {
+                        floatingSearch
+                        if model.state.showSuggestions {
+                            SuggestionList(sections: model.state.suggestions, onSearch: useSearch, onTitle: opened)
+                                .padding(.horizontal, 16)
+                                .padding(.bottom, 8)
+                                .background(Color.brandInk.opacity(0.92))
+                        }
+                    }
+                    .transition(reduceMotion ? .opacity : .move(edge: .top).combined(with: .opacity))
                 }
+            }
+            .onChange(of: fieldFocus || floatingFocus) { _, focused in
+                model.send(CatalogIntentSearchFocused(focused: focused))
             }
             .overlay(alignment: .bottomTrailing) {
                 if searchFolded && !searchFloating {
@@ -132,6 +152,18 @@ struct CatalogView: View {
         .navigationDestination(for: ReaderRoute.self) { ReaderContainer(route: $0) }
         .task { await model.observe() }
         .task { await sources.observe() }
+    }
+
+    /// A search under the field (this account's or others'): fills the field and runs at once.
+    private func useSearch(_ text: String) {
+        query = text
+        fieldFocus = false
+        floatingFocus = false
+        model.send(CatalogIntentUseSearch(text: text))
+    }
+
+    private func opened(_ sourceKey: String, _ titleId: String) {
+        model.send(CatalogIntentTitleOpened(sourceKey: sourceKey, titleId: titleId))
     }
 
     private static let top = "catalog-top"
@@ -300,9 +332,72 @@ private struct ResumeBanner: View {
     }
 }
 
+/// Under the search field while it has the focus: "Your searches" (↺), "Others searched", "Titles" (cover, name,
+/// "Popular ✦ source"). A search fills the field and runs; a title opens its page.
+private struct SuggestionList: View {
+    let sections: [SuggestionSection]
+    let onSearch: (String) -> Void
+    let onTitle: (String, String) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(sections, id: \.title) { section in
+                Text(section.title)
+                    .font(.brandBody(12, weight: .bold))
+                    .foregroundStyle(Color.brandMuted)
+                    .padding(.horizontal, 14)
+                    .padding(.top, 8)
+                    .padding(.bottom, 4)
+                ForEach(section.rows, id: \.key) { row in
+                    if row.kind == .title, let sourceKey = row.sourceKey, let titleId = row.titleId {
+                        NavigationLink(value: TitleRoute(sourceKey: sourceKey, titleId: titleId)) { line(row) }
+                            .buttonStyle(.plain)
+                            .simultaneousGesture(TapGesture().onEnded { onTitle(sourceKey, titleId) })
+                    } else {
+                        Button { onSearch(row.text) } label: { line(row) }
+                            .buttonStyle(.plain)
+                    }
+                }
+            }
+        }
+        .padding(.vertical, 6)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.brandInk2, in: RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.brandLine, lineWidth: 1))
+    }
+
+    private func line(_ row: SuggestionRow) -> some View {
+        HStack(spacing: 12) {
+            switch row.kind {
+            case .title:
+                AsyncImage(url: row.coverUrl.flatMap(URL.init(string:))) { image in
+                    image.resizable().scaledToFill()
+                } placeholder: { Color.brandLine }
+                    .frame(width: 30, height: 40)
+                    .clipShape(RoundedRectangle(cornerRadius: 4))
+            case .recent:
+                Image(systemName: "arrow.counterclockwise").foregroundStyle(Color.brandMuted).frame(width: 30)
+            default:
+                Image(systemName: "magnifyingglass").foregroundStyle(Color.brandMuted).frame(width: 30)
+            }
+            VStack(alignment: .leading, spacing: 2) {
+                Text(row.text).font(.brandBody(15)).foregroundStyle(Color.brandPaper).lineLimit(1)
+                if let detail = row.detail, !detail.isEmpty {
+                    Text(detail).font(.brandBody(12)).foregroundStyle(Color.brandMuted).lineLimit(1)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .contentShape(Rectangle())
+    }
+}
+
 /// Title tile: cover, format and source badges, name.
 private struct TitleTile: View {
     let card: TitleCard
+    let popularLabel: String
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -325,6 +420,15 @@ private struct TitleTile: View {
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2)
                         .background(Color.brandInk.opacity(0.85))
+                    if card.popular {
+                        Text(popularLabel)
+                            .font(.brandBody(11, weight: .bold))
+                            .foregroundStyle(Color.brandRed)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.brandInk.opacity(0.85))
+                            .overlay(Rectangle().stroke(Color.brandRed, lineWidth: 1))
+                    }
                     if card.started {
                         Text(L("catalog.started"))
                             .font(.brandBody(11, weight: .bold))

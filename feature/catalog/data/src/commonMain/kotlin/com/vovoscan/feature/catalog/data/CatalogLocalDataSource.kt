@@ -291,7 +291,7 @@ private fun List<String>.joinList() = joinToString(SEPARATOR)
 
 private fun String?.splitList() = this?.split(SEPARATOR)?.filter { it.isNotBlank() }.orEmpty()
 
-private fun summary(
+internal fun summary(
     sourceKey: String,
     id: String,
     name: String,

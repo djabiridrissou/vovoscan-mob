@@ -93,6 +93,26 @@ final class PreferencesModel: ObservableObject {
 }
 
 @MainActor
+final class SearchPrivacyModel: ObservableObject {
+    @Published private(set) var state: SearchPrivacyUiState
+    private let owner = ViewModels()
+    private let viewModel: SearchPrivacyViewModel
+
+    init() {
+        viewModel = owner.searchPrivacy()
+        state = viewModel.state.value
+    }
+
+    func observe() async {
+        for await next in viewModel.state { state = next }
+    }
+
+    func send(_ intent: SearchPrivacyIntent) { viewModel.onIntent(intent: intent) }
+
+    deinit { owner.clear() }
+}
+
+@MainActor
 final class OnboardingModel: ObservableObject {
     @Published private(set) var state: OnboardingUiState
     private let owner = ViewModels()

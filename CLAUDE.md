@@ -169,6 +169,21 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   reading order whatever the list's order. The catalog shows the last title read on top (`resume`) and marks started
   cards ("Reading"). Scrolled past the search field, it folds into a floating magnifier (bottom right) that floats the
   field over the top of the catalog (iOS `onScrollGeometryChange`, Android the grid's first visible item).
+- Search learned from picks (server `search`, `SearchRepository` in catalog domain, `SearchRepositoryImpl` in data): the
+  field is a combobox. With the focus (`CatalogIntent.SearchFocused`) it shows `suggestions` (150 ms debounce, `GET
+  api/v1/search/suggest?q=&lang=&limit=8&format=`): "Your searches" (↺), "Others searched", "Titles" ("Popular" / "You
+  opened it" ✦ source; only sources read now, safe mode applied). A search there fills the field and runs at once
+  (`UseSearch`); a title opens. Results ask the same with `limit=50` alongside the sources: learned titles first, in
+  their order and once each, then the sources' mix (`SearchRules.order`; a title no source returned for this spelling
+  shows too, except under a curated category), with the "Popular" badge (`TitleCard.popular`). `format` is the category
+  filter's format, so suggestions and results follow it. Opening a title from results or a suggestion with 2+ characters
+  typed is a pick (`TitleOpened`; plain browsing never is): `POST api/v1/search/picks` with the title's name for a source
+  read on the device and its format only when known (the server's word, the filter's, or a book's; never the manga
+  default). Picks wait in `catalog_setting` (`search/pending`, no schema change) while offline, are sent with the next
+  pick, suggestion or catalog opening, and are dropped when refused or older than 7 days. Offline, suggestions are the
+  searches kept here (`search/recent`, from picks) and the saved titles. Settings › Preferences "Search" card
+  (`SearchPrivacyViewModel`): learning on/off (`PUT api/v1/search/preferences`; off keeps nothing here either) and "Clear
+  my search history" (`DELETE api/v1/search/history`), online only.
 - Cards carry the source's name (small badge under the format badge). Screens: a "All sources ▾" / "2 sources ▾" /
   name button and a category button (red when they narrow the catalog) open a sheet (Android `ModalBottomSheet`, iOS
   `.sheet`): "All" + the sources with checkmarks, or "All categories" + the categories.

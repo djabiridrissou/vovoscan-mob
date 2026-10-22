@@ -19,7 +19,12 @@ import com.vovoscan.feature.catalog.domain.INTERNAL_SOURCE
 import com.vovoscan.feature.catalog.domain.ReadingFormat
 import com.vovoscan.feature.catalog.domain.ReadingResume
 import com.vovoscan.feature.catalog.domain.ResumePoint
+import com.vovoscan.feature.catalog.domain.SearchPick
+import com.vovoscan.feature.catalog.domain.SearchRepository
+import com.vovoscan.feature.catalog.domain.SearchRules
 import com.vovoscan.feature.catalog.domain.SourceCategory
+import com.vovoscan.feature.catalog.domain.SuggestReason
+import com.vovoscan.feature.catalog.domain.SuggestedTitle
 import com.vovoscan.feature.catalog.domain.TitleDetail
 import com.vovoscan.feature.catalog.domain.TitleSummary
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -57,6 +62,41 @@ data class TitleCard(
     val status: String,
     /** This account has started it: the card says so ("Reading"). */
     val started: Boolean = false,
+    /** A search result readers who searched the same opened: the "Popular" badge. */
+    val popular: Boolean = false,
+)
+
+enum class SuggestionKind {
+    /** This account's own search (↺): fills the field and runs it. */
+    Recent,
+
+    /** A search other readers made: fills the field and runs it. */
+    Query,
+
+    /** A title: opens it (and teaches the search what was meant). */
+    Title,
+}
+
+/** A row under the search field. */
+data class SuggestionRow(
+    val kind: SuggestionKind,
+    /** The search, or the title's name. */
+    val text: String,
+    /** A title's "Popular ✦ Project Gutenberg" / "You opened it ✦ vovoscan". */
+    val detail: String? = null,
+    val sourceKey: String? = null,
+    val titleId: String? = null,
+    val coverUrl: String? = null,
+) {
+    /** Stable id for the lists. */
+    val key: String get() = if (kind == SuggestionKind.Title) "t/$sourceKey/$titleId" else "${kind.name}/$text"
+}
+
+/** "Your searches", "Others searched", "Titles". */
+data class SuggestionSection(
+    val kind: SuggestionKind,
+    val title: String,
+    val rows: List<SuggestionRow>,
 )
 
 /** "Continue: Title, Chapter 4": the last title read, opened where it was left. */
@@ -118,7 +158,16 @@ data class CatalogUiState(
     val resume: ResumeCard? = null,
     /** Safe mode left titles out of what shows: one quiet line says so (the switch is in Settings). */
     val safeNote: String? = null,
+    /** The search field has the focus: its suggestions show under it. */
+    val searchFocused: Boolean = false,
+    /** Under the search field: this account's searches, others' searches, titles (empty sections left out). */
+    val suggestions: List<SuggestionSection> = emptyList(),
 ) {
+    val showSuggestions: Boolean get() = searchFocused && suggestions.isNotEmpty()
+
+    /** The badge of a result readers who searched the same opened. */
+    val popularLabel: String get() = t("search.popular")
+
     val visible: List<TitleCard>
         get() = (results ?: cards).map { if ("${it.sourceKey}/${it.id}" in startedKeys) it.copy(started = true) else it }
 
@@ -186,6 +235,25 @@ sealed interface CatalogIntent {
     data class SelectCategory(
         val name: String?,
     ) : CatalogIntent
+
+    /** The search field gained or lost the focus (its suggestions show while it has it). */
+    data class SearchFocused(
+        val focused: Boolean,
+    ) : CatalogIntent
+
+    /** A search under the field (this account's or others'): fills the field and runs it at once. */
+    data class UseSearch(
+        val text: String,
+    ) : CatalogIntent
+
+    /**
+     * A title was opened from the grid or a suggestion. From search results or a suggested title, with something typed,
+     * it teaches the search what was meant (a pick, sent in the background; nothing from plain browsing).
+     */
+    data class TitleOpened(
+        val sourceKey: String,
+        val titleId: String,
+    ) : CatalogIntent
 }
 
 /**
@@ -199,6 +267,7 @@ class CatalogViewModel(
     private val repository: CatalogRepository,
     private val resume: ReadingResume = ReadingResume { flowOf(emptyList()) },
     private val content: ContentPolicy = ContentPolicy.ShowAll,
+    private val search: SearchRepository = SearchRepository.None,
 ) : ViewModel() {
     /** Safe mode off: every title shows. Follows the account (`content`). */
     private var showAdult = true
@@ -248,6 +317,11 @@ class CatalogViewModel(
     private var hasMore: Map<String, Boolean> = emptyMap()
     private var generation = 0
     private var searchJob: Job? = null
+    private var suggestJob: Job? = null
+
+    /** What a pick would say of each title on screen as a search result or a suggestion (title, format known). */
+    private var resultPicks: Map<Pair<String, String>, Pair<TitleSummary, ReadingFormat?>> = emptyMap()
+    private var suggestionPicks: Map<Pair<String, String>, Pair<TitleSummary, ReadingFormat?>> = emptyMap()
     private var listingsJob: Job? = null
     private val categoriesAsked = mutableSetOf<String>()
 
@@ -280,6 +354,8 @@ class CatalogViewModel(
                 if (changed && state.value.query.isNotBlank()) search(state.value.query)
             }.launchIn(viewModelScope)
         viewModelScope.launch { filter.value = repository.observeFilter().first() }
+        // Picks made offline go out as soon as the catalog opens online.
+        viewModelScope.launch { search.sendPending() }
         val selection =
             combine(visible.filterNotNull(), filter.filterNotNull()) { v, f -> Triple(v, f, CatalogSelection.selected(v, f)) }
         selection
@@ -296,7 +372,8 @@ class CatalogViewModel(
                 refresh(categoriesToo = true)
             }
             CatalogIntent.LoadMore -> loadMore()
-            is CatalogIntent.Query -> search(intent.value)
+            // The same text again (a native field echoing a search chosen under it) changes nothing.
+            is CatalogIntent.Query -> if (intent.value != state.value.query) search(intent.value)
             // Unknown until the Sources screen's list is read (it always keeps one source visible).
             is CatalogIntent.SourcesChanged -> if (intent.sources.isNotEmpty()) visible.value = intent.sources
             CatalogIntent.ShowAllSources -> changeFilter { it.copy(sourceKeys = emptyList()) }
@@ -313,8 +390,108 @@ class CatalogViewModel(
                     }
                 }
             is CatalogIntent.SelectCategory -> changeFilter { it.copy(categoryName = intent.name?.trim()?.takeIf { n -> n.isNotEmpty() }) }
+            is CatalogIntent.SearchFocused -> {
+                mutableState.update { it.copy(searchFocused = intent.focused) }
+                if (intent.focused) suggest(state.value.query) else suggestJob?.cancel()
+            }
+            is CatalogIntent.UseSearch -> {
+                mutableState.update { it.copy(searchFocused = false) }
+                suggestJob?.cancel()
+                search(intent.text, debounce = false)
+            }
+            is CatalogIntent.TitleOpened -> picked(intent.sourceKey, intent.titleId)
         }
     }
+
+    /** A pick: what was typed, and the title opened from the results or a suggestion. */
+    private fun picked(
+        sourceKey: String,
+        titleId: String,
+    ) {
+        val current = state.value
+        val query = current.query.trim()
+        if (SearchRules.normalise(query).length < SearchRules.MIN_PICK_QUERY) return
+        val key = sourceKey to titleId
+        val (title, format) = (if (current.results != null) resultPicks[key] else null) ?: suggestionPicks[key] ?: return
+        viewModelScope.launch {
+            search.recordPick(SearchPick(query, title.sourceKey, title.id, title.name, title.contentRating, format))
+        }
+    }
+
+    /**
+     * How a title reads, as the device knows it: the server's word for a suggested one, else the format of the
+     * catalog filter it was found under, else a book's; null rather than a guess (a source that names no format reads
+     * as manga by default).
+     */
+    private fun knownFormat(title: TitleSummary): ReadingFormat? =
+        plan?.category?.format ?: ReadingFormat.Text.takeIf { title.kind == ContentKind.Book }
+
+    /** Suggestions under the field, a short pause after typing (the server answers 120 a minute). */
+    private fun suggest(query: String) {
+        suggestJob?.cancel()
+        if (!state.value.searchFocused) return
+        val names = plan?.visible.orEmpty().associate { it.key to it.name }
+        val format = plan?.category?.format
+        suggestJob =
+            viewModelScope.launch {
+                delay(SUGGEST_DEBOUNCE_MS)
+                val found = search.suggest(query.trim(), SearchRepository.SUGGEST_LIMIT, format)
+                val titles = found.titles.filter { it.sourceKey in names && ContentRating.shown(it.contentRating, showAdult) }
+                val covers = titles.associate { (it.sourceKey to it.titleRef) to (it.coverUrl ?: savedCover(it)) }
+                suggestionPicks = titles.associate { (it.sourceKey to it.titleRef) to (it.toSummary() to it.format) }
+                mutableState.update {
+                    it.copy(suggestions = sections(found.recent, found.queries, titles, names, covers))
+                }
+            }
+    }
+
+    private fun sections(
+        recent: List<String>,
+        queries: List<String>,
+        titles: List<SuggestedTitle>,
+        names: Map<String, String>,
+        covers: Map<Pair<String, String>, String?>,
+    ): List<SuggestionSection> =
+        listOfNotNull(
+            recent.takeIf { it.isNotEmpty() }?.let { list ->
+                SuggestionSection(SuggestionKind.Recent, t("search.recent"), list.map { SuggestionRow(SuggestionKind.Recent, it) })
+            },
+            queries.takeIf { it.isNotEmpty() }?.let { list ->
+                SuggestionSection(SuggestionKind.Query, t("search.others"), list.map { SuggestionRow(SuggestionKind.Query, it) })
+            },
+            titles.takeIf { it.isNotEmpty() }?.let { list ->
+                SuggestionSection(
+                    SuggestionKind.Title,
+                    t("search.titles"),
+                    list.map { title ->
+                        SuggestionRow(
+                            kind = SuggestionKind.Title,
+                            text = title.name,
+                            detail =
+                                listOfNotNull(
+                                    when (title.reason) {
+                                        SuggestReason.Popular -> t("search.popular")
+                                        SuggestReason.Yours -> t("search.yours")
+                                        null -> null
+                                    },
+                                    names[title.sourceKey],
+                                ).joinToString(" ✦ "),
+                            sourceKey = title.sourceKey,
+                            titleId = title.titleRef,
+                            coverUrl = covers[title.sourceKey to title.titleRef],
+                        )
+                    },
+                )
+            },
+        )
+
+    /** A source read on the device gets no cover from the server: the saved copy's, when there is one. */
+    private suspend fun savedCover(title: SuggestedTitle): String? =
+        repository
+            .observeTitle(title.sourceKey, title.titleRef)
+            .first()
+            ?.summary
+            ?.coverUrl
 
     private fun changeFilter(change: (CatalogFilter) -> CatalogFilter) {
         val current = filter.value ?: CatalogFilter()
@@ -446,18 +623,29 @@ class CatalogViewModel(
         }
     }
 
-    private fun search(query: String) {
+    private fun search(
+        query: String,
+        debounce: Boolean = true,
+    ) {
+        val changed = query != state.value.query
         mutableState.update { it.copy(query = query) }
+        if (changed) suggest(query)
         searchJob?.cancel()
         if (query.isBlank()) {
             mutableState.update { it.copy(results = null, searchNotice = null) }
+            resultPicks = emptyMap()
             return
         }
         val current = readings
         val names = plan?.visible.orEmpty().associate { it.key to it.name }
+        val format = plan?.category?.format
+        // A curated category (no format) only keeps what its sources return; otherwise a title the server learned for
+        // this spelling shows even when no source found it (the typo tolerance).
+        val extras = plan?.category?.let { it.format != null } ?: true
         searchJob =
             viewModelScope.launch {
-                delay(SEARCH_DEBOUNCE_MS)
+                if (debounce) delay(SEARCH_DEBOUNCE_MS)
+                val learned = async { search.suggest(query.trim(), SearchRepository.RESULTS_LIMIT, format) }
                 // The field keeps what was typed; sources get it without the spaces around (iOS autocorrect adds one).
                 val found =
                     current
@@ -477,11 +665,43 @@ class CatalogViewModel(
                                 }
                             }
                         }.awaitAll()
-                val all = CatalogMerge.mix(found.map { it.titles }, Random(seed.value))
+                val mixed = CatalogMerge.mix(found.map { it.titles }, Random(seed.value))
+                val read = current.mapTo(HashSet()) { it.source.key }
+                // Learned titles first (offline, the device's own guesses are not "learned": the sources' mix stands).
+                val suggested =
+                    learned
+                        .await()
+                        .takeUnless { it.offline }
+                        ?.titles
+                        .orEmpty()
+                        .filter { it.sourceKey in read }
+                val all =
+                    SearchRules.order(suggested, mixed, extras).map { t ->
+                        if (t.coverUrl == null && mixed.none { m -> m.sourceKey == t.sourceKey && m.id == t.id }) {
+                            t.copy(
+                                coverUrl =
+                                    repository
+                                        .observeTitle(t.sourceKey, t.id)
+                                        .first()
+                                        ?.summary
+                                        ?.coverUrl,
+                            )
+                        } else {
+                            t
+                        }
+                    }
                 val titles = all.filter { t -> ContentRating.shown(t.contentRating, showAdult) }
+                val popular =
+                    suggested.filter { it.reason == SuggestReason.Popular }.mapTo(HashSet()) { it.sourceKey to it.titleRef }
+                val serverFormats = suggested.associate { (it.sourceKey to it.titleRef) to it.format }
+                resultPicks =
+                    titles.associate { t ->
+                        val key = t.sourceKey to t.id
+                        key to (t to (serverFormats[key] ?: knownFormat(t)))
+                    }
                 mutableState.update {
                     it.copy(
-                        results = titles.map { t -> card(t, names) },
+                        results = titles.map { t -> card(t, names).copy(popular = (t.sourceKey to t.id) in popular) },
                         safeNote = safeNote(hiddenInListing || titles.size < all.size),
                         searchNotice =
                             CatalogNotices.search(
@@ -566,6 +786,7 @@ class CatalogViewModel(
 
     private companion object {
         const val SEARCH_DEBOUNCE_MS = 300L
+        const val SUGGEST_DEBOUNCE_MS = 150L
         const val RESUME_CANDIDATES = 5
     }
 }

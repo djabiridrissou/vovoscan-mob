@@ -32,6 +32,8 @@ import com.vovoscan.feature.account.presentation.ReadingSettingsIntent
 import com.vovoscan.feature.account.presentation.ReadingSettingsViewModel
 import com.vovoscan.feature.auth.presentation.PreferencesIntent
 import com.vovoscan.feature.auth.presentation.PreferencesViewModel
+import com.vovoscan.feature.catalog.presentation.SearchPrivacyIntent
+import com.vovoscan.feature.catalog.presentation.SearchPrivacyViewModel
 import org.koin.compose.viewmodel.koinViewModel
 
 /** Settings › Preferences: the app's language and region, the reading language, and the tour again. */
@@ -41,9 +43,11 @@ fun PreferencesScreen(
     onReplayTutorial: () -> Unit,
     viewModel: PreferencesViewModel = koinViewModel(),
     reading: ReadingSettingsViewModel = koinViewModel(),
+    search: SearchPrivacyViewModel = koinViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val readingState by reading.state.collectAsStateWithLifecycle()
+    val searchState by search.state.collectAsStateWithLifecycle()
     var readingOpen by rememberSaveable { mutableStateOf(false) }
     Column(
         Modifier
@@ -78,6 +82,19 @@ fun PreferencesScreen(
                     enabled = !state.savingSafeMode,
                     colors = SwitchDefaults.colors(checkedTrackColor = Brand.Red, checkedThumbColor = Brand.Ink),
                 )
+            }
+        }
+        // Search learned from picks: whether this account takes part, and its history.
+        Card(searchState.title) {
+            Text(searchState.privacy, style = MaterialTheme.typography.bodySmall)
+            searchState.status?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
+            searchState.notice?.let { Notice(it) }
+            searchState.error?.let { ErrorText(it) }
+            if (searchState.learning == null && !searchState.busy) {
+                GhostButton(I18n.text("common.retry"), { search.onIntent(SearchPrivacyIntent.Load) })
+            } else {
+                GhostButton(searchState.toggleLabel, { search.onIntent(SearchPrivacyIntent.Toggle) })
+                GhostButton(searchState.clearLabel, { search.onIntent(SearchPrivacyIntent.ClearHistory) })
             }
         }
         Card(state.tourTitle) {

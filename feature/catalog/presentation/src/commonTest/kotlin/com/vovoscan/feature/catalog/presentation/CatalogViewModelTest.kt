@@ -115,7 +115,7 @@ class CatalogViewModelTest {
                         )
                 }
             val adult = MutableStateFlow(false)
-            val vm = CatalogViewModel(repository) { adult }
+            val vm = CatalogViewModel(repository, content = { adult })
             vm.onIntent(CatalogIntent.SourcesChanged(listOf(gutenberg)))
             advanceUntilIdle()
             assertEquals(listOf("safe"), ids(vm))

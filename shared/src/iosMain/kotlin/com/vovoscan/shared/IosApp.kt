@@ -24,6 +24,7 @@ import com.vovoscan.feature.auth.presentation.PreferencesViewModel
 import com.vovoscan.feature.auth.presentation.SessionViewModel
 import com.vovoscan.feature.auth.presentation.SignInViewModel
 import com.vovoscan.feature.catalog.presentation.CatalogViewModel
+import com.vovoscan.feature.catalog.presentation.SearchPrivacyViewModel
 import com.vovoscan.feature.catalog.presentation.TitleDetailViewModel
 import com.vovoscan.feature.episodes.presentation.EpisodeViewModel
 import com.vovoscan.feature.episodes.presentation.PlayerViewModel
@@ -130,6 +131,8 @@ class ViewModels : KoinComponent {
     fun onboarding(): OnboardingViewModel = remember("onboarding") { get<OnboardingViewModel>() }
 
     fun catalog(): CatalogViewModel = remember("catalog") { get<CatalogViewModel>() }
+
+    fun searchPrivacy(): SearchPrivacyViewModel = remember("searchPrivacy") { get<SearchPrivacyViewModel>() }
 
     fun titleDetail(
         sourceKey: String,

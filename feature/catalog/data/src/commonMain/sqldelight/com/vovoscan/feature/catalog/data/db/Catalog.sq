@@ -102,6 +102,10 @@ SELECT t.source_key, t.id, t.name, t.cover_url, t.kind, t.format, t.status, t.co
 JOIN title t ON t.source_key = e.source_key AND t.id = e.title_id
 WHERE e.source_key = :source_key AND e.listing = :listing AND t.name LIKE '%' || :query || '%' ORDER BY t.name LIMIT 50;
 
+searchAllTitles:
+SELECT source_key, id, name, cover_url, kind, format, status, content_rating FROM title
+WHERE name LIKE '%' || :query || '%' ORDER BY name LIMIT :limit;
+
 titleById:
 SELECT * FROM title WHERE source_key = ? AND id = ?;
 
