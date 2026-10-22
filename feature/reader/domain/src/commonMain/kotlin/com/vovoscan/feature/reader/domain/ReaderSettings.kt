@@ -154,6 +154,11 @@ interface ReaderSettingsRepository {
     fun observeHistory(): Flow<List<LastRead>> = flowOf(emptyList())
 
     suspend fun recordRead(read: LastRead) {}
+
+    /** The language our catalog was last read in on this device (the series page's badges); erased with the account. */
+    suspend fun recordLanguage(code: String) {}
+
+    suspend fun lastLanguage(): String? = null
 }
 
 /** Where a title was left on this device: the chapter, the page, and when (ms). */

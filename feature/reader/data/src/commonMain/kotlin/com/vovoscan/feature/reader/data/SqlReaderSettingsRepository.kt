@@ -156,8 +156,15 @@ class SqlReaderSettingsRepository(
         withContext(io) { queries.putSetting(HISTORY_PREFIX + read.key, read.encode()) }
     }
 
+    override suspend fun recordLanguage(code: String) {
+        withContext(io) { queries.putSetting(READ_LANGUAGE, code) }
+    }
+
+    override suspend fun lastLanguage(): String? = withContext(io) { queries.setting(READ_LANGUAGE).executeAsOneOrNull() }
+
     internal companion object {
         const val HISTORY_PREFIX = "last/"
+        const val READ_LANGUAGE = "readLanguage"
         const val PENDING_PREFIX = "seriesPending/"
         const val MIGRATED = "seriesMigrated"
 

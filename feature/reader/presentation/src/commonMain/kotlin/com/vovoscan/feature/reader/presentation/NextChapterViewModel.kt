@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.vovoscan.core.common.AppError
 import com.vovoscan.core.common.AppResult
+import com.vovoscan.core.common.INTERNAL_SOURCE_KEY
 import com.vovoscan.core.common.Language
 import com.vovoscan.core.common.i18n.t
 import com.vovoscan.feature.reader.domain.EndState
@@ -11,6 +12,7 @@ import com.vovoscan.feature.reader.domain.NextChapterRules
 import com.vovoscan.feature.reader.domain.NextChapters
 import com.vovoscan.feature.reader.domain.NextChaptersRepository
 import com.vovoscan.feature.reader.domain.Price
+import com.vovoscan.feature.reader.domain.ReaderSettingsRepository
 import com.vovoscan.feature.reader.domain.Upcoming
 import com.vovoscan.feature.reader.domain.chapterLabel
 import kotlinx.coroutines.Job
@@ -142,6 +144,8 @@ class NextChapterViewModel(
     sourceKey: String,
     private val chapterId: String,
     private val repository: NextChaptersRepository,
+    /** Keeps the language read in, for the series page's badges. */
+    private val settings: ReaderSettingsRepository? = null,
 ) : ViewModel() {
     private val mutableState = MutableStateFlow(NextChapterUiState(available = sourceKey == INTERNAL))
     val state: StateFlow<NextChapterUiState> = mutableState.asStateFlow()
@@ -211,6 +215,7 @@ class NextChapterViewModel(
         mutableState.update { it.copy(language = lang, busy = false) }
         render()
         if (lang == null) return
+        viewModelScope.launch { settings?.recordLanguage(lang) }
         loadJob = viewModelScope.launch { load() }
     }
 
@@ -464,7 +469,7 @@ class NextChapterViewModel(
         next.title?.takeIf { it.isNotBlank() }?.let { "${chapterLabel(next.number)} ✦ $it" } ?: chapterLabel(next.number)
 
     companion object {
-        const val INTERNAL = "vovoscan"
+        const val INTERNAL = INTERNAL_SOURCE_KEY
         const val TOAST_MS = 8_000L
         private const val QUOTE_CHANGED = "QUOTE_CHANGED"
     }

@@ -620,6 +620,11 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   settings sheet and end card): at 70 % the next chapter is prepared once, quietly; the switch moves at once and a
   refusal puts it back. Opening a chapter in the language goes through the copy route (`onOpenCopy`), so the reader
   opens it translated. Online only.
+- Series page badges: the language our catalog was last read in on this device (`ReaderSettingsRepository.
+  recordLanguage`, `reader_setting` "readLanguage", erased with the account) and `GET api/v1/translations/titles/{id}?lang=`
+  give each chapter row "Français ✓" / "Français ✦ 42%" / "Français ✦ preparing" (`ChapterTranslations` port in the
+  catalog, wired in `shared`); a chapter ready in it, and "Continue / Start reading" on it, open translated
+  (`ChapterRow.openLanguage`, `ReadAction.language`).
 
 ## Screens (account and episodes)
 

@@ -223,4 +223,17 @@ interface NextChaptersRepository {
         lang: String,
         auto: Boolean,
     ): AppResult<NextChapters>
+
+    /** Each chapter of a series in [lang] (`GET …/translations/titles/{titleId}`): the series page's badges. */
+    suspend fun titleBadges(
+        titleId: String,
+        lang: String,
+    ): AppResult<List<ChapterBadge>> = AppResult.Ok(emptyList())
 }
+
+/** A chapter's translation in one language: [TranslationStatus.None] when nobody asked for it. */
+data class ChapterBadge(
+    val chapterId: String,
+    val status: TranslationStatus,
+    val progress: Int,
+)

@@ -57,7 +57,8 @@ fun TitleScreen(
     sourceKey: String,
     titleId: String,
     onBack: () -> Unit,
-    onRead: (chapterId: String, startPage: Int) -> Unit,
+    /** [language]: open it translated (the language last read in, when this chapter is ready in it); null: as it is. */
+    onRead: (chapterId: String, startPage: Int, language: String?) -> Unit,
     onEpisode: (chapterId: String) -> Unit,
     detail: TitleDetailViewModel = koinViewModel(key = "title:$sourceKey/$titleId") { parametersOf(sourceKey, titleId) },
     follow: FollowViewModel = koinViewModel(key = "follow:$sourceKey/$titleId") { parametersOf(sourceKey, titleId) },
@@ -94,7 +95,7 @@ fun TitleScreen(
                 Text(state.meta, style = MaterialTheme.typography.bodySmall)
                 // Where this account left the title (this device or another), otherwise chapter 1.
                 state.readAction?.let { action ->
-                    PrimaryButton(action.label, { onRead(action.chapterId, action.page) })
+                    PrimaryButton(action.label, { onRead(action.chapterId, action.page, action.language) })
                     Text(action.detail, style = MaterialTheme.typography.bodySmall, color = Brand.Muted)
                 }
                 if (state.name.isNotEmpty()) GhostButton(followState.label, { follow.toggle(state.name, state.coverUrl) })
@@ -131,13 +132,18 @@ fun TitleScreen(
                     .background(Brand.Ink2, RoundedCornerShape(12.dp))
                     // The chapter being read: a red edge, so the eye finds it in a long list.
                     .border(if (chapter.current) 2.dp else 1.dp, if (chapter.current) Brand.Red else Brand.Line, RoundedCornerShape(12.dp))
-                    .clickable { onRead(chapter.id, 0) }
+                    .clickable { onRead(chapter.id, 0, chapter.openLanguage) }
                     .padding(16.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column(Modifier.weight(1f)) {
                     Text(chapter.label, style = MaterialTheme.typography.bodyMedium)
                     if (chapter.meta.isNotEmpty()) Text(chapter.meta, style = MaterialTheme.typography.bodySmall)
+                    // Its translation in the language last read in: ready (yellow), or on its way (cyan).
+                    chapter.translation?.let {
+                        val color = if (chapter.translationReady) Brand.Yellow else Brand.Cyan
+                        Text(it, style = MaterialTheme.typography.bodySmall.copy(color = color))
+                    }
                     download.text?.let {
                         val color = if (download.status == DownloadStatus.Failed) Brand.Danger else Brand.Muted
                         Text(it, style = MaterialTheme.typography.bodySmall.copy(color = color))

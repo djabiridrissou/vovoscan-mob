@@ -11,6 +11,7 @@ import com.vovoscan.feature.catalog.data.RoutingCatalogRemoteDataSource
 import com.vovoscan.feature.catalog.data.SqlCatalogLocalDataSource
 import com.vovoscan.feature.catalog.data.db.CatalogDatabase
 import com.vovoscan.feature.catalog.domain.CatalogRepository
+import com.vovoscan.feature.catalog.domain.ChapterTranslations
 import com.vovoscan.feature.catalog.presentation.CatalogViewModel
 import com.vovoscan.feature.catalog.presentation.TitleDetailViewModel
 import org.koin.core.module.dsl.viewModel
@@ -31,5 +32,13 @@ val catalogModule =
         single<CatalogLocalDataSource> { SqlCatalogLocalDataSource(get(), get<AppDispatchers>().io) }
         single<CatalogRepository> { CatalogRepositoryImpl(get(), get()) }
         viewModelOf(::CatalogViewModel)
-        viewModel { (sourceKey: String, titleId: String) -> TitleDetailViewModel(sourceKey, titleId, get(), get()) }
+        viewModel { (sourceKey: String, titleId: String) ->
+            TitleDetailViewModel(
+                sourceKey,
+                titleId,
+                get(),
+                get(),
+                getOrNull() ?: ChapterTranslations.None,
+            )
+        }
     }

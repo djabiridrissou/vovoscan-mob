@@ -4,6 +4,7 @@ import com.vovoscan.core.common.AppResult
 import com.vovoscan.core.common.map
 import com.vovoscan.core.network.ApiData
 import com.vovoscan.core.network.apiCall
+import com.vovoscan.feature.reader.domain.ChapterBadge
 import com.vovoscan.feature.reader.domain.Funding
 import com.vovoscan.feature.reader.domain.NextChapters
 import com.vovoscan.feature.reader.domain.NextChaptersRepository
@@ -50,6 +51,19 @@ data class NextChaptersDto(
     val auto: Boolean = false,
     val upcoming: List<UpcomingDto> = emptyList(),
     val nextUrl: String? = null,
+)
+
+@Serializable
+data class TitleChapterDto(
+    val id: String,
+    val status: String? = null,
+    val progress: Int = 0,
+)
+
+@Serializable
+data class TitleTranslationsDto(
+    val language: String = "",
+    val chapters: List<TitleChapterDto> = emptyList(),
 )
 
 @Serializable
@@ -116,6 +130,15 @@ class NextChaptersRepositoryImpl(
                     setBody(PrefetchAutoBody(lang, auto))
                 }
             }.map { it.data.toDomain() }
+
+    override suspend fun titleBadges(
+        titleId: String,
+        lang: String,
+    ): AppResult<List<ChapterBadge>> =
+        http
+            .apiCall<ApiData<TitleTranslationsDto>> {
+                get("api/v1/translations/titles/${titleId.encodeURLPathPart()}") { parameter("lang", lang) }
+            }.map { dto -> dto.data.chapters.map { ChapterBadge(it.id, TranslationStatus.from(it.status.orEmpty()), it.progress) } }
 
     private fun path(chapterId: String) = "api/v1/translations/chapters/${chapterId.encodeURLPathPart()}"
 }

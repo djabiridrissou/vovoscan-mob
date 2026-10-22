@@ -1,12 +1,15 @@
 package com.vovoscan.feature.catalog.presentation
 
 import com.vovoscan.feature.catalog.domain.Chapter
+import com.vovoscan.feature.catalog.domain.ChapterTranslationBadge
+import com.vovoscan.feature.catalog.domain.ChapterTranslations
 import com.vovoscan.feature.catalog.domain.ContentKind
 import com.vovoscan.feature.catalog.domain.ReadingFormat
 import com.vovoscan.feature.catalog.domain.ReadingResume
 import com.vovoscan.feature.catalog.domain.ResumePoint
 import com.vovoscan.feature.catalog.domain.TitleDetail
 import com.vovoscan.feature.catalog.domain.TitleSummary
+import com.vovoscan.feature.catalog.domain.TitleTranslationBadges
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -197,5 +200,45 @@ class ContinueReadingTest {
                     .associate { it.id to it.started },
             )
             assertEquals("Reading", vm.state.value.startedLabel)
+        }
+
+    @Test
+    fun eachChapterShowsItsTranslationInTheLanguageLastReadAndOpensInIt() =
+        runTest(dispatcher) {
+            val badges =
+                ChapterTranslations { _, _ ->
+                    TitleTranslationBadges(
+                        "fr",
+                        mapOf(
+                            "k1" to ChapterTranslationBadge(ready = true, progress = 100),
+                            "k2" to ChapterTranslationBadge(ready = false, progress = 42),
+                            "k3" to ChapterTranslationBadge(ready = false, progress = null),
+                        ),
+                    )
+                }
+            val vm = TitleDetailViewModel("inkwell", "dle", repository(), resume, badges)
+            advanceUntilIdle()
+            val rows = vm.state.value.chapters
+            assertEquals(listOf("Français ✓", "Français ✦ 42%", "Français ✦ preparing"), rows.map { it.translation })
+            assertEquals(listOf("fr", null, null), rows.map { it.openLanguage })
+            assertTrue(rows.first().translationReady)
+            // "Start reading" opens chapter 1 translated.
+            assertEquals(
+                "fr",
+                vm.state.value.readAction
+                    ?.language,
+            )
+
+            // No language read yet: no badge, chapters open as they are.
+            val plain = TitleDetailViewModel("inkwell", "dle", repository(), resume)
+            advanceUntilIdle()
+            assertTrue(
+                plain.state.value.chapters
+                    .all { it.translation == null && it.openLanguage == null },
+            )
+            assertNull(
+                plain.state.value.readAction
+                    ?.language,
+            )
         }
 }

@@ -225,3 +225,32 @@ fun interface ContentPolicy {
         val ShowAll = ContentPolicy { flowOf(true) }
     }
 }
+
+/** A chapter's translation in the language last read in: ready, or on its way (with its progress). */
+data class ChapterTranslationBadge(
+    val ready: Boolean,
+    /** 0..100 while it is made; null while it waits in the queue. */
+    val progress: Int?,
+)
+
+/** The badges of a title's chapters in [language] (code), by chapter id; chapters without one are left out. */
+data class TitleTranslationBadges(
+    val language: String,
+    val chapters: Map<String, ChapterTranslationBadge>,
+)
+
+/**
+ * Port: each chapter's translation in the language this device last read the catalog in (next-chapter contract, the
+ * series page's badges). Our catalog only; null when there is none to show (no language read yet, offline, a source
+ * read on the device). Wired by the app; the catalog does not know the reader.
+ */
+fun interface ChapterTranslations {
+    suspend fun of(
+        sourceKey: String,
+        titleId: String,
+    ): TitleTranslationBadges?
+
+    companion object {
+        val None = ChapterTranslations { _, _ -> null }
+    }
+}

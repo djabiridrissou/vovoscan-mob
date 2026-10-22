@@ -120,7 +120,7 @@ clearChaptersOf:
 DELETE FROM reader_chapter WHERE source_key = ?;
 
 settings:
-SELECT * FROM reader_setting WHERE name NOT LIKE 'pos/%' AND name NOT LIKE 'last/%' AND name NOT LIKE 'seriesPending/%' AND name <> 'seriesMigrated';
+SELECT * FROM reader_setting WHERE name NOT LIKE 'pos/%' AND name NOT LIKE 'last/%' AND name NOT LIKE 'seriesPending/%' AND name <> 'seriesMigrated' AND name <> 'readLanguage';
 
 putSetting:
 INSERT OR REPLACE INTO reader_setting (name, setting_value) VALUES (?, ?);
@@ -156,7 +156,7 @@ SELECT setting_value FROM reader_setting WHERE name = ?;
 
 -- Reading positions ("pos/<source>/<chapter>" = "<page>:<share of the page above the screen's top>").
 clearPositions:
-DELETE FROM reader_setting WHERE name LIKE 'pos/%' OR name LIKE 'last/%' OR name LIKE 'seriesPending/%' OR name = 'seriesMigrated';
+DELETE FROM reader_setting WHERE name LIKE 'pos/%' OR name LIKE 'last/%' OR name LIKE 'seriesPending/%' OR name = 'seriesMigrated' OR name = 'readLanguage';
 
 -- The chapter each title was left at ("last/<source>/<title>" = "<time ms>:<page>:<chapter id>").
 history:

@@ -102,12 +102,16 @@ class SqlReaderSettingsRepositoryTest {
                 listOf(LastRead("vovoscan", "t1", "c2", 7, 300), LastRead("inkwell", "a/b:c", "ch:1", 3, 100)),
                 settings.observeHistory().first(),
             )
+            // The language last read in (the series page's badges) is not a preference either.
+            settings.recordLanguage("fr")
+            assertEquals("fr", settings.lastLanguage())
             // History rows are not preferences.
             assertEquals(ReaderPreferences(), settings.observePreferences().first())
             local.clearSource("inkwell")
             assertEquals(listOf("t1"), settings.observeHistory().first().map { it.titleId })
             local.clear()
             assertEquals(emptyList(), settings.observeHistory().first())
+            assertNull(settings.lastLanguage())
         }
 
     @Test

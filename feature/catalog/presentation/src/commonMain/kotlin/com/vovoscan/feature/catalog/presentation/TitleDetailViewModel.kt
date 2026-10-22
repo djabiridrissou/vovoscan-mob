@@ -4,16 +4,20 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.vovoscan.core.common.AppResult
 import com.vovoscan.core.common.Freshness
+import com.vovoscan.core.common.Language
 import com.vovoscan.core.common.StaleReason
 import com.vovoscan.core.common.i18n.I18n
 import com.vovoscan.core.common.i18n.t
 import com.vovoscan.core.common.userMessage
 import com.vovoscan.feature.catalog.domain.CatalogRepository
+import com.vovoscan.feature.catalog.domain.ChapterTranslationBadge
+import com.vovoscan.feature.catalog.domain.ChapterTranslations
 import com.vovoscan.feature.catalog.domain.ContentKind
 import com.vovoscan.feature.catalog.domain.ReadingFormat
 import com.vovoscan.feature.catalog.domain.ReadingResume
 import com.vovoscan.feature.catalog.domain.ResumePoint
 import com.vovoscan.feature.catalog.domain.TitleDetail
+import com.vovoscan.feature.catalog.domain.TitleTranslationBadges
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -33,6 +37,11 @@ data class ChapterRow(
     val meta: String,
     /** The chapter this account was reading last. */
     val current: Boolean = false,
+    /** Its translation in the language last read in: "Français ✓", "Français ✦ 42%", "Français ✦ preparing". */
+    val translation: String? = null,
+    val translationReady: Boolean = false,
+    /** Open it in this language (translated and ready); null: as it is. */
+    val openLanguage: String? = null,
 )
 
 /** The title page's main action: where reading picks up ("Continue reading") or starts ("Start reading"). */
@@ -45,6 +54,8 @@ data class ReadAction(
     /** "Chapter 4 · The Well ✦ page 12" or "Chapter 1". */
     val detail: String,
     val resumes: Boolean,
+    /** Open it in this language (the chapter is translated into the one last read in); null: as it is. */
+    val language: String? = null,
 )
 
 data class TitleDetailUiState(
@@ -107,10 +118,13 @@ class TitleDetailViewModel(
     private val titleId: String,
     private val repository: CatalogRepository,
     private val resume: ReadingResume = ReadingResume { flowOf(emptyList()) },
+    private val translations: ChapterTranslations = ChapterTranslations.None,
 ) : ViewModel() {
     private val mutableState = MutableStateFlow(TitleDetailUiState())
     val state: StateFlow<TitleDetailUiState> = mutableState.asStateFlow()
     private var known = false
+    private var badges: TitleTranslationBadges? = null
+    private var shown: Triple<TitleDetail, Boolean, ResumePoint?>? = null
 
     init {
         val point = resume.observe().map { points -> points.firstOrNull { it.sourceKey == sourceKey && it.titleId == titleId } }
@@ -119,6 +133,7 @@ class TitleDetailViewModel(
         }.onEach { (detail, newestFirst, at) ->
             if (detail != null) {
                 known = true
+                shown = Triple(detail, newestFirst, at)
                 mutableState.update { it.show(detail, newestFirst, at) }
             } else {
                 mutableState.update { it.copy(newestFirst = newestFirst) }
@@ -138,6 +153,12 @@ class TitleDetailViewModel(
 
     fun refresh() {
         mutableState.update { it.copy(freshness = Freshness.Refreshing, error = null, stale = null) }
+        // The chapters' translations in the language last read in (our catalog; quietly nothing otherwise).
+        viewModelScope.launch {
+            val now = translations.of(sourceKey, titleId) ?: return@launch
+            badges = now
+            shown?.let { (detail, newestFirst, at) -> mutableState.update { it.show(detail, newestFirst, at) } }
+        }
         viewModelScope.launch {
             val result = repository.refreshTitle(sourceKey, titleId)
             mutableState.update {
@@ -177,11 +198,16 @@ class TitleDetailViewModel(
                         current = chapter.id == at?.chapterId,
                     )
                 } else {
+                    val badge = badges?.chapters?.get(chapter.id)
+                    val language = badges?.language
                     ChapterRow(
                         id = chapter.id,
                         label = chapterLabel(chapter.label, chapter.name),
                         meta = if (chapter.pageCount == 0) "" else t("catalog.pages", "count" to chapter.pageCount),
                         current = chapter.id == at?.chapterId,
+                        translation = if (badge != null && language != null) badgeLabel(badge, language) else null,
+                        translationReady = badge?.ready == true,
+                        openLanguage = language.takeIf { badge?.ready == true },
                     )
                 }
             }
@@ -202,8 +228,17 @@ class TitleDetailViewModel(
                                 resumed.label
                             },
                         resumes = true,
+                        language = resumed.openLanguage,
                     )
-                rows.isNotEmpty() -> ReadAction(rows.first().id, 0, t("catalog.startReading"), rows.first().label, resumes = false)
+                rows.isNotEmpty() ->
+                    ReadAction(
+                        rows.first().id,
+                        0,
+                        t("catalog.startReading"),
+                        rows.first().label,
+                        resumes = false,
+                        language = rows.first().openLanguage,
+                    )
                 else -> null
             }
         return copy(
@@ -231,6 +266,19 @@ class TitleDetailViewModel(
             readingOrder = rows.map { it.id },
             readAction = readAction,
         )
+    }
+}
+
+/** "Français ✓" (ready), "Français ✦ 42%" (being made), "Français ✦ preparing" (in the queue). */
+internal fun badgeLabel(
+    badge: ChapterTranslationBadge,
+    language: String,
+): String {
+    val name = Language.of(language)?.native ?: language
+    return when {
+        badge.ready -> t("catalog.translationReady", "language" to name)
+        badge.progress != null -> t("catalog.translationProgress", "language" to name, "percent" to badge.progress.coerceIn(0, 100))
+        else -> t("catalog.translationQueued", "language" to name)
     }
 }
 

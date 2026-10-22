@@ -102,7 +102,7 @@ val readerModule =
         single { TranslationsRepositoryImpl(get()) } binds arrayOf(TranslationsRepository::class, ChapterPanels::class)
         // What comes after a chapter of our catalog in the reading language (next-chapter contract).
         single<NextChaptersRepository> { NextChaptersRepositoryImpl(get()) }
-        viewModel { (sourceKey: String, chapterId: String) -> NextChapterViewModel(sourceKey, chapterId, get()) }
+        viewModel { (sourceKey: String, chapterId: String) -> NextChapterViewModel(sourceKey, chapterId, get(), get()) }
         // (source, chapter, title, language to open in): a source's chapter is translated on its copy on the server.
         viewModel { params ->
             TranslationViewModel(

@@ -4,6 +4,7 @@ import com.vovoscan.core.common.AppDispatchers
 import com.vovoscan.core.common.AppError
 import com.vovoscan.core.common.AppResult
 import com.vovoscan.core.common.ChapterImports
+import com.vovoscan.core.common.INTERNAL_SOURCE_KEY
 import com.vovoscan.core.common.Language
 import com.vovoscan.core.common.NetworkMonitor
 import com.vovoscan.core.common.SystemClock
@@ -34,11 +35,14 @@ import com.vovoscan.feature.auth.domain.AuthRepository
 import com.vovoscan.feature.auth.domain.OnboardingServices
 import com.vovoscan.feature.catalog.di.catalogModule
 import com.vovoscan.feature.catalog.domain.CatalogRepository
+import com.vovoscan.feature.catalog.domain.ChapterTranslationBadge
+import com.vovoscan.feature.catalog.domain.ChapterTranslations
 import com.vovoscan.feature.catalog.domain.ContentKind
 import com.vovoscan.feature.catalog.domain.ContentPolicy
 import com.vovoscan.feature.catalog.domain.ReadingResume
 import com.vovoscan.feature.catalog.domain.ResumePoint
 import com.vovoscan.feature.catalog.domain.ResumePoints
+import com.vovoscan.feature.catalog.domain.TitleTranslationBadges
 import com.vovoscan.feature.episodes.di.episodesModule
 import com.vovoscan.feature.episodes.domain.EpisodeAccess
 import com.vovoscan.feature.episodes.domain.EpisodesRepository
@@ -57,6 +61,7 @@ import com.vovoscan.feature.reader.domain.DownloadableChapter
 import com.vovoscan.feature.reader.domain.DownloadableTitle
 import com.vovoscan.feature.reader.domain.DownloadsRepository
 import com.vovoscan.feature.reader.domain.LastRead
+import com.vovoscan.feature.reader.domain.NextChaptersRepository
 import com.vovoscan.feature.reader.domain.ReaderRepository
 import com.vovoscan.feature.reader.domain.ReaderSettingsRepository
 import com.vovoscan.feature.reader.domain.ReadingMode
@@ -66,6 +71,7 @@ import com.vovoscan.feature.reader.domain.SeriesModeSync
 import com.vovoscan.feature.reader.domain.TitleChapters
 import com.vovoscan.feature.reader.domain.TranslationQuote
 import com.vovoscan.feature.reader.domain.TranslationQuotes
+import com.vovoscan.feature.reader.domain.TranslationStatus
 import com.vovoscan.feature.reader.domain.chapterLabel
 import com.vovoscan.feature.reader.domain.readingModeOfWire
 import com.vovoscan.feature.reader.domain.wire
@@ -160,6 +166,31 @@ fun appModules(
                     scope.launch {
                         history.recordRead(LastRead(sourceKey, titleId, chapterId, page, SystemClock.nowMillis()))
                         library.saveProgress(sourceKey, titleId, chapterId, page)
+                    }
+                }
+            }
+            // The series page's badges: each chapter's translation in the language our catalog was last read in.
+            single<ChapterTranslations> {
+                val settings = get<ReaderSettingsRepository>()
+                val next = get<NextChaptersRepository>()
+                ChapterTranslations { sourceKey, titleId ->
+                    val lang = settings.lastLanguage()
+                    if (sourceKey != INTERNAL_SOURCE_KEY || lang == null) return@ChapterTranslations null
+                    when (val badges = next.titleBadges(titleId, lang)) {
+                        is AppResult.Err -> null
+                        is AppResult.Ok ->
+                            TitleTranslationBadges(
+                                lang,
+                                badges.value
+                                    .filter { it.status != TranslationStatus.None && it.status != TranslationStatus.Failed }
+                                    .associate { b ->
+                                        b.chapterId to
+                                            ChapterTranslationBadge(
+                                                ready = b.status == TranslationStatus.Ready,
+                                                progress = b.progress.takeIf { b.status == TranslationStatus.Running },
+                                            )
+                                    },
+                            )
                     }
                 }
             }

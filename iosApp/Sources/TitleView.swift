@@ -20,8 +20,9 @@ struct TitleView: View {
         _model = StateObject(wrappedValue: TitleModel(sourceKey: route.sourceKey, titleId: route.titleId))
     }
 
-    private func read(_ chapterId: String, _ page: Int = 0) -> ReaderRoute {
-        ReaderRoute(sourceKey: route.sourceKey, titleId: route.titleId, chapterId: chapterId, startPage: page)
+    /// `language`: open it translated (the language last read in, when this chapter is ready in it).
+    private func read(_ chapterId: String, _ page: Int = 0, language: String? = nil) -> ReaderRoute {
+        ReaderRoute(sourceKey: route.sourceKey, titleId: route.titleId, chapterId: chapterId, startPage: page, language: language)
     }
 
     var body: some View {
@@ -54,7 +55,7 @@ struct TitleView: View {
                     Text(model.state.meta).font(.brandBody(13)).foregroundStyle(Color.brandMuted)
                     // Where this account left the title (this device or another), otherwise chapter 1.
                     if let action = model.state.readAction {
-                        NavigationLink(value: read(action.chapterId, Int(action.page))) {
+                        NavigationLink(value: read(action.chapterId, Int(action.page), language: action.language)) {
                             VStack(spacing: 2) {
                                 Text(action.label)
                                 Text(action.detail).font(.brandBody(12, weight: .bold)).opacity(0.75).lineLimit(1)
@@ -91,11 +92,16 @@ struct TitleView: View {
                     ForEach(model.state.chapters, id: \.id) { chapter in
                         let download = model.downloads.row(chapterId: chapter.id)
                         HStack(spacing: 10) {
-                            NavigationLink(value: read(chapter.id)) {
+                            NavigationLink(value: read(chapter.id, language: chapter.openLanguage)) {
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(chapter.label).font(.brandBody(15)).foregroundStyle(Color.brandPaper)
                                     if !chapter.meta.isEmpty {
                                         Text(chapter.meta).font(.brandBody(13)).foregroundStyle(Color.brandMuted)
+                                    }
+                                    // Its translation in the language last read in: ready (yellow), or on its way (cyan).
+                                    if let translation = chapter.translation {
+                                        Text(translation).font(.brandBody(13, weight: .bold))
+                                            .foregroundStyle(chapter.translationReady ? Color.brandYellow : Color.brandCyan)
                                     }
                                     if let text = download.text {
                                         Text(text).font(.brandBody(13))
