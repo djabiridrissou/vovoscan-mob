@@ -22,6 +22,8 @@ import com.vovoscan.feature.episodes.presentation.EpisodeViewModel
 import com.vovoscan.feature.episodes.presentation.PlayerViewModel
 import com.vovoscan.feature.library.presentation.FollowViewModel
 import com.vovoscan.feature.library.presentation.LibraryViewModel
+import com.vovoscan.feature.reader.domain.DownloadActivity
+import com.vovoscan.feature.reader.domain.DownloadBlock
 import com.vovoscan.feature.reader.domain.DownloadsRepository
 import com.vovoscan.feature.reader.presentation.DownloadsViewModel
 import com.vovoscan.feature.reader.presentation.ReaderViewModel
@@ -32,6 +34,7 @@ import com.vovoscan.feature.sources.presentation.SourcesViewModel
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.usePinned
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.runBlocking
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.get
@@ -75,6 +78,25 @@ fun initKoin(
     KoinPlatform.getKoin().get<DownloadsRepository>().resume()
     // Page images of sources that ask for a Referer (the URL protocol of the iOS app reads `ImageReferers`).
     KoinPlatform.getKoin().get<ImageRefererSync>().start()
+}
+
+/**
+ * The download queue for iOS's background work (`BackgroundDownloads.swift`): Swift only asks for time and runs this;
+ * the shared queue downloads, keeps its states and resumes at the first missing page.
+ */
+class BackgroundQueue : KoinComponent {
+    private val downloads: DownloadsRepository = get()
+
+    fun activity(): Flow<DownloadActivity> = downloads.observeActivity()
+
+    /** Back on screen, or launched for a background task: the queue carries on. */
+    fun resume() = downloads.resume()
+
+    /** Background time is running out: the chapter downloading goes back to the queue, nothing fails. */
+    suspend fun pause() = downloads.pause()
+
+    /** Runs the queue until nothing is left (null) or it waits for the network (why). */
+    suspend fun drain(): DownloadBlock? = downloads.drain()
 }
 
 /**
