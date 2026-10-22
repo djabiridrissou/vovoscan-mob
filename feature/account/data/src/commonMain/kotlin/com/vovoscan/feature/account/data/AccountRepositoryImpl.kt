@@ -110,6 +110,10 @@ class AccountRepositoryImpl(
         }
     }
 
+    override suspend fun coached(): AppResult<Set<String>> = remote.readingSettings().map { it.coached.orEmpty().toSet() }
+
+    override suspend fun markCoached(kind: String): AppResult<Unit> = remote.markCoached(kind).map { }
+
     // The current model goes with it: a server without `targetLanguage` (it requires `ocrModel` and ignores the rest)
     // takes the request, a newer one keeps both.
     private suspend fun pushTargetLanguage(code: String): AppResult<String> {

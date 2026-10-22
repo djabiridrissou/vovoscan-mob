@@ -4,6 +4,7 @@ import com.vovoscan.core.common.AppResult
 import com.vovoscan.feature.reader.domain.Book
 import com.vovoscan.feature.reader.domain.ChapterHeadings
 import com.vovoscan.feature.reader.domain.CoachKind
+import com.vovoscan.feature.reader.domain.CoachSync
 import com.vovoscan.feature.reader.domain.ComicFormat
 import com.vovoscan.feature.reader.domain.ReaderChapter
 import com.vovoscan.feature.reader.domain.ReaderPage
@@ -87,6 +88,7 @@ class ReaderCoachTest {
     private fun TestScope.reader(
         settings: FakeSettings,
         chapter: ReaderChapter = manga,
+        sync: CoachSync = CoachSync.None,
     ): ReaderViewModel {
         val vm =
             ReaderViewModel(
@@ -103,6 +105,7 @@ class ReaderCoachTest {
                     ->
                     null
                 },
+                coachSync = sync,
             ) { _, _, _, _ -> }
         advanceUntilIdle()
         return vm
@@ -120,7 +123,7 @@ class ReaderCoachTest {
             val settings = FakeSettings(ReaderPreferences(mangaMode = ReadingMode.PagedRightToLeft))
             val vm = reader(settings)
             val coach = assertNotNull(vm.state.value.coach)
-            assertEquals(CoachKind.RightToLeft, coach.kind)
+            assertEquals(CoachKind.Manga, coach.kind)
             assertEquals("How to read", coach.kicker)
             assertEquals("Manga ✦ right to left", coach.title)
             // The real zones (right and left: the left third goes on in a manga), drawn by the coach, not flashed.
@@ -136,32 +139,67 @@ class ReaderCoachTest {
             advanceUntilIdle()
             assertNull(vm.state.value.coach)
             assertNull(vm.state.value.command)
-            assertEquals(setOf(CoachKind.RightToLeft), settings.preferences.value.coachSeen)
+            assertEquals(setOf(CoachKind.Manga), settings.preferences.value.coachSeen)
             // The next tap reads.
             vm.onIntent(ReaderIntent.Tap(0.1f, 0.5f))
             assertIs<ReaderCommand.GoToItem>(vm.state.value.command)
         }
 
     @Test
-    fun onceSeenItStaysAwayUntilAskedAndEachKindHasItsOwn() =
+    fun onceSeenItStaysAwayUntilAskedAndEachFormatHasItsOwn() =
         runTest(dispatcher) {
-            val seen = ReaderPreferences(mangaMode = ReadingMode.PagedRightToLeft, coachSeen = setOf(CoachKind.RightToLeft))
+            val seen = ReaderPreferences(mangaMode = ReadingMode.PagedRightToLeft, coachSeen = setOf(CoachKind.Manga))
             val vm = reader(FakeSettings(seen))
             assertNull(vm.state.value.coach)
             // The help button in the bars.
             vm.onIntent(ReaderIntent.ShowCoach)
             assertEquals(
-                CoachKind.RightToLeft,
+                CoachKind.Manga,
                 vm.state.value.coach
                     ?.kind,
             )
             vm.onIntent(ReaderIntent.Next)
             assertNull(vm.state.value.coach)
             assertNull(vm.state.value.command)
-            // A webtoon read continuously is another kind: its own coach, with the zoom line when zoom is on.
+            // A webtoon is another format: its own coach, with the zoom line when zoom is on.
             val strip = reader(FakeSettings(seen.copy(doubleTapZoom = true)), manga.copy(format = ComicFormat.Webtoon))
             val coach = assertNotNull(strip.state.value.coach)
-            assertEquals(CoachKind.Strip, coach.kind)
+            assertEquals(CoachKind.Webtoon, coach.kind)
             assertEquals(CoachGesture.DoubleTap, coach.hints[2].gesture)
+        }
+
+    private class AccountGuides(
+        var seen: Set<CoachKind>?,
+    ) : CoachSync {
+        val marked = mutableListOf<CoachKind>()
+
+        override suspend fun seen() = seen
+
+        override suspend fun mark(kind: CoachKind) {
+            marked += kind
+        }
+    }
+
+    @Test
+    fun aGuideSeenOnAnotherDeviceOfTheAccountIsNotShownAgain() =
+        runTest(dispatcher) {
+            val settings = FakeSettings(ReaderPreferences(mangaMode = ReadingMode.PagedRightToLeft))
+            val vm = reader(settings, sync = AccountGuides(setOf(CoachKind.Manga)))
+            assertNull(vm.state.value.coach)
+            assertEquals(setOf(CoachKind.Manga), settings.preferences.value.coachSeen)
+        }
+
+    @Test
+    fun closingAGuideTellsTheAccountAndOneSeenOfflineIsToldLater() =
+        runTest(dispatcher) {
+            val account = AccountGuides(emptySet())
+            val vm = reader(FakeSettings(ReaderPreferences(mangaMode = ReadingMode.PagedRightToLeft)), sync = account)
+            vm.onIntent(ReaderIntent.Tap(0.5f, 0.5f))
+            advanceUntilIdle()
+            assertEquals(listOf(CoachKind.Manga), account.marked)
+            // Seen here while the account didn't know (offline): told when a reader opens.
+            val later = AccountGuides(emptySet())
+            reader(FakeSettings(ReaderPreferences(coachSeen = setOf(CoachKind.Comic, CoachKind.Book))), sync = later)
+            assertEquals(listOf(CoachKind.Comic), later.marked)
         }
 }

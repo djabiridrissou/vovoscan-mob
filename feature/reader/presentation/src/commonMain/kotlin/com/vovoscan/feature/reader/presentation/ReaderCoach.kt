@@ -2,6 +2,7 @@ package com.vovoscan.feature.reader.presentation
 
 import com.vovoscan.core.common.i18n.t
 import com.vovoscan.feature.reader.domain.CoachKind
+import com.vovoscan.feature.reader.domain.ReadingMode
 import com.vovoscan.feature.reader.domain.TapZoneMap
 
 /** The gesture a coach line is about: the native side draws its pictogram. */
@@ -13,8 +14,8 @@ data class CoachHint(
 )
 
 /**
- * "How to read", over the page the first time a chapter of a kind opens (a webtoon, a manga read right to left, a
- * comic left to right, vertical pages, a book): the real tap zones of the reader (red next, cyan back, ink bars) and a
+ * "How to read", over the page the first time the account opens a chapter of a format (manga, webtoon, comic) or a
+ * book, its lines for the mode it reads in: the real tap zones of the reader (red next, cyan back, ink bars) and a
  * few lines on the gestures. Static: any tap closes it and reading starts; the "?" in the bars brings it back.
  */
 data class ReaderCoach(
@@ -29,6 +30,7 @@ data class ReaderCoach(
     companion object {
         fun of(
             kind: CoachKind,
+            mode: ReadingMode,
             title: String,
             zones: TapZoneMap?,
             doubleTapZoom: Boolean,
@@ -36,12 +38,12 @@ data class ReaderCoach(
             val hints =
                 buildList {
                     if (kind != CoachKind.Book) add(CoachHint(CoachGesture.Tap, t("reader.coach.zones")))
-                    when (kind) {
-                        CoachKind.Strip -> add(CoachHint(CoachGesture.Swipe, t("reader.coach.strip")))
-                        CoachKind.RightToLeft -> add(CoachHint(CoachGesture.Swipe, t("reader.coach.rtl")))
-                        CoachKind.LeftToRight -> add(CoachHint(CoachGesture.Swipe, t("reader.coach.ltr")))
-                        CoachKind.Vertical -> add(CoachHint(CoachGesture.Swipe, t("reader.coach.vertical")))
-                        CoachKind.Book -> {
+                    when (mode) {
+                        ReadingMode.LongStrip, ReadingMode.LongStripGaps -> add(CoachHint(CoachGesture.Swipe, t("reader.coach.strip")))
+                        ReadingMode.PagedRightToLeft -> add(CoachHint(CoachGesture.Swipe, t("reader.coach.rtl")))
+                        ReadingMode.PagedLeftToRight -> add(CoachHint(CoachGesture.Swipe, t("reader.coach.ltr")))
+                        ReadingMode.PagedVertical -> add(CoachHint(CoachGesture.Swipe, t("reader.coach.vertical")))
+                        ReadingMode.Book -> {
                             add(CoachHint(CoachGesture.Swipe, t("reader.coach.book")))
                             add(CoachHint(CoachGesture.Pull, t("reader.coach.bookPull")))
                         }

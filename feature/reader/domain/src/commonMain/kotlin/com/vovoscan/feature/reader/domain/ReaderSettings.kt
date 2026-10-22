@@ -44,23 +44,52 @@ data class ReaderPreferences(
         }
 }
 
-/** What the first-open coach explains: each way of reading has its own, shown once. */
-enum class CoachKind {
-    Strip,
-    RightToLeft,
-    LeftToRight,
-    Vertical,
-    Book,
+/**
+ * What the "How to read" guide is about (reader SPEC §10): a reading format, on the account (`wire`, the server's
+ * `coached` values), or a book (on the device only). Seen once each.
+ */
+enum class CoachKind(
+    val wire: String,
+) {
+    Manga("manga"),
+    Webtoon("webtoon"),
+    Comic("comic"),
+    Book("book"),
     ;
 
     companion object {
-        fun of(mode: ReadingMode): CoachKind =
-            when (mode) {
-                ReadingMode.LongStrip, ReadingMode.LongStripGaps -> Strip
-                ReadingMode.PagedRightToLeft -> RightToLeft
-                ReadingMode.PagedLeftToRight -> LeftToRight
-                ReadingMode.PagedVertical -> Vertical
-                ReadingMode.Book -> Book
+        fun of(
+            format: ComicFormat?,
+            book: Boolean,
+        ): CoachKind =
+            when {
+                book -> Book
+                format == ComicFormat.Webtoon -> Webtoon
+                format == ComicFormat.Comic -> Comic
+                else -> Manga
+            }
+
+        fun fromWire(value: String): CoachKind? = entries.firstOrNull { it.wire == value }
+    }
+}
+
+/**
+ * The account's side of the guide (`GET /settings/reading` → `coached`, `PUT /settings/reading/coached/{kind}`),
+ * wired in `shared` to the account slice. The device keeps its own list too, so the guide never flashes while the
+ * account's loads, offline included.
+ */
+interface CoachSync {
+    /** The kinds the account has seen; null when unknown (offline, an older server). */
+    suspend fun seen(): Set<CoachKind>?
+
+    suspend fun mark(kind: CoachKind)
+
+    companion object {
+        val None =
+            object : CoachSync {
+                override suspend fun seen(): Set<CoachKind>? = null
+
+                override suspend fun mark(kind: CoachKind) = Unit
             }
     }
 }

@@ -12,6 +12,7 @@ import com.vovoscan.feature.reader.domain.ChapterHeading
 import com.vovoscan.feature.reader.domain.ChapterHeadings
 import com.vovoscan.feature.reader.domain.ChapterPanels
 import com.vovoscan.feature.reader.domain.CoachKind
+import com.vovoscan.feature.reader.domain.CoachSync
 import com.vovoscan.feature.reader.domain.ComicFormat
 import com.vovoscan.feature.reader.domain.Glide
 import com.vovoscan.feature.reader.domain.Gutters
@@ -42,6 +43,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
@@ -509,6 +511,7 @@ class ReaderViewModel(
     private val headings: ChapterHeadings,
     // Before `progress`, so callers can still pass the progress sink as a trailing lambda.
     private val panels: ChapterPanels = ChapterPanels.None,
+    private val coachSync: CoachSync = CoachSync.None,
     private val progress: ReadingProgressSink,
 ) : ViewModel() {
     private val mutableState =
@@ -574,6 +577,7 @@ class ReaderViewModel(
                 }
             }.launchIn(viewModelScope)
         refresh()
+        viewModelScope.launch { syncCoach() }
         viewModelScope.launch {
             analysis = panels.panels(sourceKey, chapterId)
             rebuildStops()
@@ -1096,7 +1100,7 @@ class ReaderViewModel(
         if (!preferences.showTapZones || map == before) return
         if (before == null) {
             // The first chapter of its kind opens with the coach, which draws the zones itself.
-            if (!preferences.tapZonesSeen && CoachKind.of(mode) in preferences.coachSeen) {
+            if (!preferences.tapZonesSeen && coachKind() in preferences.coachSeen) {
                 flashOverlay(map)
                 updatePreferences { it.copy(tapZonesSeen = true) }
             }
@@ -1114,7 +1118,7 @@ class ReaderViewModel(
     ) {
         if (coachChecked) return
         coachChecked = true
-        if (CoachKind.of(mode) !in preferences.coachSeen) showCoach()
+        if (coachKind() !in preferences.coachSeen + accountGuides) showCoach()
     }
 
     private var coachChecked = false
@@ -1122,12 +1126,12 @@ class ReaderViewModel(
     private fun showCoach() {
         val current = state.value
         if (current.unavailable || (current.items.isEmpty() && !current.isBook)) return
-        val kind = CoachKind.of(current.mode)
+        val kind = coachKind()
         val zones = if (current.isBook) null else TapZones.map(current.preferences.tapLayout, current.preferences.tapInvert, current.mode)
         val title = current.formatLabel ?: ReaderText.mode(current.mode)
         hideOverlay()
         mutableState.update {
-            it.copy(coach = ReaderCoach.of(kind, title, zones, it.preferences.doubleTapZoom), chromeVisible = true)
+            it.copy(coach = ReaderCoach.of(kind, current.mode, title, zones, it.preferences.doubleTapZoom), chromeVisible = true)
         }
     }
 
@@ -1135,6 +1139,26 @@ class ReaderViewModel(
         val coach = state.value.coach ?: return
         mutableState.update { it.copy(coach = null) }
         updatePreferences { it.copy(coachSeen = it.coachSeen + coach.kind, tapZonesSeen = true) }
+        if (coach.kind != CoachKind.Book) viewModelScope.launch { coachSync.mark(coach.kind) }
+    }
+
+    /** The guides the account has seen (on any device), once known. */
+    private var accountGuides: Set<CoachKind> = emptySet()
+
+    private fun coachKind(): CoachKind = CoachKind.of(state.value.format, state.value.isBook)
+
+    /**
+     * The account's guides: seen on another device → seen here (and a guide up for one goes away); seen here while
+     * offline → told to the account now.
+     */
+    private suspend fun syncCoach() {
+        val account = coachSync.seen() ?: return
+        accountGuides = account
+        val local = settings.observePreferences().first().coachSeen
+        (local - account - CoachKind.Book).forEach { coachSync.mark(it) }
+        if (!local.containsAll(account)) updatePreferences { it.copy(coachSeen = it.coachSeen + account) }
+        val shown = state.value.coach
+        if (shown != null && shown.kind in account) mutableState.update { it.copy(coach = null) }
     }
 
     private fun flashOverlay(map: TapZoneMap) {

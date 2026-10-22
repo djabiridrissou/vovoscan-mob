@@ -127,7 +127,7 @@ class SqlReaderSettingsRepository(
                 coachSeen =
                     values["coachSeen"]
                         ?.split(",")
-                        ?.mapNotNull { v -> CoachKind.entries.firstOrNull { it.name == v } }
+                        ?.mapNotNull(CoachKind::fromWire)
                         ?.toSet()
                         ?: defaults.coachSeen,
             )
@@ -147,7 +147,7 @@ class SqlReaderSettingsRepository(
                 "volumeKeysInverted" to preferences.volumeKeysInverted.toString(),
                 "tapZonesSeen" to preferences.tapZonesSeen.toString(),
                 "focus" to preferences.focus.toString(),
-                "coachSeen" to preferences.coachSeen.joinToString(",") { it.name },
+                "coachSeen" to preferences.coachSeen.joinToString(",") { it.wire },
             )
 
         /** A comic mode by name; a book or anything unknown is no choice. */

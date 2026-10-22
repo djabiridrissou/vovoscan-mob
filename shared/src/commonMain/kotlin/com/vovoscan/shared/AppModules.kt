@@ -20,6 +20,7 @@ import com.vovoscan.feature.account.di.accountModule
 import com.vovoscan.feature.account.domain.Provider
 import com.vovoscan.feature.account.domain.ProviderKeysRepository
 import com.vovoscan.feature.account.domain.QuoteKind
+import com.vovoscan.feature.account.domain.ReadingSettingsRepository
 import com.vovoscan.feature.account.domain.WalletRepository
 import com.vovoscan.feature.auth.di.SignOutCleanup
 import com.vovoscan.feature.auth.di.authModule
@@ -44,6 +45,8 @@ import com.vovoscan.feature.library.domain.LibraryRepository
 import com.vovoscan.feature.reader.di.readerModule
 import com.vovoscan.feature.reader.domain.ChapterHeading
 import com.vovoscan.feature.reader.domain.ChapterHeadings
+import com.vovoscan.feature.reader.domain.CoachKind
+import com.vovoscan.feature.reader.domain.CoachSync
 import com.vovoscan.feature.reader.domain.DownloadableChapter
 import com.vovoscan.feature.reader.domain.DownloadableTitle
 import com.vovoscan.feature.reader.domain.DownloadsRepository
@@ -235,6 +238,18 @@ fun appModules(
                 RunQuotes { chapterId, lang ->
                     (wallet.quote(QuoteKind.Episode, chapterId, lang.ifEmpty { null }) as? AppResult.Ok)?.value?.let {
                         RunCost(it.credits, it.coveredByOwnKeys, it.alreadyAvailable, it.maxCredits, it.fundable, it.metered, it.unfunded)
+                    }
+                }
+            }
+            // The reader guide seen per format, on the account (the device keeps its own list too).
+            single<CoachSync> {
+                val reading = get<ReadingSettingsRepository>()
+                object : CoachSync {
+                    override suspend fun seen(): Set<CoachKind>? =
+                        (reading.coached() as? AppResult.Ok)?.value?.mapNotNull(CoachKind::fromWire)?.toSet()
+
+                    override suspend fun mark(kind: CoachKind) {
+                        reading.markCoached(kind.wire)
                     }
                 }
             }
