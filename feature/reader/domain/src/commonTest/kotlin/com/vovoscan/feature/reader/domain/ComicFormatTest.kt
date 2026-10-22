@@ -47,7 +47,10 @@ class ComicFormatTest {
     fun aStripIsAlwaysContinuousUnlessTheSeriesSaysOtherwise() {
         val paged = ReaderPreferences(mangaMode = ReadingMode.PagedRightToLeft, webtoonMode = ReadingMode.PagedVertical)
         // Each format in its own style by default: a western comic turns its pages left to right.
-        assertEquals(ReadingMode.PagedLeftToRight, ReadingModes.resolve(ReadingMode.LongStrip, ComicFormat.Comic, null, ReaderPreferences()))
+        assertEquals(
+            ReadingMode.PagedLeftToRight,
+            ReadingModes.resolve(ReadingMode.LongStrip, ComicFormat.Comic, null, ReaderPreferences()),
+        )
         // A manga follows the reader's own default...
         assertEquals(ReadingMode.PagedRightToLeft, ReadingModes.resolve(ReadingMode.LongStrip, ComicFormat.Manga, null, paged))
         // ...but a strip is never shrunk into a page, even when the webtoon default is paged.

@@ -603,9 +603,9 @@ class PlayerViewModel(
             val stage = episode.stage ?: return null
             if (episode.status == EpisodeStatus.Queued) return null
             val index = stages.indexOf(stage).takeIf { it >= 0 } ?: return null
-            val p = episode.progress
-            val within =
-                if (p?.done != null && p.total != null && p.total > 0) (p.done.toFloat() / p.total).coerceIn(0f, 1f) else 0f
+            val done = episode.progress?.done
+            val total = episode.progress?.total
+            val within = if (done != null && total != null && total > 0) (done.toFloat() / total).coerceIn(0f, 1f) else 0f
             return ((index + within) / stages.size).coerceIn(0f, 1f)
         }
 

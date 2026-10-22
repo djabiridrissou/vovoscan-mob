@@ -113,7 +113,14 @@ class ImmersiveReaderTest {
     }
 
     private fun TestScope.reader(
-        settings: PositionSettings = PositionSettings(ReaderPreferences(coachSeen = ALL_COACHES, tapZonesSeen = true, mangaMode = CONTINUOUS)),
+        settings: PositionSettings =
+            PositionSettings(
+                ReaderPreferences(
+                    coachSeen = ALL_COACHES,
+                    tapZonesSeen = true,
+                    mangaMode = CONTINUOUS,
+                ),
+            ),
         panels: ChapterPanels = ChapterPanels.None,
         sourceKey: String = "vovoscan",
         startPage: Int = 0,
@@ -280,7 +287,8 @@ class ImmersiveReaderTest {
         runTest(dispatcher) {
             // Page 1: two panels side by side (right first: a manga), then one below.
             val row = listOf(PanelBox(1, 0.5f, 0f, 0.5f, 0.4f), PanelBox(1, 0f, 0f, 0.5f, 0.4f), PanelBox(1, 0f, 0.5f, 1f, 0.5f))
-            val settings = PositionSettings(ReaderPreferences(coachSeen = ALL_COACHES, tapZonesSeen = true, focus = true, mangaMode = CONTINUOUS))
+            val settings =
+                PositionSettings(ReaderPreferences(coachSeen = ALL_COACHES, tapZonesSeen = true, focus = true, mangaMode = CONTINUOUS))
             val vm = reader(settings = settings, panels = ChapterPanels { _, _ -> mapOf(1 to row) })
             assertEquals(PanelBox.page(0), vm.state.value.focus)
             vm.next()
