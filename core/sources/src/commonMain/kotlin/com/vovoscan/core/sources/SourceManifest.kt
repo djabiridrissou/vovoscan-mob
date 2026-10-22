@@ -1,5 +1,6 @@
 package com.vovoscan.core.sources
 
+import com.vovoscan.core.common.HostPolicy
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.int
@@ -58,7 +59,8 @@ data class SourceManifest(
                 specs.mapNotNull { (name, spec) ->
                     if (spec.jsonObject["type"]?.jsonPrimitive?.contentOrNull == "url") settings[name]?.let(::hostOf) else null
                 }
-            return (fixed + fromSettings).toSet()
+            // Only public hosts, whatever the manifest or a setting says (HostPolicy).
+            return (fixed + fromSettings).filter(HostPolicy::isPublic).toSet()
         }
 }
 
@@ -67,9 +69,4 @@ fun interface ManifestProvider {
     suspend fun manifest(key: String): SourceManifest?
 }
 
-internal fun hostOf(url: String): String? =
-    Regex("^[a-zA-Z][a-zA-Z0-9+.-]*://([^/:?#]+)")
-        .find(url.trim())
-        ?.groupValues
-        ?.get(1)
-        ?.lowercase()
+internal fun hostOf(url: String): String? = HostPolicy.hostOf(url)

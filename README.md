@@ -88,7 +88,13 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   for the shared session behind AsyncImage, replaying the request with `Referer` on a cookie-less session of its own).
   Only those hosts get it, covers included; never the API.
 - `RulesHttp`: a separate client, **without the vovoscan session or cookies**, redirects followed by hand and
-  limited to declared hosts (manifest + URL-type settings), rate capped by the manifest. A failure is `Network` only
+  limited to declared hosts (manifest + URL-type settings), rate capped by the manifest. Never the local network
+  (`HostPolicy`, `core/common`): loopback, private, link-local, CGNAT, multicast and reserved IPv4 ranges (in any
+  notation: `127.1`, `0x7f…`, `2130706433`), IPv6 literals, `localhost` and local-only names (`.local`, `.lan`,
+  `.internal`, `.home.arpa`…) are dropped from a manifest's hosts and refused on every redirect hop; a third-party
+  manifest that declares one is not installed (`PLUGIN_HOST`), a url-type setting pointing at one is refused, a URL
+  with user info (`https://a.example:x@127.0.0.1/`) has no host. Repository and manifest links (`PluginLinks`) follow
+  the same rule. DNS rebinding (a public name resolving to a private address) is not covered. A failure is `Network` only
   when `NetworkMonitor` says the device is offline; otherwise (exception, timeout, any error status)
   `SourceUnavailable(manifest name)`. The API client sends the session only to the API's own host.
 - Regexes in shared code: escape `{` and `}` (`\{\{…\}\}`). Android's ICU engine rejects a bare `}` that the JVM

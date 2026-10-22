@@ -63,6 +63,14 @@ class SourceDetailViewModelTest {
                     .single()
                     .error,
             )
+            vm.onIntent(SourceDetailIntent.SettingChanged("baseUrl", "https://192.168.1.20"))
+            vm.onIntent(SourceDetailIntent.SaveSettings)
+            assertEquals(
+                "Use a public internet address, not one on a local network.",
+                vm.state.value.settings
+                    .single()
+                    .error,
+            )
             vm.onIntent(SourceDetailIntent.SettingChanged("baseUrl", "https://two.example"))
             vm.onIntent(SourceDetailIntent.SaveSettings)
             assertEquals("Settings saved.", vm.state.value.notice)

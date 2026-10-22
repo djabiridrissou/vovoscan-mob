@@ -64,7 +64,8 @@ class TranslationViewModelTest {
             advanceUntilIdle()
             assertEquals(0, repo.requests)
             assertEquals("Français", vm.state.value.buttonLabel)
-            assertEquals(1, vm.state.value.letteringFor(0).size)
+            val lettering = vm.state.value.letteringFor(0)
+            assertEquals(1, lettering.size)
             assertTrue(vm.state.value.translated)
             vm.onIntent(TranslationIntent.Choose(null))
             advanceUntilIdle()
@@ -110,9 +111,11 @@ class TranslationViewModelTest {
             val vm = TranslationViewModel("vovoscan", "c1", FakeTranslations())
             advanceUntilIdle()
             vm.onIntent(TranslationIntent.Query("ewe"))
-            assertEquals(listOf("ee"), vm.state.value.options.map { it.code })
+            val ewe = vm.state.value.options
+            assertEquals(listOf("ee"), ewe.map { it.code })
             vm.onIntent(TranslationIntent.Query("Français"))
-            assertEquals(listOf("fr"), vm.state.value.options.map { it.code })
+            val french = vm.state.value.options
+            assertEquals(listOf("fr"), french.map { it.code })
         }
 
     private inner class FakeTranslations(

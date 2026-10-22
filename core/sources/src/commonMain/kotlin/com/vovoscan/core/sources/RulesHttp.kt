@@ -2,6 +2,7 @@ package com.vovoscan.core.sources
 
 import com.vovoscan.core.common.AppError
 import com.vovoscan.core.common.AppResult
+import com.vovoscan.core.common.HostPolicy
 import com.vovoscan.core.common.NetworkMonitor
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.HttpClientEngine
@@ -67,7 +68,9 @@ class RulesHttp(
         var params = query
         repeat(4) {
             val host = hostOf(current)
-            if (host == null || host !in hosts || !(current.startsWith("https://") || current.startsWith("http://"))) {
+            val scheme = current.startsWith("https://", ignoreCase = true) || current.startsWith("http://", ignoreCase = true)
+            // Checked again on every hop: a redirect can't lead to a host the source didn't declare, nor off the internet.
+            if (host == null || host !in hosts || !HostPolicy.isPublic(host) || !scheme) {
                 return AppResult.Err(AppError.Rejected("HOST_NOT_ALLOWED", "This source can't reach $host."))
             }
             wait(manifest)

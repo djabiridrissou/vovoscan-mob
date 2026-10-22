@@ -2,7 +2,9 @@ package com.vovoscan.core.sources
 
 import com.vovoscan.core.common.AppError
 import com.vovoscan.core.common.AppResult
+import com.vovoscan.core.common.HostPolicy
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
@@ -46,6 +48,7 @@ object PluginErrors {
     val checksum get() = rejected("PLUGIN_CHECKSUM", "This source doesn't match its repository. It wasn't installed.")
     val mismatch get() = rejected("PLUGIN_MISMATCH", "This source doesn't match its repository entry. It wasn't installed.")
     val linkNotAllowed get() = rejected("PLUGIN_LINK", "Use an https:// link.")
+    val privateHost get() = rejected("PLUGIN_HOST", "This source wants to reach a private network. It wasn't installed.")
 
     fun incomplete(missing: List<String>) =
         rejected("PLUGIN_INCOMPLETE", "This source is incomplete (missing ${missing.joinToString(", ")}).")
@@ -127,9 +130,14 @@ object ManifestCheck {
             info.contractVersion == null -> PluginErrors.invalidFile
             Semver.parse(info.version) == null -> PluginErrors.invalidVersion
             info.kinds.isEmpty() || !PluginLimits.SUPPORTED_KINDS.containsAll(info.kinds) -> PluginErrors.kindUnsupported
+            declaredHosts(json).any { !HostPolicy.isPublic(it) } -> PluginErrors.privateHost
             else -> AppResult.Ok(info)
         }
     }
+
+    /** The manifest's `hosts` as written (a non-string entry counts as an invalid host). */
+    private fun declaredHosts(json: JsonObject): List<String> =
+        (json["hosts"] as? JsonArray).orEmpty().map { (it as? JsonPrimitive)?.contentOrNull.orEmpty() }
 
     /** Problem of a repository entry, read from its fields only (null when it looks installable). */
     fun entryProblem(
