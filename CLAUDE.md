@@ -300,7 +300,8 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
 - Modes (`ReadingMode`): `PagedRightToLeft`, `PagedLeftToRight`, `PagedVertical` (one page at a time), `LongStrip`
   (continuous, no gap: webtoons), `LongStripGaps` (16 dp/pt between pages); `Book` for books. `ReadingModes.resolve`:
   the mode chosen for the series (`series_mode`, per `(sourceKey, titleId)`), else the user's default for the format
-  (manga / webtoon), else `LongStrip` for every format ("Continuous", reader/SPEC.md shared with the web reader).
+  (manga / webtoon), else the format's own style (reader/SPEC.md §1b, shared with the web reader): a webtoon
+  `LongStrip` ("Continuous"), a manga `PagedRightToLeft`, a comic `PagedLeftToRight`.
   Switching keeps the page.
 - Format recognition (`ComicFormat`: `Manga` right to left, `Webtoon`, `Comic` left to right when paged): the source's
   word first (our API's `format`; a plugin's own labels "Long Strip", "Web Comic", manhwa, manhua, BD; an original

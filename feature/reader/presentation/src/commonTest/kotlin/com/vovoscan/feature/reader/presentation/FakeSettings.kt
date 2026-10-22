@@ -34,3 +34,6 @@ class FakeSettings(
 
 /** Every first-open coach already seen: tests about something else are not stopped by it. */
 val ALL_COACHES: Set<CoachKind> = CoachKind.entries.toSet()
+
+/** The continuous reader's tests: a manga read as one strip (its own default is pages right to left). */
+val CONTINUOUS: ReadingMode = ReadingMode.LongStrip

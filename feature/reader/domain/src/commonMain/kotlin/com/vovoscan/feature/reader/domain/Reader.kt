@@ -28,7 +28,10 @@ enum class ReadingMode {
         /** The modes a comic can be read in, in the order the settings show them. */
         val comicModes: List<ReadingMode> = listOf(PagedRightToLeft, PagedLeftToRight, PagedVertical, LongStrip, LongStripGaps)
 
-        /** The format rule: a book is text, every comic one continuous strip (`flow`, reader/SPEC.md §1). */
+        /**
+         * The format rule (reader/SPEC.md §1b): a book is text, a webtoon one continuous strip, a manga pages turned right
+         * to left, a comic pages turned left to right. The reader's choice for a series overrides it.
+         */
         fun from(
             kind: String,
             format: String,
@@ -46,11 +49,11 @@ enum class ComicFormat(
     /** The way its pages and panels are read when paged: Japanese manga right to left, the others left to right. */
     val rightToLeft: Boolean,
 ) {
-    Manga(ReadingMode.LongStrip, rightToLeft = true),
+    Manga(ReadingMode.PagedRightToLeft, rightToLeft = true),
     Webtoon(ReadingMode.LongStrip, rightToLeft = false),
 
     /** Western comics and bandes dessinées. */
-    Comic(ReadingMode.LongStrip, rightToLeft = false),
+    Comic(ReadingMode.PagedLeftToRight, rightToLeft = false),
     ;
 
     /** The paged mode that reads it in its own direction. */

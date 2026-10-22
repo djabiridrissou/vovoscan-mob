@@ -425,11 +425,11 @@ class ReaderTapsTest {
             settings.setSeriesMode("vovoscan", "t1", null)
             settings.updatePreferences { it.copy(webtoonMode = ReadingMode.LongStripGaps) }
             assertEquals(ReadingMode.LongStripGaps, reader(webtoon, settings = settings).state.value.mode)
-            // Manga: continuous by the format rule (reader/SPEC.md §1b), right to left once chosen as the manga default.
+            // Manga: pages right to left by the format rule (reader/SPEC.md §1b), continuous once chosen as the manga default.
             settings.updatePreferences { it.copy(mangaMode = null) }
-            assertEquals(ReadingMode.LongStrip, reader(manga, settings = settings).state.value.mode)
-            settings.updatePreferences { it.copy(mangaMode = ReadingMode.PagedRightToLeft) }
             assertEquals(ReadingMode.PagedRightToLeft, reader(manga, settings = settings).state.value.mode)
+            settings.updatePreferences { it.copy(mangaMode = ReadingMode.LongStrip) }
+            assertEquals(ReadingMode.LongStrip, reader(manga, settings = settings).state.value.mode)
         }
 
     @Test
