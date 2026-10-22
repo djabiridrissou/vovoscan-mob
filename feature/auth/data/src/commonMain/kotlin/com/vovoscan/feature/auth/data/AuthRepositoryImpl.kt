@@ -63,4 +63,13 @@ class AuthRepositoryImpl(
     }
 }
 
-internal fun UserDto.toDomain() = Session(id, email, displayName, listOfNotNull(roleName.ifBlank { null }), permissions.toSet())
+internal fun UserDto.toDomain() =
+    Session(
+        userId = id,
+        email = email,
+        displayName = shownName,
+        roles = listOfNotNull(roleLabel.ifBlank { null }),
+        permissions = permissions.toSet(),
+        isSuperAdmin = isSuperAdmin,
+        features = features.toSet(),
+    )

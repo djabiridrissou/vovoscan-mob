@@ -78,6 +78,7 @@ struct EpisodeView: View {
     private var card: some View {
         let state = model.state
         return VStack(alignment: .leading, spacing: 12) {
+            if state.comingSoon { Sticker(text: "Coming soon", angle: -4).padding(.bottom, 4) }
             HStack(alignment: .firstTextBaseline) {
                 Text(state.headline).font(.brandDisplay(18)).foregroundStyle(Color.brandPaper)
                 Spacer()
@@ -124,6 +125,12 @@ struct EpisodeView: View {
                 Button(state.rereadLabel) { model.send(EpisodeIntentReread.shared) }
                     .buttonStyle(GhostButtonStyle())
                     .disabled(state.working)
+            }
+            if let cost = state.costLine {
+                HStack(spacing: 6) {
+                    Circle().fill(Color.brandCyan).frame(width: 6, height: 6)
+                    Text(cost).font(.brandBody(13, weight: .bold)).foregroundStyle(Color.brandPaper)
+                }
             }
             if state.showsKeyNotice {
                 VStack(alignment: .leading, spacing: 6) {

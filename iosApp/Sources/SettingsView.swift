@@ -1,9 +1,12 @@
 import Shared
 import SwiftUI
 
-/// Settings tab: the user's own provider keys, the reading model, what the keys were charged, and signing out.
+/// Settings tab: credits, the creator studio (on the web), the user's own provider keys, the reading model, what the
+/// keys were charged, and signing out.
 struct SettingsView: View {
+    let session: Session
     let onSignOut: () -> Void
+    @StateObject private var wallet = WalletModel()
     @StateObject private var keys = ProviderKeysModel()
     @StateObject private var reading = ReadingSettingsModel()
     @StateObject private var usage = UsageModel()
@@ -11,8 +14,9 @@ struct SettingsView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
-                Kicker(text: "Settings")
-                Text("Your keys, your episodes.").font(.brandDisplay(26)).foregroundStyle(Color.brandPaper)
+                ScreenHeader(kicker: "Settings", title: "Your keys, your episodes.", subtitle: session.email)
+                if wallet.state.shown { WalletCard(state: wallet.state).riseIn() }
+                StudioCard(isCreator: session.isCreator).riseIn(1)
                 keysSection
                 readingSection
                 costsSection
@@ -22,10 +26,12 @@ struct SettingsView: View {
         }
         .background(Color.brandInk)
         .refreshable {
+            wallet.send(WalletIntentRefresh.shared)
             keys.send(ProviderKeysIntentRefresh.shared)
             reading.send(ReadingSettingsIntentRefresh.shared)
             usage.send(UsageIntentRefresh.shared)
         }
+        .task { await wallet.observe() }
         .task { await keys.observe() }
         .task { await reading.observe() }
         .task { await usage.observe() }
@@ -234,5 +240,76 @@ struct ChipStyle: ButtonStyle {
             .background(selected ? Color.brandPaper : Color.brandInk2, in: Capsule())
             .overlay(Capsule().stroke(selected ? Color.brandPaper : Color.brandLine, lineWidth: 1))
             .opacity(configuration.isPressed ? 0.7 : 1)
+    }
+}
+
+/// Credits for runs on the platform's keys: the balance in the display font, why a run would wait.
+private struct WalletCard: View {
+    let state: WalletUiState
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(state.balanceLabel)
+                    .font(.brandDisplay(44))
+                    .foregroundStyle(state.empty ? Color.brandDanger : Color.brandPaper)
+                    .contentTransition(.numericText())
+                Text(state.unitLabel).font(.brandBody(15, weight: .bold)).foregroundStyle(Color.brandMuted)
+                Spacer()
+                Sticker(text: "クレ", color: .brandCyan, angle: 6)
+            }
+            if let warning = state.warning {
+                Text(warning).font(.brandBody(13, weight: .bold)).foregroundStyle(Color.brandYellow)
+            }
+            Text(state.explainer).font(.brandBody(13)).foregroundStyle(Color.brandMuted)
+            if let error = state.error { ErrorText(text: error) }
+        }
+        .padding(20)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background {
+            ZStack {
+                Color.brandInk2
+                HalftoneBackground(color: .brandCyan, spacing: 10, maxOpacity: 0.14)
+            }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.brandLine, lineWidth: 1))
+        .background(RoundedRectangle(cornerRadius: 16).fill(Color.brandCyan).offset(x: 5, y: 5))
+        .padding(.trailing, 5)
+        .accessibilityElement(children: .combine)
+    }
+}
+
+/// The creator studio lives on the web only (uploads, translation tools, releases): the app links to it.
+private struct StudioCard: View {
+    let isCreator: Bool
+    @Environment(\.openURL) private var openURL
+
+    var body: some View {
+        Button {
+            Haptics.tap()
+            if let url = AppEnvironment.studioUrl { openURL(url) }
+        } label: {
+            HStack(spacing: 14) {
+                Image(systemName: "paintbrush.pointed.fill")
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundStyle(Color.brandInk)
+                    .frame(width: 40, height: 40)
+                    .background(Color.brandYellow, in: RoundedRectangle(cornerRadius: 8))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(isCreator ? "Creator studio" : "Publish your own series")
+                        .font(.brandBody(15, weight: .bold)).foregroundStyle(Color.brandPaper)
+                    Text(isCreator ? "Upload, translate and schedule releases on the web." : "Apply as a creator on the web.")
+                        .font(.brandBody(13)).foregroundStyle(Color.brandMuted)
+                }
+                Spacer()
+                Image(systemName: "arrow.up.right").font(.system(size: 13, weight: .bold)).foregroundStyle(Color.brandMuted)
+            }
+            .padding(14)
+            .background(Color.brandInk2, in: RoundedRectangle(cornerRadius: 12))
+            .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.brandLine, lineWidth: 1))
+        }
+        .buttonStyle(PressableCardStyle())
+        .accessibilityHint("Opens the website")
     }
 }

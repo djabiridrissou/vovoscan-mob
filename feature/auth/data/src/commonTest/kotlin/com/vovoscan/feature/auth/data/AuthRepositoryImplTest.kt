@@ -32,6 +32,25 @@ class AuthRepositoryImplTest {
         }
 
     @Test
+    fun theUnifiedApiShapeCarriesRoleAndFeatures() =
+        runTest {
+            val unified =
+                """{"id":"u2","email":"o@v.app","name":"Owner","role":"owner","isSuperAdmin":false,""" +
+                    """"permissions":["titles:create"],"features":["video"],"emailVerified":true}"""
+            val repo =
+                AuthRepositoryImpl(
+                    KtorAuthRemoteDataSource(testHttpClient { respondJson("""{"data":{"token":"t2","user":$unified}}""") }),
+                    SecureSessionLocalDataSource(MemorySecureStore()),
+                )
+            repo.signIn("o@v.app", "a-long-password")
+            val session = repo.session.value!!
+            assertEquals("Owner", session.displayName)
+            assertEquals(listOf("owner"), session.roles)
+            assertTrue(session.has("video"))
+            assertTrue(session.isCreator)
+        }
+
+    @Test
     fun offlineTheLocalSessionStaysOpen() =
         runTest {
             val store = MemorySecureStore()

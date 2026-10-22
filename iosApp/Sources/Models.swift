@@ -287,6 +287,26 @@ final class UsageModel: ObservableObject {
     deinit { owner.clear() }
 }
 
+@MainActor
+final class WalletModel: ObservableObject {
+    @Published private(set) var state: WalletUiState
+    private let owner = ViewModels()
+    private let viewModel: WalletViewModel
+
+    init() {
+        viewModel = owner.wallet()
+        state = viewModel.state.value
+    }
+
+    func observe() async {
+        for await next in viewModel.state { state = next }
+    }
+
+    func send(_ intent: WalletIntent) { viewModel.onIntent(intent: intent) }
+
+    deinit { owner.clear() }
+}
+
 // Episodes.
 
 @MainActor

@@ -30,6 +30,7 @@ targets:
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         API_BASE_URL: $(API_BASE_URL)
+        WEB_BASE_URL: $(WEB_BASE_URL)
         UILaunchScreen: {}
         UIStatusBarStyle: UIStatusBarStyleLightContent
         UIUserInterfaceStyle: Dark
@@ -58,8 +59,10 @@ targets:
         Debug:
           PRODUCT_BUNDLE_IDENTIFIER: com.vovoscan.app.dev
           API_BASE_URL: http://localhost:8000/
+          WEB_BASE_URL: http://localhost:3000/
         Release:
           API_BASE_URL: https://vovoscan.yieldgrowth.org/
+          WEB_BASE_URL: https://vovoscan.yieldgrowth.org/
     preBuildScripts:
       - name: Build the Kotlin Shared framework
         basedOnDependencyAnalysis: false

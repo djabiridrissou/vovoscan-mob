@@ -81,8 +81,13 @@ suspend fun errorOf(response: HttpResponse): AppError {
         // A specific 401 ("INVALID_CREDENTIALS" at sign-in) keeps its message; a generic 401 means the session has ended.
         response.status == HttpStatusCode.Unauthorized && (code == null || code == "UNAUTHORIZED") -> AppError.Unauthorized
         response.status == HttpStatusCode.Forbidden && (code == null || code == "PERMISSION_DENIED") -> AppError.Forbidden
+        // The credits' daily cap is a 429 with its own meaning (the screen says when runs resume), not a rate limit.
+        response.status == HttpStatusCode.TooManyRequests && code == DAILY_CAP -> AppError.Rejected(DAILY_CAP, body?.message.orEmpty())
         response.status == HttpStatusCode.TooManyRequests -> AppError.RateLimited
         code != null -> AppError.Rejected(code, body.message)
         else -> AppError.Unknown("HTTP ${response.status.value}")
     }
 }
+
+/** `429` of the credits: the platform's daily limit is reached (runs on its keys resume tomorrow). */
+const val DAILY_CAP = "DAILY_CAP"

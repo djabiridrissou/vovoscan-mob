@@ -2,13 +2,17 @@ package com.vovoscan.feature.episodes.presentation
 
 import com.vovoscan.core.common.AppError
 import com.vovoscan.core.common.AppResult
+import com.vovoscan.feature.episodes.domain.EpisodeAccess
 import com.vovoscan.feature.episodes.domain.EpisodeStatus
 import com.vovoscan.feature.episodes.domain.KeyStatus
 import com.vovoscan.feature.episodes.domain.PipelineStage
 import com.vovoscan.feature.episodes.domain.PrepareResult
+import com.vovoscan.feature.episodes.domain.RunCost
+import com.vovoscan.feature.episodes.domain.RunQuotes
 import com.vovoscan.feature.episodes.domain.StageProgress
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
@@ -32,6 +36,65 @@ class EpisodeViewModelTest {
 
     @AfterTest
     fun tearDown() = Dispatchers.resetMain()
+
+    @Test
+    fun comingSoonOffersNothingUntilTheAccountGetsTheFeature() =
+        runTest(dispatcher) {
+            val open = MutableStateFlow(false)
+            val repo = FakeEpisodes(episode(EpisodeStatus.Ready))
+            val vm = EpisodeViewModel("c1", repo, bothKeys, EpisodeAccess { open })
+            advanceUntilIdle()
+            var state = vm.state.value
+            assertTrue(state.comingSoon)
+            assertEquals("Episodes are coming soon.", state.headline)
+            assertFalse(state.canWatch)
+            assertFalse(state.canPrepare)
+            assertFalse(state.canReread)
+            assertFalse(state.exportShown)
+            assertTrue(state.keyLines.isEmpty())
+            vm.onIntent(EpisodeIntent.Prepare)
+            advanceUntilIdle()
+            assertTrue(repo.runs.isEmpty())
+            open.value = true
+            vm.onIntent(EpisodeIntent.Start)
+            advanceUntilIdle()
+            state = vm.state.value
+            assertFalse(state.comingSoon)
+            assertTrue(state.canWatch)
+        }
+
+    @Test
+    fun theServerTurningTheFeatureOffShowsComingSoon() =
+        runTest(dispatcher) {
+            val repo = FakeEpisodes()
+            repo.refreshResult = AppResult.Err(AppError.Rejected("FEATURE_DISABLED", "Coming soon."))
+            val vm = EpisodeViewModel("c1", repo, bothKeys)
+            advanceUntilIdle()
+            assertTrue(vm.state.value.comingSoon)
+        }
+
+    @Test
+    fun theQuoteShowsNextToPrepare() =
+        runTest(dispatcher) {
+            val vm = EpisodeViewModel("c1", FakeEpisodes(), bothKeys, EpisodeAccess.Open, RunQuotes { RunCost(12, false, false) })
+            advanceUntilIdle()
+            assertEquals("Costs 12 credits from your wallet.", vm.state.value.costLine)
+            val own = EpisodeViewModel("c2", FakeEpisodes(), bothKeys, EpisodeAccess.Open, RunQuotes { RunCost(12, true, false) })
+            advanceUntilIdle()
+            assertEquals("Your own keys pay: no credit spent.", own.state.value.costLine)
+        }
+
+    @Test
+    fun anEmptyWalletSaysHowToGoOn() =
+        runTest(dispatcher) {
+            val repo = FakeEpisodes()
+            repo.runResult = { AppResult.Err(AppError.Rejected("INSUFFICIENT_CREDITS", "Not enough credits.")) }
+            val vm = EpisodeViewModel("c1", repo, bothKeys)
+            advanceUntilIdle()
+            vm.onIntent(EpisodeIntent.Prepare)
+            advanceUntilIdle()
+            assertEquals(EpisodeText.NO_CREDITS, vm.state.value.error)
+        }
 
     @Test
     fun noEpisodeYetOffersToPrepareWithTheUsersKeys() =

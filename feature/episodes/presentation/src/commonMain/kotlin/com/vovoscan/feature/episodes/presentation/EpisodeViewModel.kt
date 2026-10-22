@@ -7,6 +7,7 @@ import com.vovoscan.core.common.AppResult
 import com.vovoscan.core.common.Freshness
 import com.vovoscan.core.common.userMessage
 import com.vovoscan.feature.episodes.domain.Episode
+import com.vovoscan.feature.episodes.domain.EpisodeAccess
 import com.vovoscan.feature.episodes.domain.EpisodeStatus
 import com.vovoscan.feature.episodes.domain.EpisodesRepository
 import com.vovoscan.feature.episodes.domain.ExportStatus
@@ -14,6 +15,8 @@ import com.vovoscan.feature.episodes.domain.KeyStatus
 import com.vovoscan.feature.episodes.domain.KeyStatusProvider
 import com.vovoscan.feature.episodes.domain.PipelineStage
 import com.vovoscan.feature.episodes.domain.PrepareResult
+import com.vovoscan.feature.episodes.domain.RunCost
+import com.vovoscan.feature.episodes.domain.RunQuotes
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -113,6 +116,13 @@ data class EpisodeUiState(
     /** Short confirmation ("Already in progress. Following it."). */
     val notice: String? = null,
     val error: String? = null,
+    /**
+     * Episodes aren't open to this account yet (no `video` feature): the card says so ([headline], [detail]) and
+     * offers nothing. The server refuses these calls too.
+     */
+    val comingSoon: Boolean = false,
+    /** What preparing would cost ("Costs 12 credits from your wallet."), shown with Prepare; null without a quote. */
+    val costLine: String? = null,
 ) {
     /** False for a book: show nothing about episodes. */
     val visible: Boolean get() = phase != EpisodePhase.Unsupported
@@ -172,11 +182,18 @@ class EpisodeViewModel(
     private val chapterId: String,
     private val repository: EpisodesRepository,
     private val keys: KeyStatusProvider,
+    private val access: EpisodeAccess = EpisodeAccess.Open,
+    private val quotes: RunQuotes = RunQuotes.None,
 ) : ViewModel() {
     private val mutableState = MutableStateFlow(EpisodeUiState())
     val state: StateFlow<EpisodeUiState> = mutableState.asStateFlow()
     private var episode: Episode? = null
     private var keyStatus: KeyStatus? = null
+
+    /** False: episodes are "coming soon" for this account. True until the session says otherwise. */
+    private var allowed = true
+    private var cost: RunCost? = null
+    private var quoteJob: Job? = null
 
     /** The server answered once: no local episode now means "no episode yet". */
     private var known = false
@@ -200,6 +217,13 @@ class EpisodeViewModel(
                 keyStatus = status
                 render()
             }.launchIn(viewModelScope)
+        access
+            .observe()
+            .onEach { open ->
+                allowed = open
+                if (!open) stop()
+                render()
+            }.launchIn(viewModelScope)
         start()
     }
 
@@ -221,7 +245,7 @@ class EpisodeViewModel(
 
     private fun requestExport() {
         val current = state.value
-        if (current.exportWorking || !current.canRequestExport) return
+        if (current.comingSoon || current.exportWorking || !current.canRequestExport) return
         mutableState.update { it.copy(exportWorking = true, notice = null, error = null) }
         viewModelScope.launch {
             val result = repository.requestExport(chapterId)
@@ -267,7 +291,7 @@ class EpisodeViewModel(
     }
 
     private fun start() {
-        if (started) return
+        if (started || !allowed) return
         started = true
         refresh()
         viewModelScope.launch { keys.refresh() }
@@ -290,6 +314,7 @@ class EpisodeViewModel(
                     is AppResult.Ok -> {
                         known = true
                         mutableState.update { it.copy(freshness = Freshness.Fresh, error = null) }
+                        quote()
                     }
                     is AppResult.Err -> failed(result.error, refreshing = true)
                 }
@@ -299,7 +324,7 @@ class EpisodeViewModel(
 
     private fun run(reread: Boolean) {
         val current = state.value
-        if (current.working) return
+        if (current.comingSoon || current.working) return
         if (reread && !current.canReread) return
         if (!reread && !current.canPrepare) return
         mutableState.update { it.copy(working = true, notice = null, error = null) }
@@ -329,6 +354,16 @@ class EpisodeViewModel(
         }
     }
 
+    /** Asks once per refresh what a run would cost; the card shows it next to Prepare. */
+    private fun quote() {
+        if (!allowed || quoteJob?.isActive == true) return
+        quoteJob =
+            viewModelScope.launch {
+                cost = quotes.episode(chapterId)
+                render()
+            }
+    }
+
     private fun refreshNow() {
         refreshJob?.cancel()
         refreshJob = null
@@ -341,6 +376,12 @@ class EpisodeViewModel(
     ) {
         if (error is AppError.Rejected && error.code == "EPISODE_NOT_SUPPORTED") {
             unsupported = true
+            stop()
+            return
+        }
+        if (error is AppError.Rejected && error.code in EpisodeText.FEATURE_OFF_CODES) {
+            // The server says the feature isn't open to this account, whatever the session said.
+            allowed = false
             stop()
             return
         }
@@ -359,7 +400,7 @@ class EpisodeViewModel(
 
     /** Follows the run while the screen is visible and the episode is not final. */
     private fun follow() {
-        if (!started || followJob?.isActive == true) return
+        if (!started || !allowed || followJob?.isActive == true) return
         mutableState.update { it.copy(live = true) }
         followJob =
             viewModelScope.launch {
@@ -387,8 +428,9 @@ class EpisodeViewModel(
             val base = exportState(state.copy(keyLines = keyLines, keyWarning = keyWarning), current)
             when {
                 unsupported -> EpisodeUiState(phase = EpisodePhase.Unsupported)
-                current != null -> episodeState(base, current)
-                known -> noneState(base)
+                !allowed -> comingSoonState(base)
+                current != null -> episodeState(base, current).withCost()
+                known -> noneState(base).withCost()
                 state.freshness == Freshness.Offline ->
                     base.copy(
                         phase = EpisodePhase.Unavailable,
@@ -401,6 +443,34 @@ class EpisodeViewModel(
             }
         }
     }
+
+    private fun EpisodeUiState.withCost() = copy(costLine = if (canPrepare || canReread) cost?.let(EpisodeText::cost) else null)
+
+    /** Not open to this account: one calm line, no action, nothing that would spend a key or a credit. */
+    private fun comingSoonState(base: EpisodeUiState) =
+        base.copy(
+            phase = EpisodePhase.Unavailable,
+            headline = EpisodeText.COMING_SOON,
+            detail = EpisodeText.COMING_SOON_DETAIL,
+            stages = emptyList(),
+            progressLabel = null,
+            progressFraction = null,
+            badges = emptyList(),
+            notes = emptyList(),
+            canWatch = false,
+            canPrepare = false,
+            canReread = false,
+            keyLines = emptyList(),
+            keyWarning = null,
+            working = false,
+            live = false,
+            exportShown = false,
+            canRequestExport = false,
+            canSaveVideo = false,
+            error = null,
+            comingSoon = true,
+            costLine = null,
+        )
 
     /** The video section: only for a ready episode, from the export carried by the stored episode. */
     private fun exportState(

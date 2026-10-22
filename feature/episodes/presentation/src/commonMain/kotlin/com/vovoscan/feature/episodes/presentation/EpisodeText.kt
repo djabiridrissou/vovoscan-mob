@@ -2,6 +2,7 @@ package com.vovoscan.feature.episodes.presentation
 
 import com.vovoscan.core.common.AppError
 import com.vovoscan.core.common.userMessage
+import com.vovoscan.feature.episodes.domain.RunCost
 import com.vovoscan.feature.episodes.domain.StageProgress
 
 /** Every user-facing string of the episode card and the player (brand tone: calm, short, ✦ separator). */
@@ -38,6 +39,14 @@ object EpisodeText {
     const val OFFLINE_WRITE = "You're offline. Connect to the internet to prepare this episode."
     const val NO_PAGES = "This chapter has no pages yet."
     const val CHAPTER_NOT_FOUND = "This chapter isn't available."
+    const val COMING_SOON = "Episodes are coming soon."
+    const val COMING_SOON_DETAIL = "Voiced episodes open to more readers soon. The chapter reads as usual meanwhile."
+    const val NO_CREDITS = "Not enough credits for this run. Add your own keys in Settings, or ask for a top-up."
+    const val CREDITS_PAUSED = "Runs on the platform's keys are paused right now. Your own keys still work."
+    const val DAILY_CAP = "Today's limit is reached. Try again tomorrow, or use your own keys."
+
+    /** Codes saying the feature isn't open to this account (the server's feature flags). */
+    val FEATURE_OFF_CODES = setOf("FEATURE_DISABLED", "FEATURE_COMING_SOON")
 
     fun anthropicLine(hint: String?): String =
         if (hint != null) "Your Anthropic key (•••• $hint) reads the bubbles." else "No Anthropic key: the bubbles stay unread."
@@ -65,7 +74,25 @@ object EpisodeText {
             error == AppError.Network -> OFFLINE_WRITE
             error is AppError.Rejected && error.code == "EPISODE_NO_PAGES" -> NO_PAGES
             error is AppError.Rejected && error.code == "CHAPTER_NOT_FOUND" -> CHAPTER_NOT_FOUND
-            else -> error.userMessage()
+            else -> creditError(error) ?: error.userMessage()
+        }
+
+    /** The quote shown with Prepare. */
+    fun cost(cost: RunCost): String =
+        when {
+            cost.alreadyAvailable -> "Already made: it costs nothing."
+            cost.coveredByOwnKeys -> "Your own keys pay: no credit spent."
+            cost.credits == 1L -> "Costs 1 credit from your wallet."
+            else -> "Costs ${cost.credits} credits from your wallet."
+        }
+
+    /** The credits wallet refused a run on the platform's keys; null for any other error. */
+    fun creditError(error: AppError): String? =
+        when ((error as? AppError.Rejected)?.code) {
+            "INSUFFICIENT_CREDITS" -> NO_CREDITS
+            "PLATFORM_PAUSED" -> CREDITS_PAUSED
+            "DAILY_CAP" -> DAILY_CAP
+            else -> null
         }
 
     // Video (MP4 export).

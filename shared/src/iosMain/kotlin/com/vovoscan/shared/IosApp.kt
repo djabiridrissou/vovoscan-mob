@@ -13,6 +13,7 @@ import com.vovoscan.core.security.SecureStore
 import com.vovoscan.feature.account.presentation.ProviderKeysViewModel
 import com.vovoscan.feature.account.presentation.ReadingSettingsViewModel
 import com.vovoscan.feature.account.presentation.UsageViewModel
+import com.vovoscan.feature.account.presentation.WalletViewModel
 import com.vovoscan.feature.auth.domain.AuthRepository
 import com.vovoscan.feature.auth.presentation.SessionViewModel
 import com.vovoscan.feature.auth.presentation.SignInViewModel
@@ -151,6 +152,8 @@ class ViewModels : KoinComponent {
     fun readingSettings(): ReadingSettingsViewModel = remember("readingSettings") { get<ReadingSettingsViewModel>() }
 
     fun usage(): UsageViewModel = remember("usage") { get<UsageViewModel>() }
+
+    fun wallet(): WalletViewModel = remember("wallet") { get<WalletViewModel>() }
 
     fun episode(chapterId: String): EpisodeViewModel = remember("episode:$chapterId") { get<EpisodeViewModel> { parametersOf(chapterId) } }
 

@@ -2,6 +2,7 @@ package com.vovoscan.feature.episodes.domain
 
 import com.vovoscan.core.common.AppResult
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
 
 /**
  * Where an episode's run is (`EpisodeStatus` on the server): `queued` → `analyzing` (ANALYZE) → `reading` (OCR) →
@@ -181,6 +182,36 @@ interface KeyStatusProvider {
 
     /** Reads the list again from the server (errors ignored: the list on the device stays). */
     suspend fun refresh()
+}
+
+/**
+ * Whether this account may use episodes (the `video` feature flag): otherwise the episode card says "coming soon"
+ * and offers nothing. A feature port wired by the app to the session; the server checks every call again.
+ */
+fun interface EpisodeAccess {
+    fun observe(): Flow<Boolean>
+
+    companion object {
+        /** Every account may use episodes (tests, servers without feature flags wired). */
+        val Open = EpisodeAccess { flowOf(true) }
+    }
+}
+
+/** What preparing an episode would cost this account, from the credits wallet. */
+data class RunCost(
+    val credits: Long,
+    val coveredByOwnKeys: Boolean,
+    val alreadyAvailable: Boolean,
+)
+
+/** Cost quotes before a run. A feature port wired by the app to the account's wallet. */
+fun interface RunQuotes {
+    /** Null: no quote (a server without credits, offline): the card says nothing about credits. */
+    suspend fun episode(chapterId: String): RunCost?
+
+    companion object {
+        val None = RunQuotes { null }
+    }
 }
 
 /**

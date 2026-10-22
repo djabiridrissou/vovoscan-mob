@@ -86,6 +86,19 @@ data class SourcesUiState(
         get() = updatesCount.takeIf { it > 0 }?.let { if (it == 1) "1 update available" else "$it updates available" }
 
     val empty: Boolean get() = rows.isEmpty() && freshness != Freshness.Refreshing
+
+    /** A new account starts with no source: the catalog and the library invite to add the first one. */
+    val firstSourceTitle: String get() = FIRST_SOURCE_TITLE
+    val firstSourceMessage: String get() = FIRST_SOURCE_MESSAGE
+    val firstSourceAction: String get() = FIRST_SOURCE_ACTION
+
+    private companion object {
+        const val FIRST_SOURCE_TITLE = "Start with a source."
+        const val FIRST_SOURCE_MESSAGE =
+            "Your shelf is empty until you add one: a repository, a link to a source or a .vovo file. " +
+                "Its titles show here, read by your phone."
+        const val FIRST_SOURCE_ACTION = "Add a source →"
+    }
 }
 
 sealed interface SourcesIntent {

@@ -43,6 +43,17 @@ class ApiCallTest {
         }
 
     @Test
+    fun theCreditsDailyCapIsNotARateLimit() =
+        runTest {
+            val body = """{"code":429,"message":"Daily limit reached.","data":{"error":"DAILY_CAP"}}"""
+            assertEquals(
+                AppResult.Err(AppError.Rejected("DAILY_CAP", "Daily limit reached.")),
+                client(HttpStatusCode.TooManyRequests, body).apiCall<Pong> { get("ping") },
+            )
+            assertEquals(AppResult.Err(AppError.RateLimited), client(HttpStatusCode.TooManyRequests, "{}").apiCall<Pong> { get("ping") })
+        }
+
+    @Test
     fun http403BecomesForbidden() =
         runTest {
             assertEquals(AppResult.Err(AppError.Forbidden), client(HttpStatusCode.Forbidden, "{}").apiCall<Pong> { get("ping") })

@@ -13,16 +13,28 @@ import io.ktor.http.ContentType
 import io.ktor.http.contentType
 import kotlinx.serialization.Serializable
 
+/**
+ * The signed-in user. Two server generations: `displayName` / `roleName` (vovoscan-be v1) and `name` / `role` (the
+ * unified API); both are read, the first non-blank wins.
+ */
 @Serializable
 data class UserDto(
     val id: String,
     val email: String,
-    val displayName: String,
+    val displayName: String = "",
+    val name: String = "",
     val roleName: String = "",
+    val role: String = "",
     val isSuperAdmin: Boolean = false,
     /** "module:action"; "*" for a super-admin. */
     val permissions: List<String> = emptyList(),
-)
+    /** Feature flags of the account (`video`…); absent on servers without flags. */
+    val features: List<String> = emptyList(),
+    val emailVerified: Boolean = true,
+) {
+    val shownName: String get() = displayName.ifBlank { name }
+    val roleLabel: String get() = roleName.ifBlank { role }
+}
 
 @Serializable
 data class SessionDto(

@@ -54,6 +54,7 @@ import com.vovoscan.feature.account.presentation.ReadingSettingsIntent
 import com.vovoscan.feature.account.presentation.ReadingSettingsViewModel
 import com.vovoscan.feature.account.presentation.UsageIntent
 import com.vovoscan.feature.account.presentation.UsageViewModel
+import com.vovoscan.feature.account.presentation.WalletViewModel
 import org.koin.compose.viewmodel.koinViewModel
 
 /** Settings tab: the user's own provider keys, the reading model, what the keys were charged, and signing out. */
@@ -63,10 +64,12 @@ fun SettingsScreen(
     keys: ProviderKeysViewModel = koinViewModel(),
     reading: ReadingSettingsViewModel = koinViewModel(),
     usage: UsageViewModel = koinViewModel(),
+    wallet: WalletViewModel = koinViewModel(),
 ) {
     val keysState by keys.state.collectAsStateWithLifecycle()
     val readingState by reading.state.collectAsStateWithLifecycle()
     val usageState by usage.state.collectAsStateWithLifecycle()
+    val walletState by wallet.state.collectAsStateWithLifecycle()
     LazyColumn(
         Modifier.fillMaxSize(),
         contentPadding = PaddingValues(20.dp),
@@ -76,6 +79,18 @@ fun SettingsScreen(
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Kicker("Settings")
                 Text("Your keys, your episodes.", style = MaterialTheme.typography.headlineSmall)
+            }
+        }
+
+        // Credits (runs on the platform's keys).
+        if (walletState.shown) {
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("${walletState.balanceLabel} ${walletState.unitLabel}", style = MaterialTheme.typography.headlineSmall)
+                    walletState.warning?.let { Notice(it) }
+                    Text(walletState.explainer, style = MaterialTheme.typography.bodySmall)
+                    walletState.error?.let { ErrorText(it) }
+                }
             }
         }
 

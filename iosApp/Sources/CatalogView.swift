@@ -6,13 +6,14 @@ struct CatalogView: View {
     @StateObject private var sources = SourcesModel()
     @State private var query = ""
     @State private var sheet: CatalogSheet?
+    @Namespace private var zoom
+    @Environment(\.openTab) private var openTab
     private let columns = [GridItem(.adaptive(minimum: 150), spacing: 14)]
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
-                Kicker(text: "Catalog")
-                Text("Pick a title.").font(.brandDisplay(26)).foregroundStyle(Color.brandPaper)
+                ScreenHeader(kicker: "Catalog", title: "Pick a title.")
                 // Two features side by side, unaware of each other: sources (the visible ones, in order) and catalog.
                 filters
                     .onAppear { model.send(CatalogIntentSourcesChanged(sources: visibleSources)) }
@@ -25,13 +26,29 @@ struct CatalogView: View {
                     OfflineNotice(text: notice, onRetry: model.state.canRetry ? { model.send(CatalogIntentRefresh.shared) } : nil)
                 }
                 if let error = model.state.error { ErrorText(text: error) }
-                if model.state.empty {
-                    Text(model.state.emptyMessage).font(.brandBody(15)).foregroundStyle(Color.brandPaper)
+                if sources.state.empty {
+                    // A new account has no source yet: nothing to read until one is added.
+                    EmptyStateCard(
+                        sfx: "シーン",
+                        title: sources.state.firstSourceTitle,
+                        message: sources.state.firstSourceMessage,
+                        actionLabel: sources.state.firstSourceAction
+                    ) { openTab(.sources) }
+                    .riseIn()
+                } else if model.state.empty {
+                    EmptyStateCard(sfx: "シーン", title: model.state.emptyMessage, message: "Pull down to check again.")
                 }
                 LazyVGrid(columns: columns, spacing: 14) {
-                    ForEach(model.state.visible, id: \.self) { card in
-                        NavigationLink(value: TitleRoute(sourceKey: card.sourceKey, titleId: card.id)) { TitleTile(card: card) }
-                            .buttonStyle(.plain)
+                    ForEach(Array(model.state.visible.enumerated()), id: \.element) { index, card in
+                        let route = TitleRoute(sourceKey: card.sourceKey, titleId: card.id)
+                        NavigationLink(value: route) { TitleTile(card: card) }
+                            .buttonStyle(PressableCardStyle())
+                            .matchedTransitionSource(id: route, in: zoom)
+                            .riseIn(index)
+                    }
+                    // The shape of the grid while the first page of every source loads.
+                    if model.state.visible.isEmpty && model.state.freshness == .refreshing && !sources.state.empty {
+                        ForEach(0..<6, id: \.self) { _ in SkeletonTile() }
                     }
                 }
                 if model.state.canLoadMore && model.state.results == nil {
@@ -48,7 +65,9 @@ struct CatalogView: View {
                 .presentationDetents([.medium, .large])
                 .presentationBackground(Color.brandInk2)
         }
-        .navigationDestination(for: TitleRoute.self) { TitleView(route: $0) }
+        .navigationDestination(for: TitleRoute.self) { route in
+            TitleView(route: route).navigationTransition(.zoom(sourceID: route, in: zoom))
+        }
         .navigationDestination(for: ReaderRoute.self) { ReaderContainer(route: $0) }
         .task { await model.observe() }
         .task { await sources.observe() }
@@ -116,7 +135,10 @@ private struct FilterSheet: View {
                 if which == .sources {
                     CheckRow(label: "All", checked: model.state.allSources) { model.send(CatalogIntentShowAllSources.shared) }
                     ForEach(model.state.sources, id: \.key) { source in
-                        CheckRow(label: source.name, checked: source.selected) { model.send(CatalogIntentToggleSource(key: source.key)) }
+                        CheckRow(label: source.name, checked: source.selected) {
+                            Haptics.select()
+                            model.send(CatalogIntentToggleSource(key: source.key))
+                        }
                     }
                 } else {
                     CheckRow(label: "All categories", checked: model.state.category == nil) {
@@ -195,5 +217,7 @@ private struct TitleTile: View {
         .background(Color.brandInk2)
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.brandLine, lineWidth: 2))
+        .contentShape(RoundedRectangle(cornerRadius: 12))
+        .accessibilityElement(children: .combine)
     }
 }

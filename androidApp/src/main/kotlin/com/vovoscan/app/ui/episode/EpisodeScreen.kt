@@ -146,6 +146,7 @@ private fun EpisodeCard(
             }
         }
         if (state.canReread) GhostButton(state.rereadLabel, { if (!state.working) send(EpisodeIntent.Reread) })
+        state.costLine?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
         if (state.showsKeyNotice) KeyNotice(state)
 
         if (state.exportShown) VideoSection(state, send)

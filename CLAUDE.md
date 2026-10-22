@@ -332,6 +332,37 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   `frame(frameTimeMs, stageW, stageH)` on every display frame and draws and plays exactly what it returns (audio: one
   player per cue id). URLs are refetched 5 minutes before they expire, or on `PlayerIntent.MediaFailed`.
 
+## Account access: feature flags, credits, studio
+
+- `/auth/me` (`UserDto`) reads both server generations: `displayName`/`roleName` (v1) and `name`/`role` (unified API),
+  plus `isSuperAdmin`, `permissions`, `features`, `emailVerified`. `Session.has(feature)`: a super-admin has every
+  feature. `Session.isCreator` = `titles:create`.
+- `video` gates episodes: the `EpisodeAccess` port (episodes domain, wired in `shared` to the session) turns the
+  episode card into "Episodes are coming soon." with no action (`EpisodeUiState.comingSoon`); a server answer
+  `FEATURE_DISABLED` / `FEATURE_COMING_SOON` does the same. The server checks every call again.
+- Credits (runs on the platform's keys; own keys cost none): `WalletRepository` (account slice, in memory only)
+  reads `GET api/v1/me/wallet` `{balanceCredits, usesOwnKeys, dailyCapReached}`; a 404 means a server without
+  credits (nothing shown). `POST api/v1/quotes {kind, chapterId, lang?}` → `{credits, coveredByOwnKeys,
+  alreadyAvailable}` feeds the `RunQuotes` port: the episode card shows the cost next to Prepare (`costLine`).
+  Errors: `402 INSUFFICIENT_CREDITS`, `503 PLATFORM_PAUSED`, `429 DAILY_CAP` (kept as `Rejected`, not a rate limit,
+  by `errorOf`), each with a calm line (`EpisodeText.creditError`). `WalletViewModel` = the credits card in Settings.
+- The creator studio is web only: Settings links to `WEB_BASE_URL` + `contribute` (`project.yml`), "Creator studio"
+  for creators, "Publish your own series" otherwise. The apps never upload, translate or schedule releases.
+- A new account has no source: `SourcesUiState.empty` makes the catalog and the library show "Start with a source."
+  with "Add a source →" (switches to the Sources tab, `OpenTabAction` in the SwiftUI environment).
+
+## iOS finish (`iosApp/Sources/Premium.swift`)
+
+- Launch: the mark is stamped on the page (spring, haptic, speed lines), then the app or the sign-in fades in.
+- Sign-in: a printed-manga hero (speed lines, red halftone, ドン!, "Invite only" kicker), password AutoFill content
+  types, an error haptic.
+- Catalog: covers open their title page with the iOS 18 zoom transition (`matchedTransitionSource` +
+  `.navigationTransition(.zoom)`), tiles sink when pressed (`PressableCardStyle`), rise in one after the other
+  (`riseIn`), skeleton tiles shimmer while the first page loads.
+- `EmptyStateCard` (onomatopoeia, one sentence, one action), `Sticker`, `ScreenHeader`, `Haptics`, `HalftoneBackground`,
+  `SpeedLines` (deterministic, drawn with `Canvas`). Ink tab and navigation bars, red selection, a selection haptic per
+  tab. Every animation is skipped under Reduce Motion.
+
 ## Screens (account and episodes)
 
 - Settings (4th tab, gear on both): Keys (two provider slots, add / replace / remove with a confirmation, privacy note;

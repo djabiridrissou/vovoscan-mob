@@ -1,6 +1,7 @@
 package com.vovoscan.shared
 
 import com.vovoscan.core.common.AppDispatchers
+import com.vovoscan.core.common.AppResult
 import com.vovoscan.core.common.NetworkMonitor
 import com.vovoscan.core.network.ApiConfig
 import com.vovoscan.core.network.createHttpClient
@@ -16,13 +17,19 @@ import com.vovoscan.core.sources.createRulesHttpClient
 import com.vovoscan.feature.account.di.accountModule
 import com.vovoscan.feature.account.domain.Provider
 import com.vovoscan.feature.account.domain.ProviderKeysRepository
+import com.vovoscan.feature.account.domain.QuoteKind
+import com.vovoscan.feature.account.domain.WalletRepository
 import com.vovoscan.feature.auth.di.SignOutCleanup
 import com.vovoscan.feature.auth.di.authModule
+import com.vovoscan.feature.auth.domain.AuthRepository
 import com.vovoscan.feature.catalog.di.catalogModule
 import com.vovoscan.feature.catalog.domain.CatalogRepository
 import com.vovoscan.feature.catalog.domain.ContentKind
 import com.vovoscan.feature.episodes.di.episodesModule
+import com.vovoscan.feature.episodes.domain.EpisodeAccess
 import com.vovoscan.feature.episodes.domain.EpisodesRepository
+import com.vovoscan.feature.episodes.domain.RunCost
+import com.vovoscan.feature.episodes.domain.RunQuotes
 import com.vovoscan.feature.episodes.domain.KeyStatus
 import com.vovoscan.feature.episodes.domain.KeyStatusProvider
 import com.vovoscan.feature.library.di.libraryModule
@@ -105,6 +112,7 @@ fun appModules(
                     get<ReaderRepository>().clearLocal()
                     get<SourcesRepository>().clearLocal()
                     get<ProviderKeysRepository>().clearLocal()
+                    get<WalletRepository>().clear()
                     get<EpisodesRepository>().clearLocal()
                 }
             }
@@ -177,6 +185,21 @@ fun appModules(
             }
             // Episodes show which of the user's keys a run would use, without knowing the account slice.
             single<KeyStatusProvider> { AccountKeyStatus(get()) }
+            // Episodes open to the account (the `video` feature flag, every feature for a super-admin), else "coming
+            // soon": read from the session, without episodes knowing the auth slice.
+            single<EpisodeAccess> {
+                val auth = get<AuthRepository>()
+                EpisodeAccess { auth.session.map { it?.has(VIDEO_FEATURE) == true }.distinctUntilChanged() }
+            }
+            // What a run would cost, from the account's credits wallet (a server without credits: no quote).
+            single<RunQuotes> {
+                val wallet = get<WalletRepository>()
+                RunQuotes { chapterId ->
+                    (wallet.quote(QuoteKind.Episode, chapterId) as? AppResult.Ok)?.value?.let {
+                        RunCost(it.credits, it.coveredByOwnKeys, it.alreadyAvailable)
+                    }
+                }
+            }
             // Image loaders (Coil, the iOS URL session) send a source's page-image Referer to its hosts: the table
             // follows the user's sources and their manifests (started by each app at launch).
             single { ImageRefererSync(get(), get(), get()) }
@@ -211,6 +234,9 @@ class ImageRefererSync(
             .launchIn(scope)
     }
 }
+
+/** The feature flag that opens episodes and their MP4 (the server's name for it). */
+private const val VIDEO_FEATURE = "video"
 
 /** The episodes' `KeyStatusProvider` port, served by the account slice's key list (hints only, never a secret). */
 private class AccountKeyStatus(
