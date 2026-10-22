@@ -1,5 +1,6 @@
 package com.vovoscan.core.network
 
+import com.vovoscan.core.common.i18n.I18n
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.HttpClientEngine
 import io.ktor.client.plugins.HttpTimeout
@@ -31,7 +32,8 @@ val ApiJson =
 /**
  * The app's HTTP client. `X-Client: mobile`: the API returns the session token in the body (no cookie)
  * and does not require a CSRF token, which is for browsers only. The token is sent as `Authorization: Bearer`, and
- * only to the API's own host: an absolute URL elsewhere (a file link) never gets the session.
+ * only to the API's own host: an absolute URL elsewhere (a file link) never gets the session. `Accept-Language` (the UI
+ * locale) goes to the API only too, so its messages read in the app's language; sources never learn it.
  */
 fun createHttpClient(
     engine: HttpClientEngine,
@@ -52,6 +54,7 @@ fun createHttpClient(
                 onRequest { request, _ ->
                     if (request.url.host != apiHost) return@onRequest
                     request.headers["X-Client"] = "mobile"
+                    request.headers[HttpHeaders.AcceptLanguage] = I18n.locale.value
                     tokens.token()?.let { request.headers[HttpHeaders.Authorization] = "Bearer $it" }
                 }
             },

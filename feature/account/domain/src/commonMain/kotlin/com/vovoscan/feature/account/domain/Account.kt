@@ -143,6 +143,12 @@ interface ReadingSettingsRepository {
 
     /** Needs the network; the local copy follows the server's answer. */
     suspend fun set(model: ReadingModel): AppResult<ReadingModel>
+
+    /** The content language chapters are translated into (`Language.ALL` code), kept on the device; null until chosen. */
+    fun observeTargetLanguage(): Flow<String?>
+
+    /** Needs the network, like the model. */
+    suspend fun setTargetLanguage(code: String): AppResult<String>
 }
 
 interface UsageRepository {

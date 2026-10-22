@@ -48,7 +48,9 @@ internal class AddProviderKeyBody(
 
 @Serializable
 data class ReadingSettingsDto(
-    val ocrModel: String,
+    val ocrModel: String? = null,
+    /** The content language chapters are translated into; null until chosen (any subset is sent). */
+    val targetLanguage: String? = null,
 )
 
 @Serializable
@@ -93,7 +95,11 @@ interface AccountRemoteDataSource {
 
     suspend fun readingSettings(): AppResult<ReadingSettingsDto>
 
-    suspend fun setReadingSettings(ocrModel: String): AppResult<ReadingSettingsDto>
+    /** Any subset: a null field is left out of the request and keeps its value. */
+    suspend fun setReadingSettings(
+        ocrModel: String? = null,
+        targetLanguage: String? = null,
+    ): AppResult<ReadingSettingsDto>
 
     suspend fun usage(
         fromMillis: Long?,
@@ -125,12 +131,15 @@ class KtorAccountRemoteDataSource(
     override suspend fun readingSettings(): AppResult<ReadingSettingsDto> =
         http.apiCall<ApiData<ReadingSettingsDto>> { get("api/v1/settings/reading") }.map { it.data }
 
-    override suspend fun setReadingSettings(ocrModel: String): AppResult<ReadingSettingsDto> =
+    override suspend fun setReadingSettings(
+        ocrModel: String?,
+        targetLanguage: String?,
+    ): AppResult<ReadingSettingsDto> =
         http
             .apiCall<ApiData<ReadingSettingsDto>> {
                 put("api/v1/settings/reading") {
                     contentType(ContentType.Application.Json)
-                    setBody(ReadingSettingsDto(ocrModel))
+                    setBody(ReadingSettingsDto(ocrModel, targetLanguage))
                 }
             }.map { it.data }
 

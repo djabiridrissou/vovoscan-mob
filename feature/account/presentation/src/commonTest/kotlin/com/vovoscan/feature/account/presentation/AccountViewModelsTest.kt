@@ -249,7 +249,53 @@ class AccountViewModelsTest {
 
         override suspend fun set(model: ReadingModel): AppResult<ReadingModel> =
             setResult ?: AppResult.Ok(model).also { this.model.value = model }
+
+        val target = MutableStateFlow<String?>(null)
+        var targetResult: AppResult<String>? = null
+
+        override fun observeTargetLanguage(): Flow<String?> = target
+
+        override suspend fun setTargetLanguage(code: String): AppResult<String> =
+            targetResult ?: AppResult.Ok(code).also { target.value = code }
     }
+
+    @Test
+    fun theReadingLanguageIsChosenFromTheSearchablePicker() =
+        runTest(dispatcher) {
+            val repo = FakeReading()
+            val vm = ReadingSettingsViewModel(repo)
+            advanceUntilIdle()
+            assertEquals("Not chosen yet", vm.state.value.languageLabel)
+            vm.onIntent(ReadingSettingsIntent.LanguageQuery("ewe"))
+            assertEquals(
+                listOf("ee"),
+                vm.state.value.languageRows
+                    .map { it.code },
+            )
+            vm.onIntent(ReadingSettingsIntent.ChooseLanguage("ee"))
+            advanceUntilIdle()
+            assertEquals("ee", repo.target.value)
+            assertEquals("Eʋegbe", vm.state.value.languageLabel)
+            assertEquals("", vm.state.value.languageQuery)
+            assertEquals("Saved.", vm.state.value.notice)
+        }
+
+    @Test
+    fun anOfflineLanguageChoiceKeepsThePreviousOne() =
+        runTest(dispatcher) {
+            val repo = FakeReading()
+            repo.target.value = "fr"
+            repo.targetResult = AppResult.Err(AppError.Network)
+            val vm = ReadingSettingsViewModel(repo)
+            advanceUntilIdle()
+            vm.onIntent(ReadingSettingsIntent.ChooseLanguage("yo"))
+            advanceUntilIdle()
+            assertEquals("Français", vm.state.value.languageLabel)
+            assertTrue(
+                vm.state.value.error!!
+                    .isNotBlank(),
+            )
+        }
 
     @Test
     fun readingModelDefaultsToHaikuThenFollowsTheServer() =

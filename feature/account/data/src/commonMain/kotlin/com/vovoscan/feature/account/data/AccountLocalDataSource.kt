@@ -31,6 +31,10 @@ interface AccountLocalDataSource {
 
     suspend fun saveReadingModel(model: ReadingModel)
 
+    fun observeTargetLanguage(): Flow<String?>
+
+    suspend fun saveTargetLanguage(code: String)
+
     suspend fun clear()
 }
 
@@ -79,6 +83,12 @@ class SqlAccountLocalDataSource(
         withContext(io) { queries.putValue(READING_MODEL, model.wire) }
     }
 
+    override fun observeTargetLanguage(): Flow<String?> = queries.value(TARGET_LANGUAGE).asFlow().mapToOneOrNull(io)
+
+    override suspend fun saveTargetLanguage(code: String) {
+        withContext(io) { queries.putValue(TARGET_LANGUAGE, code) }
+    }
+
     override suspend fun clear() =
         withContext(io) {
             queries.transaction {
@@ -103,5 +113,6 @@ class SqlAccountLocalDataSource(
     private companion object {
         const val BYOK_ENABLED = "byok_enabled"
         const val READING_MODEL = "reading_model"
+        const val TARGET_LANGUAGE = "target_language"
     }
 }

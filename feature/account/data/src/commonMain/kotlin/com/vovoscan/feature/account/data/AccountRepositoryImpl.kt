@@ -69,14 +69,30 @@ class AccountRepositoryImpl(
     override suspend fun refreshReadingModel(): AppResult<Unit> =
         remote
             .readingSettings()
-            .also { result -> if (result is AppResult.Ok) ReadingModel.from(result.value.ocrModel)?.let { local.saveReadingModel(it) } }
-            .map { }
+            .also { result ->
+                if (result is AppResult.Ok) {
+                    result.value.ocrModel
+                        ?.let(ReadingModel::from)
+                        ?.let { local.saveReadingModel(it) }
+                    result.value.targetLanguage?.let { local.saveTargetLanguage(it) }
+                }
+            }.map { }
 
     override suspend fun set(model: ReadingModel): AppResult<ReadingModel> {
-        val result = remote.setReadingSettings(model.wire)
+        val result = remote.setReadingSettings(ocrModel = model.wire)
         if (result !is AppResult.Ok) return result as AppResult.Err
-        val saved = ReadingModel.from(result.value.ocrModel) ?: model
+        val saved = result.value.ocrModel?.let(ReadingModel::from) ?: model
         local.saveReadingModel(saved)
+        return AppResult.Ok(saved)
+    }
+
+    override fun observeTargetLanguage(): Flow<String?> = local.observeTargetLanguage()
+
+    override suspend fun setTargetLanguage(code: String): AppResult<String> {
+        val result = remote.setReadingSettings(targetLanguage = code)
+        if (result !is AppResult.Ok) return result as AppResult.Err
+        val saved = result.value.targetLanguage ?: code
+        local.saveTargetLanguage(saved)
         return AppResult.Ok(saved)
     }
 
