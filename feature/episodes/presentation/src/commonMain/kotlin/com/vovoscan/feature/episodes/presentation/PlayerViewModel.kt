@@ -142,6 +142,8 @@ class PlayerViewModel(
     private val clock: Clock = SystemClock,
     /** The episode's language, from the card that opened the player ("" = the original). */
     private val lang: String = "",
+    /** Opened from the reader ("Watch the episode from here"): start on the first beat of this chapter page. */
+    private val startPage: Int? = null,
 ) : ViewModel() {
     private val mutableState = MutableStateFlow(PlayerUiState(nextChapterId = nextChapterId))
     val state: StateFlow<PlayerUiState> = mutableState.asStateFlow()
@@ -283,6 +285,7 @@ class PlayerViewModel(
         plan = next
         // Same render with fresh URLs: playback goes on where it was; another render (rerun): from its start.
         if (before != null && before.watch.renderKey != watch.renderKey) position = 0.0
+        if (before == null && startPage != null) next.firstBeatFrom(startPage)?.let { position = next.beatStartMs(it) }
         position = position.coerceIn(0.0, next.durationMs)
         mutableState.update {
             it.copy(
