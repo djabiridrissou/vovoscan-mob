@@ -248,7 +248,24 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
 - Modes (`ReadingMode`): `PagedRightToLeft`, `PagedLeftToRight`, `PagedVertical` (one page at a time), `LongStrip`
   (continuous, no gap: webtoons), `LongStripGaps` (16 dp/pt between pages); `Book` for books. `ReadingModes.resolve`:
   the mode chosen for the series (`series_mode`, per `(sourceKey, titleId)`), else the user's default for the format
-  (manga / webtoon), else the format rule (`manga` → right to left, `webtoon` → long strip). Switching keeps the page.
+  (manga / webtoon), else `LongStrip` for every format ("Continuous", reader/SPEC.md shared with the web reader).
+  Switching keeps the page.
+- Continuous reader (`Glide.kt` in domain, `ReaderViewModel`, Android `ui/reader/FlowStrip.kt`, iOS `FlowStrip` in
+  `ReaderView.swift`): the native side reports `StripMeasured(width, viewport)` and `StripScrolled(offset, byUser,
+  settled)` (points / dp from the first page's top) and plays `GlideTo(offset, animated)`. Stops (`ReadingStops`):
+  per panel (the analysis from `GET …/translations/chapters/{id}/read` `pages[].panels`, `ChapterPanels` port; else
+  `Gutters.bands` from the page's luminance at 48 columns, sent as `PageLuminance`; else the page): a panel that fits
+  is centred (unless already whole: only the spotlight moves), a taller one is read from its top in steps of 0.8 ×
+  the screen, margin 0.03, stops never go back up. Motion: a critically damped spring (`Glide.OMEGA` 13) solved from
+  each frame's time (Android `withFrameNanos`, iOS `CADisplayLink` up to 120 Hz, `CADisableMinimumFrameDurationOnPhone`);
+  taps retarget keeping the velocity; a finger stops it. Past the last stop: the end card (`GoToItem`). Bars hide
+  2.5 s after a Next or a scroll down, come back on a scroll up of 0.25 × the screen; a 2 pt red progress line while
+  hidden; immersive system bars (Android), hidden status bar (iOS). Title card for 1.6 s on opening. Focus (off by
+  default, `ReaderPreferences.focus`): the panel at full light, the rest at 0.72, gliding 380 ms. Position
+  `{page, offset}` (share of the page) in `reader_setting` (`pos/<source>/<chapter>`, at most every 500 ms),
+  restored when the chapter opens at its saved page. The next 3 pages are prefetched. Our catalogue's comics have
+  "Watch from here" (`ReadWithVoice` → `OpenEpisode(chapterId, page)` → `PlayerViewModel(…, startPage)`, the first
+  beat of that page). Reduce Motion / Remove animations: jumps, no glide, no fades.
 - Tap zones (`TapZones`, pure, `domain`): a 3 × 3 grid of the reading area (thirds); the native side sends where the
   finger went up as `ReaderIntent.Tap(x, y)` (0..1, origin top left) and nothing else. Rows top to bottom
   (P = Previous, N = Next, M = Menu): Right and left `PMN/PMN/PMN`, L-shaped `PPP/PMN/NNN`, Kindle-ish
