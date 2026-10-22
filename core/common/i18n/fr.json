@@ -473,6 +473,8 @@
   "reader.comic": "BD",
   "reader.current": "En cours : {chapter}",
   "reader.defaultModes": "Mode par défaut",
+  "reader.doublePages": "Deux pages côte à côte",
+  "reader.doublePagesHelp": "Sur un écran large (tablette à l’horizontale, téléphone déplié), les pages se lisent comme un livre ouvert.",
   "reader.doubleTapZoom": "Toucher deux fois pour zoomer",
   "reader.doubleTapZoomHelp": "Un toucher simple attend alors un instant, au cas où un second suivrait.",
   "reader.finished": "Terminé : {chapter}",

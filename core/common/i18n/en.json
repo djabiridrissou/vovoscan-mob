@@ -473,6 +473,8 @@
   "reader.comic": "Comic",
   "reader.current": "Current: {chapter}",
   "reader.defaultModes": "Default mode",
+  "reader.doublePages": "Two pages side by side",
+  "reader.doublePagesHelp": "On a wide screen (a tablet held sideways, an unfolded phone), pages read like an open book.",
   "reader.doubleTapZoom": "Double tap to zoom",
   "reader.doubleTapZoomHelp": "Single taps then wait a moment, in case a second tap follows.",
   "reader.finished": "Finished: {chapter}",
