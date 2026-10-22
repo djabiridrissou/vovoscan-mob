@@ -301,6 +301,7 @@ private fun Root(session: SessionViewModel = koinViewModel()) {
                         CatalogScreen(
                             onOpenTitle = { source, id -> openTitle = "$source|$id" },
                             onOpenSources = { tab = Tab.Sources },
+                            onResume = { source, id, chapter, page -> openReader = "$source|$id|$chapter|$page" },
                         )
                     Tab.Library ->
                         LibraryScreen(

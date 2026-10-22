@@ -8,55 +8,113 @@ struct CatalogView: View {
     @State private var sheet: CatalogSheet?
     @Namespace private var zoom
     @Environment(\.openTab) private var openTab
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// Scrolled past the search field: it folds into a floating magnifier.
+    @State private var searchFolded = false
+    /// The magnifier was tapped: the search field floats over the top of the catalog.
+    @State private var searchFloating = false
+    @FocusState private var floatingFocus: Bool
     private let columns = [GridItem(.adaptive(minimum: 150), spacing: 14)]
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 12) {
-                ScreenHeader(kicker: L("nav.catalog"), title: L("catalog.headline"))
-                // Two features side by side, unaware of each other: sources (the visible ones, in order) and catalog.
-                filters
-                    .onAppear { model.send(CatalogIntentSourcesChanged(sources: visibleSources)) }
-                    .onChange(of: visibleSources) { _, list in model.send(CatalogIntentSourcesChanged(sources: list)) }
-                if let note = model.state.categoryNote {
-                    Text(note).font(.brandBody(13)).foregroundStyle(Color.brandMuted)
-                }
-                IntentField(label: L("common.search"), text: $query, value: model.state.query) { model.send(CatalogIntentQuery(value: $0)) }
-                if let notice = model.state.offlineNotice {
-                    OfflineNotice(text: notice, onRetry: model.state.canRetry ? { model.send(CatalogIntentRefresh.shared) } : nil)
-                }
-                if let error = model.state.error { ErrorText(text: error) }
-                if sources.state.needsSource {
-                    // A new account has no source yet: nothing to read until one is added.
-                    EmptyStateCard(
-                        sfx: "シーン",
-                        title: sources.state.firstSourceTitle,
-                        message: sources.state.firstSourceMessage,
-                        actionLabel: sources.state.firstSourceAction
-                    ) { openTab(.sources) }
-                    .riseIn()
-                } else if model.state.empty {
-                    EmptyStateCard(sfx: "シーン", title: model.state.emptyMessage, message: L("catalog.pullToRefresh"))
-                }
-                LazyVGrid(columns: columns, spacing: 14) {
-                    ForEach(Array(model.state.visible.enumerated()), id: \.element) { index, card in
-                        let route = TitleRoute(sourceKey: card.sourceKey, titleId: card.id)
-                        NavigationLink(value: route) { TitleTile(card: card) }
-                            .buttonStyle(PressableCardStyle())
-                            .matchedTransitionSource(id: route, in: zoom)
-                            .riseIn(index)
+        ScrollViewReader { scroller in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
+                    ScreenHeader(kicker: L("nav.catalog"), title: L("catalog.headline"))
+                        .id(Self.top)
+                    // Two features side by side, unaware of each other: sources (the visible ones, in order) and catalog.
+                    filters
+                        .onAppear { model.send(CatalogIntentSourcesChanged(sources: visibleSources)) }
+                        .onChange(of: visibleSources) { _, list in model.send(CatalogIntentSourcesChanged(sources: list)) }
+                    if let note = model.state.categoryNote {
+                        Text(note).font(.brandBody(13)).foregroundStyle(Color.brandMuted)
                     }
-                    // The shape of the grid while the first page of every source loads.
-                    if model.state.visible.isEmpty && model.state.freshness == .refreshing && !sources.state.needsSource {
-                        ForEach(0..<6, id: \.self) { _ in SkeletonTile() }
+                    IntentField(label: L("common.search"), text: $query, value: model.state.query) { model.send(CatalogIntentQuery(value: $0)) }
+                    if let notice = model.state.offlineNotice {
+                        OfflineNotice(text: notice, onRetry: model.state.canRetry ? { model.send(CatalogIntentRefresh.shared) } : nil)
+                    }
+                    if let error = model.state.error { ErrorText(text: error) }
+                    // The last title read, opened where it was left.
+                    if let resume = model.state.resume, model.state.results == nil {
+                        NavigationLink(value: ReaderRoute(sourceKey: resume.sourceKey, titleId: resume.titleId, chapterId: resume.chapterId, startPage: Int(resume.page))) {
+                            ResumeBanner(card: resume)
+                        }
+                        .buttonStyle(PressableCardStyle())
+                    }
+                    if sources.state.needsSource {
+                        // A new account has no source yet: nothing to read until one is added.
+                        EmptyStateCard(
+                            sfx: "シーン",
+                            title: sources.state.firstSourceTitle,
+                            message: sources.state.firstSourceMessage,
+                            actionLabel: sources.state.firstSourceAction
+                        ) { openTab(.sources) }
+                        .riseIn()
+                    } else if model.state.empty {
+                        EmptyStateCard(sfx: "シーン", title: model.state.emptyMessage, message: L("catalog.pullToRefresh"))
+                    }
+                    LazyVGrid(columns: columns, spacing: 14) {
+                        ForEach(Array(model.state.visible.enumerated()), id: \.element) { index, card in
+                            let route = TitleRoute(sourceKey: card.sourceKey, titleId: card.id)
+                            NavigationLink(value: route) { TitleTile(card: card) }
+                                .buttonStyle(PressableCardStyle())
+                                .matchedTransitionSource(id: route, in: zoom)
+                                .riseIn(index)
+                        }
+                        // The shape of the grid while the first page of every source loads.
+                        if model.state.visible.isEmpty && model.state.freshness == .refreshing && !sources.state.needsSource {
+                            ForEach(0..<6, id: \.self) { _ in SkeletonTile() }
+                        }
+                    }
+                    if model.state.canLoadMore && model.state.results == nil {
+                        Button(model.state.loadingMore ? L("common.loading") : L("catalog.loadMore")) { model.send(CatalogIntentLoadMore.shared) }
+                            .buttonStyle(GhostButtonStyle())
                     }
                 }
-                if model.state.canLoadMore && model.state.results == nil {
-                    Button(model.state.loadingMore ? L("common.loading") : L("catalog.loadMore")) { model.send(CatalogIntentLoadMore.shared) }
-                        .buttonStyle(GhostButtonStyle())
+                .padding(20)
+            }
+            .onScrollGeometryChange(for: Bool.self) { geometry in
+                geometry.contentOffset.y + geometry.contentInsets.top > Self.foldAt
+            } action: { _, folded in
+                withAnimation(reduceMotion ? nil : .snappy) {
+                    searchFolded = folded
+                    if !folded { searchFloating = false }
                 }
             }
-            .padding(20)
+            .safeAreaInset(edge: .top, spacing: 0) {
+                if searchFloating {
+                    floatingSearch
+                        .transition(reduceMotion ? .opacity : .move(edge: .top).combined(with: .opacity))
+                }
+            }
+            .overlay(alignment: .bottomTrailing) {
+                if searchFolded && !searchFloating {
+                    Button {
+                        Haptics.tap()
+                        withAnimation(reduceMotion ? nil : .snappy) { searchFloating = true }
+                        floatingFocus = true
+                    } label: {
+                        Image(systemName: "magnifyingglass")
+                            .font(.system(size: 20, weight: .bold))
+                            .foregroundStyle(Color.brandInk)
+                            .frame(width: 56, height: 56)
+                            .background(Color.brandRed, in: Circle())
+                            .background(Color.brandInk, in: Circle().offset(x: 3, y: 3))
+                            // A search already typed: a yellow dot on the magnifier.
+                            .overlay(alignment: .topTrailing) {
+                                if !query.isEmpty { Circle().fill(Color.brandYellow).frame(width: 12, height: 12).offset(x: -4, y: 4) }
+                            }
+                    }
+                    .buttonStyle(.plain)
+                    .padding(20)
+                    .accessibilityLabel(L("catalog.search"))
+                    .transition(reduceMotion ? .opacity : .scale.combined(with: .opacity))
+                }
+            }
+            // A search typed in the floating field shows its results from the top.
+            .onChange(of: model.state.query) { _, _ in
+                if searchFloating { withAnimation(reduceMotion ? nil : .snappy) { scroller.scrollTo(Self.top, anchor: .top) } }
+            }
         }
         .background(Color.brandInk)
         .refreshable { model.send(CatalogIntentRefresh.shared) }
@@ -71,6 +129,39 @@ struct CatalogView: View {
         .navigationDestination(for: ReaderRoute.self) { ReaderContainer(route: $0) }
         .task { await model.observe() }
         .task { await sources.observe() }
+    }
+
+    private static let top = "catalog-top"
+    private static let foldAt: CGFloat = 220
+
+    /// The search field, floating over the catalog once it has scrolled away: no trip back to the top.
+    private var floatingSearch: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "magnifyingglass").foregroundStyle(Color.brandMuted)
+            TextField(L("common.search"), text: $query)
+                .font(.brandBody(16))
+                .foregroundStyle(Color.brandPaper)
+                .focused($floatingFocus)
+                .submitLabel(.search)
+                .autocorrectionDisabled()
+                // Shares `query` with the field at the top, which sends each change.
+            Button {
+                floatingFocus = false
+                withAnimation(reduceMotion ? nil : .snappy) { searchFloating = false }
+            } label: {
+                Image(systemName: "xmark").font(.system(size: 14, weight: .bold)).foregroundStyle(Color.brandPaper)
+                    .frame(width: 32, height: 32)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(L("common.close"))
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(Color.brandInk2, in: RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.brandRed, lineWidth: 2))
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .background(Color.brandInk.opacity(0.92))
     }
 
     private var visibleSources: [CatalogSource] {
@@ -178,6 +269,34 @@ private struct CheckRow: View {
     }
 }
 
+/// "Continue reading": the last title read, its cover, and where it was left.
+private struct ResumeBanner: View {
+    let card: ResumeCard
+
+    var body: some View {
+        HStack(spacing: 14) {
+            AsyncImage(url: card.coverUrl.flatMap(URL.init(string:))) { image in
+                image.resizable().scaledToFill()
+            } placeholder: { Color.brandLine }
+            .frame(width: 56, height: 76)
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+            VStack(alignment: .leading, spacing: 4) {
+                Text(card.label).font(.brandBody(12, weight: .bold)).tracking(1.2).foregroundStyle(Color.brandRed)
+                Text(card.titleName).font(.brandDisplay(17)).foregroundStyle(Color.brandPaper).lineLimit(1)
+                Text(card.detail).font(.brandBody(13)).foregroundStyle(Color.brandMuted).lineLimit(1)
+            }
+            Spacer(minLength: 0)
+            Image(systemName: "play.fill").font(.system(size: 16, weight: .bold)).foregroundStyle(Color.brandInk)
+                .frame(width: 40, height: 40)
+                .background(Color.brandRed, in: Circle())
+        }
+        .padding(12)
+        .background(Color.brandInk2, in: RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.brandRed, lineWidth: 2))
+        .accessibilityElement(children: .combine)
+    }
+}
+
 /// Title tile: cover, format and source badges, name.
 private struct TitleTile: View {
     let card: TitleCard
@@ -203,6 +322,14 @@ private struct TitleTile: View {
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2)
                         .background(Color.brandInk.opacity(0.85))
+                    if card.started {
+                        Text(L("catalog.started"))
+                            .font(.brandBody(11, weight: .bold))
+                            .foregroundStyle(Color.brandInk)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.brandRed)
+                    }
                 }
                 .padding(8)
             }
