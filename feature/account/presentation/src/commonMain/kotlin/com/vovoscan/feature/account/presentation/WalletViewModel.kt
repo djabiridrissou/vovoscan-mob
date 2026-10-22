@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.vovoscan.core.common.AppError
 import com.vovoscan.core.common.AppResult
+import com.vovoscan.core.common.i18n.t
 import com.vovoscan.feature.account.domain.Wallet
 import com.vovoscan.feature.account.domain.WalletRepository
 import kotlinx.coroutines.Job
@@ -21,7 +22,7 @@ data class WalletUiState(
     /** "1,240". */
     val balanceLabel: String = "",
     /** "credits" / "credit". */
-    val unitLabel: String = WalletText.UNIT_PLURAL,
+    val unitLabel: String = "",
     val explainer: String = WalletText.EXPLAINER,
     /** The daily limit or an empty wallet (without own keys); null when a run can go. */
     val warning: String? = null,
@@ -83,7 +84,7 @@ class WalletViewModel(
     ) = state.copy(
         shown = true,
         balanceLabel = AccountText.grouped(wallet.balanceCredits.toDouble(), 0),
-        unitLabel = if (wallet.balanceCredits == 1L) WalletText.UNIT_ONE else WalletText.UNIT_PLURAL,
+        unitLabel = WalletText.unit(wallet.balanceCredits),
         empty = wallet.balanceCredits <= 0 && !wallet.usesOwnKeys,
         explainer = if (wallet.usesOwnKeys) WalletText.OWN_KEYS else WalletText.EXPLAINER,
         warning =
@@ -97,11 +98,12 @@ class WalletViewModel(
 }
 
 object WalletText {
-    const val UNIT_ONE = "credit"
-    const val UNIT_PLURAL = "credits"
-    const val EXPLAINER = "Credits pay for runs on the platform's keys. Your own keys cost no credit."
-    const val EMPTY = "No credits left. Add your own keys to keep going, or ask for a top-up."
-    const val OWN_KEYS = "Your own keys run your episodes and translations: no credit is spent."
-    const val DAILY_CAP = "Today's limit is reached. Runs on the platform's keys resume tomorrow."
-    const val UNREADABLE = "The balance couldn't be read. Pull to try again."
+    val EXPLAINER: String get() = t("wallet.explainer")
+    val EMPTY: String get() = t("wallet.empty")
+    val OWN_KEYS: String get() = t("wallet.ownKeys")
+    val DAILY_CAP: String get() = t("wallet.dailyCap")
+    val UNREADABLE: String get() = t("wallet.unreadable")
+
+    /** "credit" / "credits" after the balance (French puts 0 and 1 in the singular). */
+    fun unit(balance: Long): String = t("wallet.unit", "count" to balance)
 }

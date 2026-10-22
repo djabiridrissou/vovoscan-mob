@@ -3,6 +3,7 @@ package com.vovoscan.core.common.i18n
 import android.os.LocaleList
 import java.text.DateFormat
 import java.text.NumberFormat
+import java.util.Currency
 import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
@@ -33,6 +34,48 @@ actual object PlatformFormats : MessageFormat.Formats {
         style: String,
         tag: String,
     ): String = DateFormat.getTimeInstance(style(style), Locale.forLanguageTag(tag)).format(Date(epochMillis))
+
+    actual fun decimal(
+        value: Double,
+        fractionDigits: Int,
+        tag: String,
+    ): String =
+        NumberFormat
+            .getNumberInstance(Locale.forLanguageTag(tag))
+            .apply {
+                minimumFractionDigits = fractionDigits
+                maximumFractionDigits = fractionDigits
+            }.format(value)
+
+    actual fun currency(
+        value: Double,
+        currency: String,
+        tag: String,
+    ): String =
+        NumberFormat
+            .getCurrencyInstance(Locale.forLanguageTag(tag))
+            .apply { this.currency = Currency.getInstance(currency) }
+            .format(value)
+
+    actual fun wallDate(
+        localMillis: Long,
+        style: String,
+        tag: String,
+    ): String =
+        DateFormat
+            .getDateInstance(style(style), Locale.forLanguageTag(tag))
+            .apply { timeZone = TimeZone.getTimeZone("UTC") }
+            .format(Date(localMillis))
+
+    actual fun wallTime(
+        localMillis: Long,
+        style: String,
+        tag: String,
+    ): String =
+        DateFormat
+            .getTimeInstance(style(style), Locale.forLanguageTag(tag))
+            .apply { timeZone = TimeZone.getTimeZone("UTC") }
+            .format(Date(localMillis))
 
     actual fun languageName(
         code: String,

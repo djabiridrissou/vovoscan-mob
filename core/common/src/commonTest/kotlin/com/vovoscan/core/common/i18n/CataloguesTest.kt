@@ -13,8 +13,6 @@ class CataloguesTest {
 
     private val reference = Catalogues.messages(UiLocales.DEFAULT)
 
-    private val placeholder = Regex("\\{\\s*([A-Za-z0-9_]+)\\s*[,}]")
-
     @Test
     fun everyLocaleHasExactlyTheReferenceKeys() {
         assertTrue(reference.size > 50, "the English catalogue is loaded")
@@ -30,8 +28,9 @@ class CataloguesTest {
     fun placeholdersAreTheSameInEveryLocale() {
         UiLocales.ALL.forEach { locale ->
             Catalogues.messages(locale).forEach { (key, value) ->
-                val expected = placeholder.findAll(reference.getValue(key)).map { it.groupValues[1] }.toSet()
-                val found = placeholder.findAll(value).map { it.groupValues[1] }.toSet()
+                val expected = MessageFormat.argumentNames(reference.getValue(key))
+                val found = MessageFormat.argumentNames(value)
+                assertTrue(found != null, "$locale $key is malformed")
                 assertEquals(expected, found, "$locale $key")
             }
         }

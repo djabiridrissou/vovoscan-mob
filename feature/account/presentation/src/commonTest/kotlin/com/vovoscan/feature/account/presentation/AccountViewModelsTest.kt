@@ -332,11 +332,13 @@ class AccountViewModelsTest {
             assertEquals(now - 30 * 86_400_000L, repo.asked.single())
             assertEquals("$1.24", state.totals[0].costLabel)
             assertEquals("182,400 tokens ✦ 12 requests", state.totals[0].unitsLabel)
-            assertEquals("<$0.01", state.totals[1].costLabel)
+            assertEquals("under $0.01", state.totals[1].costLabel)
             assertEquals("1 character ✦ 12.5 seconds", state.totals[1].unitsLabel)
             assertEquals("$1.25", state.totalCostLabel)
             assertEquals("12,000 tokens", state.entries.single().amountLabel)
-            assertEquals("Oct 20 ✦ 16:05", state.entries.single().dateLabel)
+            // The platform writes the time (12-hour in English, with the locale's own space before PM).
+            val dateLabel = state.entries.single().dateLabel
+            assertTrue(dateLabel.startsWith("Oct 20, 2026 ✦ 4:05") && dateLabel.endsWith("PM"), dateLabel)
             assertEquals(listOf("Last 7 days", "Last 30 days", "This month"), state.periods.map { it.label })
             vm.onIntent(UsageIntent.SelectPeriod(UsagePeriod.ThisMonth))
             advanceUntilIdle()

@@ -9,6 +9,7 @@ import com.vovoscan.core.common.DAY_MILLIS
 import com.vovoscan.core.common.DeviceTimeZone
 import com.vovoscan.core.common.SystemClock
 import com.vovoscan.core.common.UtcOffset
+import com.vovoscan.core.common.i18n.t
 import com.vovoscan.core.common.localDate
 import com.vovoscan.core.common.startOfLocalDay
 import com.vovoscan.feature.account.domain.Provider
@@ -23,12 +24,14 @@ import kotlinx.coroutines.launch
 
 /** Cost periods, in the device's time zone. */
 enum class UsagePeriod(
-    val label: String,
+    private val key: String,
 ) {
-    Last7Days("Last 7 days"),
-    Last30Days("Last 30 days"),
-    ThisMonth("This month"),
+    Last7Days("usage.last7Days"),
+    Last30Days("usage.last30Days"),
+    ThisMonth("usage.thisMonth"),
     ;
+
+    val label: String get() = t(key)
 
     /** `from` (inclusive) of the period ending now; the end stays open. */
     fun fromMillis(
@@ -67,7 +70,7 @@ data class UsageEntryRow(
     /** "12,000 tokens". */
     val amountLabel: String,
     val costLabel: String,
-    /** "Oct 20 ✦ 14:05". */
+    /** "Oct 20, 2026 ✦ 2:05 PM". */
     val dateLabel: String,
     val chapterId: String?,
 )

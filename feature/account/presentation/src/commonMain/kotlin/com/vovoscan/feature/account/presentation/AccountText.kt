@@ -2,76 +2,81 @@ package com.vovoscan.feature.account.presentation
 
 import com.vovoscan.core.common.AppError
 import com.vovoscan.core.common.UtcOffset
-import com.vovoscan.core.common.localDate
+import com.vovoscan.core.common.i18n.LocalFormat
+import com.vovoscan.core.common.i18n.t
 import com.vovoscan.core.common.userMessage
 import com.vovoscan.feature.account.domain.Provider
 import com.vovoscan.feature.account.domain.UnitType
-import kotlin.math.abs
-import kotlin.math.pow
 import kotlin.math.roundToLong
 
 /** Every user-facing string of the account screens (brand tone: calm, short, precise). */
 object AccountText {
-    const val KEYS_DISABLED = "Keys are turned off on this server."
-    const val OFFLINE_KEYS = "You're offline. Connect to the internet to change your keys."
-    const val OFFLINE_MODEL = "You're offline. Connect to the internet to change the model."
-    const val OFFLINE_COPY = "Offline: showing what's saved on this device."
-    const val OFFLINE_USAGE = "You're offline. Costs show once you're back online."
-    const val SECRET_MISSING = "Paste your key."
-    const val SECRET_INVALID = "This doesn't look like a key. Check that you copied all of it."
-    const val LABEL_TOO_LONG = "Keep the label under 60 characters."
-    const val KEY_SAVED = "Key saved."
-    const val KEY_REMOVED = "Key removed."
-    const val NEVER_USED = "Not used yet"
-    const val ADD_KEY = "Add a key"
-    const val REPLACE_KEY = "Replace"
-    const val REMOVE_KEY = "Remove"
-    const val KEEP_KEY = "Keep it"
-    const val SAVE_KEY = "Save key"
-    const val CHECKING_KEY = "Checking the key…"
-    const val SECRET_PLACEHOLDER = "Paste the key"
-    const val LABEL_PLACEHOLDER = "Label (optional)"
-    const val KEY_PRIVACY = "Your key is sent once, checked with the provider and sealed on the server. It never stays on this phone."
-    const val MODEL_FOOTNOTE = "The model reads the bubbles of the chapters you prepare, with your Anthropic key."
-    const val MODEL_SAVED = "Model saved."
-    const val USAGE_FOOTNOTE = "Estimated from each provider's public rates. Billed by the provider, on your own account."
-    const val USAGE_EMPTY = "Nothing spent in this period."
+    val KEYS_DISABLED: String get() = t("keys.disabled")
+    val OFFLINE_KEYS: String get() = t("keys.offline")
+    val OFFLINE_MODEL: String get() = t("keys.offlineModel")
+    val OFFLINE_COPY: String get() = t("common.offlineSaved")
+    val OFFLINE_USAGE: String get() = t("usage.offline")
+    val SECRET_MISSING: String get() = t("keys.secretMissing")
+    val SECRET_INVALID: String get() = t("keys.secretInvalid")
+    val LABEL_TOO_LONG: String get() = t("keys.labelTooLong")
+    val KEY_SAVED: String get() = t("keys.saved")
+    val KEY_REMOVED: String get() = t("keys.removed")
+    val NEVER_USED: String get() = t("keys.neverUsed")
+    val ADD_KEY: String get() = t("keys.add")
+    val REPLACE_KEY: String get() = t("keys.replace")
+    val REMOVE_KEY: String get() = t("keys.remove")
+    val KEEP_KEY: String get() = t("keys.keep")
+    val SAVE_KEY: String get() = t("keys.save")
+    val CHECKING_KEY: String get() = t("keys.checking")
+    val SECRET_PLACEHOLDER: String get() = t("keys.secretPlaceholder")
+    val LABEL_PLACEHOLDER: String get() = t("keys.labelPlaceholder")
+    val KEY_PRIVACY: String get() = t("keys.privacy")
+    val MODEL_FOOTNOTE: String get() = t("keys.modelFootnote")
+    val MODEL_SAVED: String get() = t("keys.modelSaved")
+    val USAGE_FOOTNOTE: String get() = t("usage.footnote")
+    val USAGE_EMPTY: String get() = t("usage.empty")
 
     fun purpose(provider: Provider): String =
         when (provider) {
-            Provider.Anthropic -> "Reads the bubbles (OCR) and helps cast the voices."
-            Provider.ElevenLabs -> "Voices the lines, sounds and music (VOICE)."
+            Provider.Anthropic -> t("keys.purposeAnthropic")
+            Provider.ElevenLabs -> t("keys.purposeElevenLabs")
         }
 
     fun formTitle(
         provider: Provider,
         replacing: Boolean,
-    ): String = if (replacing) "Replace your ${provider.label} key" else "Add your ${provider.label} key"
+    ): String = t(if (replacing) "keys.replaceTitle" else "keys.addTitle", "provider" to provider.label)
 
-    fun removeTitle(provider: Provider): String = "Remove your ${provider.label} key?"
+    fun removeTitle(provider: Provider): String = t("keys.removeTitle", "provider" to provider.label)
 
     fun removeMessage(provider: Provider): String =
         when (provider) {
-            Provider.Anthropic -> "Episodes you prepare next will keep their bubbles unread. You can add a key again anytime."
-            Provider.ElevenLabs -> "Episodes you prepare next will stay silent. You can add a key again anytime."
+            Provider.Anthropic -> t("keys.removeAnthropic")
+            Provider.ElevenLabs -> t("keys.removeElevenLabs")
         }
 
     /** "•••• abcd". */
     fun hint(hint: String): String = "•••• $hint"
 
+    /** "Added Oct 20, 2026". */
+    fun added(date: String): String = t("keys.added", "date" to date)
+
+    /** "Last used Oct 20, 2026". */
+    fun lastUsed(date: String): String = t("keys.lastUsed", "date" to date)
+
     /** Saving or removing a key. */
     fun keyError(error: AppError): String =
         when (error) {
             AppError.Network -> OFFLINE_KEYS
-            AppError.RateLimited -> "Too many keys added in the last hour. Try again later."
+            AppError.RateLimited -> t("keys.tooMany")
             is AppError.Rejected ->
                 when (error.code) {
-                    "KEY_REJECTED" -> "The provider refused this key. Check it and try again."
-                    "PROVIDER_BLOCKED" -> "The provider accepts this key but refuses calls from our servers. Check your account with them."
-                    "PROVIDER_UNAVAILABLE" -> "The provider couldn't check this key right now. Try again in a moment."
+                    "KEY_REJECTED" -> t("errors.KEY_REJECTED")
+                    "PROVIDER_BLOCKED" -> t("errors.PROVIDER_BLOCKED")
+                    "PROVIDER_UNAVAILABLE" -> t("errors.PROVIDER_UNAVAILABLE")
                     "BYOK_DISABLED" -> KEYS_DISABLED
-                    "TOO_MANY_REQUESTS" -> "Too many keys added in the last hour. Try again later."
-                    "PROVIDER_KEY_CHANGED" -> "Another key for this provider was just saved. Refresh and try again."
+                    "TOO_MANY_REQUESTS" -> t("keys.tooMany")
+                    "PROVIDER_KEY_CHANGED" -> t("errors.PROVIDER_KEY_CHANGED")
                     "VALIDATION" -> SECRET_INVALID
                     else -> error.userMessage()
                 }
@@ -81,19 +86,14 @@ object AccountText {
     fun modelError(error: AppError): String =
         when (error) {
             AppError.Network -> OFFLINE_MODEL
-            AppError.RateLimited -> "Too many changes in a minute. Try again shortly."
+            AppError.RateLimited -> t("keys.modelTooMany")
             else -> error.userMessage()
         }
 
     fun usageError(error: AppError): String = if (error == AppError.Network) OFFLINE_USAGE else error.userMessage()
 
-    /** "$1.24", "<$0.01", "$0.00". */
-    fun money(usd: Double): String =
-        when {
-            usd <= 0.0 -> "$0.00"
-            usd < 0.01 -> "<$0.01"
-            else -> "$" + grouped(usd, 2)
-        }
+    /** "$1.24", "under $0.01", "$0.00" (as the UI locale writes dollars). */
+    fun money(usd: Double): String = LocalFormat.usd(usd)
 
     /** "182,400 tokens", "12.5 seconds", "1 request". */
     fun amount(
@@ -102,52 +102,31 @@ object AccountText {
     ): String {
         val whole = value.roundToLong()
         return when (unit) {
-            UnitType.Chars -> "${grouped(whole.toDouble(), 0)} " + if (whole == 1L) "character" else "characters"
-            UnitType.Tokens -> "${grouped(whole.toDouble(), 0)} " + if (whole == 1L) "token" else "tokens"
-            UnitType.Requests -> "${grouped(whole.toDouble(), 0)} " + if (whole == 1L) "request" else "requests"
-            UnitType.Seconds -> "${grouped(value, 1)} " + if (value == 1.0) "second" else "seconds"
+            UnitType.Chars -> t("usage.chars", "count" to whole)
+            UnitType.Tokens -> t("usage.tokens", "count" to whole)
+            UnitType.Requests -> t("usage.requests", "count" to whole)
+            UnitType.Seconds -> t("usage.seconds", "count" to value, "amount" to LocalFormat.decimal(value, 1))
         }
     }
 
-    /** "Oct 20, 2026" in the device's time zone. */
+    /** "Oct 20, 2026" (the UI locale's medium date) in the device's time zone. */
     fun date(
         epochMillis: Long,
         offset: UtcOffset,
-    ): String {
-        val d = localDate(epochMillis, offset)
-        return "${MONTHS[d.month - 1]} ${d.day}, ${d.year}"
-    }
+    ): String = LocalFormat.date(epochMillis + offset.offsetMillis(epochMillis))
 
-    /** "Oct 20 ✦ 14:05" in the device's time zone. */
+    /** "Oct 20, 2026 ✦ 4:05 PM" in the device's time zone. */
     fun dateTime(
         epochMillis: Long,
         offset: UtcOffset,
     ): String {
         val local = epochMillis + offset.offsetMillis(epochMillis)
-        val d = localDate(epochMillis, offset)
-        val minutes = local.mod(86_400_000L) / 60_000
-        val hh = (minutes / 60).toString().padStart(2, '0')
-        val mm = (minutes % 60).toString().padStart(2, '0')
-        return "${MONTHS[d.month - 1]} ${d.day} ✦ $hh:$mm"
+        return "${LocalFormat.date(local)} ✦ ${LocalFormat.time(local)}"
     }
 
-    /** A number with thousands separators and a fixed number of decimals ("1,234.50"). */
+    /** A number with the locale's grouping and a fixed number of decimals ("1,234.50"). */
     fun grouped(
         value: Double,
         decimals: Int,
-    ): String {
-        val factor = 10.0.pow(decimals)
-        val scaled = (abs(value) * factor).roundToLong()
-        val whole =
-            (scaled / factor.roundToLong())
-                .toString()
-                .reversed()
-                .chunked(3)
-                .joinToString(",")
-                .reversed()
-        val fraction = if (decimals > 0) "." + (scaled % factor.roundToLong()).toString().padStart(decimals, '0') else ""
-        return (if (value < 0 && scaled != 0L) "-" else "") + whole + fraction
-    }
-
-    private val MONTHS = listOf("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+    ): String = LocalFormat.decimal(value, decimals)
 }

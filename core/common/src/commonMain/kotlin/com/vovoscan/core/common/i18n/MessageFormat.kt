@@ -20,6 +20,29 @@ object MessageFormat {
             pattern
         }
 
+    /** The argument names a pattern reads (the catalogue tests compare them across locales); null when malformed. */
+    fun argumentNames(pattern: String): Set<String>? =
+        try {
+            buildSet { collect(Parser(pattern).parseMessage(end = null), this) }
+        } catch (_: IllegalArgumentException) {
+            null
+        }
+
+    private fun collect(
+        node: Node,
+        into: MutableSet<String>,
+    ) {
+        when (node) {
+            is Message -> node.parts.forEach { collect(it, into) }
+            is Argument -> into += node.name
+            is Choice -> {
+                into += node.name
+                node.branches.values.forEach { collect(it, into) }
+            }
+            else -> Unit
+        }
+    }
+
     /** Locale-aware number and date formatting; the platforms' ICU in the apps, a fixed one in tests. */
     interface Formats {
         fun number(

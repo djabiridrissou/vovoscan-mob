@@ -74,3 +74,32 @@ internal object Catalogues {
     fun messages(locale: String): Map<String, String> =
         parsed.getOrPut(locale) { CatalogueSources.json[locale]?.let(FlatJson::parse).orEmpty() }
 }
+
+/** Numbers, money and dates in the UI locale and region, through the platform's ICU. Never hand-built. */
+object LocalFormat {
+    fun decimal(
+        value: Double,
+        fractionDigits: Int = 0,
+    ): String = PlatformFormats.decimal(value, fractionDigits, I18n.formattingTag)
+
+    fun integer(value: Long): String = PlatformFormats.decimal(value.toDouble(), 0, I18n.formattingTag)
+
+    /** "$1.24" in English, "1,24 $US" in French; an amount above zero but under a cent says so. */
+    fun usd(value: Double): String =
+        when {
+            value <= 0.0 -> PlatformFormats.currency(0.0, "USD", I18n.formattingTag)
+            value < 0.01 -> t("common.underAmount", "amount" to PlatformFormats.currency(0.01, "USD", I18n.formattingTag))
+            else -> PlatformFormats.currency(value, "USD", I18n.formattingTag)
+        }
+
+    /** [localMillis]: local wall time counted as UTC (see [PlatformFormats.wallDate]). */
+    fun date(
+        localMillis: Long,
+        style: String = "medium",
+    ): String = PlatformFormats.wallDate(localMillis, style, I18n.formattingTag)
+
+    fun time(
+        localMillis: Long,
+        style: String = "short",
+    ): String = PlatformFormats.wallTime(localMillis, style, I18n.formattingTag)
+}
