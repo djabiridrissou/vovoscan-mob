@@ -339,6 +339,18 @@ data class ReaderUiState(
 
     val atEnd: Boolean get() = count > 0 && currentIndex >= count - 1
 
+    /** How much of the chapter is read, 0..1 (what comes next is offered at 40 %, prepared by the series setting at 70 %). */
+    val readShare: Float
+        get() =
+            when {
+                count == 0 -> 0f
+                isStrip -> progress
+                else -> ((currentIndex + 1).toFloat() / count).coerceIn(0f, 1f)
+            }
+
+    /** The card after the last page is on screen (or the strip's end). */
+    val onEndCard: Boolean get() = items.isNotEmpty() && (currentItem == items.lastIndex || (isStrip && progress >= 1f))
+
     /** End-of-unit button. */
     val nextLabel: String? get() = nextChapterId?.let { t(if (isBook) "reader.nextPart" else "reader.nextChapter") }
 

@@ -33,6 +33,7 @@ import com.vovoscan.feature.reader.domain.DownloadActivity
 import com.vovoscan.feature.reader.domain.DownloadBlock
 import com.vovoscan.feature.reader.domain.DownloadsRepository
 import com.vovoscan.feature.reader.presentation.DownloadsViewModel
+import com.vovoscan.feature.reader.presentation.NextChapterViewModel
 import com.vovoscan.feature.reader.presentation.ReaderViewModel
 import com.vovoscan.feature.reader.presentation.TitleDownloadsViewModel
 import com.vovoscan.feature.reader.presentation.TranslationViewModel
@@ -183,6 +184,12 @@ class ViewModels : KoinComponent {
         remember("translation:$sourceKey/$chapterId~${language.orEmpty()}") {
             get<TranslationViewModel> { parametersOf(sourceKey, chapterId, titleId, language) }
         }
+
+    /** What comes after a chapter of our catalog in the language on the page (end card, balloon, toast, series setting). */
+    fun next(
+        sourceKey: String,
+        chapterId: String,
+    ): NextChapterViewModel = remember("next:$sourceKey/$chapterId") { get<NextChapterViewModel> { parametersOf(sourceKey, chapterId) } }
 
     fun providerKeys(): ProviderKeysViewModel = remember("providerKeys") { get<ProviderKeysViewModel>() }
 

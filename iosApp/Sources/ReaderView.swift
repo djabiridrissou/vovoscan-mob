@@ -34,6 +34,8 @@ struct ReaderContainer: View {
 struct ReaderView: View {
     @StateObject private var model: ReaderModel
     @StateObject private var translation: TranslationModel
+    @StateObject private var next: NextChapterModel
+    @Environment(\.openURL) private var openURL
     @Environment(\.dismiss) private var dismiss
     @State private var settingsOpen = false
     @State private var languagesOpen = false
@@ -55,6 +57,7 @@ struct ReaderView: View {
         self.route = route
         _model = StateObject(wrappedValue: ReaderModel(route: route))
         _translation = StateObject(wrappedValue: TranslationModel(route: route))
+        _next = StateObject(wrappedValue: NextChapterModel(route: route))
         self.onOpenChapter = onOpenChapter
         self.onOpenCopy = onOpenCopy
     }
@@ -81,6 +84,14 @@ struct ReaderView: View {
                     .environment(\.readerLanguageAction, translation.state.available
                         ? ReaderLanguageAction(label: translation.state.endCardLabel) { languagesOpen = true }
                         : nil)
+                    .environment(\.readerNextChapter, next.state.endCard.map { end in
+                        ReaderNextChapter(
+                            end: end,
+                            auto: next.state.autoSwitch,
+                            tap: nextAction(NextChapterIntentPrepareNext.shared),
+                            setAuto: { next.send(NextChapterIntentSetAuto(on: $0)) }
+                        )
+                    })
             }
             // A language on its way: the page keeps its lettering, the dock shows the cost, then the progress.
             if let dock = translation.state.dock, !model.state.isBook {
@@ -95,6 +106,29 @@ struct ReaderView: View {
                 .padding(.bottom, model.state.chromeVisible || model.state.isBook ? bottomBarHeight : 0)
                 .zIndex(0.5)
                 .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+            // Past 40 % in a language: the next chapter, then the next 5, then 10, prepared while reading.
+            if let bubble = next.state.bubble, translation.state.dock == nil, !model.state.isBook {
+                NextBubbleView(
+                    bubble: bubble,
+                    tap: nextAction(NextChapterIntentAcceptOffer.shared),
+                    cancel: { next.send(NextChapterIntentCancel.shared) },
+                    hide: { next.send(NextChapterIntentHideBubble.shared) }
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+                .padding(.bottom, model.state.chromeVisible ? bottomBarHeight : 0)
+                .zIndex(0.5)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+            // A chapter prepared ahead is ready.
+            if let toast = next.state.toast {
+                NextToastView(toast: toast, tap: nextAction(NextChapterIntentPrepareNext.shared)) {
+                    next.send(NextChapterIntentDismissToast.shared)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                .padding(.top, model.state.chromeVisible ? 64 : 8)
+                .zIndex(0.6)
+                .transition(.opacity)
             }
             if let overlay = model.state.tapOverlay {
                 TapZonesOverlay(overlay: overlay).transition(.opacity)
@@ -129,6 +163,12 @@ struct ReaderView: View {
         }
         .task { await model.observe() }
         .task { await translation.observe() }
+        .task { await next.observe() }
+        .onChange(of: translation.state.shown, initial: true) { _, shown in next.send(NextChapterIntentLanguageShown(code: shown)) }
+        .onChange(of: model.state.readShare, initial: true) { _, share in next.send(NextChapterIntentReached(share: share)) }
+        .onChange(of: model.state.onEndCard, initial: true) { _, end in next.send(NextChapterIntentAtEnd(atEnd: end)) }
+        .animation(model.state.reducedMotion ? nil : .spring(response: 0.35, dampingFraction: 0.85), value: next.state.bubble == nil)
+        .animation(model.state.reducedMotion ? nil : .easeInOut(duration: 0.25), value: next.state.toast == nil)
         .animation(.easeInOut(duration: 0.25), value: translation.state.translated)
         .animation(model.state.reducedMotion ? nil : .spring(response: 0.35, dampingFraction: 0.85), value: translation.state.dock == nil)
         // Opening another chapter (a chapter card, or a tap past the end), whatever the mode.
@@ -188,9 +228,27 @@ struct ReaderView: View {
                 .presentationBackground(Color.brandInk2)
         }
         .sheet(isPresented: $settingsOpen, onDismiss: { model.send(ReaderIntentSettingsClosed.shared) }) {
-            ReaderSettingsSheetView(model: model)
+            ReaderSettingsSheetView(model: model, next: next)
                 .presentationDetents([.medium, .large])
                 .presentationBackground(Color.brandInk2)
+        }
+    }
+
+    /// A button of the next-chapter UI: open a chapter (in the language when it is translated), prepare, the keys, a link.
+    private func nextAction(_ prepare: NextChapterIntent) -> (NextButton) -> Void {
+        { button in
+            switch button.kind {
+            case .open:
+                guard let id = button.chapterId else { return }
+                if let language = button.language {
+                    onOpenCopy(ReaderRoute(sourceKey: route.sourceKey, titleId: route.titleId, chapterId: id, startPage: 0, language: language))
+                } else {
+                    onOpenChapter(id, 0)
+                }
+            case .prepare: next.send(prepare)
+            case .addKey: keysOpen = true
+            case .openUrl: if let url = button.url.flatMap(URL.init(string:)) { openURL(url) }
+            }
         }
     }
 
@@ -1147,12 +1205,16 @@ private struct TransitionCardView: View {
     let card: TransitionCard
     @ObservedObject var model: ReaderModel
     @Environment(\.readerLanguageAction) private var language
+    @Environment(\.readerNextChapter) private var nextChapter
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(card.heading).font(.brandBody(13)).foregroundStyle(Color.brandMuted)
             Text(card.target).font(.brandDisplay(18)).foregroundStyle(Color.brandPaper)
-            if let label = card.actionLabel {
+            // Reading in a language: the way on in it (prepare, follow, the original), never a dead end.
+            if card.forward, let nextChapter {
+                NextEndContent(next: nextChapter)
+            } else if let label = card.actionLabel {
                 if card.forward {
                     Button(label) { model.send(ReaderIntentOpenNextChapter.shared) }.buttonStyle(PrimaryButtonStyle()).padding(.top, 4)
                 } else {

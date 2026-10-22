@@ -24,6 +24,7 @@ import androidx.compose.ui.unit.dp
 import com.vovoscan.app.ui.settings.Chip
 import com.vovoscan.app.ui.theme.Brand
 import com.vovoscan.feature.reader.domain.ComicFormat
+import com.vovoscan.feature.reader.presentation.NextAutoSwitch
 import com.vovoscan.feature.reader.presentation.ReaderIntent
 import com.vovoscan.feature.reader.presentation.ReaderSettingsSheet
 import com.vovoscan.feature.reader.presentation.ReaderText
@@ -34,6 +35,9 @@ import com.vovoscan.feature.reader.presentation.ReaderText
 internal fun ReaderSettingsSheet(
     sheet: ReaderSettingsSheet,
     onIntent: (ReaderIntent) -> Unit,
+    /** "Always prepare the next chapter of this series in …" while reading in a language. */
+    auto: NextAutoSwitch?,
+    onAuto: (Boolean) -> Unit,
     onDismiss: () -> Unit,
 ) {
     ModalBottomSheet(
@@ -59,6 +63,7 @@ internal fun ReaderSettingsSheet(
                 Help(sheet.seriesHint, Modifier.weight(1f))
                 if (sheet.canResetSeries) Chip(ReaderText.RESET_SERIES, false) { onIntent(ReaderIntent.ResetSeriesMode) }
             }
+            auto?.let { AutoRow(it, onAuto) }
 
             Section(ReaderText.DEFAULT_MODES)
             Label(ReaderText.MANGA)

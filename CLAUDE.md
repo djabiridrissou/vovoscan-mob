@@ -601,6 +601,26 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   lettering. Android draws it with `LetteringOverlay` over every page (`LocalPageLettering`, in a box of the page's
   shape).
 
+## Next chapter in the reading language (`NextChapterViewModel`, iOS `NextChapterViews.swift`, Android `ui/reader/NextChapter.kt`)
+
+- The next-chapter contract (shared with the web: `next-logic.ts` / `next.tsx`)
+  for our catalog's chapters read in a language (the language on the page, `TranslationUiState.shown`). Rules in
+  `NextChapterRules` (domain, pure, the web's tests ported): `endState`, `priceOf`, `offer` (1, then 5, then 10, from
+  the data), `shouldAuto`, `newlyReady`. API `NextChaptersRepository`: `GET api/v1/translations/chapters/{id}/next?lang=`,
+  `POST …/prefetch {language, count, maxCredits, auto}` (the server refuses to spend above `maxCredits`: `409
+  QUOTE_CHANGED` shows "The price changed…" and the new price), `DELETE …/prefetch?lang=`, `PUT …/prefetch/auto`.
+- End card: always a way on, in place of the card's own "Next chapter" (`NextEndCard`): the next chapter in the language
+  (translated) or in the original, "Prepare it ✦ 12 credits", its progress while prepared, "Read it in the original",
+  "Needs your own key" (opens the keys), a link the source gives, or "This is the latest chapter for now". In the
+  original, or before the list is known, the reader's own card stands.
+- Balloon past 40 % (`ReaderUiState.readShare`; hidden on the end card, `onEndCard`, under the language dock, and once
+  closed for this chapter): the next chapter, then the next 5, then 10, at the price shown; what is prepared, with
+  Cancel for what has not started. The list is read again every 3 s while something is prepared. Toast "Chapter 4 is
+  ready in Français." with "Read it →" for 8 s. Series setting ("Always prepare the next chapter of this series in …",
+  settings sheet and end card): at 70 % the next chapter is prepared once, quietly; the switch moves at once and a
+  refusal puts it back. Opening a chapter in the language goes through the copy route (`onOpenCopy`), so the reader
+  opens it translated. Online only.
+
 ## Screens (account and episodes)
 
 - Settings (4th tab, gear on both): Keys (two provider slots, add / replace / remove with a confirmation, privacy note;

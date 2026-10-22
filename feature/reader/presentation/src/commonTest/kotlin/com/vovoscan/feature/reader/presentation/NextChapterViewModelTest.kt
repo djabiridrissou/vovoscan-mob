@@ -5,6 +5,8 @@ import com.vovoscan.core.common.AppResult
 import com.vovoscan.feature.reader.domain.Funding
 import com.vovoscan.feature.reader.domain.NextChapters
 import com.vovoscan.feature.reader.domain.NextChaptersRepository
+import com.vovoscan.feature.reader.domain.ReaderPage
+import com.vovoscan.feature.reader.domain.ReadingMode
 import com.vovoscan.feature.reader.domain.TranslationStatus
 import com.vovoscan.feature.reader.domain.Upcoming
 import com.vovoscan.feature.reader.domain.UpcomingTranslation
@@ -343,4 +345,20 @@ class NextChapterViewModelTest {
             assertNull(vm.state.value.endCard)
             assertNull(vm.state.value.autoSwitch)
         }
+
+    @Test
+    fun theReaderSaysHowFarItIsAndWhenTheEndCardShows() {
+        val pages = (0 until 4).map { ReaderPage(it, "https://api.test/p$it", 800, 1200) }
+        val card = { forward: Boolean -> ReaderItem.Transition(TransitionCard(forward, "", "", null, null)) }
+        val items = listOf(card(false)) + pages.map { ReaderItem.Page(it) } + card(true)
+        val paged = ReaderUiState(mode = ReadingMode.PagedRightToLeft, pages = pages, items = items, currentIndex = 1, currentItem = 2)
+        assertEquals(0.5f, paged.readShare)
+        assertFalse(paged.onEndCard)
+        assertTrue(paged.copy(currentItem = items.lastIndex, currentIndex = 3).onEndCard)
+        // A strip: the share scrolled, the end once it is all read.
+        val strip = paged.copy(mode = ReadingMode.LongStrip, progress = 0.42f)
+        assertEquals(0.42f, strip.readShare)
+        assertTrue(strip.copy(progress = 1f).onEndCard)
+        assertEquals(0f, ReaderUiState().readShare)
+    }
 }

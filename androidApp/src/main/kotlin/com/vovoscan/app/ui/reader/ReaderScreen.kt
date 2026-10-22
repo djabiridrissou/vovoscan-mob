@@ -32,9 +32,11 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.pager.HorizontalPager
@@ -83,6 +85,7 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
@@ -117,6 +120,10 @@ import com.vovoscan.feature.reader.domain.ReaderPage
 import com.vovoscan.feature.reader.domain.TallPages
 import com.vovoscan.feature.reader.domain.TapAction
 import com.vovoscan.feature.reader.presentation.CoachGesture
+import com.vovoscan.feature.reader.presentation.NextActionKind
+import com.vovoscan.feature.reader.presentation.NextButton
+import com.vovoscan.feature.reader.presentation.NextChapterIntent
+import com.vovoscan.feature.reader.presentation.NextChapterViewModel
 import com.vovoscan.feature.reader.presentation.ReaderCoach
 import com.vovoscan.feature.reader.presentation.ReaderCommand
 import com.vovoscan.feature.reader.presentation.ReaderIntent
@@ -173,6 +180,33 @@ fun ReaderScreen(
     }
     var languagesOpen by rememberSaveable { mutableStateOf(false) }
     var keysOpen by rememberSaveable { mutableStateOf(false) }
+    // What comes after this chapter in the language on the page (our catalog): end card, balloon, toast, series setting.
+    val next: NextChapterViewModel = koinViewModel(key = "next:$sourceKey/$chapterId") { parametersOf(sourceKey, chapterId) }
+    val nextState by next.state.collectAsStateWithLifecycle()
+    LaunchedEffect(translationState.shown) { next.onIntent(NextChapterIntent.LanguageShown(translationState.shown)) }
+    LaunchedEffect(state.readShare) { next.onIntent(NextChapterIntent.Reached(state.readShare)) }
+    LaunchedEffect(state.onEndCard) { next.onIntent(NextChapterIntent.AtEnd(state.onEndCard)) }
+    val uriHandler = LocalUriHandler.current
+    val nextAction: (NextChapterIntent) -> (NextButton) -> Unit = { prepare ->
+        { button ->
+            when (button.kind) {
+                NextActionKind.Open ->
+                    button.chapterId?.let { id ->
+                        // In the language: our catalog's chapter opens in it, as a translated copy does.
+                        button.language?.let { onOpenCopy(titleId, id, it, 0) } ?: onOpenChapter(id, 0)
+                    }
+                NextActionKind.Prepare -> next.onIntent(prepare)
+                NextActionKind.AddKey -> keysOpen = true
+                NextActionKind.OpenUrl -> button.url?.let { runCatching { uriHandler.openUri(it) } }
+            }
+        }
+    }
+    val nextUi =
+        nextState.endCard?.let { end ->
+            NextChapterUi(end, nextState.autoSwitch, nextAction(NextChapterIntent.PrepareNext)) {
+                next.onIntent(NextChapterIntent.SetAuto(it))
+            }
+        }
     // The bottom bar's height: the language dock sits above it while the bars show.
     var bottomBarPx by remember { mutableIntStateOf(0) }
     val languageAction =
@@ -256,6 +290,7 @@ fun ReaderScreen(
                 CompositionLocalProvider(
                     LocalPageLettering provides { translationState.letteringFor(it) },
                     LocalReaderLanguageAction provides languageAction,
+                    LocalNextChapter provides nextUi,
                 ) {
                     ComicReader(state, onIntent)
                 }
@@ -346,6 +381,42 @@ fun ReaderScreen(
                 )
             }
         }
+        // Past 40 % in a language: the next chapter, then the next 5, then 10, prepared while reading.
+        val bubble = nextState.bubble?.takeIf { translationState.dock == null && !state.isBook }
+        AnimatedVisibility(
+            bubble != null,
+            enter = if (state.reducedMotion) EnterTransition.None else slideInVertically { it } + fadeIn(),
+            exit = if (state.reducedMotion) ExitTransition.None else slideOutVertically { it } + fadeOut(),
+            modifier =
+                Modifier
+                    .align(Alignment.BottomEnd)
+                    .navigationBarsPadding()
+                    .padding(bottom = if (barsShown) with(LocalDensity.current) { bottomBarPx.toDp() } else 0.dp),
+        ) {
+            var shown by remember { mutableStateOf(bubble) }
+            bubble?.let { shown = it }
+            shown?.let {
+                NextBubbleView(
+                    it,
+                    onButton = nextAction(NextChapterIntent.AcceptOffer),
+                    onCancel = { next.onIntent(NextChapterIntent.Cancel) },
+                    onHide = { next.onIntent(NextChapterIntent.HideBubble) },
+                )
+            }
+        }
+        // A chapter prepared ahead is ready.
+        AnimatedVisibility(
+            nextState.toast != null,
+            enter = if (state.reducedMotion) EnterTransition.None else fadeIn(),
+            exit = if (state.reducedMotion) ExitTransition.None else fadeOut(),
+            modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = if (barsShown) 56.dp else 0.dp),
+        ) {
+            var shown by remember { mutableStateOf(nextState.toast) }
+            nextState.toast?.let { shown = it }
+            shown?.let {
+                NextToastView(it, nextAction(NextChapterIntent.PrepareNext)) { next.onIntent(NextChapterIntent.DismissToast) }
+            }
+        }
         // How to read, the first time a chapter of its kind opens: any tap closes it.
         AnimatedVisibility(
             state.coach != null,
@@ -360,7 +431,7 @@ fun ReaderScreen(
     if (languagesOpen) TranslationSheet(translationState, translation::onIntent) { languagesOpen = false }
     if (keysOpen) KeysSheet { keysOpen = false }
     if (settingsOpen && !state.isBook) {
-        ReaderSettingsSheet(state.settings, onIntent) {
+        ReaderSettingsSheet(state.settings, onIntent, nextState.autoSwitch, { next.onIntent(NextChapterIntent.SetAuto(it)) }) {
             settingsOpen = false
             onIntent(ReaderIntent.SettingsClosed)
         }
@@ -687,7 +758,10 @@ internal fun TransitionCardView(
         ) {
             Text(card.heading, style = MaterialTheme.typography.bodySmall.copy(color = Brand.Muted))
             Text(card.target, style = MaterialTheme.typography.titleMedium)
-            card.actionLabel?.let { label ->
+            // Reading in a language: the way on in it (prepare, follow, the original), never a dead end.
+            val nextUi = LocalNextChapter.current?.takeIf { card.forward }
+            nextUi?.let { NextEndContent(it) }
+            card.actionLabel?.takeIf { nextUi == null }?.let { label ->
                 Spacer(Modifier.size(4.dp))
                 if (card.forward) {
                     PrimaryButton(label, { onIntent(ReaderIntent.OpenNextChapter) })
