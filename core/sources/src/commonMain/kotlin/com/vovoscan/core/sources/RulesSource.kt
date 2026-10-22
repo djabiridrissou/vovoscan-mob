@@ -57,7 +57,7 @@ class RulesSource(
     private val json: JsonObject get() = manifest.json
 
     private fun vars(vararg extra: Pair<String, Any?>): Map<String, Any?> =
-        mapOf("settings" to manifest.settings, "page" to 1, "search" to "", "lang" to "") + extra
+        mapOf("settings" to manifest.settings, "page" to 1, "search" to "", "lang" to deviceLanguage()) + extra
 
     private suspend fun load(
         request: JsonObject,
@@ -84,11 +84,24 @@ class RulesSource(
             is AppResult.Ok -> {
                 val type = request.getValue("type").jsonPrimitive.content
                 rules {
-                    RuleContext(
-                        Rules.parse(fetched.value.body.decodeToString(), type, fetched.value.finalUrl),
-                        fetched.value.finalUrl,
-                        variables,
-                    )
+                    val loaded =
+                        RuleContext(
+                            Rules.parse(fetched.value.body.decodeToString(), type, fetched.value.finalUrl),
+                            fetched.value.finalUrl,
+                            variables,
+                        )
+                    // `let` evaluates rules on the whole response and names the results for the section's
+                    // templates (e.g. an image host and a chapter hash used to build every page URL).
+                    val declared = (request["let"] as? JsonObject).orEmpty()
+                    if (declared.isEmpty()) {
+                        loaded
+                    } else {
+                        val named =
+                            declared
+                                .mapValues { (_, rule) -> str(Rules.evaluate(loaded, rule)) }
+                                .filterValues { it != null }
+                        RuleContext(loaded.node, loaded.baseUrl, loaded.variables + named)
+                    }
                 }
             }
         }
@@ -181,7 +194,10 @@ class RulesSource(
         val items =
             Rules.nodes(ctx, section.getValue("list")).mapNotNull { node ->
                 val child = ctx.child(node)
-                str(Rules.evaluate(child, item["id"]))?.let { summary(child, item, it) }
+                // The item's own id is visible to its other rules: covers often need it (e.g. /covers/{{id}}/…).
+                str(Rules.evaluate(child, item["id"]))?.let { id ->
+                    summary(RuleContext(child.node, child.baseUrl, child.variables + ("id" to id)), item, id)
+                }
             }
         return RulesPage(
             items = items,
@@ -194,19 +210,23 @@ class RulesSource(
         val section = json.getValue("title").jsonObject
         val loaded = load(section.getValue("request").jsonObject, vars("id" to id))
         val ctx = (loaded as? AppResult.Ok)?.value ?: return loaded as AppResult.Err
-        return rules {
-            val fields = section.getValue("fields").jsonObject
-            val kind = defaultKind()
-            val head =
-                summary(ctx, fields, id)?.copy(kind = kind)
-                    ?: throw RuleException("The title has no name.")
-            RulesTitle(
-                summary = head,
-                description = str(Rules.evaluate(ctx, fields["description"])).orEmpty(),
-                authors = list(Rules.evaluate(ctx, fields["authors"])),
-                genres = list(Rules.evaluate(ctx, fields["genres"])),
-                units = units(ctx, section.getValue("units").jsonObject, id),
-            )
+        return when (val titleUnits = units(ctx, section.getValue("units").jsonObject, id)) {
+            is AppResult.Err -> titleUnits
+            is AppResult.Ok ->
+                rules {
+                    val fields = section.getValue("fields").jsonObject
+                    val kind = defaultKind()
+                    val head =
+                        summary(ctx, fields, id)?.copy(kind = kind)
+                            ?: throw RuleException("The title has no name.")
+                    RulesTitle(
+                        summary = head,
+                        description = str(Rules.evaluate(ctx, fields["description"])).orEmpty(),
+                        authors = list(Rules.evaluate(ctx, fields["authors"])),
+                        genres = list(Rules.evaluate(ctx, fields["genres"])),
+                        units = titleUnits.value,
+                    )
+                }
         }
     }
 
@@ -219,27 +239,42 @@ class RulesSource(
             else -> listOfNotNull(str(value))
         }
 
-    private fun units(
+    /**
+     * Units of a title. From the title's own response by default; a `request` in the units section fetches a
+     * separate list instead (e.g. an API endpoint for chapters), with `{{id}}` and `{{lang}}` available.
+     */
+    private suspend fun units(
         ctx: RuleContext,
-        rules: JsonObject,
+        section: JsonObject,
         titleId: String,
-    ): List<RulesUnit> {
-        (rules["single"] as? JsonObject)?.let { single ->
+    ): AppResult<List<RulesUnit>> {
+        (section["single"] as? JsonObject)?.let { single ->
             val unitId = Template.render(single.getValue("id").jsonPrimitive.content, ctx.variables + ("id" to titleId))
-            return listOf(RulesUnit(unitId, 1.0, single["name"]?.jsonPrimitive?.contentOrNull))
+            return AppResult.Ok(listOf(RulesUnit(unitId, 1.0, single["name"]?.jsonPrimitive?.contentOrNull)))
         }
-        val item = rules.getValue("item").jsonObject
-        val seen = mutableSetOf<Double>()
-        return Rules
-            .nodes(ctx, rules.getValue("list"))
-            .mapIndexedNotNull { index, node ->
-                val child = ctx.child(node)
-                val unitId = str(Rules.evaluate(child, item["id"])) ?: return@mapIndexedNotNull null
-                val number = (Rules.evaluate(child, item["number"]) as? Double) ?: (index + 1).toDouble()
-                // Two units with the same number would break the reading order: keep the first one.
-                if (!seen.add(number)) return@mapIndexedNotNull null
-                RulesUnit(unitId, number, str(Rules.evaluate(child, item["name"])))
-            }.sortedBy { it.number }
+        val listCtx =
+            (section["request"] as? JsonObject)?.let { request ->
+                when (val loaded = load(request, ctx.variables + ("id" to titleId))) {
+                    is AppResult.Err -> return loaded
+                    is AppResult.Ok -> loaded.value
+                }
+            } ?: ctx
+        return rules {
+            val item = section.getValue("item").jsonObject
+            val seen = mutableSetOf<Double>()
+            Rules
+                .nodes(listCtx, section.getValue("list"))
+                .mapIndexedNotNull { index, node ->
+                    val child = listCtx.child(node)
+                    val unitId = str(Rules.evaluate(child, item["id"])) ?: return@mapIndexedNotNull null
+                    // The unit's own id is visible to its other rules (e.g. a pages URL built from {{id}}).
+                    val unit = RuleContext(child.node, child.baseUrl, child.variables + ("id" to unitId))
+                    val number = (Rules.evaluate(unit, item["number"]) as? Double) ?: (index + 1).toDouble()
+                    // Two units with the same number would break the reading order: keep the first one.
+                    if (!seen.add(number)) return@mapIndexedNotNull null
+                    RulesUnit(unitId, number, str(Rules.evaluate(unit, item["name"])))
+                }.sortedBy { it.number }
+        }
     }
 
     suspend fun comicPages(

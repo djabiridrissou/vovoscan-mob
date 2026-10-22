@@ -192,6 +192,68 @@ class RulesSourceTest {
         }
 
     @Test
+    fun mangadexLikeApi() =
+        runTest {
+            val md =
+                """{"contractVersion":1,"key":"mangadex","name":"MangaDex","version":"1.0.0","kinds":["comic"],"langs":["en","fr"],"hosts":["api.mangadex.org","uploads.mangadex.org"],"catalog":{"request":{"url":"https://api.mangadex.org/manga","type":"json","query":{"title":"{{search}}","limit":"20","availableTranslatedLanguage[]":"{{lang}}","includes[]":"cover_art"},"pagination":{"type":"startIndex","param":"offset","pageSize":20,"base":0}},"list":"$.data[*]","item":{"id":"$.id","name":"$.attributes.title[*]","cover":{"path":"$.relationships[*].attributes.fileName","all":true,"then":[{"format":"https://uploads.mangadex.org/covers/{{id}}/{value}.256.jpg"},"first"]}},"hasNext":{"path":"$.data[19]","then":["notNull"]},"total":"$.total"},"title":{"request":{"url":"https://api.mangadex.org/manga/{{id}}","type":"json","query":{"includes[]":"cover_art"}},"fields":{"name":"$.data.attributes.title[*]","authors":{"path":"$.data.relationships[*].attributes.name","all":true},"genres":{"path":"$.data.attributes.tags[*].attributes.name[*]","all":true},"status":"$.data.attributes.status"},"units":{"request":{"url":"https://api.mangadex.org/chapter","type":"json","query":{"manga":"{{id}}","translatedLanguage[]":"{{lang}}","limit":"100","order[chapter]":"asc"}},"list":"$.data[*]","item":{"id":"$.id","number":{"path":"$.attributes.chapter","then":["number"]},"name":"$.attributes.title"}}},"content":{"comic":{"request":{"url":"https://api.mangadex.org/at-home/server/{{unitId}}","type":"json","let":{"base":"$.baseUrl","hash":"$.chapter.hash"}},"list":"$.chapter.data[*]","item":{"url":{"path":"$","then":[{"format":"{{base}}/data/{{hash}}/{value}"}]}}}}}"""
+            val searchBody =
+                """{"total":40,"data":[{"id":"m1","attributes":{"title":{"ja-ro":"Alpha"}},"relationships":[{"type":"cover_art","attributes":{"fileName":"c1.png"}}]},{"id":"m2","attributes":{"title":{"en":"Beta"}},"relationships":[{"type":"manga"}]}]}"""
+            val titleBody =
+                """{"data":{"attributes":{"title":{"en":"Alpha"},"status":"ongoing","tags":[{"attributes":{"name":{"en":"Action"}}}]},"relationships":[{"type":"author","attributes":{"name":"Author One"}},{"type":"cover_art","attributes":{"fileName":"c1.png"}}]}}"""
+            val chaptersBody =
+                """{"data":[{"id":"u1","attributes":{"chapter":"1","title":"Start"}},{"id":"u2","attributes":{"chapter":"1.5","title":null}},{"id":"u3","attributes":{"chapter":null,"title":"Oneshot"}}]}"""
+            val atHomeBody = """{"baseUrl":"https://cdn.example","chapter":{"hash":"h1","data":["1.jpg","2.jpg"]}}"""
+            val mangadex =
+                source(
+                    md,
+                    "mangadex",
+                    emptyMap(),
+                    mapOf(
+                        "https://api.mangadex.org/manga" to (searchBody to "application/json"),
+                        "https://api.mangadex.org/manga/m1" to (titleBody to "application/json"),
+                        "https://api.mangadex.org/chapter" to (chaptersBody to "application/json"),
+                        "https://api.mangadex.org/at-home/server/u1" to (atHomeBody to "application/json"),
+                    ),
+                )
+
+            // The catalog sees each item's own id (cover built from {{id}}) and sends the device language.
+            val page = (mangadex.catalog(1, "alpha") as AppResult.Ok).value
+            assertEquals("m1", page.items[0].id)
+            assertEquals("Alpha", page.items[0].name)
+            assertEquals("https://uploads.mangadex.org/covers/m1/c1.png.256.jpg", page.items[0].coverUrl)
+            assertEquals(null, page.items[1].coverUrl)
+            assertEquals(false to 40, page.hasNext to page.total)
+            assertTrue(Regex("availableTranslatedLanguage%5B%5D=[a-z]{2}").containsMatchIn(sent.single()))
+            assertTrue(sent.single().contains("title=alpha"))
+
+            // Page 2 shifts the offset by pageSize (base 0).
+            mangadex.catalog(2)
+            assertTrue(sent[1].contains("offset=20"))
+
+            // Units come from their own request ({{id}}, {{lang}}), numbers parsed from strings, null → position.
+            val title = (mangadex.title("m1") as AppResult.Ok).value
+            assertEquals("Alpha", title.summary.name)
+            assertEquals(listOf("Author One"), title.authors)
+            assertEquals(listOf("Action"), title.genres)
+            assertEquals(
+                listOf(RulesUnit("u1", 1.0, "Start"), RulesUnit("u2", 1.5, null), RulesUnit("u3", 3.0, "Oneshot")),
+                title.units,
+            )
+            val chaptersCall = sent.first { it.startsWith("https://api.mangadex.org/chapter") }
+            assertTrue(chaptersCall.contains("manga=m1") && Regex("translatedLanguage%5B%5D=[a-z]{2}").containsMatchIn(chaptersCall))
+
+            // `let` names response values the page URLs are built from.
+            val pages = (mangadex.comicPages("m1", "u1") as AppResult.Ok).value
+            assertEquals(
+                listOf(
+                    RulesImage("https://cdn.example/data/h1/1.jpg", 0, 0),
+                    RulesImage("https://cdn.example/data/h1/2.jpg", 0, 0),
+                ),
+                pages,
+            )
+        }
+
+    @Test
     fun undeclaredHostIsRejected() =
         runTest {
             val gutenberg =
