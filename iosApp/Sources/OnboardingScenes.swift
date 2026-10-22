@@ -164,58 +164,61 @@ private struct BalloonText: View {
 struct TranslatedPageDemo: View {
     let kicker: String
     let balloon: DemoBalloon
-    @State private var progress: CGFloat = 0
-    @State private var flips = 0
+    /// How much of the lettering is typed in (clip reveal from its reading side), replayed on each new language.
+    @State private var reveal: CGFloat = 1
+    /// "Hold to see the original" is held.
+    @State private var holding = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var shown: String { holding ? balloon.original : balloon.translated }
+    private var shownRtl: Bool { holding ? false : balloon.rtl }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
                 Circle().fill(Color.brandRed).frame(width: 8, height: 8)
-                    .opacity(reduceMotion ? 1 : (flips.isMultiple(of: 2) ? 1 : 0.35))
                 Text(kicker.uppercased()).font(.brandBody(12, weight: .bold)).tracking(1.4).foregroundStyle(Color.brandMuted)
             }
             ZStack {
                 Color.brandPaper
                 HalftoneBackground(color: .brandInk, spacing: 10, maxOpacity: 0.35)
                 SpeedLines(center: UnitPoint(x: 0.85, y: 0.8), count: 48, color: .brandInk).opacity(0.35)
-                ZStack {
-                    BalloonText(text: balloon.original, size: 26)
-                        .mask(Wipe(progress: 1 - progress, fromLeading: balloon.rtl))
-                    BalloonText(text: balloon.translated, size: 24)
-                        .environment(\.layoutDirection, balloon.rtl ? .rightToLeft : .leftToRight)
-                        .mask(Wipe(progress: progress, fromLeading: !balloon.rtl))
-                }
-                .padding(18)
+                // One balloon, one text at a time: never two letterings half swapped.
+                BalloonText(text: shown, size: holding ? 26 : 24)
+                    .environment(\.layoutDirection, shownRtl ? .rightToLeft : .leftToRight)
+                    .mask(Wipe(progress: holding ? 1 : reveal, fromLeading: !shownRtl))
+                    .padding(18)
+                    .id(shown)
             }
             .frame(height: 190)
             .clipShape(SlantedRect(slant: 0.05))
             .overlay(SlantedRect(slant: 0.05).stroke(Color.brandInk, lineWidth: 3))
             .background(SlantedRect(slant: 0.05).fill(Color.brandRed).offset(x: 6, y: 6))
             Text(balloon.caption).font(.brandBody(13)).foregroundStyle(Color.brandPaper.opacity(0.8))
+            if let hold = balloon.holdLabel {
+                Text(hold)
+                    .font(.brandBody(13, weight: .bold))
+                    .foregroundStyle(holding ? Color.brandInk : Color.brandPaper)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+                    .background(holding ? Color.brandYellow : Color.brandInk2, in: Capsule())
+                    .overlay(Capsule().stroke(Color.brandLine, lineWidth: 1))
+                    .onLongPressGesture(minimumDuration: 3600, maximumDistance: 40) {} onPressingChanged: { pressing in
+                        if pressing != holding { Haptics.select() }
+                        holding = pressing
+                    }
+                    .accessibilityAddTraits(.isButton)
+                    .accessibilityAction { holding.toggle() }
+            }
         }
-        .sensoryFeedback(.impact(weight: .light), trigger: flips)
-        .task(id: balloon.translated) { await loop() }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(balloon.original) → \(balloon.translated). \(balloon.caption)")
-    }
-
-    private func loop() async {
-        if reduceMotion {
-            progress = 1
-            return
+        .task(id: balloon.translated) {
+            holding = false
+            guard !reduceMotion else { reveal = 1; return }
+            reveal = 0
+            withAnimation(.easeOut(duration: 0.45)) { reveal = 1 }
         }
-        progress = 0
-        while !Task.isCancelled {
-            try? await Task.sleep(for: .milliseconds(900))
-            if Task.isCancelled { return }
-            withAnimation(.easeInOut(duration: 0.45)) { progress = 1 }
-            flips += 1
-            try? await Task.sleep(for: .milliseconds(2400))
-            if Task.isCancelled { return }
-            withAnimation(.easeInOut(duration: 0.3)) { progress = 0 }
-            flips += 1
-        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("\(balloon.caption) \(shown)")
     }
 }
 

@@ -8,6 +8,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -25,9 +26,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -41,12 +44,17 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
@@ -227,20 +235,16 @@ fun TranslatedPageDemo(
 ) {
     val reduced = reducedMotion()
     val haptics = LocalHapticFeedback.current
-    val progress = remember(balloon.translated) { Animatable(if (reduced) 1f else 0f) }
-    LaunchedEffect(balloon.translated) {
-        if (reduced) return@LaunchedEffect
-        while (true) {
-            delay(900)
-            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-            progress.animateTo(1f, tween(450))
-            delay(2400)
-            progress.animateTo(0f, tween(300))
-        }
-    }
+    // The lettering is typed in from its reading side, replayed on each new language.
+    val reveal = remember(balloon.translated) { Animatable(if (reduced) 1f else 0f) }
+    LaunchedEffect(balloon.translated) { if (!reduced) reveal.animateTo(1f, tween(450)) }
+    // "Hold to see the original" is held.
+    var holding by remember(balloon.translated) { mutableStateOf(false) }
+    val shown = if (holding) balloon.original else balloon.translated
+    val rtl = !holding && balloon.rtl
     val shape = slanted(0.05f)
     Column(
-        Modifier.clearAndSetSemantics { contentDescription = "${balloon.original} → ${balloon.translated}. ${balloon.caption}" },
+        Modifier.semantics(mergeDescendants = true) { contentDescription = "${balloon.caption} $shown" },
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -262,12 +266,38 @@ fun TranslatedPageDemo(
                 contentAlignment = Alignment.Center,
             ) {
                 SpeedLines(Offset(0.85f, 0.8f), Brand.Ink.copy(alpha = 0.3f), Modifier.fillMaxSize())
-                // The new lettering comes in from its reading side; the original goes out the other way.
-                Balloon(balloon.original, 26, Modifier.wipe(1f - progress.value, fromLeft = balloon.rtl))
-                Balloon(balloon.translated, 24, Modifier.wipe(progress.value, fromLeft = !balloon.rtl))
+                // One balloon, one text at a time: never two letterings half swapped.
+                CompositionLocalProvider(LocalLayoutDirection provides if (rtl) LayoutDirection.Rtl else LayoutDirection.Ltr) {
+                    Balloon(shown, if (holding) 26 else 24, Modifier.wipe(if (holding) 1f else reveal.value, fromLeft = !rtl))
+                }
             }
         }
         Text(balloon.caption, style = MaterialTheme.typography.bodySmall.copy(color = Brand.TextSoft))
+        balloon.holdLabel?.let { label ->
+            Text(
+                label,
+                style = MaterialTheme.typography.labelLarge.copy(color = if (holding) Brand.Ink else Brand.Paper),
+                modifier =
+                    Modifier
+                        .background(if (holding) Brand.Yellow else Brand.Ink2, RoundedCornerShape(999.dp))
+                        .border(1.dp, Brand.Line, RoundedCornerShape(999.dp))
+                        .pointerInput(balloon.translated) {
+                            detectTapGestures(
+                                onPress = {
+                                    holding = true
+                                    haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    tryAwaitRelease()
+                                    holding = false
+                                },
+                            )
+                        }.semantics {
+                            onClick(label) {
+                                holding = !holding
+                                true
+                            }
+                        }.padding(horizontal = 14.dp, vertical = 8.dp),
+            )
+        }
     }
 }
 

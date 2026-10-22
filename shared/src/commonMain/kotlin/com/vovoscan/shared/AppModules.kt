@@ -234,7 +234,7 @@ fun appModules(
             single { ImageRefererSync(get(), get(), get()) }
             // The app's language: the device's choice at launch, then the signed-in account's.
             single { UiLanguage(get()) }
-            single { LocaleSync(get(), get(), get()) }
+            single { LocaleSync(get(), get(), get(), get()) }
             single<OnboardingServices> { AppOnboardingServices(get(), get(), get(), get(), get()) }
         },
         accountModule,

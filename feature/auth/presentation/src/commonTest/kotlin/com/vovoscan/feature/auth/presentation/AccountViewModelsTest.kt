@@ -334,21 +334,34 @@ class AccountViewModelsTest {
             val vm = OnboardingViewModel(auth, FakeOnboarding(), language, prefs, clock)
             repeat(2) { vm.onIntent(OnboardingIntent.Next) }
             // Pre-filled with the app's language.
-            assertEquals("行くぞ！", vm.state.value.demo.original)
-            assertEquals("Here we go!", vm.state.value.demo.translated)
+            var demo = vm.state.value.demo
+            assertEquals("Let’s go, everyone!", demo.translated)
+            assertEquals("en", demo.languageCode)
+            assertEquals("Demo page, in English. Real chapters read the same way.", demo.caption)
+            // No language at all: the original, and the note asks for one.
+            demo = DemoLines.balloon(null)
+            assertEquals("行くぞ、みんな！", demo.translated)
+            assertEquals("ja", demo.languageCode)
+            assertNull(demo.holdLabel)
+            assertEquals("Demo page. Pick a language: the balloon is lettered in it.", demo.caption)
+            // A sample written for it (the spec's exact strings): lettered, right to left, the original on hold.
             vm.onIntent(OnboardingIntent.ChooseReading("ar"))
-            assertEquals("هيا بنا!", vm.state.value.demo.translated)
-            assertTrue(vm.state.value.demo.rtl)
-            assertTrue(vm.state.value.demo.exact)
-            assertEquals("Same page, in العربية. The art stays; only the lettering changes.", vm.state.value.demo.caption)
-            // A language without a line written by hand: the app's language, and it says so.
+            demo = vm.state.value.demo
+            assertEquals("هيا بنا، جميعًا!", demo.translated)
+            assertTrue(demo.rtl)
+            assertTrue(demo.exact)
+            assertEquals("Hold to see the original", demo.holdLabel)
+            assertEquals("Demo page, in العربية. Real chapters read the same way.", demo.caption)
+            vm.onIntent(OnboardingIntent.ChooseReading("fr"))
+            assertEquals("On y va, tout le monde !", vm.state.value.demo.translated)
+            // Any other language: the original stays, never a made-up line, and no hold button.
             vm.onIntent(OnboardingIntent.ChooseReading("ee"))
-            val demo = vm.state.value.demo
+            demo = vm.state.value.demo
             assertFalse(demo.exact)
             assertFalse(demo.rtl)
-            assertEquals("Here we go!", demo.translated)
-            assertEquals("en", demo.languageCode)
-            assertEquals("Sample shown in the app’s language. Your chapters come in Eʋegbe.", demo.caption)
+            assertEquals("行くぞ、みんな！", demo.translated)
+            assertNull(demo.holdLabel)
+            assertEquals("Eʋegbe it is. Real chapters are translated into it when you open them.", demo.caption)
         }
 
     @Test

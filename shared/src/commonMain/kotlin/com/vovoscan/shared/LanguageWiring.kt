@@ -34,6 +34,7 @@ class LocaleSync(
     private val auth: AuthRepository,
     private val language: UiLanguage,
     private val scope: CoroutineScope,
+    private val reading: ReadingSettingsRepository,
 ) {
     fun start() {
         auth.session
@@ -41,6 +42,13 @@ class LocaleSync(
             .map { it.locale to it.region }
             .distinctUntilChanged()
             .onEach { (locale, region) -> language.applyAccount(locale, region) }
+            .launchIn(scope)
+        // Each sign-in (or restored session) sends a reading language chosen while the server couldn't take it.
+        auth.session
+            .filterNotNull()
+            .map { it.userId }
+            .distinctUntilChanged()
+            .onEach { reading.refreshReadingModel() }
             .launchIn(scope)
     }
 }

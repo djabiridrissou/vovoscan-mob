@@ -88,7 +88,7 @@ data class OnboardingUiState(
     val readingRows: List<LanguageRow> get() = LanguagePicker.rows(readingQuery, readingLanguage)
 
     /** The live demo: a balloon of a sample page, in the reading language as it is chosen. */
-    val demo: DemoBalloon get() = DemoLines.balloon(readingLanguage ?: I18n.locale.value, I18n.locale.value)
+    val demo: DemoBalloon get() = DemoLines.balloon(readingLanguage)
     val demoKicker: String get() = t("onboarding.demo.kicker")
 
     // sources
