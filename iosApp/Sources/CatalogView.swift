@@ -1,3 +1,4 @@
+import os
 import Shared
 import SwiftUI
 
@@ -426,9 +427,14 @@ private struct TitleTile: View {
         VStack(alignment: .leading, spacing: 0) {
             ZStack(alignment: .topLeading) {
                 Color.brandLine
-                AsyncImage(url: card.coverUrl.flatMap(URL.init(string:))) { image in
-                    image.resizable().scaledToFill()
-                } placeholder: { Color.brandLine }
+                AsyncImage(url: card.coverUrl.flatMap(URL.init(string:))) { phase in
+                    switch phase {
+                    case let .success(image): image.resizable().scaledToFill()
+                    case let .failure(error): Color.brandLine.onAppear { CoverLog.failed(card: card, error: error) }
+                    default: Color.brandLine
+                    }
+                }
+                .onAppear { if card.coverUrl == nil { CoverLog.missing(card: card) } }
                 VStack(alignment: .leading, spacing: 4) {
                     Text(card.formatLabel)
                         .font(.brandBody(12, weight: .bold))
@@ -476,5 +482,22 @@ private struct TitleTile: View {
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.brandLine, lineWidth: 2))
         .contentShape(RoundedRectangle(cornerRadius: 12))
         .accessibilityElement(children: .combine)
+    }
+}
+
+/// Why a tile shows no cover, for checks on the simulator (`log stream --predicate 'category == "covers"'`): the host
+/// only (signed links carry their signature in the query), never the whole URL.
+enum CoverLog {
+    private static let log = Logger(subsystem: Bundle.main.bundleIdentifier ?? "vovoscan", category: "covers")
+
+    static func missing(card: TitleCard) {
+        log.info("cover none: \(card.key, privacy: .public)")
+    }
+
+    static func failed(card: TitleCard, error: Error) {
+        let host = card.coverUrl.flatMap { URL(string: $0)?.host } ?? "?"
+        let referer = card.coverUrl.flatMap { AppModulesKt.imageRefererFor(url: $0) } != nil
+        let code = (error as? URLError)?.code.rawValue ?? 0
+        log.info("cover failed: \(card.key, privacy: .public) host=\(host, privacy: .public) referer=\(referer) code=\(code)")
     }
 }

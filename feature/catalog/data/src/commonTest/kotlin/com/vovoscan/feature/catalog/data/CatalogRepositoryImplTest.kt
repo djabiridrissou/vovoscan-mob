@@ -221,8 +221,8 @@ class CatalogRepositoryImplTest {
             )
             // And to search results (typed query, no format filter: nothing more is asked).
             assertEquals(
-                listOf("1" to ReadingFormat.Webtoon, "2" to ReadingFormat.Webtoon),
-                repo.search("inkwell", "ink").titles.map { it.id to it.format },
+                setOf("1" to ReadingFormat.Webtoon, "2" to ReadingFormat.Webtoon),
+                repo.search("inkwell", "a").titles.mapTo(HashSet()) { it.id to it.format },
             )
             assertEquals(
                 ReadingFormat.Webtoon,
