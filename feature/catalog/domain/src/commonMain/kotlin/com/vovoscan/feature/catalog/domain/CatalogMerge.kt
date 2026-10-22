@@ -1,23 +1,48 @@
 package com.vovoscan.feature.catalog.domain
 
+import kotlin.random.Random
+
 /**
- * The catalog of several sources as one grid, fairly: page 1 of every source interleaved one title at a time (in the
- * reader's order of sources), then page 2 of every source, and so on. A big source never drowns the others, and
- * loading more appends a new round without moving what is already on screen.
+ * The catalog of several sources as one grid, mixed but fair: page 1 of every source shuffled together, then page 2 of
+ * every source, and so on. Within a round each next title comes from a source drawn at random, weighted by how many
+ * titles it has left in the round (a big source shows up more often without drowning the others), each source keeps
+ * its own order (its best or newest first), and no source takes more than [MAX_RUN] places in a row while another
+ * still has titles. The draw follows a seed: the same seed gives the same grid, so loading more appends a new round
+ * without moving what is already on screen; a new seed (pull to refresh) gives a new mix.
  */
 object CatalogMerge {
+    const val MAX_RUN = 2
+
     /** `listings`: one per source, in the reader's order. */
-    fun merge(listings: List<List<ListedTitle>>): List<TitleSummary> {
+    fun merge(
+        listings: List<List<ListedTitle>>,
+        seed: Long,
+    ): List<TitleSummary> {
         val lastPage = listings.maxOfOrNull { listing -> listing.maxOfOrNull { it.page } ?: 0 } ?: 0
         return (1..lastPage).flatMap { page ->
-            roundRobin(listings.map { listing -> listing.filter { it.page == page }.map { it.title } })
+            mix(listings.map { listing -> listing.filter { it.page == page }.map { it.title } }, Random(seed * 31 + page))
         }
     }
 
-    /** The first of each list, then the second of each, …; a shorter list simply runs out. */
-    fun <T> roundRobin(lists: List<List<T>>): List<T> {
-        val longest = lists.maxOfOrNull { it.size } ?: 0
-        return (0 until longest).flatMap { i -> lists.mapNotNull { it.getOrNull(i) } }
+    /** Every element of `lists`, each list's order kept, the lists drawn as described above. */
+    fun <T> mix(
+        lists: List<List<T>>,
+        random: Random,
+    ): List<T> {
+        val next = IntArray(lists.size)
+        val out = ArrayList<T>(lists.sumOf { it.size })
+        var last = -1
+        var run = 0
+        while (true) {
+            val left = lists.indices.filter { next[it] < lists[it].size }
+            if (left.isEmpty()) return out
+            val allowed = if (run >= MAX_RUN && left.size > 1) left - last else left
+            var draw = random.nextInt(allowed.sumOf { lists[it].size - next[it] })
+            val source = allowed.first { i -> (draw < lists[i].size - next[i]).also { if (!it) draw -= lists[i].size - next[i] } }
+            out += lists[source][next[source]++]
+            run = if (source == last) run + 1 else 1
+            last = source
+        }
     }
 }
 

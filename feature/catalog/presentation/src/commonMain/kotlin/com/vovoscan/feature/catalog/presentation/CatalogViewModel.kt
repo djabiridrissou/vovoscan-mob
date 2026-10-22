@@ -35,6 +35,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlin.random.Random
 
 /** A catalog card, ready to display. */
 data class TitleCard(
@@ -156,7 +157,7 @@ sealed interface CatalogIntent {
 
 /**
  * The catalog of the selected sources ("All": every visible source) as one grid, offline first: each source's local
- * listing at once, merged round by round (`CatalogMerge`), then reloaded source by source; a source that fails says
+ * listing at once, mixed round by round (`CatalogMerge`), then reloaded source by source; a source that fails says
  * so in one line and the others still show. Search goes to every source read, with a short typing debounce. The
  * filter (sources, category) is remembered on the device.
  */
@@ -199,6 +200,9 @@ class CatalogViewModel(
     private var listingsJob: Job? = null
     private val categoriesAsked = mutableSetOf<String>()
 
+    /** The mix of the grid (`CatalogMerge`): kept while the screen lives, drawn again on pull to refresh. */
+    private val seed = MutableStateFlow(Random.nextLong())
+
     init {
         viewModelScope.launch { filter.value = repository.observeFilter().first() }
         val selection =
@@ -212,7 +216,10 @@ class CatalogViewModel(
 
     fun onIntent(intent: CatalogIntent) {
         when (intent) {
-            CatalogIntent.Refresh -> refresh(categoriesToo = true)
+            CatalogIntent.Refresh -> {
+                seed.value = Random.nextLong()
+                refresh(categoriesToo = true)
+            }
             CatalogIntent.LoadMore -> loadMore()
             is CatalogIntent.Query -> search(intent.value)
             // Unknown until the Sources screen's list is read (it always keeps one source visible).
@@ -301,7 +308,7 @@ class CatalogViewModel(
         } else {
             combine(
                 list.map { repository.observeListing(it.source.key, it.categoryId) },
-            ) { listings -> CatalogMerge.merge(listings.toList()) }
+            ) { listings -> listings.toList() }.combine(seed) { listings, s -> CatalogMerge.merge(listings, s) }
         }
 
     private fun refresh(categoriesToo: Boolean) {
@@ -353,7 +360,7 @@ class CatalogViewModel(
             viewModelScope.launch {
                 delay(SEARCH_DEBOUNCE_MS)
                 val found = current.map { reading -> async { repository.search(reading.source.key, query, reading.categoryId) } }.awaitAll()
-                val titles = CatalogMerge.roundRobin(found.map { it.titles })
+                val titles = CatalogMerge.mix(found.map { it.titles }, Random(seed.value))
                 mutableState.update {
                     it.copy(
                         results = titles.map { t -> card(t, names) },
