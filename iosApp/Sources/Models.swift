@@ -336,8 +336,8 @@ final class EpisodeModel: ObservableObject {
     private let owner = ViewModels()
     private let viewModel: EpisodeViewModel
 
-    init(chapterId: String) {
-        viewModel = owner.episode(chapterId: chapterId)
+    init(chapterId: String, language: String = "") {
+        viewModel = owner.episode(chapterId: chapterId, language: language)
         state = viewModel.state.value
     }
 
@@ -358,8 +358,8 @@ final class PlayerModel: ObservableObject {
     private let owner = ViewModels()
     let viewModel: PlayerViewModel
 
-    init(chapterId: String, nextChapterId: String?) {
-        viewModel = owner.player(chapterId: chapterId, nextChapterId: nextChapterId)
+    init(chapterId: String, nextChapterId: String?, language: String = "") {
+        viewModel = owner.player(chapterId: chapterId, nextChapterId: nextChapterId, language: language)
         state = viewModel.state.value
     }
 

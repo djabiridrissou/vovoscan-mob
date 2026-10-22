@@ -6,7 +6,8 @@ import kotlinx.coroutines.flow.flowOf
 
 /**
  * Where an episode's run is (`EpisodeStatus` on the server): `queued` → `analyzing` (ANALYZE) → `reading` (OCR) →
- * `voicing` (VOICE) → `timing` (TIMELINE) → `ready`, or `failed`.
+ * `translating` (TRANSLATE, an episode in another language) → `voicing` (VOICE) → `timing` (TIMELINE) → `ready`, or
+ * `failed`.
  */
 enum class EpisodeStatus(
     val wire: String,
@@ -14,6 +15,7 @@ enum class EpisodeStatus(
     Queued("queued"),
     Analyzing("analyzing"),
     Reading("reading"),
+    Translating("translating"),
     Voicing("voicing"),
     Timing("timing"),
     Ready("ready"),
@@ -28,12 +30,13 @@ enum class EpisodeStatus(
     }
 }
 
-/** The four stages of an episode run, in the brand's pipeline vocabulary (UPPERCASE in chips). */
+/** The stages of an episode run, in the brand's pipeline vocabulary (UPPERCASE in chips); TRANSLATE only in a language. */
 enum class PipelineStage(
     val label: String,
 ) {
     Analyze("ANALYZE"),
     Ocr("OCR"),
+    Translate("TRANSLATE"),
     Voice("VOICE"),
     Timeline("TIMELINE"),
     ;
@@ -45,6 +48,7 @@ enum class PipelineStage(
             when (status) {
                 EpisodeStatus.Queued, EpisodeStatus.Analyzing -> Analyze
                 EpisodeStatus.Reading -> Ocr
+                EpisodeStatus.Translating -> Translate
                 EpisodeStatus.Voicing -> Voice
                 EpisodeStatus.Timing -> Timeline
                 EpisodeStatus.Ready, EpisodeStatus.Failed -> null
@@ -125,6 +129,10 @@ data class Episode(
     val canReread: Boolean,
     val updatedAtMillis: Long,
     val export: EpisodeExport? = null,
+    /** "" = the chapter's own language; else the language code of this episode. */
+    val language: String = "",
+    /** How an episode in another language sounds; null for the original. */
+    val audio: EpisodeAudio? = null,
 ) {
     /** Something is still being made (the run, or its MP4): worth following live. */
     val inProgress: Boolean get() = status.active || export?.status?.active == true
@@ -132,6 +140,22 @@ data class Episode(
     /** The stage running now; null once ready or failed. */
     val stage: PipelineStage?
         get() = if (status.active) PipelineStage.from(progress?.stage) ?: PipelineStage.of(status) else null
+}
+
+/** An episode in another language: voiced in it, or the original voices with captions in it. */
+enum class EpisodeAudio(
+    val wire: String,
+) {
+    /** ElevenLabs speaks the language: the lines are performed in it. */
+    Dub("dub"),
+
+    /** The original voices, with the translation as captions. */
+    Sub("sub"),
+    ;
+
+    companion object {
+        fun from(wire: String?): EpisodeAudio? = entries.firstOrNull { it.wire == wire }
+    }
 }
 
 /** What `POST …/episodes/chapters/{id}` (prepare) or `…/reread` led to. */
@@ -206,50 +230,79 @@ data class RunCost(
 
 /** Cost quotes before a run. A feature port wired by the app to the account's wallet. */
 fun interface RunQuotes {
-    /** Null: no quote (a server without credits, offline): the card says nothing about credits. */
-    suspend fun episode(chapterId: String): RunCost?
+    /**
+     * The cost of the episode in [lang] ("" = the original). Null: no quote (a server without credits, offline): the
+     * card says nothing about credits.
+     */
+    suspend fun episode(
+        chapterId: String,
+        lang: String,
+    ): RunCost?
 
     companion object {
-        val None = RunQuotes { null }
+        val None = RunQuotes { _, _ -> null }
     }
 }
 
 /**
  * Episodes, offline first: the last known episode of a chapter and its last watch are kept on the device. Live
- * progress comes from server-sent events (`…/events`), with polling as a fallback.
+ * progress comes from server-sent events (`…/events`), with polling as a fallback. Every call takes the episode's
+ * language (`?lang=`, "" = the original): the same pages in the same language are one episode, shared by everyone.
  */
 interface EpisodesRepository {
     /** The episode kept on the device; null when none is known (never fetched, or no episode yet). */
-    fun observe(chapterId: String): Flow<Episode?>
+    fun observe(
+        chapterId: String,
+        lang: String = "",
+    ): Flow<Episode?>
 
     /** `Ok(null)`: the chapter has no episode yet (`404 EPISODE_NOT_FOUND`). */
-    suspend fun refresh(chapterId: String): AppResult<Episode?>
+    suspend fun refresh(
+        chapterId: String,
+        lang: String = "",
+    ): AppResult<Episode?>
 
-    suspend fun prepare(chapterId: String): AppResult<PrepareResult>
+    suspend fun prepare(
+        chapterId: String,
+        lang: String = "",
+    ): AppResult<PrepareResult>
 
-    suspend fun reread(chapterId: String): AppResult<PrepareResult>
+    suspend fun reread(
+        chapterId: String,
+        lang: String = "",
+    ): AppResult<PrepareResult>
 
     /**
      * Follows the episode live until it is ready or failed (or the caller is cancelled: a screen that stops stops
      * following), saving each snapshot on the device. Reconnects with backoff; polls every 10 s when events fail.
      * `Ok(null)`: the episode went away.
      */
-    suspend fun follow(chapterId: String): AppResult<Episode?>
+    suspend fun follow(
+        chapterId: String,
+        lang: String = "",
+    ): AppResult<Episode?>
 
     /** The watch kept on the device while its URLs are valid for a while, else a fresh one ([forceRefresh] always). */
     suspend fun watch(
         chapterId: String,
         forceRefresh: Boolean = false,
+        lang: String = "",
     ): AppResult<Watch>
 
     /**
      * `POST …/export`: makes the MP4 of the render the chapter plays (or returns the one ready or being made), and
      * saves it on the stored episode so the screen shows its progress at once.
      */
-    suspend fun requestExport(chapterId: String): AppResult<EpisodeExport>
+    suspend fun requestExport(
+        chapterId: String,
+        lang: String = "",
+    ): AppResult<EpisodeExport>
 
     /** `GET …/export`: the MP4's state with freshly signed URLs (a download needs a link that has not expired). */
-    suspend fun export(chapterId: String): AppResult<EpisodeExport>
+    suspend fun export(
+        chapterId: String,
+        lang: String = "",
+    ): AppResult<EpisodeExport>
 
     suspend fun clearLocal()
 }

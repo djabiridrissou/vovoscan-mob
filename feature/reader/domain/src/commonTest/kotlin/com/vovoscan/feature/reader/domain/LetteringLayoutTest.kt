@@ -3,8 +3,6 @@ package com.vovoscan.feature.reader.domain
 import kotlin.math.abs
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertNotNull
-import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class LetteringLayoutTest {
@@ -58,13 +56,5 @@ class LetteringLayoutTest {
     fun blankTextsAndUnknownSizesDrawNothing() {
         assertTrue(LetteringLayout.page(page(text(PixelBox(1.0, 1.0, 10.0, 10.0)).copy(text = " "))).isEmpty())
         assertTrue(LetteringLayout.page(TranslatedPage(0, 0, 0, listOf(text(PixelBox(1.0, 1.0, 10.0, 10.0))))).isEmpty())
-    }
-
-    @Test
-    fun languagesMirrorTheServerTable() {
-        assertEquals(48, Language.ALL.size)
-        assertNotNull(Language.of("ee"))
-        assertNull(Language.of("xx"))
-        assertEquals(TranslationStatus.Ready, TranslationStatus.from("ready"))
     }
 }

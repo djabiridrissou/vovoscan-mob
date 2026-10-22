@@ -5,6 +5,7 @@ import com.vovoscan.feature.episodes.domain.Box
 import com.vovoscan.feature.episodes.domain.BubbleSound
 import com.vovoscan.feature.episodes.domain.Direction
 import com.vovoscan.feature.episodes.domain.Episode
+import com.vovoscan.feature.episodes.domain.EpisodeAudio
 import com.vovoscan.feature.episodes.domain.EpisodeExport
 import com.vovoscan.feature.episodes.domain.EpisodeStatus
 import com.vovoscan.feature.episodes.domain.ExportStatus
@@ -69,6 +70,10 @@ data class EpisodeDto(
     val canReread: Boolean = false,
     val export: ExportDto? = null,
     val updatedAt: String,
+    /** "" = the chapter's own language. */
+    val language: String = "",
+    /** "dub" or "sub" for an episode in another language. */
+    val audio: String? = null,
 ) {
     /**
      * Ready or failed, and no MP4 being made: nothing more will change without a new request. (An export does not
@@ -199,6 +204,8 @@ internal fun EpisodeDto.toDomain(): Episode? {
         canReread = canReread,
         updatedAtMillis = parseIsoMillis(updatedAt) ?: 0L,
         export = export?.toDomain(),
+        language = language,
+        audio = EpisodeAudio.from(audio),
     )
 }
 

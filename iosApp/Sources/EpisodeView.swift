@@ -7,6 +7,8 @@ import UIKit
 struct EpisodeRoute: Hashable {
     let chapterId: String
     let title: TitleDetailUiState
+    /// The episode's language when the card opens: "" = the original; the next chapter keeps the one just watched.
+    var language: String = ""
 }
 
 /// "Next chapter →" at the end of the player swaps the card for the next chapter's, like the reader does.
@@ -14,7 +16,7 @@ struct EpisodeContainer: View {
     @State var route: EpisodeRoute
 
     var body: some View {
-        EpisodeView(route: route) { route = EpisodeRoute(chapterId: $0, title: route.title) }
+        EpisodeView(route: route) { route = EpisodeRoute(chapterId: $0, title: route.title, language: $1) }
             .id(route.chapterId)
     }
 }
@@ -25,13 +27,15 @@ struct EpisodeView: View {
     @StateObject private var model: EpisodeModel
     @State private var player: PlayerRoute?
     @State private var share: SharedVideo?
+    @State private var choosingLanguage = false
     private let route: EpisodeRoute
-    let onOpenChapter: (String) -> Void
+    /// The next chapter's id and the language to open it in.
+    let onOpenChapter: (String, String) -> Void
 
-    init(route: EpisodeRoute, onOpenChapter: @escaping (String) -> Void) {
+    init(route: EpisodeRoute, onOpenChapter: @escaping (String, String) -> Void) {
         self.route = route
         self.onOpenChapter = onOpenChapter
-        _model = StateObject(wrappedValue: EpisodeModel(chapterId: route.chapterId))
+        _model = StateObject(wrappedValue: EpisodeModel(chapterId: route.chapterId, language: route.language))
     }
 
     var body: some View {
@@ -70,8 +74,13 @@ struct EpisodeView: View {
         .fullScreenCover(item: $player) { route in
             PlayerView(route: route) { next in
                 player = nil
-                onOpenChapter(next)
+                onOpenChapter(next, route.language)
             }
+        }
+        .sheet(isPresented: $choosingLanguage) {
+            EpisodeLanguageSheet(model: model)
+                .presentationDetents([.medium, .large])
+                .presentationBackground(Color.brandInk2)
         }
     }
 
@@ -79,6 +88,7 @@ struct EpisodeView: View {
         let state = model.state
         return VStack(alignment: .leading, spacing: 12) {
             if state.comingSoon { Sticker(text: "Coming soon", angle: -4).padding(.bottom, 4) }
+            if !state.languageOptions.isEmpty { languageButton(state) }
             HStack(alignment: .firstTextBaseline) {
                 Text(state.headline).font(.brandDisplay(18)).foregroundStyle(Color.brandPaper)
                 Spacer()
@@ -105,7 +115,11 @@ struct EpisodeView: View {
 
             if state.canWatch {
                 Button(state.watchLabel) {
-                    player = PlayerRoute(chapterId: route.chapterId, nextChapterId: route.title.nextChapterId(chapterId: route.chapterId))
+                    player = PlayerRoute(
+                        chapterId: route.chapterId,
+                        nextChapterId: route.title.nextChapterId(chapterId: route.chapterId),
+                        language: state.language
+                    )
                 }
                 .buttonStyle(PrimaryButtonStyle())
             }
@@ -155,6 +169,32 @@ struct EpisodeView: View {
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(state.phase == .running ? Color.brandCyan : Color.brandLine, lineWidth: 1))
     }
 
+    /// The episode's language: the original, or another one (dubbed when ElevenLabs speaks it, else subtitled).
+    private func languageButton(_ state: EpisodeUiState) -> some View {
+        Button {
+            Haptics.tap()
+            choosingLanguage = true
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "globe").font(.system(size: 14, weight: .bold))
+                Text(state.languageLabel).font(.brandBody(15, weight: .bold))
+                if let mode = state.languageMode {
+                    Text(mode.uppercased()).font(.brandBody(11, weight: .bold)).tracking(1.2).foregroundStyle(Color.brandCyan)
+                }
+                Spacer()
+                Image(systemName: "chevron.down").font(.system(size: 12, weight: .bold)).foregroundStyle(Color.brandMuted)
+            }
+            .foregroundStyle(Color.brandPaper)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.brandLine, lineWidth: 1))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(state.working)
+        .accessibilityLabel("Episode language: \(state.languageLabel)")
+    }
+
     /// The MP4: make it (CPU only, no key), follow its progress, then save or share it.
     private func video(_ state: EpisodeUiState) -> some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -175,6 +215,55 @@ struct EpisodeView: View {
                     .buttonStyle(GhostButtonStyle())
             }
         }
+    }
+}
+
+/// The episode's languages, searchable (own name, English name or code); the rows come from `EpisodeViewModel`.
+private struct EpisodeLanguageSheet: View {
+    @ObservedObject var model: EpisodeModel
+    @Environment(\.dismiss) private var dismiss
+    @State private var query = ""
+
+    var body: some View {
+        let state = model.state
+        NavigationStack {
+            List {
+                if state.languageOptions.isEmpty {
+                    Text("No language matches.").font(.brandBody(13)).foregroundStyle(Color.brandMuted).listRowBackground(Color.brandInk2)
+                }
+                ForEach(state.languageOptions, id: \.self) { option in
+                    Button {
+                        Haptics.select()
+                        model.send(EpisodeIntentChooseLanguage(code: option.code))
+                        dismiss()
+                    } label: {
+                        HStack(spacing: 12) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(option.label).font(.brandBody(16, weight: .bold)).foregroundStyle(Color.brandPaper)
+                                Text(option.detail).font(.brandBody(13)).foregroundStyle(Color.brandMuted)
+                            }
+                            Spacer()
+                            if option.selected { Image(systemName: "checkmark").foregroundStyle(Color.brandRed) }
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .listRowBackground(option.selected ? Color.brandLine : Color.brandInk2)
+                    .accessibilityAddTraits(option.selected ? .isSelected : [])
+                }
+            }
+            .scrollContentBackground(.hidden)
+            .background(Color.brandInk2)
+            .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search a language")
+            .onChange(of: query) { _, text in model.send(EpisodeIntentLanguageQuery(text: text)) }
+            .navigationTitle("Episode language")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
+            }
+        }
+        .onAppear { query = state.languageQuery }
+        .onDisappear { model.send(EpisodeIntentLanguageQuery(text: "")) }
     }
 }
 

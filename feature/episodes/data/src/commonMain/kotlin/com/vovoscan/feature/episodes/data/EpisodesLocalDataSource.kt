@@ -12,27 +12,49 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 
-/** Local source: the last known episode per chapter and its last watch. */
+/**
+ * Local source: the last known episode per chapter and language, and its last watch. Rows are keyed by [storeKey]:
+ * the chapter id for the original (as before languages existed), `<chapterId>~<lang>` for an episode in a language.
+ */
 interface EpisodesLocalDataSource {
-    fun observe(chapterId: String): Flow<Episode?>
+    fun observe(
+        chapterId: String,
+        lang: String = "",
+    ): Flow<Episode?>
 
-    /** Keeps [episode] unless a newer snapshot (later `updatedAt`) is already stored. */
+    /** Keeps [episode] (filed under its own chapter and language) unless a newer snapshot is already stored. */
     suspend fun save(episode: EpisodeDto)
 
-    suspend fun delete(chapterId: String)
+    suspend fun delete(
+        chapterId: String,
+        lang: String = "",
+    )
 
     /** Puts [export] on the stored episode (if any), keeping its `updatedAt`: an export does not move it. */
     suspend fun saveExport(
         chapterId: String,
+        lang: String = "",
         export: ExportDto,
     )
 
-    suspend fun watch(chapterId: String): Watch?
+    suspend fun watch(
+        chapterId: String,
+        lang: String = "",
+    ): Watch?
 
-    suspend fun saveWatch(watch: WatchDto)
+    suspend fun saveWatch(
+        watch: WatchDto,
+        lang: String = "",
+    )
 
     suspend fun clear()
 }
+
+/** Chapter ids are UUIDs: `~` never appears in one, so a language never collides with another chapter. */
+internal fun storeKey(
+    chapterId: String,
+    lang: String,
+) = if (lang.isEmpty()) chapterId else "$chapterId~$lang"
 
 class SqlEpisodesLocalDataSource(
     private val database: EpisodesDatabase,
@@ -40,9 +62,12 @@ class SqlEpisodesLocalDataSource(
 ) : EpisodesLocalDataSource {
     private val queries get() = database.episodesQueries
 
-    override fun observe(chapterId: String): Flow<Episode?> =
+    override fun observe(
+        chapterId: String,
+        lang: String,
+    ): Flow<Episode?> =
         queries
-            .episode(chapterId)
+            .episode(storeKey(chapterId, lang))
             .asFlow()
             .mapToOneOrNull(io)
             .map { body -> body?.let(::decodeEpisode)?.toDomain() }
@@ -50,45 +75,57 @@ class SqlEpisodesLocalDataSource(
     override suspend fun save(episode: EpisodeDto) =
         withContext(io) {
             val updated = parseIsoMillis(episode.updatedAt) ?: 0L
+            val key = storeKey(episode.chapterId, episode.language)
             queries.transaction {
-                val stored = queries.episodeUpdatedAt(episode.chapterId).executeAsOneOrNull()
+                val stored = queries.episodeUpdatedAt(key).executeAsOneOrNull()
                 // SSE, polling and a prepare answer can cross: an older snapshot never replaces a newer one.
                 if (stored == null || updated >= stored) {
-                    queries.putEpisode(episode.chapterId, episode.status, updated, ApiJson.encodeToString(EpisodeDto.serializer(), episode))
+                    queries.putEpisode(key, episode.status, updated, ApiJson.encodeToString(EpisodeDto.serializer(), episode))
                 }
             }
         }
 
     override suspend fun saveExport(
         chapterId: String,
+        lang: String,
         export: ExportDto,
     ) {
+        val key = storeKey(chapterId, lang)
         withContext(io) {
             queries.transaction {
-                val body = queries.episode(chapterId).executeAsOneOrNull() ?: return@transaction
+                val body = queries.episode(key).executeAsOneOrNull() ?: return@transaction
                 val stored = decodeEpisode(body) ?: return@transaction
                 val updated = parseIsoMillis(stored.updatedAt) ?: 0L
                 val next = stored.copy(export = export)
-                queries.putEpisode(chapterId, next.status, updated, ApiJson.encodeToString(EpisodeDto.serializer(), next))
+                queries.putEpisode(key, next.status, updated, ApiJson.encodeToString(EpisodeDto.serializer(), next))
             }
         }
     }
 
-    override suspend fun delete(chapterId: String) {
-        withContext(io) { queries.deleteEpisode(chapterId) }
+    override suspend fun delete(
+        chapterId: String,
+        lang: String,
+    ) {
+        withContext(io) { queries.deleteEpisode(storeKey(chapterId, lang)) }
     }
 
-    override suspend fun watch(chapterId: String): Watch? =
+    override suspend fun watch(
+        chapterId: String,
+        lang: String,
+    ): Watch? =
         withContext(io) {
-            queries.watch(chapterId).executeAsOneOrNull()?.let { row ->
+            queries.watch(storeKey(chapterId, lang)).executeAsOneOrNull()?.let { row ->
                 runCatching { ApiJson.decodeFromString(WatchDto.serializer(), row.body) }.getOrNull()?.toDomain()
             }
         }
 
-    override suspend fun saveWatch(watch: WatchDto) {
+    override suspend fun saveWatch(
+        watch: WatchDto,
+        lang: String,
+    ) {
         withContext(io) {
             queries.putWatch(
-                watch.chapterId,
+                storeKey(watch.chapterId, lang),
                 watch.renderKey,
                 parseIsoMillis(watch.expiresAt) ?: 0L,
                 ApiJson.encodeToString(WatchDto.serializer(), watch),

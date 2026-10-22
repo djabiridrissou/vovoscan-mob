@@ -4,9 +4,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.vovoscan.core.common.AppError
 import com.vovoscan.core.common.AppResult
+import com.vovoscan.core.common.Language
 import com.vovoscan.core.common.userMessage
 import com.vovoscan.feature.reader.domain.ChapterTranslation
-import com.vovoscan.feature.reader.domain.Language
 import com.vovoscan.feature.reader.domain.Lettering
 import com.vovoscan.feature.reader.domain.LetteringLayout
 import com.vovoscan.feature.reader.domain.TranslationStatus

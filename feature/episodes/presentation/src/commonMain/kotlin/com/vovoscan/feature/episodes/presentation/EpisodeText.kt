@@ -1,7 +1,9 @@
 package com.vovoscan.feature.episodes.presentation
 
 import com.vovoscan.core.common.AppError
+import com.vovoscan.core.common.Language
 import com.vovoscan.core.common.userMessage
+import com.vovoscan.feature.episodes.domain.EpisodeAudio
 import com.vovoscan.feature.episodes.domain.RunCost
 import com.vovoscan.feature.episodes.domain.StageProgress
 
@@ -31,6 +33,27 @@ object EpisodeText {
     const val NOTE_SILENT = "No voices: it was prepared without an ElevenLabs key."
     const val NOTE_OUTDATED = "The chapter or the pipeline changed since this episode was made. Prepare it again to catch up."
     const val NOTE_REREAD = "Your keys can improve it."
+
+    // Languages (`?lang=`): the original, or the episode dubbed / subtitled in another language.
+    const val ORIGINAL = "Original"
+    const val ORIGINAL_DETAIL = "The chapter's own language"
+    const val DUBBED = "Dubbed"
+    const val SUBTITLED = "Subtitled"
+    const val BETA = "beta"
+
+    fun languageDetail(language: Language): String =
+        listOfNotNull(language.name, if (language.dub) DUBBED else SUBTITLED, BETA.takeIf { language.beta }).joinToString(" ✦ ")
+
+    /** Under a ready episode in another language: how it sounds. */
+    fun audioNote(
+        language: Language,
+        audio: EpisodeAudio?,
+    ): String =
+        if (audio == EpisodeAudio.Dub) {
+            "Voiced in ${language.name}."
+        } else {
+            "The original voices, with ${language.name} captions."
+        }
 
     // The key lines already say what each missing key costs; this only says where to fix it.
     const val KEY_WARNING = "Add the missing key in Settings."

@@ -23,44 +23,63 @@ class EpisodesRepositoryImpl(
     private val local: EpisodesLocalDataSource,
     private val clock: Clock,
 ) : EpisodesRepository {
-    override fun observe(chapterId: String): Flow<Episode?> = local.observe(chapterId)
+    override fun observe(
+        chapterId: String,
+        lang: String,
+    ): Flow<Episode?> = local.observe(chapterId, lang)
 
-    override suspend fun refresh(chapterId: String): AppResult<Episode?> =
-        when (val result = remote.episode(chapterId)) {
+    override suspend fun refresh(
+        chapterId: String,
+        lang: String,
+    ): AppResult<Episode?> =
+        when (val result = remote.episode(chapterId, lang)) {
             is AppResult.Err -> result
-            is AppResult.Ok -> AppResult.Ok(keep(chapterId, result.value))
+            is AppResult.Ok -> AppResult.Ok(keep(chapterId, lang, result.value))
         }
 
-    override suspend fun prepare(chapterId: String): AppResult<PrepareResult> = run(chapterId, remote.prepare(chapterId))
+    override suspend fun prepare(
+        chapterId: String,
+        lang: String,
+    ): AppResult<PrepareResult> = run(chapterId, lang, remote.prepare(chapterId, lang))
 
-    override suspend fun reread(chapterId: String): AppResult<PrepareResult> = run(chapterId, remote.reread(chapterId))
+    override suspend fun reread(
+        chapterId: String,
+        lang: String,
+    ): AppResult<PrepareResult> = run(chapterId, lang, remote.reread(chapterId, lang))
 
     private suspend fun run(
         chapterId: String,
+        lang: String,
         result: AppResult<RunDto>,
     ): AppResult<PrepareResult> {
         if (result !is AppResult.Ok) return result as AppResult.Err
         return when (val run = result.value) {
-            is RunDto.Queued -> keep(chapterId, run.episode)?.let { AppResult.Ok(PrepareResult.Queued(it)) }
-            is RunDto.Ready -> keep(chapterId, run.episode)?.let { AppResult.Ok(PrepareResult.AlreadyReady(it)) }
-            is RunDto.Busy -> AppResult.Ok(PrepareResult.Busy(run.episode?.let { keep(chapterId, it) }))
+            is RunDto.Queued -> keep(chapterId, lang, run.episode)?.let { AppResult.Ok(PrepareResult.Queued(it)) }
+            is RunDto.Ready -> keep(chapterId, lang, run.episode)?.let { AppResult.Ok(PrepareResult.AlreadyReady(it)) }
+            is RunDto.Busy -> AppResult.Ok(PrepareResult.Busy(run.episode?.let { keep(chapterId, lang, it) }))
         } ?: AppResult.Err(AppError.Unknown("unknown episode status"))
     }
 
-    /** Saves the server's answer (none: forgets the chapter's episode) and returns it as the domain sees it. */
+    /** Saves the server's answer (none: forgets the episode in [lang]) and returns it as the domain sees it. */
     private suspend fun keep(
         chapterId: String,
+        lang: String,
         dto: EpisodeDto?,
     ): Episode? {
         if (dto == null) {
-            local.delete(chapterId)
+            local.delete(chapterId, lang)
             return null
         }
-        local.save(dto)
-        return dto.toDomain()
+        // Filed under the language asked for, whatever an older server says (it knows no `language`).
+        val asked = if (dto.language == lang) dto else dto.copy(language = lang)
+        local.save(asked)
+        return asked.toDomain()
     }
 
-    override suspend fun follow(chapterId: String): AppResult<Episode?> {
+    override suspend fun follow(
+        chapterId: String,
+        lang: String,
+    ): AppResult<Episode?> {
         var failures = 0
         var backoff = FIRST_RETRY_MS
         var polls = 0
@@ -68,7 +87,8 @@ class EpisodesRepositoryImpl(
             if (failures < STREAM_ATTEMPTS) {
                 var last: EpisodeDto? = null
                 val result =
-                    remote.events(chapterId) { dto ->
+                    remote.events(chapterId, lang) { snapshot ->
+                        val dto = if (snapshot.language == lang) snapshot else snapshot.copy(language = lang)
                         local.save(dto)
                         last = dto
                         !dto.isFinal
@@ -86,7 +106,7 @@ class EpisodesRepositoryImpl(
                             failures += 1
                         }
                     is AppResult.Err -> {
-                        if (result.error.isCode(EPISODE_NOT_FOUND)) return AppResult.Ok(keep(chapterId, null))
+                        if (result.error.isCode(EPISODE_NOT_FOUND)) return AppResult.Ok(keep(chapterId, lang, null))
                         if (result.error.isPermanent()) return result
                         failures = if (result.error == AppError.RateLimited) STREAM_ATTEMPTS else failures + 1
                     }
@@ -96,11 +116,11 @@ class EpisodesRepositoryImpl(
                     backoff = min(backoff * 2, MAX_RETRY_MS)
                 }
             } else {
-                when (val result = remote.episode(chapterId)) {
+                when (val result = remote.episode(chapterId, lang)) {
                     is AppResult.Ok -> {
-                        val dto = result.value ?: return AppResult.Ok(keep(chapterId, null))
-                        local.save(dto)
-                        if (dto.isFinal) return AppResult.Ok(dto.toDomain())
+                        val dto = result.value ?: return AppResult.Ok(keep(chapterId, lang, null))
+                        val episode = keep(chapterId, lang, dto)
+                        if (dto.isFinal) return AppResult.Ok(episode)
                     }
                     // Offline or a server hiccup: keep polling; the saved copy stays on screen.
                     is AppResult.Err -> if (result.error.isPermanent()) return result
@@ -119,12 +139,13 @@ class EpisodesRepositoryImpl(
     override suspend fun watch(
         chapterId: String,
         forceRefresh: Boolean,
+        lang: String,
     ): AppResult<Watch> {
-        val cached = local.watch(chapterId)
+        val cached = local.watch(chapterId, lang)
         if (!forceRefresh && cached != null && cached.expiresAtMillis - clock.nowMillis() > WATCH_MARGIN_MS) return AppResult.Ok(cached)
-        return when (val result = remote.watch(chapterId)) {
+        return when (val result = remote.watch(chapterId, lang)) {
             is AppResult.Ok -> {
-                local.saveWatch(result.value)
+                local.saveWatch(result.value, lang)
                 AppResult.Ok(result.value.toDomain())
             }
             // Offline: the last timeline still plays what the image cache holds.
@@ -132,19 +153,25 @@ class EpisodesRepositoryImpl(
         }
     }
 
-    override suspend fun requestExport(chapterId: String): AppResult<EpisodeExport> =
-        exportResult(chapterId, remote.requestExport(chapterId))
+    override suspend fun requestExport(
+        chapterId: String,
+        lang: String,
+    ): AppResult<EpisodeExport> = exportResult(chapterId, lang, remote.requestExport(chapterId, lang))
 
-    override suspend fun export(chapterId: String): AppResult<EpisodeExport> = exportResult(chapterId, remote.export(chapterId))
+    override suspend fun export(
+        chapterId: String,
+        lang: String,
+    ): AppResult<EpisodeExport> = exportResult(chapterId, lang, remote.export(chapterId, lang))
 
     private suspend fun exportResult(
         chapterId: String,
+        lang: String,
         result: AppResult<ExportDto>,
     ): AppResult<EpisodeExport> =
         when (result) {
             is AppResult.Err -> result
             is AppResult.Ok -> {
-                local.saveExport(chapterId, result.value)
+                local.saveExport(chapterId, lang, result.value)
                 AppResult.Ok(result.value.toDomain())
             }
         }

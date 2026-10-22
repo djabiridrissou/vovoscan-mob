@@ -164,11 +164,30 @@ class ViewModels : KoinComponent {
 
     fun episode(chapterId: String): EpisodeViewModel = remember("episode:$chapterId") { get<EpisodeViewModel> { parametersOf(chapterId) } }
 
+    /** The card of the next chapter, opened in the language just watched ("" = the original). */
+    fun episode(
+        chapterId: String,
+        language: String,
+    ): EpisodeViewModel =
+        if (language.isEmpty()) {
+            episode(chapterId)
+        } else {
+            remember("episode:$chapterId~$language") { get<EpisodeViewModel> { parametersOf(chapterId, language) } }
+        }
+
     /** `nextChapterId`: the chapter after this one when the opening screen knows it ("Next chapter →" at the end). */
     fun player(
         chapterId: String,
         nextChapterId: String?,
-    ): PlayerViewModel = remember("player:$chapterId") { get<PlayerViewModel> { parametersOf(chapterId, nextChapterId) } }
+    ): PlayerViewModel = player(chapterId, nextChapterId, "")
+
+    /** The player of the episode in [language] ("" = the original): the card's `language`. */
+    fun player(
+        chapterId: String,
+        nextChapterId: String?,
+        language: String,
+    ): PlayerViewModel =
+        remember("player:$chapterId~$language") { get<PlayerViewModel> { parametersOf(chapterId, nextChapterId, language) } }
 
     fun clear() = store.clear()
 

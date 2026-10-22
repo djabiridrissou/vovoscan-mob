@@ -139,6 +139,8 @@ class PlayerViewModel(
     private val nextChapterId: String?,
     private val repository: EpisodesRepository,
     private val clock: Clock = SystemClock,
+    /** The episode's language, from the card that opened the player ("" = the original). */
+    private val lang: String = "",
 ) : ViewModel() {
     private val mutableState = MutableStateFlow(PlayerUiState(nextChapterId = nextChapterId))
     val state: StateFlow<PlayerUiState> = mutableState.asStateFlow()
@@ -262,7 +264,7 @@ class PlayerViewModel(
         if (plan == null) mutableState.update { it.copy(loading = true, error = null) }
         loadJob =
             viewModelScope.launch {
-                when (val result = repository.watch(chapterId, forceRefresh = force)) {
+                when (val result = repository.watch(chapterId, forceRefresh = force, lang = lang)) {
                     is AppResult.Ok -> show(result.value)
                     is AppResult.Err ->
                         if (plan == null) {

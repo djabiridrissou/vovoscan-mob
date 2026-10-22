@@ -12,6 +12,7 @@ import com.vovoscan.feature.reader.domain.TranslationStatus
 import com.vovoscan.feature.reader.domain.TranslationsRepository
 import io.ktor.client.HttpClient
 import io.ktor.client.request.get
+import io.ktor.client.request.parameter
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.http.ContentType
@@ -19,16 +20,22 @@ import io.ktor.http.contentType
 import io.ktor.http.encodeURLPathPart
 import kotlinx.serialization.Serializable
 
+/** A language of a chapter (`GET /translations/chapters/{id}`). */
 @Serializable
 data class ChapterTranslationDto(
-    val lang: String,
+    val language: String,
     val status: String? = null,
     val progress: Int? = null,
 )
 
 @Serializable
+data class ChapterTranslationsDto(
+    val translations: List<ChapterTranslationDto> = emptyList(),
+)
+
+@Serializable
 internal data class TranslateBody(
-    val lang: String,
+    val language: String,
 )
 
 /** A translated text box; `bbox` and `area` are `[x, y, width, height]` in page pixels. */
@@ -43,7 +50,7 @@ data class TranslatedTextDto(
     val area: List<Double>? = null,
 )
 
-/** One page; the unified API names the sizes `w`/`h` and the texts `balloons`, the web reader `width`/`height`/`texts`. */
+/** One page of `GET …/read?lang=` (`width`/`height`/`texts`; `w`/`h`/`balloons` still read, as the first API named them). */
 @Serializable
 data class TranslatedPageDto(
     val index: Int? = null,
@@ -67,33 +74,39 @@ class TranslationsRepositoryImpl(
 ) : TranslationsRepository {
     override suspend fun languages(chapterId: String): AppResult<List<ChapterTranslation>> =
         http
-            .apiCall<ApiData<List<ChapterTranslationDto>>> { get(path(chapterId)) }
-            .map { list -> list.data.map { it.toDomain() } }
+            .apiCall<ApiData<ChapterTranslationsDto>> { get(path(chapterId)) }
+            .map { list -> list.data.translations.map { it.toDomain() } }
 
+    /** 200 when the language exists or runs (shared, free), 202 when queued; either way the chapter's languages. */
     override suspend fun request(
         chapterId: String,
         lang: String,
     ): AppResult<ChapterTranslation> =
         http
-            .apiCall<ApiData<ChapterTranslationDto>> {
+            .apiCall<ApiData<ChapterTranslationsDto>> {
                 post(path(chapterId)) {
                     contentType(ContentType.Application.Json)
                     setBody(TranslateBody(lang))
                 }
-            }.map { it.data.toDomain() }
+            }.map { list ->
+                list.data.translations
+                    .firstOrNull { it.language == lang }
+                    ?.toDomain() ?: ChapterTranslation(lang, TranslationStatus.Queued, null)
+            }
 
     override suspend fun pages(
         chapterId: String,
         lang: String,
     ): AppResult<List<TranslatedPage>> =
         http
-            .apiCall<ApiData<TranslatedChapterDto>> { get(path(chapterId) + "/" + lang.encodeURLPathPart()) }
-            .map { chapter -> chapter.data.pages.mapIndexed { i, page -> page.toDomain(i) } }
+            .apiCall<ApiData<TranslatedChapterDto>> {
+                get(path(chapterId) + "/read") { parameter("lang", lang) }
+            }.map { chapter -> chapter.data.pages.mapIndexed { i, page -> page.toDomain(i) } }
 
     private fun path(chapterId: String) = "api/v1/translations/chapters/${chapterId.encodeURLPathPart()}"
 }
 
-internal fun ChapterTranslationDto.toDomain() = ChapterTranslation(lang, TranslationStatus.from(status), progress)
+internal fun ChapterTranslationDto.toDomain() = ChapterTranslation(language, TranslationStatus.from(status), progress)
 
 internal fun TranslatedPageDto.toDomain(position: Int) =
     TranslatedPage(

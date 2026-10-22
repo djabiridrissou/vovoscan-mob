@@ -27,7 +27,17 @@ val episodesModule =
         single<EpisodesRemoteDataSource> { KtorEpisodesRemoteDataSource(get()) }
         single<EpisodesLocalDataSource> { SqlEpisodesLocalDataSource(get(), get<AppDispatchers>().io) }
         single<EpisodesRepository> { EpisodesRepositoryImpl(get(), get(), SystemClock) }
-        viewModel { (chapterId: String) -> EpisodeViewModel(chapterId, get(), get(), get(), get()) }
+        // The language ("" = the original) is optional: a card opens on the original, the next chapter's in the language watched.
+        viewModel { params ->
+            EpisodeViewModel(params.values[0] as String, get(), get(), get(), get(), language = params.values.getOrNull(1) as String? ?: "")
+        }
         // The next chapter (optional) comes from the screen that opens the player: the reader or the title page know it.
-        viewModel { params -> PlayerViewModel(params.values[0] as String, params.values.getOrNull(1) as String?, get()) }
+        viewModel { params ->
+            PlayerViewModel(
+                params.values[0] as String,
+                params.values.getOrNull(1) as String?,
+                get(),
+                lang = params.values.getOrNull(2) as String? ?: "",
+            )
+        }
     }

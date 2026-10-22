@@ -3,6 +3,7 @@ package com.vovoscan.feature.episodes.presentation
 import com.vovoscan.core.common.AppError
 import com.vovoscan.core.common.AppResult
 import com.vovoscan.feature.episodes.domain.EpisodeAccess
+import com.vovoscan.feature.episodes.domain.EpisodeAudio
 import com.vovoscan.feature.episodes.domain.EpisodeStatus
 import com.vovoscan.feature.episodes.domain.KeyStatus
 import com.vovoscan.feature.episodes.domain.PipelineStage
@@ -76,12 +77,87 @@ class EpisodeViewModelTest {
     @Test
     fun theQuoteShowsNextToPrepare() =
         runTest(dispatcher) {
-            val vm = EpisodeViewModel("c1", FakeEpisodes(), bothKeys, EpisodeAccess.Open, RunQuotes { RunCost(12, false, false) })
+            val vm = EpisodeViewModel("c1", FakeEpisodes(), bothKeys, EpisodeAccess.Open, RunQuotes { _, _ -> RunCost(12, false, false) })
             advanceUntilIdle()
             assertEquals("Costs 12 credits from your wallet.", vm.state.value.costLine)
-            val own = EpisodeViewModel("c2", FakeEpisodes(), bothKeys, EpisodeAccess.Open, RunQuotes { RunCost(12, true, false) })
+            val own = EpisodeViewModel("c2", FakeEpisodes(), bothKeys, EpisodeAccess.Open, RunQuotes { _, _ -> RunCost(12, true, false) })
             advanceUntilIdle()
             assertEquals("Your own keys pay: no credit spent.", own.state.value.costLine)
+        }
+
+    @Test
+    fun eachLanguageIsItsOwnEpisode() =
+        runTest(dispatcher) {
+            val repo = FakeEpisodes(episode(EpisodeStatus.Ready))
+            repo.inLanguage["ee"] =
+                MutableStateFlow(episode(EpisodeStatus.Ready).copy(language = "ee", audio = EpisodeAudio.Sub))
+            val quoted = mutableListOf<String>()
+            val quotes =
+                RunQuotes { _, lang ->
+                    quoted += lang
+                    RunCost(3, false, false)
+                }
+            val vm = EpisodeViewModel("c1", repo, bothKeys, EpisodeAccess.Open, quotes)
+            advanceUntilIdle()
+            var state = vm.state.value
+            assertEquals("", state.language)
+            assertEquals("Original", state.languageLabel)
+            assertNull(state.languageMode)
+            // The original first, then every language by English name.
+            assertEquals(listOf(null, "am", "ar"), state.languageOptions.take(3).map { it.code })
+            assertTrue(state.languageOptions.first().selected)
+
+            vm.onIntent(EpisodeIntent.LanguageQuery("ewe"))
+            assertEquals(
+                listOf("ee"),
+                vm.state.value.languageOptions
+                    .map { it.code },
+            )
+            vm.onIntent(EpisodeIntent.ChooseLanguage("ee"))
+            advanceUntilIdle()
+            state = vm.state.value
+            assertEquals("ee", state.language)
+            assertEquals("Eʋegbe", state.languageLabel)
+            assertEquals("Subtitled", state.languageMode)
+            assertEquals("", state.languageQuery)
+            assertTrue("Subtitled" in state.badges)
+            assertTrue("The original voices, with Ewe captions." in state.notes)
+            assertEquals(listOf("", "ee"), repo.languages)
+            assertEquals(listOf("", "ee"), quoted)
+
+            vm.onIntent(EpisodeIntent.ChooseLanguage("fr"))
+            advanceUntilIdle()
+            state = vm.state.value
+            assertEquals("Dubbed", state.languageMode)
+            // Nothing in French yet: offer to prepare it, in French.
+            assertEquals(EpisodePhase.None, state.phase)
+            vm.onIntent(EpisodeIntent.Prepare)
+            advanceUntilIdle()
+            assertEquals("fr", repo.languages.last())
+
+            vm.onIntent(EpisodeIntent.ChooseLanguage("xx"))
+            advanceUntilIdle()
+            assertEquals("", vm.state.value.language)
+        }
+
+    @Test
+    fun aRunInALanguageShowsTheTranslateStage() =
+        runTest(dispatcher) {
+            val running = episode(EpisodeStatus.Translating).copy(language = "fr")
+            val repo = FakeEpisodes(episode(EpisodeStatus.Voicing))
+            repo.inLanguage["fr"] = MutableStateFlow(running)
+            val vm = EpisodeViewModel("c1", repo, bothKeys, language = "fr")
+            advanceUntilIdle()
+            val stages = vm.state.value.stages
+            assertEquals(listOf("ANALYZE", "OCR", "TRANSLATE", "VOICE", "TIMELINE"), stages.map { it.label })
+            assertEquals(StageState.Active, stages.first { it.stage == PipelineStage.Translate }.state)
+            vm.onIntent(EpisodeIntent.ChooseLanguage(null))
+            advanceUntilIdle()
+            assertEquals(
+                listOf("ANALYZE", "OCR", "VOICE", "TIMELINE"),
+                vm.state.value.stages
+                    .map { it.label },
+            )
         }
 
     @Test

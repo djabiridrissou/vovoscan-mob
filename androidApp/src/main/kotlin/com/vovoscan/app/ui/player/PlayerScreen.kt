@@ -113,7 +113,10 @@ fun PlayerScreen(
     nextChapterId: String?,
     onClose: () -> Unit,
     onNextChapter: (String) -> Unit,
-    viewModel: PlayerViewModel = koinViewModel(key = "player:$chapterId") { parametersOf(chapterId, nextChapterId) },
+    /** The episode's language ("" = the original). */
+    language: String = "",
+    viewModel: PlayerViewModel =
+        koinViewModel(key = "player:$chapterId~$language") { parametersOf(chapterId, nextChapterId, language) },
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current

@@ -194,8 +194,8 @@ fun appModules(
             // What a run would cost, from the account's credits wallet (a server without credits: no quote).
             single<RunQuotes> {
                 val wallet = get<WalletRepository>()
-                RunQuotes { chapterId ->
-                    (wallet.quote(QuoteKind.Episode, chapterId) as? AppResult.Ok)?.value?.let {
+                RunQuotes { chapterId, lang ->
+                    (wallet.quote(QuoteKind.Episode, chapterId, lang.ifEmpty { null }) as? AppResult.Ok)?.value?.let {
                         RunCost(it.credits, it.coveredByOwnKeys, it.alreadyAvailable)
                     }
                 }

@@ -318,6 +318,12 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   screen answers `VideoHandled` or `VideoFailed`. 409 and 429 have calm messages (`EpisodeText.exportError`).
 - Which keys a run would use comes through the `KeyStatusProvider` port (hints only), wired in `shared` to the account
   slice: episodes do not know about `account`.
+- Languages (`?lang=` on every episode call, "" = the original; `EpisodeDto.language`, `audio` `dub | sub`): the card
+  has a searchable language picker (`EpisodeIntent.ChooseLanguage`, `LanguageQuery`; `Language.ALL` in `core/common`,
+  the server's `core/languages.py` with its `dub` / `mp4` / `beta` flags): "Dubbed" when ElevenLabs speaks it, else
+  "Subtitled" (the original voices, captions in it). Each language is its own episode, stored under `<chapterId>~<lang>`
+  (`storeKey`; the original keeps the bare chapter id), quoted with its `lang`, run with a TRANSLATE stage
+  (`translating`). The player opens in the card's `language`, and "Next chapter →" opens the next card in it.
 
 ## Player core
 
@@ -373,14 +379,15 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
 
 - Chapters of our catalog only (`sourceKey == "vovoscan"`): a language button in the reader's top bar opens a
   searchable picker (own name, English name or code), languages already made first ("Ready": shared, free).
-- `TranslationsRepository` (reader slice, online only): `GET api/v1/translations/chapters/{id}` (languages and status),
-  `POST …/{id} {lang}` (200 exists, 202 queued, 402 no credits), `GET …/{id}/{lang}` (pages and text boxes; `w`/`h` +
-  `balloons` or `width`/`height` + `texts`, boxes `[x, y, width, height]` in page pixels). A queued language is polled
-  every 4 s until ready.
+- `TranslationsRepository` (reader slice, online only): `GET api/v1/translations/chapters/{id}` (`{translations:
+  [{language, status, progress…}]}`), `POST …/{id} {language}` (200 exists or runs: shared, free; 202 queued; 402 / 429
+  / 503 from credits), `GET …/{id}/read?lang=` (pages `width`/`height` + `texts` `{id, bbox, text, fill, ink, round,
+  area}`, boxes `[x, y, width, height]` in page pixels). A queued language is polled every 4 s until ready. Corrections
+  (`PUT …/{lang}`) are the web studio's, never the app's.
 - `LetteringLayout` (reader domain) is the web reader's `lettering.ts`: paint patches over the original letters (the
   balloon's interior when known, ellipse for round balloons) and the rectangle the translation is fitted in, as
   fractions of the page. iOS draws them in `LetteringOverlay` over each `PageImage` (any mode, any zoom). `Language.ALL`
-  mirrors the server's `LANGUAGES` (48 entries).
+  (`core/common`) mirrors the server's `LANGUAGES` (48 entries).
 
 ## Screens (account and episodes)
 
