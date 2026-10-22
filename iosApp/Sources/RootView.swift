@@ -61,10 +61,12 @@ struct RootView: View {
                     Tab(L("nav.catalog"), systemImage: "square.grid.2x2", value: AppTab.catalog) {
                         NavigationStack(path: $catalogPath) { CatalogView() }
                             .environment(\.push, PushAction { catalogPath.append($0) })
+                            .environment(\.pop, PopAction { if !catalogPath.isEmpty { catalogPath.removeLast() } })
                     }
                     Tab(L("nav.library"), systemImage: "books.vertical", value: AppTab.library) {
                         NavigationStack(path: $libraryPath) { LibraryView(onSignOut: session.signOut) }
                             .environment(\.push, PushAction { libraryPath.append($0) })
+                            .environment(\.pop, PopAction { if !libraryPath.isEmpty { libraryPath.removeLast() } })
                     }
                     Tab(L("nav.sources"), systemImage: "square.stack.3d.up", value: AppTab.sources) {
                         NavigationStack { SourcesView() }

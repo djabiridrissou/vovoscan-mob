@@ -20,10 +20,25 @@ private struct PushKey: EnvironmentKey {
     static let defaultValue = PushAction { _ in }
 }
 
+/// Pops the top screen of the current tab's path (the reader's ←, Escape); nil outside a tab's stack.
+struct PopAction {
+    let pop: () -> Void
+    func callAsFunction() { pop() }
+}
+
+private struct PopKey: EnvironmentKey {
+    static let defaultValue: PopAction? = nil
+}
+
 extension EnvironmentValues {
     var push: PushAction {
         get { self[PushKey.self] }
         set { self[PushKey.self] = newValue }
+    }
+
+    var pop: PopAction? {
+        get { self[PopKey.self] }
+        set { self[PopKey.self] = newValue }
     }
 }
 

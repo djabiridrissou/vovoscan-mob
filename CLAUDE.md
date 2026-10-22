@@ -749,7 +749,9 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   root, links of `AppRoute` values and `\.push` for pushes from code. No destination is registered inside a pushed view
   (`navigationDestination(item:)` on the title page mixed with the path: later opens did nothing). A sheet is never
   presented while a push runs (the reader's "Translate" picker waits 600 ms): one shown in `onAppear` left an
-  invisible layer over the app, no tap and no Back.
+  invisible layer over the app, no tap and no Back. The reader's ← and Escape pop the tab's path (`\.pop`); ← is a
+  44 pt target and the bars sit over the dock and the bubble (`zIndex` 0.9): a tap just off the glyph reached the
+  page's tap zones and turned chapters.
 - Grids and lists are keyed by the title (`TitleCard.key`, the library's `rowKey`), never by the whole card (`TitleCard.key`), never by the whole card: a title page saving its format or
   status replaced the catalog tile that was its zoom transition's source while the page opened, and the page then took
   no tap (only Back worked).

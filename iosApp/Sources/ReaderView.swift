@@ -39,6 +39,8 @@ struct ReaderView: View {
     @StateObject private var next: NextChapterModel
     @Environment(\.openURL) private var openURL
     @Environment(\.dismiss) private var dismiss
+    /// The tab's path: ← and Escape pop it (the reader is always pushed on one; `dismiss` only as a fallback).
+    @Environment(\.pop) private var pop
     @State private var settingsOpen = false
     @State private var languagesOpen = false
     /// The push that opened this reader has finished (a sheet waits for it), and the "Translate" picker was shown once.
@@ -142,7 +144,8 @@ struct ReaderView: View {
             if !model.state.chromeVisible && !model.state.isBook { progressLine }
             if let card = model.state.titleCard { titleCard(card) }
             // A book keeps its bars: the web view receives the taps (text scrolling).
-            if model.state.chromeVisible || model.state.isBook { chrome.transition(.opacity) }
+            // Over the dock, the bubble and the toast (their full-height frames), under the coach.
+            if model.state.chromeVisible || model.state.isBook { chrome.transition(.opacity).zIndex(0.9) }
             // How to read, the first time a chapter of its kind opens: any tap closes it.
             if let coach = model.state.coach {
                 ReaderCoachOverlay(coach: coach) { model.send(ReaderIntentDismissCoach.shared) }
@@ -184,7 +187,7 @@ struct ReaderView: View {
             }
             if let close = model.state.command as? ReaderCommandClose {
                 model.send(ReaderIntentCommandHandled(seq: close.seq))
-                dismiss()
+                close()
             }
             // "Watch from here": the episode from the first beat of the page being read.
             if let episode = model.state.command as? ReaderCommandOpenEpisode {
@@ -296,10 +299,22 @@ struct ReaderView: View {
             .transition(.opacity)
     }
 
+    /// Back to the screen under the reader: the tab's path, else the presentation.
+    private func close() {
+        if let pop { pop() } else { dismiss() }
+    }
+
     private var chrome: some View {
         VStack(spacing: 0) {
             HStack(spacing: 16) {
-                Button { dismiss() } label: { Text("←").font(.brandDisplay(18)).foregroundStyle(Color.brandPaper) }
+                // A full 44 pt target: a tap just off the glyph used to reach the page's tap zones (and turn chapters).
+                Button { close() } label: {
+                    Text("←").font(.brandDisplay(18)).foregroundStyle(Color.brandPaper)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .padding(.leading, -12)
+                .accessibilityLabel(L("common.back"))
                 VStack(alignment: .leading, spacing: 2) {
                     Text(model.state.titleName).font(.brandBody(15)).foregroundStyle(Color.brandPaper).lineLimit(1)
                     Text(model.state.chapterLabel).font(.brandBody(13)).foregroundStyle(Color.brandMuted)

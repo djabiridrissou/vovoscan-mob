@@ -142,6 +142,32 @@ class ContinueReadingTest {
         }
 
     @Test
+    fun eachRowsPillsCarryThatRowsOwnChapterInEitherOrder() =
+        runTest(dispatcher) {
+            val repository = repository()
+            val vm = TitleDetailViewModel("inkwell", "dle", repository, resume)
+            advanceUntilIdle()
+            for (newestFirst in listOf(false, true)) {
+                if (vm.state.value.newestFirst != newestFirst) {
+                    vm.onIntent(TitleDetailIntent.ToggleOrder)
+                    advanceUntilIdle()
+                }
+                val rows = vm.state.value.chapters
+                assertEquals(if (newestFirst) listOf("k3", "k2", "k1") else listOf("k1", "k2", "k3"), rows.map { it.id })
+                rows.forEach { row ->
+                    vm.onIntent(TitleDetailIntent.Translate(row.id))
+                    val open = vm.state.value.open!!
+                    assertEquals(row.id to ChapterTarget.Translate, open.chapterId to open.target)
+                    vm.onIntent(TitleDetailIntent.OpenHandled(open.seq))
+                    vm.onIntent(TitleDetailIntent.Episode(row.id))
+                    val episode = vm.state.value.open!!
+                    assertEquals(row.id to ChapterTarget.Episode, episode.chapterId to episode.target)
+                    vm.onIntent(TitleDetailIntent.OpenHandled(episode.seq))
+                }
+            }
+        }
+
+    @Test
     fun aBookOffersNeitherPill() =
         runTest(dispatcher) {
             val book = detail.copy(summary = summary.copy(kind = ContentKind.Book))
