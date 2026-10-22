@@ -70,28 +70,32 @@ class CatalogViewModelTest {
             val vm = CatalogViewModel(twoSources())
             vm.onIntent(CatalogIntent.SourcesChanged(both))
             advanceUntilIdle()
-            // Page 1 of each, one title at a time, in the reader's order of sources.
-            assertEquals(listOf("v1", "g1", "v2", "g2", "v3"), ids(vm))
+            // Page 1 of each, mixed (each source in its own order).
+            val firstRound = ids(vm)
+            assertEquals(setOf("v1", "g1", "v2", "g2", "v3"), firstRound.toSet())
+            assertEquals(listOf("v1", "v2", "v3"), firstRound.filter { it.startsWith("v") })
+            assertEquals(listOf("g1", "g2"), firstRound.filter { it.startsWith("g") })
             assertEquals("All sources", vm.state.value.sourceFilterLabel)
             assertTrue(vm.state.value.allSources && vm.state.value.showSourceFilter)
-            assertEquals(
-                "Project Gutenberg",
-                vm.state.value.cards[1]
-                    .sourceName,
-            )
-            assertEquals(
-                "BOOK",
-                vm.state.value.cards[1]
-                    .formatLabel,
-            )
+            val gutenbergCard =
+                vm.state.value.cards
+                    .first { it.id == "g1" }
+            assertEquals("Project Gutenberg", gutenbergCard.sourceName)
+            assertEquals("BOOK", gutenbergCard.formatLabel)
             assertEquals(Freshness.Fresh, vm.state.value.freshness)
             assertTrue(vm.state.value.canLoadMore)
 
             // Loading more: page 2 of every source, appended as a new round; nothing above moves.
             vm.onIntent(CatalogIntent.LoadMore)
             advanceUntilIdle()
-            assertEquals(listOf("v1", "g1", "v2", "g2", "v3", "v4", "g3", "g4"), ids(vm))
+            assertEquals(firstRound, ids(vm).take(5))
+            assertEquals(setOf("v4", "g3", "g4"), ids(vm).drop(5).toSet())
             assertFalse(vm.state.value.canLoadMore)
+
+            // Pull to refresh starts again from page 1, in a new mix of the same titles.
+            vm.onIntent(CatalogIntent.Refresh)
+            advanceUntilIdle()
+            assertEquals(firstRound.toSet(), ids(vm).toSet())
         }
 
     @Test
@@ -159,7 +163,7 @@ class CatalogViewModelTest {
             assertEquals("Book", vm.state.value.category)
             // Each source asked with its own id for that name.
             assertTrue(("vovoscan" to "book") in repository.refreshed && ("gutenberg" to "8") in repository.refreshed)
-            assertEquals(listOf("v4", "g1"), ids(vm))
+            assertEquals(setOf("v4", "g1"), ids(vm).toSet())
             assertNull(vm.state.value.categoryNote)
 
             vm.onIntent(CatalogIntent.SelectCategory("Webtoon"))
@@ -207,11 +211,18 @@ class CatalogViewModelTest {
             vm.onIntent(CatalogIntent.Query("1"))
             advanceUntilIdle()
             assertEquals(
-                listOf("v1", "g1"),
+                setOf("v1", "g1"),
                 vm.state.value.results
-                    ?.map { it.id },
+                    ?.map { it.id }
+                    ?.toSet(),
             )
             assertEquals(2, repository.searched.size)
+
+            // A space around the query (iOS autocorrect adds one) is not sent.
+            repository.searched.clear()
+            vm.onIntent(CatalogIntent.Query("g1 "))
+            advanceUntilIdle()
+            assertEquals(listOf("g1", "g1"), repository.searched.map { it.second })
             vm.onIntent(CatalogIntent.Query(""))
             assertNull(vm.state.value.results)
         }

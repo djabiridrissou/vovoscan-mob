@@ -118,10 +118,13 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
 - One grid for the selected sources ("All": every visible source, in the user's order; a source shown later joins
   in). Each source keeps its own listing per category in `catalog_entry (source_key, listing, title_id, page, rank)`
   (`listing` = the category id, `''` for everything) with `listing_cursor` (next page); migration `2.sqm` turned the
-  old per-source rank into the `''` listings. `CatalogMerge.merge`: page 1 of every source interleaved one title at a
-  time (round-robin, the user's order), then page 2 of every source…; "Load more" asks the next page of every source
-  that has one, so a new round is appended and nothing on screen moves. Search goes to every source read (page 1
-  each, round-robin), offline per source as before. A manifest whose catalog request never sends `{{search}}`
+  old per-source rank into the `''` listings. `CatalogMerge.merge`: page 1 of every source mixed, then page 2 of
+  every source…; within a round each next title comes from a source drawn at random, weighted by the titles it has
+  left in the round, each source keeps its own order, and no source takes more than 2 places in a row while another
+  has titles left (`MAX_RUN`). The draw follows a seed kept by the view model: "Load more" (the next page of every
+  source that has one) appends a new round and nothing on screen moves; pull to refresh (`CatalogIntent.Refresh`)
+  draws a new seed, so a new mix. Search goes to every source read (page 1 each, mixed the same way), offline per
+  source as before. A manifest whose catalog request never sends `{{search}}`
   (`RulesSource.searchable`) lists the same titles whatever is typed: its results keep only names holding every word.
 - Filters (`CatalogFilter`, remembered in `catalog_setting`): sources (`ShowAllSources`, `ToggleSource`: from "All" a
   tap keeps that source alone; none left or every one chosen is "All"; `CatalogSelection`), and a category by name.
@@ -275,9 +278,17 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   Sign-out and a removed source erase the series modes; the device-wide preferences stay.
 - Android: `HorizontalPager` (reversed for right to left) / `VerticalPager` / `LazyColumn`, `detectTapGestures`
   around them, volume keys through `MainActivity.onKeyDown`/`onKeyUp` while the reader is on screen. Pages taller than
-  4096 px are decoded as software bitmaps (a hardware bitmap of an 800 × 14 000 webtoon page never drew). iOS: paging
-  `ScrollView` (`scrollTargetBehavior(.paging)`, right-to-left layout direction) / `ScrollView` + `ScrollPosition`,
-  one `SpatialTapGesture` on the container.
+  4096 px, and pages of unknown height, are decoded as software bitmaps (a hardware bitmap of an 800 × 14 000 webtoon
+  page never drew). iOS: paging `ScrollView` (`scrollTargetBehavior(.paging)`, right-to-left layout direction) /
+  `ScrollView` + `ScrollPosition`, one `SpatialTapGesture` on the container.
+- Page size (`ReaderPage.hasSize`): our pages come with their size, so the space is reserved and nothing jumps. A source
+  read on the device usually sends none (0 × 0): the page shows a placeholder (0.7, portrait) until the image has loaded,
+  then takes **the image's own shape** (Android: Coil's `onSuccess`; iOS: `PageLoader`, which fetches through the shared
+  session so the cache and `SourceRefererProtocol` still apply). Never the placeholder's shape: a webtoon strip squeezed
+  into it was a thin band on iOS and cropped to its top on Android. iOS keeps the page a frame of known ratio at full
+  width: in the strip's `LazyVStack`, a view sized from an image or a colour with no height proposed collapses (pages
+  then took no height at all). The loader starts again when the page's URL changes (the saved copy of a chapter shows
+  first, the fresh one may bring new signed links). A page that fails shows "This page didn't load." and Retry.
 
 ## Account (keys, reading model, costs)
 

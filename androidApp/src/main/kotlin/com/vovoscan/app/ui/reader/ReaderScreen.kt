@@ -44,6 +44,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -474,22 +475,53 @@ private fun PageImage(
     reserve: Boolean = true,
 ) {
     val context = LocalContext.current
+    var attempt by remember(page.url) { mutableIntStateOf(0) }
+    var failed by remember(page.url) { mutableStateOf(false) }
+    // The image's own width / height once loaded, for a page whose size the source didn't give.
+    var loadedRatio by remember(page.url) { mutableStateOf<Float?>(null) }
     // Webtoon pages can be very tall (800 × 14 000 px): beyond what a GPU texture holds, a hardware bitmap fails
-    // to draw, so tall pages are decoded as ordinary bitmaps.
+    // to draw, so tall pages, and pages of unknown height, are decoded as ordinary bitmaps.
     val request =
-        remember(page.url) {
+        remember(page.url, attempt) {
             ImageRequest
                 .Builder(context)
                 .data(page.url)
-                .allowHardware(page.height <= MAX_HARDWARE_SIDE)
+                .allowHardware(page.hasSize && page.height <= MAX_HARDWARE_SIDE)
                 .build()
         }
-    // Space is reserved from the known dimensions: no jump when the image arrives.
+    // Known size: space reserved from it, no jump when the image arrives. Unknown: a placeholder, then the image's
+    // own shape (never the placeholder's: a strip squeezed into it would be cropped).
+    val ratio = if (page.hasSize) page.aspectRatio else loadedRatio ?: page.aspectRatio
+    val sized = if (reserve) modifier.aspectRatio(ratio) else modifier
+    if (failed) {
+        Column(
+            sized.background(Brand.Ink2).padding(24.dp),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text("This page didn't load.", style = MaterialTheme.typography.bodyMedium.copy(color = Brand.Muted))
+            Spacer(Modifier.size(12.dp))
+            GhostButton(
+                "Retry",
+                onClick = {
+                    failed = false
+                    attempt++
+                },
+                Modifier.width(160.dp),
+            )
+        }
+        return
+    }
     AsyncImage(
         model = request,
         contentDescription = "Page ${page.index + 1}",
         contentScale = scale,
-        modifier = (if (reserve) modifier.aspectRatio(page.aspectRatio) else modifier).background(Brand.Ink2),
+        onSuccess = { success ->
+            val image = success.result.image
+            if (image.width > 0 && image.height > 0) loadedRatio = image.width.toFloat() / image.height
+        },
+        onError = { failed = true },
+        modifier = sized.background(Brand.Ink2),
     )
 }
 
