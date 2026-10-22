@@ -8,6 +8,7 @@ import com.vovoscan.feature.reader.domain.BookSection
 import com.vovoscan.feature.reader.domain.ChapterHeadings
 import com.vovoscan.feature.reader.domain.ReaderChapter
 import com.vovoscan.feature.reader.domain.ReaderPage
+import com.vovoscan.feature.reader.domain.ReaderPreferences
 import com.vovoscan.feature.reader.domain.ReaderRepository
 import com.vovoscan.feature.reader.domain.ReadingMode
 import kotlinx.coroutines.Dispatchers
@@ -116,7 +117,7 @@ class ReaderViewModelTest {
                     "c1",
                     startPage = 3,
                     FakeReader(comic, AppResult.Ok(Unit)),
-                    FakeSettings(),
+                    FakeSettings(ReaderPreferences(mangaMode = ReadingMode.PagedRightToLeft)),
                     noHeadings,
                 ) { _, _, _, _ -> }
             advanceUntilIdle()

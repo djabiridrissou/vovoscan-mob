@@ -29,6 +29,8 @@ data class ReaderPreferences(
     val volumeKeysInverted: Boolean = false,
     /** The tap zones overlay was already shown once (on the reader's first opening on this device). */
     val tapZonesSeen: Boolean = false,
+    /** Continuous strips: the panel being read at full light, the rest dimmed (reader/SPEC.md §1). */
+    val focus: Boolean = false,
 ) {
     fun defaultFor(format: ComicFormat): ReadingMode? =
         when (format) {
@@ -69,6 +71,38 @@ interface ReaderSettingsRepository {
         titleId: String,
         mode: ReadingMode?,
     )
+
+    /** Where a chapter was left on this device (null: never opened, or erased). */
+    suspend fun position(
+        sourceKey: String,
+        chapterId: String,
+    ): ReadingPosition? = null
+
+    suspend fun savePosition(
+        sourceKey: String,
+        chapterId: String,
+        position: ReadingPosition,
+    ) {}
+}
+
+/**
+ * A reading position (reader/SPEC.md §7): the page at the top of the screen and the share of it already above the
+ * top (0..1), independent of the screen's width and the zoom.
+ */
+data class ReadingPosition(
+    val page: Int,
+    val offset: Float,
+) {
+    fun encode(): String = "$page:$offset"
+
+    companion object {
+        fun decode(value: String?): ReadingPosition? {
+            val parts = value?.split(":") ?: return null
+            val page = parts.getOrNull(0)?.toIntOrNull() ?: return null
+            val offset = parts.getOrNull(1)?.toFloatOrNull()?.takeIf { it.isFinite() } ?: 0f
+            return if (page < 0) null else ReadingPosition(page, offset.coerceIn(0f, 1f))
+        }
+    }
 }
 
 /** A chapter's number and name, for the chapter transition ("Next: Chapter 4 · The last gate"). */

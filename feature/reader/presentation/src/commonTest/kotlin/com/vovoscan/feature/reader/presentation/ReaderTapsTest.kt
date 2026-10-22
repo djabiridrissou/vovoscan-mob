@@ -100,8 +100,10 @@ class ReaderTapsTest {
             }
         }
 
-    // Overlay already seen: the tests that are not about it start without it.
-    private val seen = ReaderPreferences(tapZonesSeen = true)
+    // Overlay already seen: the tests that are not about it start without it. Manga read as right-to-left pages (the
+    // default is now the continuous strip, `ImmersiveReaderTest`).
+    private val paged = ReaderPreferences(mangaMode = ReadingMode.PagedRightToLeft)
+    private val seen = paged.copy(tapZonesSeen = true)
 
     private fun TestScope.reader(
         chapter: ReaderChapter = manga,
@@ -302,7 +304,7 @@ class ReaderTapsTest {
     @Test
     fun overlayOnTheFirstOpeningThenAfterAChange() =
         runTest(dispatcher) {
-            val settings = FakeSettings()
+            val settings = FakeSettings(paged)
             val vm = ReaderViewModel("vovoscan", "t1", "c3", 0, StaticReader(manga), settings, headings) { _, _, _, _ -> }
             runCurrent()
             val overlay = assertNotNull(vm.state.value.tapOverlay)
@@ -362,7 +364,7 @@ class ReaderTapsTest {
     @Test
     fun overlayTurnedOff() =
         runTest(dispatcher) {
-            val vm = reader(settings = FakeSettings(ReaderPreferences(showTapZones = false)))
+            val vm = reader(settings = FakeSettings(paged.copy(showTapZones = false)))
             assertNull(vm.state.value.tapOverlay)
             vm.onIntent(ReaderIntent.SetTapLayout(TapLayout.Edge))
             runCurrent()

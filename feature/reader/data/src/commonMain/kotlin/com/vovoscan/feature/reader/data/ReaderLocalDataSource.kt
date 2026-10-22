@@ -181,6 +181,7 @@ class SqlReaderLocalDataSource(
                 queries.clearChapters()
                 // The modes chosen per series go with the account; the device-wide preferences stay.
                 queries.clearSeriesModes()
+                queries.clearPositions()
             }
         }
 
@@ -191,6 +192,7 @@ class SqlReaderLocalDataSource(
                 queries.clearSectionsOf(sourceKey)
                 queries.clearChaptersOf(sourceKey)
                 queries.clearSeriesModesOf(sourceKey)
+                queries.clearPositionsOf("pos/$sourceKey/%")
             }
         }
 }

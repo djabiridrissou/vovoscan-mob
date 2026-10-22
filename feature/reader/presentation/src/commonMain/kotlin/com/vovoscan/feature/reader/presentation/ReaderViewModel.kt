@@ -10,7 +10,11 @@ import com.vovoscan.core.common.userMessage
 import com.vovoscan.feature.reader.domain.BookSection
 import com.vovoscan.feature.reader.domain.ChapterHeading
 import com.vovoscan.feature.reader.domain.ChapterHeadings
+import com.vovoscan.feature.reader.domain.ChapterPanels
 import com.vovoscan.feature.reader.domain.ComicFormat
+import com.vovoscan.feature.reader.domain.Glide
+import com.vovoscan.feature.reader.domain.Gutters
+import com.vovoscan.feature.reader.domain.PanelBox
 import com.vovoscan.feature.reader.domain.ReaderChapter
 import com.vovoscan.feature.reader.domain.ReaderPage
 import com.vovoscan.feature.reader.domain.ReaderPreferences
@@ -18,8 +22,12 @@ import com.vovoscan.feature.reader.domain.ReaderRepository
 import com.vovoscan.feature.reader.domain.ReaderSettingsRepository
 import com.vovoscan.feature.reader.domain.ReadingMode
 import com.vovoscan.feature.reader.domain.ReadingModes
+import com.vovoscan.feature.reader.domain.ReadingPosition
 import com.vovoscan.feature.reader.domain.ReadingProgressSink
+import com.vovoscan.feature.reader.domain.ReadingStops
 import com.vovoscan.feature.reader.domain.ScrollAmount
+import com.vovoscan.feature.reader.domain.Stop
+import com.vovoscan.feature.reader.domain.StripLayout
 import com.vovoscan.feature.reader.domain.TapAction
 import com.vovoscan.feature.reader.domain.TapInvert
 import com.vovoscan.feature.reader.domain.TapLayout
@@ -37,6 +45,7 @@ import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlin.math.abs
 
 /** One thing a comic reader shows in order: the previous-chapter card, the pages, the next-chapter card. */
 sealed interface ReaderItem {
@@ -107,6 +116,24 @@ sealed interface ReaderCommand {
         val fraction: Float,
     ) : ReaderCommand
 
+    /**
+     * Continuous strips: scroll to [offset] (from the first page's top), with the shared spring (`Glide`) from the
+     * current position and velocity, or at once when not [animated] (Reduce Motion, a restored position). A new one
+     * while moving retargets.
+     */
+    data class GlideTo(
+        override val seq: Int,
+        val offset: Float,
+        val animated: Boolean,
+    ) : ReaderCommand
+
+    /** "Watch the episode from here": the episode of this chapter, from the first beat of [page]. */
+    data class OpenEpisode(
+        override val seq: Int,
+        val chapterId: String,
+        val page: Int,
+    ) : ReaderCommand
+
     /** Replace this reader by another chapter, from `startPage` (`ReaderViewModel.START_AT_END`: its last page). */
     data class OpenChapter(
         override val seq: Int,
@@ -148,7 +175,43 @@ data class ReaderUiState(
     /** Never opened and no network: nothing to show. */
     val unavailable: Boolean = false,
     val error: String? = null,
+    /** Share of the strip read (0..1): the thin line at the top while the bars are hidden. */
+    val progress: Float = 0f,
+    /** Focus: the panel being read, at full light (the rest at `Glide.OTHER_LIGHT`). */
+    val focus: PanelBox? = null,
+    /** Pages to load and decode ahead (the next three). */
+    val prefetch: List<String> = emptyList(),
+    /** "Series ✦ Chapter 3 · name", shown over the first page for a moment when the chapter opens. */
+    val titleCard: String? = null,
+    /** Reduce Motion / Remove animations: jumps, no spring, no spotlight glide, no fade. */
+    val reducedMotion: Boolean = false,
+    /** Our catalogue's comics have episodes: "Watch the episode from here". */
+    val voiceAvailable: Boolean = false,
 ) {
+    /** The focus switch shows on continuous strips only. */
+    val canFocus: Boolean get() = isStrip
+
+    val focusOn: Boolean get() = preferences.focus && isStrip
+
+    val focusLabel: String get() = t("reader.focus")
+
+    val focusHelp: String get() = t("reader.focusHelp")
+
+    val voiceLabel: String get() = t("reader.withVoice")
+
+    val otherLight: Float get() = Glide.OTHER_LIGHT
+
+    val focusMs: Int get() = if (reducedMotion) 0 else Glide.FOCUS_MS
+
+    /** Read out once: what the tap zones do. */
+    val tapsHint: String get() = t("reader.tapsHint")
+
+    /** "Page 5 of 19", for the accessibility live region (changes with the page only). */
+    val pageAnnouncement: String
+        get() = if (isBook || pages.isEmpty()) "" else t("reader.pageOf", "n" to currentIndex + 1, "total" to pages.size)
+
+    val progressLabel: String get() = t("reader.progress", "n" to (progress * 100).toInt())
+
     val isBook: Boolean get() = mode == ReadingMode.Book
 
     val isPaged: Boolean get() = mode.isPaged
@@ -224,6 +287,40 @@ sealed interface ReaderIntent {
     data class CommandHandled(
         val seq: Int,
     ) : ReaderIntent
+
+    /** Continuous strips: the strip's width and the screen's height (dp / pt), whenever the layout changes. */
+    data class StripMeasured(
+        val width: Float,
+        val viewport: Float,
+    ) : ReaderIntent
+
+    /**
+     * Continuous strips: the scroll offset from the first page's top, on every change. [byUser]: a drag or a fling
+     * (not a `GlideTo`); [settled]: the scroll stopped.
+     */
+    data class StripScrolled(
+        val offset: Float,
+        val byUser: Boolean,
+        val settled: Boolean,
+    ) : ReaderIntent
+
+    /** A page's luminance downscaled to `Gutters.COLUMNS` columns (row after row, 0..255), when it has no analysis. */
+    data class PageLuminance(
+        val page: Int,
+        val values: IntArray,
+    ) : ReaderIntent {
+        override fun equals(other: Any?): Boolean = other is PageLuminance && other.page == page && other.values.contentEquals(values)
+
+        override fun hashCode(): Int = 31 * page + values.contentHashCode()
+    }
+
+    data class ReducedMotion(
+        val on: Boolean,
+    ) : ReaderIntent
+
+    data object ToggleFocus : ReaderIntent
+
+    data object ReadWithVoice : ReaderIntent
 
     data object Next : ReaderIntent
 
@@ -301,6 +398,8 @@ class ReaderViewModel(
     private val repository: ReaderRepository,
     private val settings: ReaderSettingsRepository,
     private val headings: ChapterHeadings,
+    // Before `progress`, so callers can still pass the progress sink as a trailing lambda.
+    private val panels: ChapterPanels = ChapterPanels.None,
     private val progress: ReadingProgressSink,
 ) : ViewModel() {
     private val mutableState = MutableStateFlow(ReaderUiState(currentIndex = startPage.coerceAtLeast(0)))
@@ -319,6 +418,24 @@ class ReaderViewModel(
     private var stripAtTop = false
     private var stripAtBottom = false
     private var seq = 0
+
+    // Continuous strips (reader/SPEC.md): the layout, its stops and where the reader is in them.
+    private var stripWidth = 0f
+    private var viewport = 0f
+    private var layout: StripLayout? = null
+    private var stops: List<Stop> = emptyList()
+    private var stopIndex = 0
+    private var gliding = false
+    private var offset = 0f
+    private var lowest = 0f
+    private var userScrolled = false
+    private var analysis: Map<Int, List<PanelBox>> = emptyMap()
+    private val bands = mutableMapOf<Int, List<PanelBox>>()
+    private var restore: ReadingPosition? = null
+    private var restored = false
+    private var hideJob: Job? = null
+    private var positionJob: Job? = null
+    private var titleJob: Job? = null
 
     init {
         combine(
@@ -343,6 +460,14 @@ class ReaderViewModel(
                 }
             }.launchIn(viewModelScope)
         refresh()
+        viewModelScope.launch {
+            analysis = panels.panels(sourceKey, chapterId)
+            rebuildStops()
+        }
+        viewModelScope.launch {
+            restore = settings.position(sourceKey, chapterId)?.takeIf { it.page == startPage }
+            restoreIfReady()
+        }
     }
 
     fun onIntent(intent: ReaderIntent) {
@@ -355,6 +480,17 @@ class ReaderViewModel(
             }
             is ReaderIntent.Tap -> tap(intent.x, intent.y)
             is ReaderIntent.CommandHandled -> mutableState.update { if (it.command?.seq == intent.seq) it.copy(command = null) else it }
+            is ReaderIntent.StripMeasured -> measured(intent.width, intent.viewport)
+            is ReaderIntent.StripScrolled -> scrolled(intent.offset, intent.byUser, intent.settled)
+            is ReaderIntent.PageLuminance -> luminance(intent.page, intent.values)
+            is ReaderIntent.ReducedMotion -> mutableState.update { it.copy(reducedMotion = intent.on) }
+            ReaderIntent.ToggleFocus -> {
+                val on = !state.value.preferences.focus
+                updatePreferences { it.copy(focus = on) }
+                mutableState.update { it.copy(focus = if (on && it.isStrip) stops.getOrNull(stopIndex)?.panel else null) }
+            }
+            ReaderIntent.ReadWithVoice ->
+                if (state.value.voiceAvailable) command { ReaderCommand.OpenEpisode(it, chapterId, state.value.currentIndex) }
             ReaderIntent.Next -> if (state.value.isBook) moveTo(state.value.currentIndex + 1) else forward()
             ReaderIntent.Previous -> if (state.value.isBook) moveTo(state.value.currentIndex - 1) else backward()
             ReaderIntent.ToggleChrome -> mutableState.update { it.copy(chromeVisible = !it.chromeVisible) }
@@ -435,6 +571,7 @@ class ReaderViewModel(
         when {
             current.isPaged ->
                 if (current.currentItem < current.items.lastIndex) goTo(current.currentItem + 1) else openNext()
+            stops.isNotEmpty() && layout != null -> nextStop(current)
             stripAtBottom -> openNext()
             else -> command { ReaderCommand.ScrollBy(it, current.preferences.scrollAmount.fraction) }
         }
@@ -446,9 +583,140 @@ class ReaderViewModel(
         mutableState.update { it.copy(chromeVisible = false) }
         when {
             current.isPaged -> if (current.currentItem > 0) goTo(current.currentItem - 1) else openPrevious()
+            stops.isNotEmpty() && layout != null -> previousStop()
             stripAtTop -> openPrevious()
             else -> command { ReaderCommand.ScrollBy(it, -current.preferences.scrollAmount.fraction) }
         }
+    }
+
+    /** Next on a strip: the next stop (taps add up while moving), then the end card, then the next chapter. */
+    private fun nextStop(current: ReaderUiState) {
+        when {
+            stopIndex < stops.lastIndex -> glideTo(stopIndex + 1)
+            stripAtBottom -> openNext()
+            else -> {
+                // The end card: "Finished: Chapter n" and the next chapter; one more Next opens it.
+                stripAtBottom = true
+                mutableState.update { it.copy(chromeVisible = true) }
+                command { ReaderCommand.GoToItem(it, current.items.lastIndex, animated = !current.reducedMotion) }
+            }
+        }
+    }
+
+    private fun previousStop() {
+        when {
+            offset > (stops.getOrNull(stopIndex)?.offset ?: 0f) + ReadingStops.SAME_PX && !gliding -> glideTo(stopIndex)
+            stopIndex > 0 -> glideTo(stopIndex - 1)
+            stripAtTop -> openPrevious()
+            else -> command { ReaderCommand.GoToItem(it, 0, animated = !state.value.reducedMotion) }
+        }
+    }
+
+    private fun glideTo(index: Int) {
+        val stop = stops[index]
+        val moves = abs(stop.offset - (if (gliding) stops[stopIndex].offset else offset)) > ReadingStops.SAME_PX
+        stopIndex = index
+        mutableState.update { it.copy(focus = if (it.focusOn) stop.panel else null) }
+        if (!moves) return
+        gliding = true
+        userScrolled = false
+        command { ReaderCommand.GlideTo(it, stop.offset, animated = !state.value.reducedMotion) }
+    }
+
+    private fun measured(
+        width: Float,
+        height: Float,
+    ) {
+        if (width <= 0f || height <= 0f || (width == stripWidth && height == viewport)) return
+        stripWidth = width
+        viewport = height
+        rebuildStops()
+    }
+
+    /** Stops are computed once per layout (width, screen height, pages, panels), never while scrolling. */
+    private fun rebuildStops() {
+        val current = state.value
+        if (!current.isStrip || current.pages.isEmpty() || stripWidth <= 0f) {
+            layout = null
+            stops = emptyList()
+            return
+        }
+        val strip = StripLayout(current.pages, stripWidth, current.pageGap.toFloat())
+        layout = strip
+        stops = ReadingStops.of(strip, viewport, bands + analysis)
+        stopIndex = ReadingStops.current(stops, offset)
+        mutableState.update { it.copy(focus = if (it.focusOn) stops.getOrNull(stopIndex)?.panel else null) }
+        restoreIfReady()
+    }
+
+    private fun luminance(
+        page: Int,
+        values: IntArray,
+    ) {
+        if (page in analysis || page in bands || values.size < Gutters.COLUMNS) return
+        val rows = (0 until values.size / Gutters.COLUMNS).map { r -> values.copyOfRange(r * Gutters.COLUMNS, (r + 1) * Gutters.COLUMNS) }
+        bands[page] = Gutters.bands(page, rows)
+        rebuildStops()
+    }
+
+    private fun restoreIfReady() {
+        val position = restore ?: return
+        val strip = layout ?: return
+        if (restored || position.page !in strip.tops.indices) return
+        restored = true
+        val target = strip.tops[position.page] + position.offset * strip.heights[position.page]
+        command { ReaderCommand.GlideTo(it, target, animated = false) }
+    }
+
+    private fun scrolled(
+        at: Float,
+        byUser: Boolean,
+        settled: Boolean,
+    ) {
+        val strip = layout
+        val before = offset
+        offset = at
+        if (byUser) {
+            userScrolled = true
+            gliding = false
+        }
+        if (settled) {
+            gliding = false
+            if (userScrolled) stopIndex = ReadingStops.current(stops, at)
+            userScrolled = false
+            mutableState.update { it.copy(focus = if (it.focusOn) stops.getOrNull(stopIndex)?.panel else null) }
+        }
+        if (strip == null || viewport <= 0f) return
+        // Bars: a scroll down hides them after a moment; a scroll up of a quarter screen brings them back.
+        if (at > before) {
+            lowest = at
+            if (state.value.chromeVisible && byUser) scheduleHide()
+        } else if (lowest - at > CHROME_BACK * viewport) {
+            lowest = at
+            hideJob?.cancel()
+            if (!state.value.chromeVisible) mutableState.update { it.copy(chromeVisible = true) }
+        }
+        stripAtBottom = stripAtBottom && at >= strip.total - viewport - ReadingStops.SAME_PX
+        val read = ((at + viewport) / strip.total).coerceIn(0f, 1f)
+        if (abs(read - state.value.progress) >= PROGRESS_STEP || read == 1f) mutableState.update { it.copy(progress = read) }
+        val page = strip.pageAt(at.coerceAtLeast(0f))
+        moveTo(page)
+        positionJob?.cancel()
+        positionJob =
+            viewModelScope.launch {
+                delay(POSITION_MS)
+                val share = ((at - strip.tops[page]) / strip.heights[page]).coerceIn(0f, 1f)
+                settings.savePosition(sourceKey, chapterId, ReadingPosition(page, share))
+            }
+    }
+
+    private fun scheduleHide() {
+        if (hideJob?.isActive == true) return
+        hideJob =
+            viewModelScope.launch {
+                delay(CHROME_HIDE_MS)
+                mutableState.update { it.copy(chromeVisible = false) }
+            }
     }
 
     private fun goTo(item: Int) {
@@ -529,7 +797,34 @@ class ReaderViewModel(
         }
         loadHeadings(chapter)
         updateZones(mode, preferences)
+        mutableState.update {
+            it.copy(voiceAvailable = sourceKey == INTERNAL_SOURCE && chapter.pages.isNotEmpty(), prefetch = prefetch(it))
+        }
+        rebuildStops()
+        showTitleCard(chapter)
     }
+
+    /** The title card fades in over the first page when the chapter opens, and out after a moment. */
+    private fun showTitleCard(chapter: ReaderChapter) {
+        if (titleJob != null) return
+        val card = t("reader.titleCard", "title" to chapter.titleName, "chapter" to state.value.chapterLabel)
+        mutableState.update { it.copy(titleCard = card) }
+        titleJob =
+            viewModelScope.launch {
+                delay(TITLE_MS)
+                mutableState.update { it.copy(titleCard = null) }
+            }
+    }
+
+    private fun prefetch(state: ReaderUiState): List<String> =
+        if (state.isBook) {
+            emptyList()
+        } else {
+            state.pages
+                .drop(state.currentIndex + 1)
+                .take(PREFETCH)
+                .map { it.url }
+        }
 
     private fun items(chapter: ReaderChapter): List<ReaderItem> {
         if (chapter.pages.isEmpty()) return emptyList()
@@ -676,11 +971,12 @@ class ReaderViewModel(
         val count = if (current.isBook) current.sections.size else current.pages.size
         if (index == current.currentIndex || index !in 0 until count) return
         mutableState.update {
-            it.copy(
-                currentIndex = index,
-                currentItem = if (it.items.isEmpty()) it.currentItem else index + 1,
-                sectionDocument = if (it.isBook) null else it.sectionDocument,
-            )
+            it
+                .copy(
+                    currentIndex = index,
+                    currentItem = if (it.items.isEmpty()) it.currentItem else index + 1,
+                    sectionDocument = if (it.isBook) null else it.sectionDocument,
+                ).let { moved -> moved.copy(prefetch = prefetch(moved)) }
         }
         if (current.isBook) loadSection(index)
         saveJob?.cancel()
@@ -706,5 +1002,14 @@ class ReaderViewModel(
 
         private const val SAVE_DELAY_MS = 800L
         const val OVERLAY_MS = 1500L
+
+        // reader/SPEC.md §6-7.
+        const val CHROME_HIDE_MS = 2500L
+        private const val CHROME_BACK = 0.25f
+        const val TITLE_MS = 1600L
+        private const val POSITION_MS = 500L
+        private const val PROGRESS_STEP = 0.002f
+        private const val PREFETCH = 3
+        private const val INTERNAL_SOURCE = "vovoscan"
     }
 }

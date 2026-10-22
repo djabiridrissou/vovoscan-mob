@@ -20,6 +20,7 @@ import com.vovoscan.feature.reader.data.SqlReaderLocalDataSource
 import com.vovoscan.feature.reader.data.SqlReaderSettingsRepository
 import com.vovoscan.feature.reader.data.TranslationsRepositoryImpl
 import com.vovoscan.feature.reader.data.db.ReaderDatabase
+import com.vovoscan.feature.reader.domain.ChapterPanels
 import com.vovoscan.feature.reader.domain.DownloadScheduler
 import com.vovoscan.feature.reader.domain.DownloadsRepository
 import com.vovoscan.feature.reader.domain.ReaderRepository
@@ -32,6 +33,7 @@ import com.vovoscan.feature.reader.presentation.TranslationViewModel
 import kotlinx.coroutines.CoroutineScope
 import org.koin.core.module.dsl.viewModel
 import org.koin.core.module.dsl.viewModelOf
+import org.koin.dsl.binds
 import org.koin.dsl.module
 
 /**
@@ -72,11 +74,11 @@ val readerModule =
         // Reading modes, tap zones and the other reader settings: on this device only.
         single<ReaderSettingsRepository> { SqlReaderSettingsRepository(get(), get<AppDispatchers>().io) }
         viewModel { (sourceKey: String, titleId: String, chapterId: String, startPage: Int) ->
-            ReaderViewModel(sourceKey, titleId, chapterId, startPage, get(), get(), get(), get())
+            ReaderViewModel(sourceKey, titleId, chapterId, startPage, get(), get(), get(), panels = get(), progress = get())
         }
         viewModel { (sourceKey: String, titleId: String) -> TitleDownloadsViewModel(sourceKey, titleId, get(), get()) }
         viewModelOf(::DownloadsViewModel)
         // Translations of our catalog's chapters: read fresh from the API, lettering laid out in shared code.
-        single<TranslationsRepository> { TranslationsRepositoryImpl(get()) }
+        single { TranslationsRepositoryImpl(get()) } binds arrayOf(TranslationsRepository::class, ChapterPanels::class)
         viewModel { (sourceKey: String, chapterId: String) -> TranslationViewModel(sourceKey, chapterId, get()) }
     }

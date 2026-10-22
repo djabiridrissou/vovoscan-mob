@@ -90,4 +90,12 @@ class GlideTest {
         assertTrue(abs(x - x2) < 1e-3)
         assertTrue(abs(v - v2) < 1e-2)
     }
+
+    @Test
+    fun aPositionSurvivesItsTextForm() {
+        assertEquals(ReadingPosition(3, 0.25f), ReadingPosition.decode(ReadingPosition(3, 0.25f).encode()))
+        assertEquals(ReadingPosition(2, 1f), ReadingPosition.decode("2:7"))
+        assertEquals(null, ReadingPosition.decode("x:0.5"))
+        assertEquals(null, ReadingPosition.decode(null))
+    }
 }

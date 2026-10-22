@@ -123,11 +123,19 @@ object ReadingStops {
         return stops
     }
 
-    /** The stop being read at [offset]: the last one at or above the top of the screen (+ 2 px). */
+    /**
+     * The stop being read at [offset]: the last one at or above the top of the screen (+ 2 px); of stops sharing that
+     * scroll (panels side by side), the first, so Next still walks through them.
+     */
     fun current(
         stops: List<Stop>,
         offset: Float,
-    ): Int = stops.indexOfLast { it.offset <= offset + SAME_PX }.coerceAtLeast(0)
+    ): Int {
+        var index = stops.indexOfLast { it.offset <= offset + SAME_PX }
+        if (index < 0) return 0
+        while (index > 0 && stops[index - 1].offset == stops[index].offset) index--
+        return index
+    }
 }
 
 /**
@@ -244,5 +252,20 @@ object Glide {
             t += 1f / 240f
         }
         return min(t, 3f)
+    }
+}
+
+/**
+ * Port: a chapter's panels from its analysis, per page in reading order (fractions of the page). Empty when unknown:
+ * the reader finds gutter bands on the device instead. Wired to `GET …/translations/chapters/{id}/read`.
+ */
+fun interface ChapterPanels {
+    suspend fun panels(
+        sourceKey: String,
+        chapterId: String,
+    ): Map<Int, List<PanelBox>>
+
+    companion object {
+        val None = ChapterPanels { _, _ -> emptyMap() }
     }
 }
