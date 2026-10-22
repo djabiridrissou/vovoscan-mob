@@ -5,7 +5,6 @@ import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.db.SqlSchema
 import app.cash.sqldelight.driver.native.NativeSqliteDriver
 import co.touchlab.sqliter.DatabaseFileContext
-import platform.Foundation.NSLog
 
 actual class DatabaseDriverFactory {
     /** A database left by a newer build is deleted and created again rather than stopping the app (`DowngradeGuard`). */
@@ -21,6 +20,7 @@ actual class DatabaseDriverFactory {
                 }
             },
             reset = { DatabaseFileContext.deleteDatabase(name) },
-            onReset = { NSLog("vovoscan: %@ was made by a newer version of the app; rebuilt", name) },
+            // Never a C vararg from Kotlin (a String passed to NSLog's `%@` is not bridged: it crashed here).
+            onReset = { println("vovoscan: $name was made by a newer version of the app; rebuilt") },
         )
 }
