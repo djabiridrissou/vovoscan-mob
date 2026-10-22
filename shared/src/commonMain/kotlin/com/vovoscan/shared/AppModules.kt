@@ -8,6 +8,8 @@ import com.vovoscan.core.network.platformHttpEngine
 import com.vovoscan.core.network.simulatingOffline
 import com.vovoscan.core.security.SecureKeys
 import com.vovoscan.core.security.SecureStore
+import com.vovoscan.core.sources.ImageReferers
+import com.vovoscan.core.sources.ManifestProvider
 import com.vovoscan.core.sources.PluginLinkPolicy
 import com.vovoscan.core.sources.RulesHttp
 import com.vovoscan.core.sources.createRulesHttpClient
@@ -36,6 +38,7 @@ import com.vovoscan.feature.reader.domain.ReadingProgressSink
 import com.vovoscan.feature.reader.domain.TitleChapters
 import com.vovoscan.feature.reader.domain.chapterLabel
 import com.vovoscan.feature.sources.di.sourcesModule
+import com.vovoscan.feature.sources.domain.SourceEngine
 import com.vovoscan.feature.sources.domain.SourceRemovedListener
 import com.vovoscan.feature.sources.domain.SourcesRepository
 import io.ktor.client.HttpClient
@@ -43,8 +46,11 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 import org.koin.core.module.Module
 import org.koin.dsl.module
@@ -171,6 +177,9 @@ fun appModules(
             }
             // Episodes show which of the user's keys a run would use, without knowing the account slice.
             single<KeyStatusProvider> { AccountKeyStatus(get()) }
+            // Image loaders (Coil, the iOS URL session) send a source's page-image Referer to its hosts: the table
+            // follows the user's sources and their manifests (started by each app at launch).
+            single { ImageRefererSync(get(), get(), get()) }
         },
         accountModule,
         authModule,
@@ -180,6 +189,28 @@ fun appModules(
         readerModule,
         sourcesModule,
     )
+
+/**
+ * The Referer to send with an image request to [url] (a source's page images, `content.comic.referer`), or null:
+ * read by Coil's interceptor (Android) and the URL protocol behind AsyncImage (iOS).
+ */
+fun imageRefererFor(url: String): String? = ImageReferers.refererFor(url)
+
+/** Keeps `ImageReferers` up to date with the rule-based sources on the device, in the user's order. */
+class ImageRefererSync(
+    private val sources: SourcesRepository,
+    private val manifests: ManifestProvider,
+    private val scope: CoroutineScope,
+) {
+    fun start() {
+        sources
+            .observe()
+            .map { list -> list.filter { it.engine == SourceEngine.OnDevice }.sortedBy { it.position }.map { it.key } }
+            .distinctUntilChanged()
+            .onEach { keys -> ImageReferers.update(keys.mapNotNull { manifests.manifest(it) }) }
+            .launchIn(scope)
+    }
+}
 
 /** The episodes' `KeyStatusProvider` port, served by the account slice's key list (hints only, never a secret). */
 private class AccountKeyStatus(

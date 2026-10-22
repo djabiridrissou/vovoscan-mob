@@ -9,6 +9,7 @@ import com.vovoscan.core.sources.ManifestProvider
 import com.vovoscan.core.sources.RulesHttp
 import com.vovoscan.core.sources.RulesSource
 import com.vovoscan.core.sources.RulesTitleSummary
+import com.vovoscan.feature.catalog.domain.SourceCategory
 import io.ktor.client.HttpClient
 import io.ktor.client.request.get
 import io.ktor.client.request.parameter
@@ -47,6 +48,13 @@ data class TitleDetailDto(
     val chapters: List<ChapterDto> = emptyList(),
 )
 
+@Serializable
+data class CategoryDto(
+    val key: String,
+    val name: String,
+    val position: Int = 0,
+)
+
 /** A catalog page, whatever the source. */
 data class TitlesPage(
     val page: Int,
@@ -56,15 +64,20 @@ data class TitlesPage(
 
 /** Remote source of a catalog: the vovoscan API for the internal source, the source itself for the others. */
 interface CatalogRemoteDataSource {
+    /** `categoryId`: one of the source's categories, null for everything. */
     suspend fun titles(
         sourceKey: String,
         page: Int,
+        categoryId: String? = null,
     ): AppResult<TitlesPage>
 
     suspend fun search(
         sourceKey: String,
         query: String,
+        categoryId: String? = null,
     ): AppResult<TitlesPage>
+
+    suspend fun categories(sourceKey: String): AppResult<List<SourceCategory>>
 
     suspend fun title(
         sourceKey: String,
@@ -79,26 +92,36 @@ class ApiCatalogRemoteDataSource(
     override suspend fun titles(
         sourceKey: String,
         page: Int,
+        categoryId: String?,
     ): AppResult<TitlesPage> =
         http
             .apiCall<ApiPage<TitleSummaryDto>> {
                 get("api/v1/catalog/sources/$sourceKey/titles") {
                     parameter("page", page)
                     parameter("perPage", PAGE_SIZE)
+                    categoryId?.let { parameter("category", it) }
                 }
             }.map { TitlesPage(it.page, it.data, it.hasNext) }
 
     override suspend fun search(
         sourceKey: String,
         query: String,
+        categoryId: String?,
     ): AppResult<TitlesPage> =
         http
             .apiCall<ApiPage<TitleSummaryDto>> {
                 get("api/v1/catalog/sources/$sourceKey/titles") {
                     parameter("search", query)
                     parameter("perPage", PAGE_SIZE)
+                    categoryId?.let { parameter("category", it) }
                 }
             }.map { TitlesPage(it.page, it.data, it.hasNext) }
+
+    /** The internal catalog's categories (their `key` is the id sent back as `category`). */
+    override suspend fun categories(sourceKey: String): AppResult<List<SourceCategory>> =
+        http
+            .apiCall<ApiData<List<CategoryDto>>> { get("api/v1/catalog/sources/$sourceKey/categories") }
+            .map { list -> list.data.sortedBy { it.position }.map { SourceCategory(it.key, it.name) } }
 
     override suspend fun title(
         sourceKey: String,
@@ -120,12 +143,20 @@ class OnDeviceCatalogRemoteDataSource(
     override suspend fun titles(
         sourceKey: String,
         page: Int,
-    ): AppResult<TitlesPage> = source(sourceKey)?.catalog(page)?.map { TitlesPage(page, it.items.map(::dto), it.hasNext) } ?: unknown()
+        categoryId: String?,
+    ): AppResult<TitlesPage> =
+        source(sourceKey)?.catalog(page, category = categoryId.orEmpty())?.map { TitlesPage(page, it.items.map(::dto), it.hasNext) }
+            ?: unknown()
 
     override suspend fun search(
         sourceKey: String,
         query: String,
-    ): AppResult<TitlesPage> = source(sourceKey)?.catalog(1, query)?.map { TitlesPage(1, it.items.map(::dto), it.hasNext) } ?: unknown()
+        categoryId: String?,
+    ): AppResult<TitlesPage> =
+        source(sourceKey)?.catalog(1, query, categoryId.orEmpty())?.map { TitlesPage(1, it.items.map(::dto), it.hasNext) } ?: unknown()
+
+    override suspend fun categories(sourceKey: String): AppResult<List<SourceCategory>> =
+        source(sourceKey)?.categories()?.map { list -> list.map { SourceCategory(it.id, it.name) } } ?: unknown()
 
     override suspend fun title(
         sourceKey: String,
@@ -167,12 +198,16 @@ class RoutingCatalogRemoteDataSource(
     override suspend fun titles(
         sourceKey: String,
         page: Int,
-    ) = pick(sourceKey).titles(sourceKey, page)
+        categoryId: String?,
+    ) = pick(sourceKey).titles(sourceKey, page, categoryId)
 
     override suspend fun search(
         sourceKey: String,
         query: String,
-    ) = pick(sourceKey).search(sourceKey, query)
+        categoryId: String?,
+    ) = pick(sourceKey).search(sourceKey, query, categoryId)
+
+    override suspend fun categories(sourceKey: String) = pick(sourceKey).categories(sourceKey)
 
     override suspend fun title(
         sourceKey: String,

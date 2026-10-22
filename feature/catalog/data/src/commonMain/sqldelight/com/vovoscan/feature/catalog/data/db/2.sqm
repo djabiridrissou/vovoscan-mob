@@ -1,0 +1,62 @@
+-- v2 → v3: one listing per source and category (`catalog_entry`, `listing_cursor`), the sources' categories, the
+-- catalog's filter. The titles and chapters saved on the device stay; each source's saved catalog becomes its
+-- "everything" listing (page 1), and its next page is asked again at the next refresh.
+CREATE TABLE catalog_entry (
+    source_key TEXT NOT NULL,
+    listing TEXT NOT NULL,
+    title_id TEXT NOT NULL,
+    page INTEGER NOT NULL,
+    rank INTEGER NOT NULL,
+    PRIMARY KEY (source_key, listing, title_id)
+);
+
+CREATE INDEX catalog_entry_rank ON catalog_entry(source_key, listing, rank);
+
+INSERT INTO catalog_entry (source_key, listing, title_id, page, rank)
+SELECT source_key, '', id, 1, catalog_rank FROM title WHERE catalog_rank IS NOT NULL;
+
+CREATE TABLE listing_cursor (
+    source_key TEXT NOT NULL,
+    listing TEXT NOT NULL,
+    next_page INTEGER,
+    PRIMARY KEY (source_key, listing)
+);
+
+CREATE TABLE source_category (
+    source_key TEXT NOT NULL,
+    id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    position INTEGER NOT NULL,
+    PRIMARY KEY (source_key, id)
+);
+
+CREATE TABLE catalog_setting (
+    key TEXT NOT NULL PRIMARY KEY,
+    setting_value TEXT NOT NULL
+);
+
+DROP TABLE catalog_cursor;
+
+-- The rank moved to catalog_entry: `title` is rebuilt without it (SQLite 3.18 cannot drop a column).
+DROP INDEX title_rank;
+
+CREATE TABLE title_v3 (
+    source_key TEXT NOT NULL,
+    id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    cover_url TEXT,
+    kind TEXT NOT NULL,
+    format TEXT NOT NULL,
+    status TEXT NOT NULL,
+    description TEXT,
+    authors TEXT,
+    genres TEXT,
+    PRIMARY KEY (source_key, id)
+);
+
+INSERT INTO title_v3 (source_key, id, name, cover_url, kind, format, status, description, authors, genres)
+SELECT source_key, id, name, cover_url, kind, format, status, description, authors, genres FROM title;
+
+DROP TABLE title;
+
+ALTER TABLE title_v3 RENAME TO title;

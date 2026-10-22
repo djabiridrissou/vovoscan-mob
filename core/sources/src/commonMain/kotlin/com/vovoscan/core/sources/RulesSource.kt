@@ -41,6 +41,12 @@ data class RulesTitle(
     val units: List<RulesUnit>,
 )
 
+/** A category of the site (`categories` in the manifest): its id is `{{category}}` in the catalog request. */
+data class RulesCategory(
+    val id: String,
+    val name: String,
+)
+
 data class RulesImage(
     val url: String,
     val width: Int,
@@ -149,16 +155,56 @@ class RulesSource(
         )
     }
 
+    /**
+     * The site's categories: the manifest's fixed list, or read from its own request (`list` + `item {id, name}`).
+     * None when the manifest declares no categories.
+     */
+    suspend fun categories(): AppResult<List<RulesCategory>> {
+        val section = json["categories"] ?: return AppResult.Ok(emptyList())
+        if (section is kotlinx.serialization.json.JsonArray) {
+            return rules {
+                section
+                    .mapNotNull { entry ->
+                        val item = entry as? JsonObject ?: return@mapNotNull null
+                        val id = item["id"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotEmpty() } ?: return@mapNotNull null
+                        val name =
+                            item["name"]
+                                ?.jsonPrimitive
+                                ?.contentOrNull
+                                ?.trim()
+                                ?.takeIf { it.isNotEmpty() } ?: return@mapNotNull null
+                        RulesCategory(id, name)
+                    }.distinctBy { it.id }
+            }
+        }
+        val request = section.jsonObject.getValue("request").jsonObject
+        val loaded = load(request, vars())
+        val ctx = (loaded as? AppResult.Ok)?.value ?: return loaded as AppResult.Err
+        return rules {
+            val item = section.jsonObject.getValue("item").jsonObject
+            Rules
+                .nodes(ctx, section.jsonObject.getValue("list"))
+                .mapNotNull { node ->
+                    val child = ctx.child(node)
+                    val id = str(Rules.evaluate(child, item["id"])) ?: return@mapNotNull null
+                    val name = str(Rules.evaluate(child, item["name"]))?.trim()?.takeIf { it.isNotEmpty() } ?: return@mapNotNull null
+                    RulesCategory(id, name)
+                }.distinctBy { it.id }
+        }
+    }
+
+    /** `category`: a category id from [categories], empty for everything (the empty query value is not sent). */
     suspend fun catalog(
         page: Int,
         search: String = "",
+        category: String = "",
     ): AppResult<RulesPage> {
         val section = json.getValue("catalog").jsonObject
         val request = section.getValue("request").jsonObject
         val cursor =
             (request["pagination"] as? JsonObject)
                 ?.takeIf { it["type"]?.jsonPrimitive?.contentOrNull == "cursor" }
-        var variables = vars("page" to page, "search" to search)
+        var variables = vars("page" to page, "search" to search, "category" to category)
         var finalCtx: RuleContext? = null
         var stoppedEarly = false
         for (p in 1..page) {
@@ -172,7 +218,7 @@ class RulesSource(
                 stoppedEarly = true
                 break
             }
-            variables = vars("page" to p + 1, "search" to search) + ("cursor" to cursorValue)
+            variables = vars("page" to p + 1, "search" to search, "category" to category) + ("cursor" to cursorValue)
         }
         val ctx = finalCtx ?: return AppResult.Err(AppError.Rejected(SOURCE_RULES, "${manifest.name} returned no page."))
         return rules {
@@ -321,9 +367,16 @@ class RulesSource(
         }
     }
 
-    /** A book or image file, fetched from the source (allowed hosts only). */
+    /** A book file, fetched from the source (allowed hosts only). */
     suspend fun download(url: String): AppResult<ByteArray> =
         when (val fetched = http.get(manifest, url)) {
+            is AppResult.Err -> fetched
+            is AppResult.Ok -> AppResult.Ok(fetched.value.body)
+        }
+
+    /** A page image, fetched from the source (allowed hosts only) with its Referer when the manifest declares one. */
+    suspend fun downloadImage(url: String): AppResult<ByteArray> =
+        when (val fetched = http.get(manifest, url, referer = manifest.imageReferer)) {
             is AppResult.Err -> fetched
             is AppResult.Ok -> AppResult.Ok(fetched.value.body)
         }

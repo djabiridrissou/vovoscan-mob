@@ -148,32 +148,3 @@ private struct UpdatesBanner: View {
         .overlay(Capsule().stroke(Color.brandYellow, lineWidth: 1))
     }
 }
-
-/// Source picker at the top of the catalog: the visible sources, in the chosen order.
-struct SourcePicker: View {
-    let chips: [SourceChip]
-    let selected: String
-    let onSelect: (String) -> Void
-
-    var body: some View {
-        if chips.count > 1 {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(chips, id: \.key) { chip in
-                        let active = chip.key == selected
-                        Button { onSelect(chip.key) } label: {
-                            Text(chip.name)
-                                .font(.brandBody(15, weight: .bold))
-                                .foregroundStyle(active ? Color.brandInk : Color.brandPaper)
-                                .padding(.horizontal, 14)
-                                .padding(.vertical, 8)
-                                .background(active ? Color.brandRed : Color.brandInk2, in: Capsule())
-                                .overlay(Capsule().stroke(active ? Color.brandRed : Color.brandLine, lineWidth: 1))
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-            }
-        }
-    }
-}

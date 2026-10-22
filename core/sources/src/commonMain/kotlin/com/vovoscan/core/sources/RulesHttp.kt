@@ -59,6 +59,8 @@ class RulesHttp(
         url: String,
         query: Map<String, String> = emptyMap(),
         maxBytes: Int = 30 * 1024 * 1024,
+        // The source's page images only (`content.comic.referer`): sent to its allowed hosts, redirects included.
+        referer: String? = null,
     ): AppResult<Fetched> {
         val hosts = manifest.allowedHosts
         var current = url
@@ -73,6 +75,7 @@ class RulesHttp(
                 try {
                     client.get(current) {
                         header(HttpHeaders.UserAgent, RULES_USER_AGENT)
+                        if (referer != null) header(HttpHeaders.Referrer, referer)
                         params.forEach { (k, v) -> parameter(k, v) }
                     }
                 } catch (e: CancellationException) {

@@ -4,17 +4,14 @@ import com.vovoscan.core.common.AppError
 import com.vovoscan.core.common.AppResult
 import com.vovoscan.core.common.SOURCE_RULES
 import com.vovoscan.core.common.StaleReason
-import com.vovoscan.feature.catalog.domain.CatalogRepository
 import com.vovoscan.feature.catalog.domain.Chapter
 import com.vovoscan.feature.catalog.domain.ContentKind
+import com.vovoscan.feature.catalog.domain.ListedTitle
 import com.vovoscan.feature.catalog.domain.ReadingFormat
-import com.vovoscan.feature.catalog.domain.SearchResult
 import com.vovoscan.feature.catalog.domain.TitleDetail
 import com.vovoscan.feature.catalog.domain.TitleSummary
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
@@ -36,48 +33,18 @@ class SourceProblemsTest {
     private val down = AppError.SourceUnavailable("Project Gutenberg")
     private val unreadable = AppError.Rejected(SOURCE_RULES, "No node matched .booklink")
 
-    /** The device keeps one title of Project Gutenberg; the source answers [result]. */
-    private class Gutenberg(
-        var result: AppResult<Unit>,
+    /** The device keeps one title of Project Gutenberg (when [saved]); the source fails with [failure]. */
+    private fun gutenberg(
+        failure: AppError?,
         saved: TitleSummary?,
-    ) : CatalogRepository {
-        val titles = MutableStateFlow(listOfNotNull(saved))
-        val detail =
-            MutableStateFlow(
-                saved?.let {
-                    TitleDetail(it, "A novel.", listOf("Jane Austen"), emptyList(), listOf(Chapter("1342", 1.0, null, 0, null)))
-                },
-            )
-        var searched: SearchResult = SearchResult(emptyList(), offline = false)
-
-        override fun observeTitles(sourceKey: String): Flow<List<TitleSummary>> = titles
-
-        override suspend fun refreshTitles(sourceKey: String): AppResult<Boolean> =
-            when (val r = result) {
-                is AppResult.Ok -> AppResult.Ok(false)
-                is AppResult.Err -> r
-            }
-
-        override suspend fun loadMoreTitles(sourceKey: String) = AppResult.Ok(false)
-
-        override suspend fun search(
-            sourceKey: String,
-            query: String,
-        ) = searched
-
-        override fun observeTitle(
-            sourceKey: String,
-            id: String,
-        ): Flow<TitleDetail?> = detail
-
-        override suspend fun refreshTitle(
-            sourceKey: String,
-            id: String,
-        ) = result
-
-        override suspend fun clearLocal() = Unit
-
-        override suspend fun clearSource(sourceKey: String) = Unit
+    ) = FakeCatalog().apply {
+        failure?.let { failures["gutenberg"] = it }
+        remote["gutenberg" to null] = listOf(listOfNotNull(saved))
+        if (saved != null) {
+            this.saved.value = mapOf(("gutenberg" to null) to listOf(ListedTitle(saved, 1)))
+            detail.value = TitleDetail(saved, "A novel.", listOf("Jane Austen"), emptyList(), listOf(Chapter("1342", 1.0, null, 0, null)))
+        }
+        titleResult = failure?.let { AppResult.Err(it) } ?: AppResult.Ok(Unit)
     }
 
     @BeforeTest
@@ -86,12 +53,15 @@ class SourceProblemsTest {
     @AfterTest
     fun tearDown() = Dispatchers.resetMain()
 
-    private fun catalog(repository: Gutenberg) = CatalogViewModel(repository).also { it.onIntent(CatalogIntent.SelectSource("gutenberg")) }
+    private fun catalog(repository: FakeCatalog) =
+        CatalogViewModel(
+            repository,
+        ).also { it.onIntent(CatalogIntent.SourcesChanged(listOf(CatalogSource("gutenberg", "Project Gutenberg")))) }
 
     @Test
     fun aSourceThatDoesNotAnswerIsNamedWithRetry() =
         runTest(dispatcher) {
-            val repository = Gutenberg(AppResult.Err(down), book)
+            val repository = gutenberg(down, book)
             val vm = catalog(repository)
             advanceUntilIdle()
             assertEquals("Project Gutenberg isn't answering right now. Showing what's saved.", vm.state.value.offlineNotice)
@@ -99,7 +69,7 @@ class SourceProblemsTest {
             assertNull(vm.state.value.error)
 
             // Retry once it answers again: the banner goes.
-            repository.result = AppResult.Ok(Unit)
+            repository.failures.clear()
             vm.onIntent(CatalogIntent.Refresh)
             advanceUntilIdle()
             assertNull(vm.state.value.offlineNotice)
@@ -109,7 +79,7 @@ class SourceProblemsTest {
     @Test
     fun withNothingSavedTheBannerDoesNotPromiseSavedTitles() =
         runTest(dispatcher) {
-            val vm = catalog(Gutenberg(AppResult.Err(down), null))
+            val vm = catalog(gutenberg(down, null))
             advanceUntilIdle()
             assertEquals("Project Gutenberg isn't answering right now.", vm.state.value.offlineNotice)
             // Not "No titles yet": the source failed, the banner says so.
@@ -119,7 +89,7 @@ class SourceProblemsTest {
     @Test
     fun realNoNetworkKeepsTheOfflineNotice() =
         runTest(dispatcher) {
-            val vm = catalog(Gutenberg(AppResult.Err(AppError.Network), book))
+            val vm = catalog(gutenberg(AppError.Network, book))
             advanceUntilIdle()
             assertEquals("Offline: showing what's saved on this device.", vm.state.value.offlineNotice)
             assertFalse(vm.state.value.canRetry)
@@ -128,7 +98,7 @@ class SourceProblemsTest {
     @Test
     fun ruleErrorsSayTheSourceMayNeedAnUpdate() =
         runTest(dispatcher) {
-            val vm = catalog(Gutenberg(AppResult.Err(unreadable), book))
+            val vm = catalog(gutenberg(unreadable, book))
             advanceUntilIdle()
             assertEquals("This source couldn't be read. It may need an update.", vm.state.value.offlineNotice)
             assertFalse(vm.state.value.canRetry)
@@ -138,9 +108,10 @@ class SourceProblemsTest {
     @Test
     fun searchFallsBackToSavedTitlesWhenTheSourceIsDown() =
         runTest(dispatcher) {
-            val repository = Gutenberg(AppResult.Ok(Unit), book)
-            repository.searched = SearchResult(listOf(book), offline = true, unavailableSource = "Project Gutenberg")
+            val repository = gutenberg(null, book)
             val vm = catalog(repository)
+            advanceUntilIdle()
+            repository.failures["gutenberg"] = down
             vm.onIntent(CatalogIntent.Query("pride"))
             advanceUntilIdle()
             assertEquals("Project Gutenberg isn't answering right now. Searching what's saved.", vm.state.value.offlineNotice)
@@ -154,20 +125,20 @@ class SourceProblemsTest {
     @Test
     fun titlePageShowsTheSourceProblem() =
         runTest(dispatcher) {
-            val repository = Gutenberg(AppResult.Err(down), book)
+            val repository = gutenberg(down, book)
             val vm = TitleDetailViewModel("gutenberg", "1342", repository)
             advanceUntilIdle()
             assertEquals("Project Gutenberg isn't answering right now. Showing what's saved.", vm.state.value.notice)
             assertTrue(vm.state.value.canRetry)
             assertNull(vm.state.value.error)
 
-            repository.result = AppResult.Err(unreadable)
+            repository.titleResult = AppResult.Err(unreadable)
             vm.refresh()
             advanceUntilIdle()
             assertEquals("This source couldn't be read. It may need an update.", vm.state.value.notice)
             assertFalse(vm.state.value.canRetry)
 
-            repository.result = AppResult.Err(AppError.Network)
+            repository.titleResult = AppResult.Err(AppError.Network)
             vm.refresh()
             advanceUntilIdle()
             assertEquals(StaleReason.Offline, vm.state.value.stale)
@@ -177,7 +148,7 @@ class SourceProblemsTest {
     @Test
     fun aSavedCopyArrivingAfterTheFailureIsShownAsSaved() =
         runTest(dispatcher) {
-            val repository = Gutenberg(AppResult.Err(AppError.Network), null)
+            val repository = gutenberg(AppError.Network, null)
             val vm = TitleDetailViewModel("gutenberg", "1342", repository)
             advanceUntilIdle()
             assertTrue(vm.state.value.unavailable)
@@ -192,7 +163,7 @@ class SourceProblemsTest {
     @Test
     fun aTitleNeverOpenedSaysTheSourceIsDownWithRetry() =
         runTest(dispatcher) {
-            val vm = TitleDetailViewModel("gutenberg", "84", Gutenberg(AppResult.Err(down), null))
+            val vm = TitleDetailViewModel("gutenberg", "84", gutenberg(down, null))
             advanceUntilIdle()
             assertTrue(vm.state.value.unavailable)
             assertEquals("Project Gutenberg isn't answering right now.", vm.state.value.error)

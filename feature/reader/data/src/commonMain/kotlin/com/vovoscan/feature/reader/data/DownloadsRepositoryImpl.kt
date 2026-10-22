@@ -192,7 +192,7 @@ class DownloadsRepositoryImpl(
                 if (done[page.index]?.let(files::exists) == true) continue
                 if (!awaitNetwork(key)) return
                 val bytes =
-                    when (val fetched = remote.download(item.sourceKey, page.url)) {
+                    when (val fetched = remote.downloadPage(item.sourceKey, page.url)) {
                         is AppResult.Err -> return failed(key, fetched.error)
                         is AppResult.Ok -> fetched.value
                     }

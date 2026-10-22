@@ -9,15 +9,11 @@ CREATE TABLE title (
     kind TEXT NOT NULL,
     format TEXT NOT NULL,
     status TEXT NOT NULL,
-    -- Rank in the source's catalog (null: known only from a search or a title page).
-    catalog_rank INTEGER,
     description TEXT,
     authors TEXT,
     genres TEXT,
     PRIMARY KEY (source_key, id)
 );
-
-CREATE INDEX title_rank ON title(source_key, catalog_rank);
 
 CREATE TABLE chapter (
     source_key TEXT NOT NULL,
@@ -30,10 +26,40 @@ CREATE TABLE chapter (
     PRIMARY KEY (source_key, title_id, id)
 );
 
-CREATE TABLE catalog_cursor (
-    source_key TEXT NOT NULL PRIMARY KEY,
-    -- Next page of the source's catalog (null: everything is loaded).
-    next_page INTEGER
+-- A source's listing: everything (listing = '') or one of its categories (listing = the category's id). `page`: the
+-- page the title came in on (the merged catalog goes round by round), `rank`: its place in the listing.
+CREATE TABLE catalog_entry (
+    source_key TEXT NOT NULL,
+    listing TEXT NOT NULL,
+    title_id TEXT NOT NULL,
+    page INTEGER NOT NULL,
+    rank INTEGER NOT NULL,
+    PRIMARY KEY (source_key, listing, title_id)
+);
+
+CREATE INDEX catalog_entry_rank ON catalog_entry(source_key, listing, rank);
+
+CREATE TABLE listing_cursor (
+    source_key TEXT NOT NULL,
+    listing TEXT NOT NULL,
+    -- Next page of the listing (null: everything is loaded).
+    next_page INTEGER,
+    PRIMARY KEY (source_key, listing)
+);
+
+-- A source's categories as last read, in its order.
+CREATE TABLE source_category (
+    source_key TEXT NOT NULL,
+    id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    position INTEGER NOT NULL,
+    PRIMARY KEY (source_key, id)
+);
+
+-- The catalog's filter, remembered on the device (keys `sources`, `category`).
+CREATE TABLE catalog_setting (
+    key TEXT NOT NULL PRIMARY KEY,
+    setting_value TEXT NOT NULL
 );
 
 insertSummary:
@@ -42,25 +68,37 @@ INSERT OR IGNORE INTO title (source_key, id, name, cover_url, kind, format, stat
 updateSummary:
 UPDATE title SET name = ?, cover_url = ?, kind = ?, format = ?, status = ? WHERE source_key = ? AND id = ?;
 
-setRank:
-UPDATE title SET catalog_rank = ? WHERE source_key = ? AND id = ?;
-
-clearRanks:
-UPDATE title SET catalog_rank = NULL WHERE source_key = ?;
-
-maxRank:
-SELECT MAX(catalog_rank) AS max_rank FROM title WHERE source_key = ?;
-
 updateDetail:
 UPDATE title SET description = ?, authors = ?, genres = ? WHERE source_key = ? AND id = ?;
 
-catalogTitles:
-SELECT source_key, id, name, cover_url, kind, format, status FROM title
-WHERE source_key = ? AND catalog_rank IS NOT NULL ORDER BY catalog_rank;
+listingTitles:
+SELECT t.source_key, t.id, t.name, t.cover_url, t.kind, t.format, t.status, e.page FROM catalog_entry e
+JOIN title t ON t.source_key = e.source_key AND t.id = e.title_id
+WHERE e.source_key = ? AND e.listing = ? ORDER BY e.rank;
+
+clearListing:
+DELETE FROM catalog_entry WHERE source_key = ? AND listing = ?;
+
+maxRank:
+SELECT MAX(rank) AS max_rank FROM catalog_entry WHERE source_key = ? AND listing = ?;
+
+putEntry:
+INSERT OR IGNORE INTO catalog_entry (source_key, listing, title_id, page, rank) VALUES (?, ?, ?, ?, ?);
+
+putCursor:
+INSERT OR REPLACE INTO listing_cursor (source_key, listing, next_page) VALUES (?, ?, ?);
+
+cursor:
+SELECT next_page FROM listing_cursor WHERE source_key = ? AND listing = ?;
 
 searchTitles:
 SELECT source_key, id, name, cover_url, kind, format, status FROM title
 WHERE source_key = :source_key AND name LIKE '%' || :query || '%' ORDER BY name LIMIT 50;
+
+searchListing:
+SELECT t.source_key, t.id, t.name, t.cover_url, t.kind, t.format, t.status FROM catalog_entry e
+JOIN title t ON t.source_key = e.source_key AND t.id = e.title_id
+WHERE e.source_key = :source_key AND e.listing = :listing AND t.name LIKE '%' || :query || '%' ORDER BY t.name LIMIT 50;
 
 titleById:
 SELECT * FROM title WHERE source_key = ? AND id = ?;
@@ -74,11 +112,26 @@ DELETE FROM chapter WHERE source_key = ? AND title_id = ?;
 insertChapter:
 INSERT OR REPLACE INTO chapter (source_key, title_id, id, number, name, page_count, published_at) VALUES (?, ?, ?, ?, ?, ?, ?);
 
-putCursor:
-INSERT OR REPLACE INTO catalog_cursor (source_key, next_page) VALUES (?, ?);
+categoriesOf:
+SELECT id, name FROM source_category WHERE source_key = ? ORDER BY position;
 
-cursor:
-SELECT next_page FROM catalog_cursor WHERE source_key = ?;
+clearCategoriesOf:
+DELETE FROM source_category WHERE source_key = ?;
+
+insertCategory:
+INSERT OR IGNORE INTO source_category (source_key, id, name, position) VALUES (?, ?, ?, ?);
+
+setting:
+SELECT setting_value FROM catalog_setting WHERE key = ?;
+
+allSettings:
+SELECT key, setting_value FROM catalog_setting;
+
+putSetting:
+INSERT OR REPLACE INTO catalog_setting (key, setting_value) VALUES (?, ?);
+
+deleteSetting:
+DELETE FROM catalog_setting WHERE key = ?;
 
 clearTitles:
 DELETE FROM title;
@@ -86,8 +139,17 @@ DELETE FROM title;
 clearChapters:
 DELETE FROM chapter;
 
-clearCursor:
-DELETE FROM catalog_cursor;
+clearEntries:
+DELETE FROM catalog_entry;
+
+clearCursors:
+DELETE FROM listing_cursor;
+
+clearCategories:
+DELETE FROM source_category;
+
+clearSettings:
+DELETE FROM catalog_setting;
 
 clearTitlesOf:
 DELETE FROM title WHERE source_key = ?;
@@ -95,5 +157,8 @@ DELETE FROM title WHERE source_key = ?;
 clearChaptersOfSource:
 DELETE FROM chapter WHERE source_key = ?;
 
-clearCursorOf:
-DELETE FROM catalog_cursor WHERE source_key = ?;
+clearEntriesOf:
+DELETE FROM catalog_entry WHERE source_key = ?;
+
+clearCursorsOf:
+DELETE FROM listing_cursor WHERE source_key = ?;
