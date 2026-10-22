@@ -24,6 +24,11 @@ data class DeletionBannerUi(
     val error: String?,
 )
 
+/** Whether the tutorial covers the app (a class, not a bare Boolean: Swift reads it plainly). */
+data class TutorialUi(
+    val shown: Boolean,
+)
+
 /** Root of both apps: signed in or not, what the role allows to show, the tutorial due, a scheduled deletion. */
 class SessionViewModel(
     private val auth: AuthRepository,
@@ -46,9 +51,9 @@ class SessionViewModel(
     val replay: StateFlow<Boolean> = replaying.asStateFlow()
 
     /** Full screen over the tabs: due once after sign-in (or a newer tutorial), or replayed. */
-    val showTutorial: StateFlow<Boolean> =
-        combine(auth.session, replaying) { session, replay -> session != null && (session.onboardingDue || replay) }
-            .stateIn(viewModelScope, SharingStarted.Eagerly, auth.session.value?.onboardingDue == true)
+    val tutorial: StateFlow<TutorialUi> =
+        combine(auth.session, replaying) { session, replay -> TutorialUi(session != null && (session.onboardingDue || replay)) }
+            .stateIn(viewModelScope, SharingStarted.Eagerly, TutorialUi(auth.session.value?.onboardingDue == true))
 
     fun replayTutorial() {
         replaying.value = true

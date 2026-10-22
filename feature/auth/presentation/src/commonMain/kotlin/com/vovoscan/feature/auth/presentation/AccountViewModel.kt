@@ -35,7 +35,7 @@ data class AccountUiState(
     val email: String = "",
     val emailVerified: Boolean = true,
     val emailFormOpen: Boolean = false,
-    val newEmail: String = "",
+    val emailDraft: String = "",
     val emailSending: Boolean = false,
     /** "Check {email}: open the link we sent to confirm." */
     val emailSent: String? = null,
@@ -66,12 +66,12 @@ data class AccountUiState(
     val emailTitle: String get() = t("account.email.title")
     val emailStatus: String get() = t(if (emailVerified) "account.email.verified" else "account.email.unverified")
     val changeEmailLabel: String get() = t("account.email.change")
-    val newEmailLabel: String get() = t("account.email.new")
+    val emailFieldLabel: String get() = t("account.email.new")
     val emailPasswordHint: String get() = t("account.email.passwordHint")
 
     val passwordTitle: String get() = t("account.password.title")
     val currentPasswordLabel: String get() = t("account.password.current")
-    val newPasswordLabel: String get() = t("account.password.new")
+    val replacementPasswordLabel: String get() = t("account.password.new")
     val passwordHint: String get() = t("account.password.hint")
     val changePasswordLabel: String get() = if (passwordSaving) t("common.saving") else t("account.password.change")
     val noPasswordNote: String? get() = if (hasPassword) null else t("account.password.none")
@@ -117,7 +117,8 @@ sealed interface AccountIntent {
 
     data class SubmitPassword(
         val current: String,
-        val new: String,
+        // Not `new`: Objective-C reserves the `new` method family.
+        val replacement: String,
     ) : AccountIntent
 
     data object RefreshDevices : AccountIntent
@@ -173,10 +174,10 @@ class AccountViewModel(
             is AccountIntent.Name -> mutableState.update { it.copy(name = intent.value, notice = null, error = null) }
             AccountIntent.SaveName -> saveName()
             AccountIntent.OpenEmailForm -> mutableState.update { it.copy(emailFormOpen = true, emailSent = null, error = null) }
-            AccountIntent.CloseEmailForm -> mutableState.update { it.copy(emailFormOpen = false, newEmail = "") }
-            is AccountIntent.NewEmail -> mutableState.update { it.copy(newEmail = intent.value, error = null) }
+            AccountIntent.CloseEmailForm -> mutableState.update { it.copy(emailFormOpen = false, emailDraft = "") }
+            is AccountIntent.NewEmail -> mutableState.update { it.copy(emailDraft = intent.value, error = null) }
             is AccountIntent.SubmitEmail -> submitEmail(intent.password)
-            is AccountIntent.SubmitPassword -> submitPassword(intent.current, intent.new)
+            is AccountIntent.SubmitPassword -> submitPassword(intent.current, intent.replacement)
             AccountIntent.RefreshDevices -> refreshDevices()
             is AccountIntent.SignOutDevice -> signOutDevice(intent.id)
             AccountIntent.SignOutOthers -> signOutOthers()
@@ -204,7 +205,7 @@ class AccountViewModel(
     private fun submitEmail(password: String) {
         val current = state.value
         if (current.emailSending) return
-        val address = current.newEmail.trim()
+        val address = current.emailDraft.trim()
         val invalid = Credentials.emailError(address) ?: if (password.isEmpty()) t("account.email.passwordHint") else null
         if (invalid != null) {
             mutableState.update { it.copy(error = invalid, secretFieldResets = it.secretFieldResets + 1) }
@@ -219,7 +220,7 @@ class AccountViewModel(
                         it.copy(
                             emailSending = false,
                             emailFormOpen = false,
-                            newEmail = "",
+                            emailDraft = "",
                             emailSent =
                                 t(
                                     "account.email.sent",

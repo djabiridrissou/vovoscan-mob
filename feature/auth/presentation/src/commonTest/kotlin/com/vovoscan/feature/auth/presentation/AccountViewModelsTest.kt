@@ -173,13 +173,13 @@ class AccountViewModelsTest {
         runTest {
             val auth = FakeAuth(signedIn = testSession(onboardingDue = true))
             val vm = SessionViewModel(auth, auth)
-            assertTrue(vm.showTutorial.value)
+            assertTrue(vm.tutorial.value.shown)
             auth.updateProfile(ProfileChange(onboardingCompleted = true))
-            assertFalse(vm.showTutorial.value)
+            assertFalse(vm.tutorial.value.shown)
             vm.replayTutorial()
-            assertTrue(vm.showTutorial.value)
+            assertTrue(vm.tutorial.value.shown)
             vm.tutorialClosed()
-            assertFalse(vm.showTutorial.value)
+            assertFalse(vm.tutorial.value.shown)
         }
 
     // Preferences.

@@ -17,6 +17,9 @@ import com.vovoscan.feature.account.presentation.ReadingSettingsViewModel
 import com.vovoscan.feature.account.presentation.UsageViewModel
 import com.vovoscan.feature.account.presentation.WalletViewModel
 import com.vovoscan.feature.auth.domain.AuthRepository
+import com.vovoscan.feature.auth.presentation.AccountViewModel
+import com.vovoscan.feature.auth.presentation.OnboardingViewModel
+import com.vovoscan.feature.auth.presentation.PreferencesViewModel
 import com.vovoscan.feature.auth.presentation.SessionViewModel
 import com.vovoscan.feature.auth.presentation.SignInViewModel
 import com.vovoscan.feature.catalog.presentation.CatalogViewModel
@@ -117,6 +120,12 @@ class ViewModels : KoinComponent {
     fun session(): SessionViewModel = remember("session") { get<SessionViewModel>() }
 
     fun signIn(): SignInViewModel = remember("signIn") { get<SignInViewModel>() }
+
+    fun account(): AccountViewModel = remember("account") { get<AccountViewModel>() }
+
+    fun preferences(): PreferencesViewModel = remember("preferences") { get<PreferencesViewModel>() }
+
+    fun onboarding(): OnboardingViewModel = remember("onboarding") { get<OnboardingViewModel>() }
 
     fun catalog(): CatalogViewModel = remember("catalog") { get<CatalogViewModel>() }
 

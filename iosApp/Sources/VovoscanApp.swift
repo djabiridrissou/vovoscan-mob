@@ -18,7 +18,7 @@ struct VovoscanApp: App {
 
     var body: some Scene {
         WindowGroup {
-            RootView()
+            LocaleRoot()
                 .preferredColorScheme(.dark)
                 .tint(Color.brandRed)
         }
