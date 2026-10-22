@@ -234,7 +234,7 @@ private struct Wipe: View {
 }
 
 /// The wallet as the credits card shows it: the balance counting up from zero, or "own keys" stamped.
-struct WalletCard: View {
+struct TourWallet: View {
     let kicker: String
     let balance: Int64?
     let ownKeysLine: String?

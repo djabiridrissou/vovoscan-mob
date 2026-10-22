@@ -282,7 +282,7 @@ struct OnboardingView: View {
                 }
             }
             if state.creditsStatus != nil {
-                WalletCard(
+                TourWallet(
                     kicker: state.walletKicker,
                     balance: state.credits.ownKeys ? nil : state.credits.balance?.int64Value,
                     ownKeysLine: state.credits.ownKeys ? state.creditsStatus : nil,

@@ -284,7 +284,7 @@ private fun Modifier.wipe(
 
 /** The wallet: the balance counting up from zero, or the own-keys line. */
 @Composable
-fun WalletCard(
+fun TourWallet(
     kicker: String,
     balance: Long?,
     ownKeysLine: String?,

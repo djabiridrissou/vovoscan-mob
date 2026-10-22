@@ -334,7 +334,7 @@ private fun Credits(state: OnboardingUiState) {
         CreditLine("⇄", Brand.Cyan) { Text(state.creditsShared, style = MaterialTheme.typography.bodyMedium) }
     }
     if (state.creditsStatus != null) {
-        WalletCard(
+        TourWallet(
             kicker = state.walletKicker,
             balance = if (state.credits.ownKeys) null else state.credits.balance,
             ownKeysLine = if (state.credits.ownKeys) state.creditsStatus else null,
