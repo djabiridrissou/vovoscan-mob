@@ -917,22 +917,18 @@ private fun BottomBar(
             )
             return@Row
         }
-        state.previousChapterId?.let { previous ->
+        // Chapters, not pages (pages turn with taps and swipes); right to left puts the next one on the left.
+        state.chapterButtons.forEachIndexed { index, button ->
+            if (index > 0) Spacer(Modifier.width(20.dp))
             Text(
-                I18n.text("reader.previousArrow"),
-                style = MaterialTheme.typography.bodySmall,
-                modifier =
-                    Modifier.clickable {
-                        onOpenChapter(previous)
+                button.label,
+                style =
+                    if (button.forward) {
+                        MaterialTheme.typography.labelLarge.copy(color = Brand.Red)
+                    } else {
+                        MaterialTheme.typography.bodySmall
                     },
-            )
-            Spacer(Modifier.width(20.dp))
-        }
-        state.nextChapterId?.let { next ->
-            Text(
-                I18n.text("reader.nextArrow"),
-                style = MaterialTheme.typography.labelLarge.copy(color = Brand.Red),
-                modifier = Modifier.clickable { onOpenChapter(next) },
+                modifier = Modifier.clickable { onOpenChapter(button.chapterId) },
             )
         }
     }

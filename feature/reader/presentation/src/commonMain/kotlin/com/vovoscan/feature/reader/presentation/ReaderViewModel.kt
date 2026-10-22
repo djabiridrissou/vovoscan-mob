@@ -174,6 +174,13 @@ sealed interface ReaderCommand {
     ) : ReaderCommand
 }
 
+/** A chapter button of the reader's bar; [forward]: the next chapter (the red one). */
+data class ChapterButton(
+    val chapterId: String,
+    val label: String,
+    val forward: Boolean,
+)
+
 data class ReaderUiState(
     val titleName: String = "",
     /** "Chapter 2 · The last gate" or "Full text". */
@@ -296,6 +303,28 @@ data class ReaderUiState(
     val nextLabel: String? get() = nextChapterId?.let { t(if (isBook) "reader.nextPart" else "reader.nextChapter") }
 
     val rightToLeft: Boolean get() = mode == ReadingMode.PagedRightToLeft
+
+    /**
+     * The bar's chapter buttons, in screen order. They open another chapter (pages turn with taps and swipes), so they
+     * say "chapter"; pages read right to left put the next chapter on the left, its arrow pointing that way.
+     */
+    val chapterButtons: List<ChapterButton>
+        get() {
+            if (isBook) return emptyList()
+            val previous =
+                previousChapterId?.let {
+                    ChapterButton(it, t(if (rightToLeft) "reader.previousChapterRtl" else "reader.previousChapter"), forward = false)
+                }
+            val next =
+                nextChapterId?.let {
+                    ChapterButton(
+                        it,
+                        t(if (rightToLeft) "reader.nextChapterRtl" else "reader.nextChapter"),
+                        forward = true,
+                    )
+                }
+            return if (rightToLeft) listOfNotNull(next, previous) else listOfNotNull(previous, next)
+        }
 
     /**
      * Book: the hint for a pull past an edge of the section. [overscroll]: how far past the edge, as a fraction of

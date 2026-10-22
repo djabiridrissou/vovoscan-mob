@@ -126,6 +126,57 @@ class ReaderViewModelTest {
             assertEquals("4 / 5", vm.state.value.positionLabel)
             assertTrue(vm.state.value.rightToLeft)
             assertEquals("Next chapter →", vm.state.value.nextLabel)
+            // The bar's buttons open chapters: right to left, the next one on the left, its arrow pointing left.
+            assertEquals(
+                listOf("← Next chapter"),
+                vm.state.value.chapterButtons
+                    .map { it.label },
+            )
+        }
+
+    @Test
+    fun chapterButtonsFollowTheReadingDirection() =
+        runTest(dispatcher) {
+            val middle = comic.copy(previousChapterId = "c0")
+            val rtl =
+                ReaderViewModel(
+                    "vovoscan",
+                    "t1",
+                    "c1",
+                    0,
+                    FakeReader(middle, AppResult.Ok(Unit)),
+                    FakeSettings(ReaderPreferences(coachSeen = ALL_COACHES, mangaMode = ReadingMode.PagedRightToLeft)),
+                    noHeadings,
+                ) { _, _, _, _ -> }
+            advanceUntilIdle()
+            assertEquals(
+                listOf("c2" to "← Next chapter", "c0" to "Previous chapter →"),
+                rtl.state.value.chapterButtons.map {
+                    it.chapterId to
+                        it.label
+                },
+            )
+            val ltr =
+                ReaderViewModel(
+                    "vovoscan",
+                    "t1",
+                    "c1",
+                    0,
+                    FakeReader(middle, AppResult.Ok(Unit)),
+                    FakeSettings(ReaderPreferences(coachSeen = ALL_COACHES, mangaMode = ReadingMode.PagedLeftToRight)),
+                    noHeadings,
+                ) { _, _, _, _ -> }
+            advanceUntilIdle()
+            assertEquals(
+                listOf("← Previous chapter", "Next chapter →"),
+                ltr.state.value.chapterButtons
+                    .map { it.label },
+            )
+            assertEquals(
+                listOf(false, true),
+                ltr.state.value.chapterButtons
+                    .map { it.forward },
+            )
         }
 
     /**

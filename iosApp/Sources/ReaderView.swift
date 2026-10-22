@@ -233,11 +233,11 @@ struct ReaderView: View {
                     Button(L("reader.nextSection")) { model.send(ReaderIntentNext.shared) }
                         .font(.brandBody(16, weight: .bold)).foregroundStyle(Color.brandRed)
                 }
-                if let previous = model.state.previousChapterId {
-                    Button(L("reader.previousArrow")) { onOpenChapter(previous, 0) }.font(.brandBody(13)).foregroundStyle(Color.brandMuted)
-                }
-                if let next = model.state.nextChapterId {
-                    Button(L("reader.nextArrow")) { onOpenChapter(next, 0) }.font(.brandBody(16, weight: .bold)).foregroundStyle(Color.brandRed)
+                // Chapters, not pages (pages turn with taps and swipes); right to left puts the next one on the left.
+                ForEach(model.state.chapterButtons, id: \.chapterId) { button in
+                    Button(button.label) { onOpenChapter(button.chapterId, 0) }
+                        .font(.brandBody(button.forward ? 16 : 13, weight: button.forward ? .bold : .regular))
+                        .foregroundStyle(button.forward ? Color.brandRed : Color.brandMuted)
                 }
             }
             .padding(.horizontal, 16)
