@@ -5,6 +5,8 @@ import com.vovoscan.core.common.AppResult
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.int
+import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
@@ -67,6 +69,16 @@ class RulesSource(
                 .orEmpty()
                 .mapValues { (_, v) -> Template.render(v.jsonPrimitive.content, variables) }
                 .filterValues { it.isNotEmpty() }
+                .toMutableMap()
+        (request["pagination"] as? JsonObject)
+            ?.takeIf { it["type"]?.jsonPrimitive?.contentOrNull == "startIndex" }
+            ?.let { pagination ->
+                val page = (variables["page"] as? Number)?.toInt() ?: 1
+                val pageSize = pagination.getValue("pageSize").jsonPrimitive.int
+                val base = pagination["base"]?.jsonPrimitive?.intOrNull ?: 1
+                val start = base + (page - 1) * pageSize
+                if (start != base) query[pagination.getValue("param").jsonPrimitive.content] = start.toString()
+            }
         return when (val fetched = http.get(manifest, url, query, maxBytes = 5 * 1024 * 1024)) {
             is AppResult.Err -> fetched
             is AppResult.Ok -> {
@@ -128,21 +140,54 @@ class RulesSource(
         search: String = "",
     ): AppResult<RulesPage> {
         val section = json.getValue("catalog").jsonObject
-        val loaded = load(section.getValue("request").jsonObject, vars("page" to page, "search" to search))
-        val ctx = (loaded as? AppResult.Ok)?.value ?: return loaded as AppResult.Err
-        return rules {
-            val item = section.getValue("item").jsonObject
-            val items =
-                Rules.nodes(ctx, section.getValue("list")).mapNotNull { node ->
-                    val child = ctx.child(node)
-                    str(Rules.evaluate(child, item["id"]))?.let { summary(child, item, it) }
-                }
-            RulesPage(
-                items = items,
-                hasNext = Rules.evaluate(ctx, section["hasNext"]) == true,
-                total = (Rules.evaluate(ctx, section["total"]) as? Double)?.toInt(),
-            )
+        val request = section.getValue("request").jsonObject
+        val cursor =
+            (request["pagination"] as? JsonObject)
+                ?.takeIf { it["type"]?.jsonPrimitive?.contentOrNull == "cursor" }
+        var variables = vars("page" to page, "search" to search)
+        var finalCtx: RuleContext? = null
+        var stoppedEarly = false
+        for (p in 1..page) {
+            val loaded = load(request, variables)
+            val loadedCtx = (loaded as? AppResult.Ok)?.value ?: return loaded as AppResult.Err
+            finalCtx = loadedCtx
+            if (p == page || cursor == null) break
+            val next = rules { str(Rules.evaluate(loadedCtx, cursor.getValue("from"))) }
+            val cursorValue = (next as? AppResult.Ok)?.value
+            if (cursorValue.isNullOrEmpty()) {
+                stoppedEarly = true
+                break
+            }
+            variables = vars("page" to p + 1, "search" to search) + ("cursor" to cursorValue)
         }
+        val ctx = finalCtx ?: return AppResult.Err(AppError.Rejected("SOURCE_RULES", "${manifest.name} returned no page."))
+        return rules {
+            val hasNext =
+                when {
+                    cursor == null -> null
+                    stoppedEarly -> false
+                    else -> str(Rules.evaluate(ctx, cursor.getValue("from"))) != null
+                }
+            page(ctx, section, hasNext)
+        }
+    }
+
+    private fun page(
+        ctx: RuleContext,
+        section: JsonObject,
+        hasNextOverride: Boolean?,
+    ): RulesPage {
+        val item = section.getValue("item").jsonObject
+        val items =
+            Rules.nodes(ctx, section.getValue("list")).mapNotNull { node ->
+                val child = ctx.child(node)
+                str(Rules.evaluate(child, item["id"]))?.let { summary(child, item, it) }
+            }
+        return RulesPage(
+            items = items,
+            hasNext = hasNextOverride ?: (Rules.evaluate(ctx, section["hasNext"]) == true),
+            total = (Rules.evaluate(ctx, section["total"]) as? Double)?.toInt(),
+        )
     }
 
     suspend fun title(id: String): AppResult<RulesTitle> {
