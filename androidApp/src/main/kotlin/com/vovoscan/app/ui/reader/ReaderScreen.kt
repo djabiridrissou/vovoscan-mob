@@ -147,6 +147,8 @@ fun ReaderScreen(
     val translationState by translation.state.collectAsStateWithLifecycle()
     var languagesOpen by rememberSaveable { mutableStateOf(false) }
     var keysOpen by rememberSaveable { mutableStateOf(false) }
+    // The bottom bar's height: the language dock sits above it while the bars show.
+    var bottomBarPx by remember { mutableIntStateOf(0) }
     val languageAction =
         remember(translationState.available) {
             if (translationState.available) ReaderLanguageAction(translationState.endCardLabel) { languagesOpen = true } else null
@@ -253,7 +255,8 @@ fun ReaderScreen(
             )
         }
         // A book keeps its bars: the web view receives the taps (text scrolling).
-        if (state.chromeVisible || state.isBook) {
+        val barsShown = state.chromeVisible || state.isBook
+        if (barsShown) {
             TopBar(
                 state,
                 onBack,
@@ -268,14 +271,23 @@ fun ReaderScreen(
                     if (!state.isBook && translationState.available) LanguageButton(translationState) { languagesOpen = true }
                 },
             )
-            BottomBar(state, onIntent, { onOpenChapter(it, 0) }, Modifier.align(Alignment.BottomCenter))
+            BottomBar(
+                state,
+                onIntent,
+                { onOpenChapter(it, 0) },
+                Modifier.align(Alignment.BottomCenter).onSizeChanged { bottomBarPx = it.height },
+            )
         }
         // A language on its way: the page keeps its lettering, the dock shows the cost, then the progress.
         AnimatedVisibility(
             translationState.dock != null && !state.isBook,
             enter = if (state.reducedMotion) EnterTransition.None else slideInVertically { it } + fadeIn(),
             exit = if (state.reducedMotion) ExitTransition.None else slideOutVertically { it } + fadeOut(),
-            modifier = Modifier.align(Alignment.BottomCenter),
+            // Above the page counter and the chapter buttons while they show: its buttons are never under the bar.
+            modifier =
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = if (barsShown) with(LocalDensity.current) { bottomBarPx.toDp() } else 0.dp),
         ) {
             var shown by remember { mutableStateOf(translationState.dock) }
             translationState.dock?.let { shown = it }

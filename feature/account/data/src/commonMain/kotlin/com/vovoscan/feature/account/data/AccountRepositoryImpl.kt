@@ -4,6 +4,7 @@ import com.vovoscan.core.common.AppError
 import com.vovoscan.core.common.AppResult
 import com.vovoscan.core.common.map
 import com.vovoscan.core.common.parseIsoMillis
+import com.vovoscan.feature.account.domain.COACHED_UNSUPPORTED
 import com.vovoscan.feature.account.domain.Provider
 import com.vovoscan.feature.account.domain.ProviderKey
 import com.vovoscan.feature.account.domain.ProviderKeys
@@ -110,7 +111,14 @@ class AccountRepositoryImpl(
         }
     }
 
-    override suspend fun coached(): AppResult<Set<String>> = remote.readingSettings().map { it.coached.orEmpty().toSet() }
+    override suspend fun coached(): AppResult<Set<String>> =
+        when (val settings = remote.readingSettings()) {
+            is AppResult.Err -> settings
+            // No `coached` field: the server has no slot yet. Saying "none seen" would make the device send every guide.
+            is AppResult.Ok ->
+                settings.value.coached?.let { AppResult.Ok(it.toSet()) }
+                    ?: AppResult.Err(AppError.Rejected(COACHED_UNSUPPORTED, ""))
+        }
 
     override suspend fun markCoached(kind: String): AppResult<Unit> = remote.markCoached(kind).map { }
 

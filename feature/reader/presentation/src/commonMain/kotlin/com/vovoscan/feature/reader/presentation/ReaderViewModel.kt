@@ -1146,6 +1146,9 @@ class ReaderViewModel(
         preferences: ReaderPreferences,
     ) {
         if (coachChecked) return
+        val current = state.value
+        // Decided once there is something to read: a chapter still loading must not use up its first open.
+        if (current.unavailable || (current.items.isEmpty() && !current.isBook)) return
         coachChecked = true
         if (coachKind() !in preferences.coachSeen + accountGuides) showCoach()
     }

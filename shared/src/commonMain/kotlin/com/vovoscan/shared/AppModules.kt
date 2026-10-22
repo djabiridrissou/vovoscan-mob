@@ -1,6 +1,7 @@
 package com.vovoscan.shared
 
 import com.vovoscan.core.common.AppDispatchers
+import com.vovoscan.core.common.AppError
 import com.vovoscan.core.common.AppResult
 import com.vovoscan.core.common.NetworkMonitor
 import com.vovoscan.core.common.SystemClock
@@ -17,6 +18,7 @@ import com.vovoscan.core.sources.PluginLinkPolicy
 import com.vovoscan.core.sources.RulesHttp
 import com.vovoscan.core.sources.createRulesHttpClient
 import com.vovoscan.feature.account.di.accountModule
+import com.vovoscan.feature.account.domain.COACHED_UNSUPPORTED
 import com.vovoscan.feature.account.domain.Provider
 import com.vovoscan.feature.account.domain.ProviderKeysRepository
 import com.vovoscan.feature.account.domain.QuoteKind
@@ -245,11 +247,26 @@ fun appModules(
             single<CoachSync> {
                 val reading = get<ReadingSettingsRepository>()
                 object : CoachSync {
+                    // A server without the slot (no `coached`, or 404 on a mark): the device copy is the truth until
+                    // the app runs against one that has it; nothing is sent meanwhile and nothing shows.
+                    private var slotMissing = false
+
                     override suspend fun seen(): Set<CoachKind>? =
-                        (reading.coached() as? AppResult.Ok)?.value?.mapNotNull(CoachKind::fromWire)?.toSet()
+                        when (val result = reading.coached()) {
+                            is AppResult.Ok -> {
+                                slotMissing = false
+                                result.value.mapNotNull(CoachKind::fromWire).toSet()
+                            }
+                            is AppResult.Err -> {
+                                if ((result.error as? AppError.Rejected)?.code == COACHED_UNSUPPORTED) slotMissing = true
+                                null
+                            }
+                        }
 
                     override suspend fun mark(kind: CoachKind) {
-                        reading.markCoached(kind.wire)
+                        if (slotMissing) return
+                        val result = reading.markCoached(kind.wire)
+                        if (result is AppResult.Err && result.error.isMissingRoute()) slotMissing = true
                     }
                 }
             }
@@ -317,3 +334,7 @@ private class AccountKeyStatus(
         keys.refreshKeys()
     }
 }
+
+/** The route isn't on this server (an older one): 404 / 405 with the framework's generic code. */
+private fun AppError.isMissingRoute(): Boolean =
+    (this as? AppError.Rejected)?.code in setOf("NOT_FOUND", "METHOD_NOT_ALLOWED") || (this is AppError.Unknown && detail == "HTTP 404")

@@ -34,6 +34,8 @@ struct ReaderView: View {
     @State private var settingsOpen = false
     @State private var languagesOpen = false
     @State private var keysOpen = false
+    /// The bottom bar's height: the language dock sits above it while the bars show.
+    @State private var bottomBarHeight: CGFloat = 0
     @State private var player: PlayerRoute?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let onOpenChapter: (String, Int) -> Void
@@ -76,6 +78,9 @@ struct ReaderView: View {
                     retry: { translation.send(TranslationIntentRetry.shared) },
                     close: { translation.send(TranslationIntentCloseDock.shared) }
                 )
+                // Above the page counter and the chapter buttons while they show: its buttons are never under the bar.
+                .padding(.bottom, model.state.chromeVisible || model.state.isBook ? bottomBarHeight : 0)
+                .zIndex(0.5)
                 .transition(.move(edge: .bottom).combined(with: .opacity))
             }
             if let overlay = model.state.tapOverlay {
@@ -243,6 +248,7 @@ struct ReaderView: View {
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
             .background(Color.brandInk.opacity(0.92))
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { bottomBarHeight = $0 }
         }
     }
 }
