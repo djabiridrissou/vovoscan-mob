@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -62,6 +63,9 @@ import org.koin.compose.viewmodel.koinViewModel
 @Composable
 fun SettingsScreen(
     onSignOut: () -> Unit,
+    accountDetail: String,
+    onOpenAccount: () -> Unit,
+    onOpenPreferences: () -> Unit,
     keys: ProviderKeysViewModel = koinViewModel(),
     reading: ReadingSettingsViewModel = koinViewModel(),
     usage: UsageViewModel = koinViewModel(),
@@ -82,6 +86,8 @@ fun SettingsScreen(
                 Text(I18n.text("settings.headline"), style = MaterialTheme.typography.headlineSmall)
             }
         }
+        item { SettingsRow(I18n.text("settings.tabs.account"), accountDetail, onOpenAccount) }
+        item { SettingsRow(I18n.text("settings.tabs.preferences"), I18n.text("prefs.lead"), onOpenPreferences) }
 
         // Credits (runs on the platform's keys).
         if (walletState.shown) {
@@ -96,18 +102,7 @@ fun SettingsScreen(
         }
 
         // Keys.
-        item { SectionTitle(I18n.text("settings.keys")) }
-        item {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                keysState.offlineNotice?.let { OfflineNotice(it) }
-                Text(keysState.privacyNote, style = MaterialTheme.typography.bodySmall)
-                keysState.disabledNotice?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
-                keysState.notice?.let { Notice(it) }
-                keysState.error?.let { ErrorText(it) }
-            }
-        }
-        items(keysState.slots, key = { it.provider.name }) { slot -> KeySlot(slot, keysState, keys::onIntent) }
-        if (keysState.formOpen) item { KeyForm(keysState, keys::onIntent) }
+        keysSection(keysState, keys::onIntent)
 
         // Reading model.
         item { SectionTitle(I18n.text("settings.readingModel")) }
@@ -199,24 +194,7 @@ fun SettingsScreen(
         item { GhostButton(I18n.text("common.signOut"), onSignOut) }
     }
 
-    keysState.removal?.let { prompt ->
-        AlertDialog(
-            onDismissRequest = { keys.onIntent(ProviderKeysIntent.CancelRemove) },
-            containerColor = Brand.Ink2,
-            title = { Text(prompt.title, style = MaterialTheme.typography.titleMedium) },
-            text = { Text(prompt.message, style = MaterialTheme.typography.bodyMedium) },
-            confirmButton = {
-                TextButton({ keys.onIntent(ProviderKeysIntent.ConfirmRemove) }, enabled = !keysState.removing) {
-                    Text(prompt.confirmLabel, style = MaterialTheme.typography.labelLarge.copy(color = Brand.Danger))
-                }
-            },
-            dismissButton = {
-                TextButton({ keys.onIntent(ProviderKeysIntent.CancelRemove) }) {
-                    Text(prompt.cancelLabel, style = MaterialTheme.typography.labelLarge)
-                }
-            },
-        )
-    }
+    KeyRemovalDialog(keysState, keys::onIntent)
 }
 
 @Composable
@@ -351,4 +329,90 @@ internal fun Chip(
                 .clickable(onClick = onClick)
                 .padding(horizontal = 12.dp, vertical = 7.dp),
     )
+}
+
+/** The provider keys: privacy note, one slot per provider, the add/replace form (Settings and the tutorial). */
+internal fun LazyListScope.keysSection(
+    state: ProviderKeysUiState,
+    send: (ProviderKeysIntent) -> Unit,
+) {
+    item { SectionTitle(I18n.text("settings.keys")) }
+    item {
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            state.offlineNotice?.let { OfflineNotice(it) }
+            Text(state.privacyNote, style = MaterialTheme.typography.bodySmall)
+            state.disabledNotice?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
+            state.notice?.let { Notice(it) }
+            state.error?.let { ErrorText(it) }
+        }
+    }
+    items(state.slots, key = { it.provider.name }) { slot -> KeySlot(slot, state, send) }
+    if (state.formOpen) item { KeyForm(state, send) }
+}
+
+@Composable
+internal fun KeyRemovalDialog(
+    state: ProviderKeysUiState,
+    send: (ProviderKeysIntent) -> Unit,
+) {
+    state.removal?.let { prompt ->
+        AlertDialog(
+            onDismissRequest = { send(ProviderKeysIntent.CancelRemove) },
+            containerColor = Brand.Ink2,
+            title = { Text(prompt.title, style = MaterialTheme.typography.titleMedium) },
+            text = { Text(prompt.message, style = MaterialTheme.typography.bodyMedium) },
+            confirmButton = {
+                TextButton({ send(ProviderKeysIntent.ConfirmRemove) }, enabled = !state.removing) {
+                    Text(prompt.confirmLabel, style = MaterialTheme.typography.labelLarge.copy(color = Brand.Danger))
+                }
+            },
+            dismissButton = {
+                TextButton({ send(ProviderKeysIntent.CancelRemove) }) {
+                    Text(prompt.cancelLabel, style = MaterialTheme.typography.labelLarge)
+                }
+            },
+        )
+    }
+}
+
+/** The keys alone, opened from the tutorial's credits step. */
+@Composable
+fun KeysScreen(
+    onBack: () -> Unit,
+    keys: ProviderKeysViewModel = koinViewModel(),
+) {
+    val state by keys.state.collectAsStateWithLifecycle()
+    LazyColumn(
+        Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(20.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        item { GhostButton(I18n.text("common.backArrow"), onBack) }
+        keysSection(state, keys::onIntent)
+    }
+    KeyRemovalDialog(state, keys::onIntent)
+}
+
+/** A row that opens a settings screen: title, one line under it, a chevron. */
+@Composable
+private fun SettingsRow(
+    title: String,
+    detail: String,
+    onClick: () -> Unit,
+) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .background(Brand.Ink2, RoundedCornerShape(12.dp))
+            .border(1.dp, Brand.Line, RoundedCornerShape(12.dp))
+            .clickable(onClick = onClick)
+            .padding(16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.titleMedium)
+            Text(detail, style = MaterialTheme.typography.bodySmall)
+        }
+        Text("›", style = MaterialTheme.typography.titleMedium.copy(color = Brand.Muted))
+    }
 }
