@@ -81,7 +81,8 @@ internal class FakeAuth(
     var accountError: AppError? = null
     val passwords = mutableListOf<String>()
 
-    override suspend fun sessions(): AppResult<List<DeviceSession>> = accountError?.let { AppResult.Err(it) } ?: AppResult.Ok(devices.toList())
+    override suspend fun sessions(): AppResult<List<DeviceSession>> =
+        accountError?.let { AppResult.Err(it) } ?: AppResult.Ok(devices.toList())
 
     override suspend fun revokeSession(id: String): AppResult<Unit> {
         accountError?.let { return AppResult.Err(it) }

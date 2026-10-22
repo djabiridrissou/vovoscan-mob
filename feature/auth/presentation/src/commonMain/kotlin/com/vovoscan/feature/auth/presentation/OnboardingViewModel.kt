@@ -220,7 +220,11 @@ class OnboardingViewModel(
             is OnboardingIntent.ChooseRegion -> chooseRegion(intent.code)
             is OnboardingIntent.ReadingQuery -> mutableState.update { it.copy(readingQuery = intent.text) }
             is OnboardingIntent.ChooseReading ->
-                if (LanguagePicker.label(intent.code) != null) mutableState.update { it.copy(readingLanguage = intent.code, readingQuery = "") }
+                if (LanguagePicker.label(intent.code) !=
+                    null
+                ) {
+                    mutableState.update { it.copy(readingLanguage = intent.code, readingQuery = "") }
+                }
             OnboardingIntent.TurnOnOfficial -> turnOnOfficial()
             is OnboardingIntent.Open -> mutableState.update { it.copy(open = intent.destination) }
             OnboardingIntent.Returned -> {

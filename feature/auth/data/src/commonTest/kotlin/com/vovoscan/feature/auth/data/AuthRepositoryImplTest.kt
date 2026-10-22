@@ -2,12 +2,12 @@ package com.vovoscan.feature.auth.data
 
 import com.vovoscan.core.common.AppError
 import com.vovoscan.core.common.AppResult
-import com.vovoscan.feature.auth.domain.Change
-import com.vovoscan.feature.auth.domain.ProfileChange
 import com.vovoscan.core.security.SecureKeys
 import com.vovoscan.core.testing.MemorySecureStore
 import com.vovoscan.core.testing.respondJson
 import com.vovoscan.core.testing.testHttpClient
+import com.vovoscan.feature.auth.domain.Change
+import com.vovoscan.feature.auth.domain.ProfileChange
 import io.ktor.client.request.HttpRequestData
 import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
@@ -109,7 +109,12 @@ class AuthRepositoryImplTest {
                 AuthRepositoryImpl(
                     KtorAuthRemoteDataSource(
                         testHttpClient {
-                            respondJson("""{"data":${me.replace("\"deletion\":null", "\"deletion\":{\"scheduledFor\":\"2026-11-21T14:03:00Z\"}")}}""")
+                            respondJson(
+                                """{"data":${me.replace(
+                                    "\"deletion\":null",
+                                    "\"deletion\":{\"scheduledFor\":\"2026-11-21T14:03:00Z\"}",
+                                )}}""",
+                            )
                         },
                     ),
                     SecureSessionLocalDataSource(store),
@@ -134,7 +139,12 @@ class AuthRepositoryImplTest {
                         testHttpClient { request ->
                             assertEquals(HttpMethod.Patch, request.method)
                             sent = request.text()
-                            respondJson("""{"data":${me.replace("\"locale\":\"en\"", "\"locale\":\"fr\"").replace("\"region\":\"FR\"", "\"region\":null")}}""")
+                            respondJson(
+                                """{"data":${me.replace(
+                                    "\"locale\":\"en\"",
+                                    "\"locale\":\"fr\"",
+                                ).replace("\"region\":\"FR\"", "\"region\":null")}}""",
+                            )
                         },
                     ),
                     SecureSessionLocalDataSource(store),
@@ -186,7 +196,10 @@ class AuthRepositoryImplTest {
                 AuthRepositoryImpl(
                     KtorAuthRemoteDataSource(
                         testHttpClient {
-                            respondJson("""{"code":422,"message":"Invalid.","data":{"error":"VALIDATION"}}""", HttpStatusCode.UnprocessableEntity)
+                            respondJson(
+                                """{"code":422,"message":"Invalid.","data":{"error":"VALIDATION"}}""",
+                                HttpStatusCode.UnprocessableEntity,
+                            )
                         },
                     ),
                     SecureSessionLocalDataSource(store),
@@ -207,7 +220,10 @@ class AuthRepositoryImplTest {
                 AuthRepositoryImpl(
                     KtorAuthRemoteDataSource(
                         testHttpClient {
-                            respondJson("""{"code":401,"message":"Wrong password.","data":{"error":"WRONG_PASSWORD"}}""", HttpStatusCode.Unauthorized)
+                            respondJson(
+                                """{"code":401,"message":"Wrong password.","data":{"error":"WRONG_PASSWORD"}}""",
+                                HttpStatusCode.Unauthorized,
+                            )
                         },
                     ),
                     SecureSessionLocalDataSource(store),
@@ -255,9 +271,12 @@ class AuthRepositoryImplTest {
                         testHttpClient {
                             respondJson(
                                 """{"data":[""" +
-                                    """{"id":"a","client":"web","current":false,"createdAt":"2026-10-01T00:00:00Z","lastUsedAt":"2026-10-20T00:00:00Z","device":"Mac · Chrome"},""" +
-                                    """{"id":"b","client":"mobile","current":true,"createdAt":"2026-10-02T00:00:00Z","device":"iPhone"},""" +
-                                    """{"id":"c","client":"web","current":false,"createdAt":"2026-10-03T00:00:00Z","lastUsedAt":"2026-10-21T00:00:00Z","ip":"203.0.113.0","device":"PC · Firefox"}]}""",
+                                    """{"id":"a","client":"web","current":false,"createdAt":"2026-10-01T00:00:00Z",""" +
+                                    """"lastUsedAt":"2026-10-20T00:00:00Z","device":"Mac · Chrome"},""" +
+                                    """{"id":"b","client":"mobile","current":true,""" +
+                                    """"createdAt":"2026-10-02T00:00:00Z","device":"iPhone"},""" +
+                                    """{"id":"c","client":"web","current":false,"createdAt":"2026-10-03T00:00:00Z",""" +
+                                    """"lastUsedAt":"2026-10-21T00:00:00Z","ip":"203.0.113.0","device":"PC · Firefox"}]}""",
                             )
                         },
                     ),
@@ -270,5 +289,7 @@ class AuthRepositoryImplTest {
 }
 
 private object ApiJsonUser {
-    fun decode(json: String): UserDto = com.vovoscan.core.network.ApiJson.decodeFromString(UserDto.serializer(), json)
+    fun decode(json: String): UserDto =
+        com.vovoscan.core.network.ApiJson
+            .decodeFromString(UserDto.serializer(), json)
 }

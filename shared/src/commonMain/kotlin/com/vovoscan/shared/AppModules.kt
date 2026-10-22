@@ -3,6 +3,7 @@ package com.vovoscan.shared
 import com.vovoscan.core.common.AppDispatchers
 import com.vovoscan.core.common.AppResult
 import com.vovoscan.core.common.NetworkMonitor
+import com.vovoscan.core.common.i18n.UiLanguage
 import com.vovoscan.core.network.ApiConfig
 import com.vovoscan.core.network.createHttpClient
 import com.vovoscan.core.network.platformHttpEngine
@@ -22,6 +23,7 @@ import com.vovoscan.feature.account.domain.WalletRepository
 import com.vovoscan.feature.auth.di.SignOutCleanup
 import com.vovoscan.feature.auth.di.authModule
 import com.vovoscan.feature.auth.domain.AuthRepository
+import com.vovoscan.feature.auth.domain.OnboardingServices
 import com.vovoscan.feature.catalog.di.catalogModule
 import com.vovoscan.feature.catalog.domain.CatalogRepository
 import com.vovoscan.feature.catalog.domain.ContentKind
@@ -74,8 +76,8 @@ data class AppConfig(
 )
 
 /**
- * All Koin modules of the app; `platform` provides `DatabaseDriverFactory`, `SecureStore`, `NetworkMonitor` and
- * `AppFolders`.
+ * All Koin modules of the app; `platform` provides `DatabaseDriverFactory`, `SecureStore`, `NetworkMonitor`,
+ * `AppFolders` and `DevicePreferences`.
  * Each feature gets its local and remote sources from its own module (`di`).
  */
 fun appModules(
@@ -203,6 +205,10 @@ fun appModules(
             // Image loaders (Coil, the iOS URL session) send a source's page-image Referer to its hosts: the table
             // follows the user's sources and their manifests (started by each app at launch).
             single { ImageRefererSync(get(), get(), get()) }
+            // The app's language: the device's choice at launch, then the signed-in account's.
+            single { UiLanguage(get()) }
+            single { LocaleSync(get(), get(), get()) }
+            single<OnboardingServices> { AppOnboardingServices(get(), get(), get(), get()) }
         },
         accountModule,
         authModule,

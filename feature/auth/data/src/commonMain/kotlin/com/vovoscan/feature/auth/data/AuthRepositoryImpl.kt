@@ -109,7 +109,9 @@ class AuthRepositoryImpl(
                         ip = it.ip,
                         device = it.device,
                     )
-                }.sortedWith(compareByDescending<DeviceSession> { it.current }.thenByDescending { it.lastUsedAtMillis ?: it.createdAtMillis })
+                }.sortedWith(
+                    compareByDescending<DeviceSession> { it.current }.thenByDescending { it.lastUsedAtMillis ?: it.createdAtMillis },
+                )
         }
 
     override suspend fun revokeSession(id: String): AppResult<Unit> = remote.revokeSession(id)

@@ -92,11 +92,20 @@ class SignInViewModelTest {
     fun theLanguageCanBeChosenBeforeSigningIn() =
         runTest {
             val vm = SignInViewModel(FakeAuth(), language)
-            assertEquals(listOf("English", "Français"), vm.state.value.locales.map { it.label })
+            assertEquals(
+                listOf("English", "Français"),
+                vm.state.value.locales
+                    .map { it.label },
+            )
             vm.onIntent(SignInIntent.ChooseLocale("fr"))
             try {
                 assertEquals("fr", I18n.locale.value)
-                assertEquals("fr", vm.state.value.locales.single { it.selected }.code)
+                assertEquals(
+                    "fr",
+                    vm.state.value.locales
+                        .single { it.selected }
+                        .code,
+                )
             } finally {
                 I18n.use("en", null)
             }

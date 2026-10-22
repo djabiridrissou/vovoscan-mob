@@ -7,11 +7,13 @@ import coil3.SingletonImageLoader
 import com.vovoscan.app.downloads.AppVisibility
 import com.vovoscan.app.downloads.WorkManagerDownloadScheduler
 import com.vovoscan.app.ui.common.vovoscanImageLoader
+import com.vovoscan.core.common.i18n.UiLanguage
 import com.vovoscan.feature.auth.domain.AuthRepository
 import com.vovoscan.feature.reader.domain.DownloadScheduler
 import com.vovoscan.feature.reader.domain.DownloadsRepository
 import com.vovoscan.shared.AppConfig
 import com.vovoscan.shared.ImageRefererSync
+import com.vovoscan.shared.LocaleSync
 import com.vovoscan.shared.androidPlatformModule
 import com.vovoscan.shared.appModules
 import kotlinx.coroutines.runBlocking
@@ -33,6 +35,9 @@ class VovoscanApplication :
             val background = module { single<DownloadScheduler> { WorkManagerDownloadScheduler(this@VovoscanApplication) } }
             modules(appModules(config, androidPlatformModule(this@VovoscanApplication)) + background)
         }
+        // The app's language before the first screen: the device's choice, then the account's once it is known.
+        GlobalContext.get().get<UiLanguage>().start()
+        GlobalContext.get().get<LocaleSync>().start()
         // Session stored on the device, before the first screen; the network check follows, without blocking offline.
         runBlocking { GlobalContext.get().get<AuthRepository>().restore() }
         // Chapters left downloading when the app stopped carry on (and WorkManager is asked to keep them going).

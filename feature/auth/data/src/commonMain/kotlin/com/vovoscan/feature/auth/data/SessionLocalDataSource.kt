@@ -39,7 +39,14 @@ class SecureSessionLocalDataSource(
 
     override suspend fun pendingProfile(): String? = store.get(PENDING_PROFILE)
 
-    override suspend fun savePendingProfile(json: String?) = if (json == null) store.remove(PENDING_PROFILE) else store.put(PENDING_PROFILE, json)
+    override suspend fun savePendingProfile(json: String?) =
+        if (json ==
+            null
+        ) {
+            store.remove(PENDING_PROFILE)
+        } else {
+            store.put(PENDING_PROFILE, json)
+        }
 
     override suspend fun clear() = store.clear()
 

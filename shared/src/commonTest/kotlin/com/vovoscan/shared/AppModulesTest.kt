@@ -1,5 +1,7 @@
 package com.vovoscan.shared
 
+import com.vovoscan.core.common.i18n.DevicePreferences
+import com.vovoscan.core.common.i18n.UiLanguage
 import com.vovoscan.core.security.SecureStore
 import com.vovoscan.core.sources.PluginLinkPolicy
 import com.vovoscan.core.testing.MemorySecureStore
@@ -21,11 +23,20 @@ class AppModulesTest {
     fun coreModulesResolve() {
         val koin =
             startKoin {
-                modules(appModules(AppConfig("https://api.test/"), module { single<SecureStore> { MemorySecureStore() } }))
+                modules(
+                    appModules(
+                        AppConfig("https://api.test/"),
+                        module {
+                            single<SecureStore> { MemorySecureStore() }
+                            single<DevicePreferences> { DevicePreferences.InMemory() }
+                        },
+                    ),
+                )
             }.koin
         assertNotNull(koin.get<HttpClient>())
         assertNotNull(koin.get<SignOutCleanup>())
         assertNotNull(koin.get<SourceRemovedListener>())
         assertNotNull(koin.get<PluginLinkPolicy>())
+        assertNotNull(koin.get<UiLanguage>())
     }
 }

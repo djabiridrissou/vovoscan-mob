@@ -62,7 +62,11 @@ class AccountViewModelsTest {
             assertTrue(rows[0].detail.startsWith("This device ✦ Active "))
             assertTrue(rows[1].detail.startsWith("Browser ✦ Network 203.0.113.0 ✦ Active "))
             vm.onIntent(AccountIntent.SignOutOthers)
-            assertEquals(listOf("me"), vm.state.value.devices.map { it.id })
+            assertEquals(
+                listOf("me"),
+                vm.state.value.devices
+                    .map { it.id },
+            )
             assertEquals("1 device signed out.", vm.state.value.notice)
             assertFalse(vm.state.value.hasOtherDevices)
         }
@@ -96,7 +100,10 @@ class AccountViewModelsTest {
             val vm = AccountViewModel(auth, auth)
             vm.onIntent(AccountIntent.SubmitPassword("old-password", "short"))
             assertTrue(auth.passwords.isEmpty())
-            assertTrue(vm.state.value.error!!.isNotBlank())
+            assertTrue(
+                vm.state.value.error!!
+                    .isNotBlank(),
+            )
         }
 
     @Test
@@ -117,7 +124,10 @@ class AccountViewModelsTest {
             val auth = FakeAuth(signedIn = testSession())
             val vm = AccountViewModel(auth, auth)
             vm.onIntent(AccountIntent.Delete("my-password-12"))
-            assertTrue(vm.state.value.deletionScheduled!!.startsWith("Your account will be deleted on November 2"))
+            assertTrue(
+                vm.state.value.deletionScheduled!!
+                    .startsWith("Your account will be deleted on November 2"),
+            )
             vm.onIntent(AccountIntent.KeepAccount)
             assertNull(vm.state.value.deletionScheduled)
         }
@@ -148,7 +158,11 @@ class AccountViewModelsTest {
         runTest {
             val auth = FakeAuth(signedIn = testSession().copy(deletionScheduledAtMillis = FakeAuth.DELETION_AT))
             val vm = SessionViewModel(auth, auth)
-            assertTrue(vm.deletionBanner.value!!.text.startsWith("Your account will be deleted on November 2"))
+            assertTrue(
+                vm.deletionBanner.value!!
+                    .text
+                    .startsWith("Your account will be deleted on November 2"),
+            )
             assertEquals("Keep my account", vm.deletionBanner.value!!.action)
             vm.keepAccount()
             assertNull(vm.deletionBanner.value)
@@ -188,12 +202,19 @@ class AccountViewModelsTest {
             val auth = FakeAuth(signedIn = testSession())
             val vm = PreferencesViewModel(auth, language, clock)
             vm.onIntent(PreferencesIntent.RegionQuery("tog"))
-            assertEquals(listOf("TG"), vm.state.value.language.regions.map { it.code })
+            assertEquals(
+                listOf("TG"),
+                vm.state.value.language.regions
+                    .map { it.code },
+            )
             vm.onIntent(PreferencesIntent.ChooseRegion("TG"))
             assertEquals("en-TG", I18n.formattingTag)
             assertEquals(ProfileChange(region = Change.Set("TG")), auth.changes.last())
             assertEquals("Togo", vm.state.value.language.regionLabel)
-            assertTrue(vm.state.value.language.preview.startsWith("Preview: "))
+            assertTrue(
+                vm.state.value.language.preview
+                    .startsWith("Preview: "),
+            )
             assertTrue(vm.state.value.language.regions.size > 200)
             vm.onIntent(PreferencesIntent.ChooseRegion(null))
             assertEquals(ProfileChange(region = Change.Set(null)), auth.changes.last())

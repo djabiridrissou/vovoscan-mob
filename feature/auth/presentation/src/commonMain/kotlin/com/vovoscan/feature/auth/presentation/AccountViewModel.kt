@@ -216,7 +216,16 @@ class AccountViewModel(
             mutableState.update {
                 when (result) {
                     is AppResult.Ok ->
-                        it.copy(emailSending = false, emailFormOpen = false, newEmail = "", emailSent = t("account.email.sent", "email" to address))
+                        it.copy(
+                            emailSending = false,
+                            emailFormOpen = false,
+                            newEmail = "",
+                            emailSent =
+                                t(
+                                    "account.email.sent",
+                                    "email" to address,
+                                ),
+                        )
                     is AppResult.Err -> it.copy(emailSending = false, error = message(result.error))
                 }
             }
@@ -237,7 +246,14 @@ class AccountViewModel(
             mutableState.update { it.copy(error = invalid, passwordDone = null, secretFieldResets = it.secretFieldResets + 1) }
             return
         }
-        mutableState.update { it.copy(passwordSaving = true, passwordDone = null, error = null, secretFieldResets = it.secretFieldResets + 1) }
+        mutableState.update {
+            it.copy(
+                passwordSaving = true,
+                passwordDone = null,
+                error = null,
+                secretFieldResets = it.secretFieldResets + 1,
+            )
+        }
         viewModelScope.launch {
             val result = account.changePassword(currentPassword, newPassword)
             mutableState.update {
@@ -269,7 +285,9 @@ class AccountViewModel(
         mutableState.update { it.copy(devices = it.devices.map { row -> if (row.id == id) row.copy(signingOut = true) else row }) }
         viewModelScope.launch {
             val result = account.revokeSession(id)
-            val gone = result is AppResult.Ok || (result as? AppResult.Err)?.error.let { it is AppError.Rejected && it.code == "SESSION_NOT_FOUND" }
+            val gone =
+                result is AppResult.Ok ||
+                    (result as? AppResult.Err)?.error.let { it is AppError.Rejected && it.code == "SESSION_NOT_FOUND" }
             mutableState.update {
                 if (gone) {
                     it.copy(devices = it.devices.filterNot { row -> row.id == id })

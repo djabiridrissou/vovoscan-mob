@@ -4,6 +4,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelStore
 import com.vovoscan.core.common.NetworkMonitor
 import com.vovoscan.core.common.NetworkState
+import com.vovoscan.core.common.i18n.DevicePreferences
+import com.vovoscan.core.common.i18n.UiLanguage
 import com.vovoscan.core.database.AppFolders
 import com.vovoscan.core.database.DatabaseDriverFactory
 import com.vovoscan.core.database.appFolders
@@ -70,10 +72,14 @@ fun initKoin(
                         if (offline) NetworkMonitor.Fixed(NetworkState(online = false, unmetered = false)) else IosNetworkMonitor()
                     }
                     single<AppFolders> { appFolders() }
+                    single<DevicePreferences> { IosDevicePreferences() }
                 },
             ),
         )
     }
+    // The app's language before the first screen: the device's choice, then the account's once it is known.
+    KoinPlatform.getKoin().get<UiLanguage>().start()
+    KoinPlatform.getKoin().get<LocaleSync>().start()
     // Session kept on the device, before the first screen (a short Keychain read; the network follows).
     runBlocking { KoinPlatform.getKoin().get<AuthRepository>().restore() }
     // Chapters left downloading when the app stopped carry on.
