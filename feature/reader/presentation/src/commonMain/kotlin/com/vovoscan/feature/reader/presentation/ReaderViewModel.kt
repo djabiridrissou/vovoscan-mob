@@ -891,6 +891,7 @@ class ReaderViewModel(
             KeyAction.Next -> onIntent(ReaderIntent.Next)
             KeyAction.Previous -> onIntent(ReaderIntent.Previous)
             KeyAction.Close -> command { ReaderCommand.Close(it) }
+            KeyAction.Help -> showCoach()
             null -> Unit
         }
     }

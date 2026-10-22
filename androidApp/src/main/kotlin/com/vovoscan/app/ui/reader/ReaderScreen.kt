@@ -76,6 +76,7 @@ import androidx.compose.ui.input.key.isShiftPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.key.utf16CodePoint
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
@@ -564,7 +565,7 @@ private fun readerKey(event: KeyEvent): ReaderKey? {
         Key.PageDown -> ReaderKey.PageDown
         Key.Escape -> ReaderKey.Escape
         Key.Spacebar -> if (event.isShiftPressed) ReaderKey.ShiftSpace else ReaderKey.Space
-        else -> null
+        else -> if (event.utf16CodePoint == '?'.code) ReaderKey.Help else null
     }
 }
 

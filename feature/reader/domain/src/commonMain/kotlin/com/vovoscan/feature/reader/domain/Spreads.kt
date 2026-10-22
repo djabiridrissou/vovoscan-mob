@@ -89,14 +89,14 @@ object Spreads {
 }
 
 /** A hardware key in the reader (iPad keyboard, a Chromebook or a foldable's keyboard, a remote). */
-enum class ReaderKey { Left, Right, Up, Down, Space, ShiftSpace, PageUp, PageDown, Escape }
+enum class ReaderKey { Left, Right, Up, Down, Space, ShiftSpace, PageUp, PageDown, Escape, Help }
 
-enum class KeyAction { Next, Previous, Close }
+enum class KeyAction { Next, Previous, Close, Help }
 
 /**
  * Keys follow the page direction: in a right-to-left manga the left arrow goes forward (the next page is on the
  * left), in a left-to-right comic the right arrow does; up and down, space, page up and down always go back and
- * forward. Escape closes the reader.
+ * forward. Escape closes the reader; `?` shows how to read.
  */
 object ReaderKeys {
     fun action(
@@ -105,6 +105,7 @@ object ReaderKeys {
     ): KeyAction? =
         when (key) {
             ReaderKey.Escape -> KeyAction.Close
+            ReaderKey.Help -> KeyAction.Help
             ReaderKey.Down, ReaderKey.Space, ReaderKey.PageDown -> KeyAction.Next
             ReaderKey.Up, ReaderKey.ShiftSpace, ReaderKey.PageUp -> KeyAction.Previous
             ReaderKey.Left -> if (mode == ReadingMode.PagedRightToLeft) KeyAction.Next else KeyAction.Previous

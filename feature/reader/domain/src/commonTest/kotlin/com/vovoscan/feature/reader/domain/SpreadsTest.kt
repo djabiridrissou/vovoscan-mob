@@ -90,6 +90,7 @@ class SpreadsTest {
         assertEquals(KeyAction.Previous, ReaderKeys.action(ReaderKey.Right, ReadingMode.PagedRightToLeft))
         assertEquals(KeyAction.Next, ReaderKeys.action(ReaderKey.Right, ReadingMode.PagedLeftToRight))
         assertEquals(KeyAction.Previous, ReaderKeys.action(ReaderKey.Left, ReadingMode.LongStrip))
+        assertEquals(KeyAction.Help, ReaderKeys.action(ReaderKey.Help, ReadingMode.LongStrip))
         assertEquals(KeyAction.Next, ReaderKeys.action(ReaderKey.Space, ReadingMode.PagedRightToLeft))
         assertEquals(KeyAction.Previous, ReaderKeys.action(ReaderKey.ShiftSpace, ReadingMode.LongStrip))
         assertEquals(KeyAction.Next, ReaderKeys.action(ReaderKey.Down, ReadingMode.Book))

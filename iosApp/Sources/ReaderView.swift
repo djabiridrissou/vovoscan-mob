@@ -280,7 +280,7 @@ enum ReaderKeyMap {
         case .pageDown: return .pageDown
         case .escape: return .escape
         case .space: return press.modifiers.contains(.shift) ? .shiftSpace : .space
-        default: return nil
+        default: return press.characters == "?" ? .help : nil
         }
     }
 }
