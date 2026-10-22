@@ -529,9 +529,9 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   "Read …" opening it in the catalog. Reduce Motion / animations off: every scene at its final state.
 - Brand files: iOS `iosApp/Assets.xcassets` (`AppIcon` 1024 px any/dark/tinted, `BrandLogo` = every `LogoMark`,
   `LaunchMark` on `LaunchBackground` = the launch screen), Android `res/mipmap-anydpi-v26/ic_launcher.xml` (adaptive:
-  `drawable/ic_launcher_foreground`, `ic_launcher_monochrome`), `mipmap-*/ic_launcher.png`, `drawable-nodpi/brand_logo.png`
-  (`LogoMark`), Android 12+ splash in `values-v31/themes.xml`. Today a placeholder of the current mark; replacing the
-  files is enough.
+  `drawable/ic_launcher_background`, `ic_launcher_foreground`, `ic_launcher_monochrome`), `mipmap-*/ic_launcher.png`,
+  `drawable-nodpi/brand_logo.png` (`LogoMark`), Android 12+ splash `drawable/splash_mark` in `values-v31/themes.xml`.
+  The mark is the Fukidashi balloon (brand direction A, from the brand kit); replacing the files is enough.
 - Profile changes (`AuthRepository.updateProfile`, `PATCH api/v1/me`): applied on the device at once; offline they are
   merged into one pending patch (`pending_profile` in the secure store) sent before the next `GET /auth/me`; a refusal
   restores the server's profile.
