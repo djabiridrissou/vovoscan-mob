@@ -4,6 +4,7 @@ import app.cash.sqldelight.coroutines.asFlow
 import app.cash.sqldelight.coroutines.mapToList
 import app.cash.sqldelight.coroutines.mapToOneOrNull
 import com.vovoscan.feature.reader.data.db.ReaderDatabase
+import com.vovoscan.feature.reader.domain.CoachKind
 import com.vovoscan.feature.reader.domain.LastRead
 import com.vovoscan.feature.reader.domain.ReaderPreferences
 import com.vovoscan.feature.reader.domain.ReaderSettingsRepository
@@ -123,6 +124,12 @@ class SqlReaderSettingsRepository(
                 volumeKeysInverted = flag("volumeKeysInverted", defaults.volumeKeysInverted),
                 tapZonesSeen = flag("tapZonesSeen", defaults.tapZonesSeen),
                 focus = flag("focus", defaults.focus),
+                coachSeen =
+                    values["coachSeen"]
+                        ?.split(",")
+                        ?.mapNotNull { v -> CoachKind.entries.firstOrNull { it.name == v } }
+                        ?.toSet()
+                        ?: defaults.coachSeen,
             )
         }
 
@@ -140,6 +147,7 @@ class SqlReaderSettingsRepository(
                 "volumeKeysInverted" to preferences.volumeKeysInverted.toString(),
                 "tapZonesSeen" to preferences.tapZonesSeen.toString(),
                 "focus" to preferences.focus.toString(),
+                "coachSeen" to preferences.coachSeen.joinToString(",") { it.name },
             )
 
         /** A comic mode by name; a book or anything unknown is no choice. */

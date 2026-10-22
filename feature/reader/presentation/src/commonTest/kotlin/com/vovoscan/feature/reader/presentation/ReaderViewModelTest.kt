@@ -119,7 +119,7 @@ class ReaderViewModelTest {
                     "c1",
                     startPage = 3,
                     FakeReader(comic, AppResult.Ok(Unit)),
-                    FakeSettings(ReaderPreferences(mangaMode = ReadingMode.PagedRightToLeft)),
+                    FakeSettings(ReaderPreferences(coachSeen = ALL_COACHES, mangaMode = ReadingMode.PagedRightToLeft)),
                     noHeadings,
                 ) { _, _, _, _ -> }
             advanceUntilIdle()
@@ -188,7 +188,7 @@ class ReaderViewModelTest {
                     "c1",
                     0,
                     FakeReader(comic, AppResult.Ok(Unit)),
-                    FakeSettings(),
+                    FakeSettings(ReaderPreferences(coachSeen = ALL_COACHES)),
                     noHeadings,
                 ) { source, _, _, page ->
                     saved +=
@@ -207,7 +207,7 @@ class ReaderViewModelTest {
     fun openingAChapterRecordsItOnceEvenWhenTheModeChanges() =
         runTest(dispatcher) {
             val saved = mutableListOf<Int>()
-            val settings = FakeSettings()
+            val settings = FakeSettings(ReaderPreferences(coachSeen = ALL_COACHES))
             val vm =
                 ReaderViewModel("vovoscan", "t1", "c1", 3, FakeReader(comic, AppResult.Ok(Unit)), settings, noHeadings) { _, _, _, page ->
                     saved +=
@@ -223,7 +223,16 @@ class ReaderViewModelTest {
     fun bookOpensAndReadsBySection() =
         runTest(dispatcher) {
             val reader = FakeReader(book, AppResult.Ok(Unit))
-            val vm = ReaderViewModel("vovoscan", "t9", "b1", startPage = 1, reader, FakeSettings(), noHeadings) { _, _, _, _ -> }
+            val vm =
+                ReaderViewModel(
+                    "vovoscan",
+                    "t9",
+                    "b1",
+                    startPage = 1,
+                    reader,
+                    FakeSettings(ReaderPreferences(coachSeen = ALL_COACHES)),
+                    noHeadings,
+                ) { _, _, _, _ -> }
             advanceUntilIdle()
             assertEquals(1, reader.loads)
             assertEquals("Section 2 / 2", vm.state.value.positionLabel)
@@ -254,7 +263,7 @@ class ReaderViewModelTest {
                     "b1",
                     startPage = 0,
                     FakeReader(book, AppResult.Ok(Unit)),
-                    FakeSettings(),
+                    FakeSettings(ReaderPreferences(coachSeen = ALL_COACHES)),
                     noHeadings,
                 ) { _, _, _, _ -> }
             advanceUntilIdle()
@@ -325,7 +334,7 @@ class ReaderViewModelTest {
                     "b1",
                     startPage = 1,
                     FakeReader(single, AppResult.Ok(Unit)),
-                    FakeSettings(),
+                    FakeSettings(ReaderPreferences(coachSeen = ALL_COACHES)),
                     noHeadings,
                 ) { _, _, _, _ -> }
             advanceUntilIdle()
@@ -361,7 +370,7 @@ class ReaderViewModelTest {
                     "b1",
                     startPage = ReaderViewModel.START_AT_END,
                     FakeReader(book, AppResult.Ok(Unit)),
-                    FakeSettings(),
+                    FakeSettings(ReaderPreferences(coachSeen = ALL_COACHES)),
                     noHeadings,
                 ) { _, _, _, _ -> }
             advanceUntilIdle()
@@ -375,7 +384,7 @@ class ReaderViewModelTest {
                     "c1",
                     0,
                     FakeReader(comic, AppResult.Ok(Unit)),
-                    FakeSettings(),
+                    FakeSettings(ReaderPreferences(coachSeen = ALL_COACHES)),
                     noHeadings,
                 ) { _, _, _, _ -> }
             advanceUntilIdle()
@@ -392,7 +401,7 @@ class ReaderViewModelTest {
                     "c1",
                     0,
                     FakeReader(null, AppResult.Err(AppError.Network)),
-                    FakeSettings(),
+                    FakeSettings(ReaderPreferences(coachSeen = ALL_COACHES)),
                     noHeadings,
                 ) { _, _, _, _ -> }
             advanceUntilIdle()

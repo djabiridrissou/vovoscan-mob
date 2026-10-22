@@ -11,6 +11,7 @@ import com.vovoscan.feature.reader.domain.BookSection
 import com.vovoscan.feature.reader.domain.ChapterHeading
 import com.vovoscan.feature.reader.domain.ChapterHeadings
 import com.vovoscan.feature.reader.domain.ChapterPanels
+import com.vovoscan.feature.reader.domain.CoachKind
 import com.vovoscan.feature.reader.domain.ComicFormat
 import com.vovoscan.feature.reader.domain.Glide
 import com.vovoscan.feature.reader.domain.Gutters
@@ -203,6 +204,8 @@ data class ReaderUiState(
         ReaderSettingsSheet.of(ReadingMode.LongStrip, ComicFormat.Webtoon, null, ReaderPreferences()),
     /** The overlay to draw for a moment (first opening, after a change of zones), else null. */
     val tapOverlay: TapOverlay? = null,
+    /** "How to read", over the page until a tap: the first chapter of its kind, or asked again with "?". */
+    val coach: ReaderCoach? = null,
     val command: ReaderCommand? = null,
     val freshness: Freshness = Freshness.Refreshing,
     /** Never opened and no network: nothing to show. */
@@ -418,6 +421,12 @@ sealed interface ReaderIntent {
         val on: Boolean,
     ) : ReaderIntent
 
+    /** The "?" in the bars: "How to read" again. */
+    data object ShowCoach : ReaderIntent
+
+    /** A tap anywhere while the coach is up: it closes, and reading starts. */
+    data object DismissCoach : ReaderIntent
+
     data object ToggleFocus : ReaderIntent
 
     data object ReadWithVoice : ReaderIntent
@@ -585,7 +594,9 @@ class ReaderViewModel(
             }
             is ReaderIntent.PageScroll -> pageScroll = intent
             is ReaderIntent.PullReleased -> pullReleased(intent.overscroll)
-            is ReaderIntent.Tap -> tap(intent.x, intent.y)
+            is ReaderIntent.Tap -> if (state.value.coach != null) dismissCoach() else tap(intent.x, intent.y)
+            ReaderIntent.ShowCoach -> showCoach()
+            ReaderIntent.DismissCoach -> dismissCoach()
             is ReaderIntent.CommandHandled -> mutableState.update { if (it.command?.seq == intent.seq) it.copy(command = null) else it }
             is ReaderIntent.StripMeasured -> measured(intent.width, intent.viewport)
             is ReaderIntent.StripScrolled -> scrolled(intent.offset, intent.byUser, intent.settled)
@@ -599,8 +610,18 @@ class ReaderViewModel(
             }
             ReaderIntent.ReadWithVoice ->
                 if (state.value.voiceAvailable) command { ReaderCommand.OpenEpisode(it, chapterId, state.value.currentIndex) }
-            ReaderIntent.Next -> if (state.value.isBook) moveTo(state.value.currentIndex + 1) else forward()
-            ReaderIntent.Previous -> if (state.value.isBook) moveTo(state.value.currentIndex - 1) else backward()
+            ReaderIntent.Next ->
+                when {
+                    state.value.coach != null -> dismissCoach()
+                    state.value.isBook -> moveTo(state.value.currentIndex + 1)
+                    else -> forward()
+                }
+            ReaderIntent.Previous ->
+                when {
+                    state.value.coach != null -> dismissCoach()
+                    state.value.isBook -> moveTo(state.value.currentIndex - 1)
+                    else -> backward()
+                }
             ReaderIntent.ToggleChrome -> mutableState.update { it.copy(chromeVisible = !it.chromeVisible) }
             ReaderIntent.Retry -> refresh()
             ReaderIntent.OpenNextChapter -> openNext()
@@ -655,6 +676,10 @@ class ReaderViewModel(
     fun onVolumeKey(up: Boolean): Boolean {
         val current = state.value
         if (!current.volumeKeys || current.items.isEmpty()) return false
+        if (current.coach != null) {
+            dismissCoach()
+            return true
+        }
         if (up xor current.preferences.volumeKeysInverted) backward() else forward()
         return true
     }
@@ -980,10 +1005,12 @@ class ReaderViewModel(
         }
         if (isBook) {
             if (!bookStarted) prepareBook()
+            coachIfNew(mode, preferences)
             return
         }
         loadHeadings(chapter)
         updateZones(mode, preferences)
+        coachIfNew(mode, preferences)
         mutableState.update {
             it.copy(voiceAvailable = sourceKey == INTERNAL_SOURCE && chapter.pages.isNotEmpty(), prefetch = prefetch(it))
         }
@@ -1068,7 +1095,8 @@ class ReaderViewModel(
         zonesShown = map
         if (!preferences.showTapZones || map == before) return
         if (before == null) {
-            if (!preferences.tapZonesSeen) {
+            // The first chapter of its kind opens with the coach, which draws the zones itself.
+            if (!preferences.tapZonesSeen && CoachKind.of(mode) in preferences.coachSeen) {
                 flashOverlay(map)
                 updatePreferences { it.copy(tapZonesSeen = true) }
             }
@@ -1077,6 +1105,36 @@ class ReaderViewModel(
         } else {
             flashOverlay(map)
         }
+    }
+
+    /** The first chapter of each kind opens with "How to read" (once per kind on this device). */
+    private fun coachIfNew(
+        mode: ReadingMode,
+        preferences: ReaderPreferences,
+    ) {
+        if (coachChecked) return
+        coachChecked = true
+        if (CoachKind.of(mode) !in preferences.coachSeen) showCoach()
+    }
+
+    private var coachChecked = false
+
+    private fun showCoach() {
+        val current = state.value
+        if (current.unavailable || (current.items.isEmpty() && !current.isBook)) return
+        val kind = CoachKind.of(current.mode)
+        val zones = if (current.isBook) null else TapZones.map(current.preferences.tapLayout, current.preferences.tapInvert, current.mode)
+        val title = current.formatLabel ?: ReaderText.mode(current.mode)
+        hideOverlay()
+        mutableState.update {
+            it.copy(coach = ReaderCoach.of(kind, title, zones, it.preferences.doubleTapZoom), chromeVisible = true)
+        }
+    }
+
+    private fun dismissCoach() {
+        val coach = state.value.coach ?: return
+        mutableState.update { it.copy(coach = null) }
+        updatePreferences { it.copy(coachSeen = it.coachSeen + coach.kind, tapZonesSeen = true) }
     }
 
     private fun flashOverlay(map: TapZoneMap) {

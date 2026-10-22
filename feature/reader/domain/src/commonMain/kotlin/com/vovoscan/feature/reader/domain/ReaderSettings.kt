@@ -32,6 +32,8 @@ data class ReaderPreferences(
     val tapZonesSeen: Boolean = false,
     /** Continuous strips: the panel being read at full light, the rest dimmed (reader/SPEC.md §1). */
     val focus: Boolean = false,
+    /** The kinds whose "How to read" coach was already closed on this device (`CoachKind`). */
+    val coachSeen: Set<CoachKind> = emptySet(),
 ) {
     fun defaultFor(format: ComicFormat): ReadingMode? =
         when (format) {
@@ -40,6 +42,27 @@ data class ReaderPreferences(
             // No setting of its own yet: a manga's default (right to left) would read it backwards.
             ComicFormat.Comic -> null
         }
+}
+
+/** What the first-open coach explains: each way of reading has its own, shown once. */
+enum class CoachKind {
+    Strip,
+    RightToLeft,
+    LeftToRight,
+    Vertical,
+    Book,
+    ;
+
+    companion object {
+        fun of(mode: ReadingMode): CoachKind =
+            when (mode) {
+                ReadingMode.LongStrip, ReadingMode.LongStripGaps -> Strip
+                ReadingMode.PagedRightToLeft -> RightToLeft
+                ReadingMode.PagedLeftToRight -> LeftToRight
+                ReadingMode.PagedVertical -> Vertical
+                ReadingMode.Book -> Book
+            }
+    }
 }
 
 object ReadingModes {

@@ -354,8 +354,12 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   (off by default; 2×, pan by dragging, scrolling paused while zoomed) makes single taps wait for a possible second
   tap (~370 ms). A drag, fling or pinch is never a tap (the scroll view takes it first). Taps faster than the scroll
   animation add up.
-- Overlay (red next, cyan previous, ink menu, ~1.5 s): on the reader's first opening on the device, then when the
-  zones change (layout, invert, or a mode that changes them), after the settings sheet closes; "Show tap zones" off
+- "How to read" coach (`ReaderCoach`, `CoachKind` Strip / RightToLeft / LeftToRight / Vertical / Book): the first
+  chapter of each kind opens under a static card (the real tap zones, one line per gesture); the first tap anywhere
+  closes it and is not a page turn; the "?" in the top bar (`ShowCoach`) brings it back. Seen kinds in
+  `ReaderPreferences.coachSeen` (`reader_setting` "coachSeen", on the device only for now).
+- Overlay (red next, cyan previous, ink menu, ~1.5 s): on the first chapter of a kind whose coach was already seen,
+  then when the zones change (layout, invert, or a mode that changes them), after the settings sheet closes; "Show tap zones" off
   never shows it.
 - Settings sheet (gear in the top bar), kept on the device in the reader's database (`reader_setting` key-value
   table, `series_mode`; migration `2.sqm`), no backend: mode for this series (+ Reset to default; "Default for this

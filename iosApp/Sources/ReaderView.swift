@@ -71,8 +71,15 @@ struct ReaderView: View {
             if let card = model.state.titleCard { titleCard(card) }
             // A book keeps its bars: the web view receives the taps (text scrolling).
             if model.state.chromeVisible || model.state.isBook { chrome.transition(.opacity) }
+            // How to read, the first time a chapter of its kind opens: any tap closes it.
+            if let coach = model.state.coach {
+                ReaderCoachOverlay(coach: coach) { model.send(ReaderIntentDismissCoach.shared) }
+                    .transition(.opacity)
+                    .zIndex(1)
+            }
         }
         .animation(.easeInOut(duration: 0.2), value: model.state.tapOverlay == nil)
+        .animation(model.state.reducedMotion ? nil : .easeOut(duration: 0.25), value: model.state.coach == nil)
         .animation(model.state.reducedMotion ? nil : .easeInOut(duration: 0.25), value: model.state.chromeVisible)
         .animation(model.state.reducedMotion ? nil : .easeInOut(duration: 0.4), value: model.state.titleCard)
         .toolbar(.hidden, for: .navigationBar)
@@ -164,6 +171,10 @@ struct ReaderView: View {
                 if !model.state.isBook && translation.state.available {
                     LanguageButton(translation: translation) { languagesOpen = true }
                 }
+                Button { model.send(ReaderIntentShowCoach.shared) } label: {
+                    Image(systemName: "questionmark.circle").font(.system(size: 18)).foregroundStyle(Color.brandMuted)
+                }
+                .accessibilityLabel(L("reader.coach.show"))
                 if !model.state.isBook {
                     Button {
                         model.send(ReaderIntentSettingsOpened.shared)
@@ -1038,6 +1049,70 @@ private struct TransitionCardView: View {
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.brandLine, lineWidth: 1))
         .padding(24)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+/// "How to read": the reader's real tap zones under a card of gesture lines. Static, no timer: the first tap anywhere
+/// closes it (and is not a page turn); the "?" in the bars brings it back.
+private struct ReaderCoachOverlay: View {
+    let coach: ReaderCoach
+    let dismiss: () -> Void
+
+    var body: some View {
+        ZStack {
+            Color.brandInk.opacity(coach.zones == nil ? 0.82 : 0.5).ignoresSafeArea()
+            if let zones = coach.zones { TapZonesOverlay(overlay: zones) }
+            VStack(alignment: .leading, spacing: 14) {
+                Text(coach.kicker.uppercased())
+                    .font(.brandBody(12, weight: .bold))
+                    .tracking(1.6)
+                    .foregroundStyle(Color.brandInk)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(Color.brandYellow)
+                Text(coach.title).font(.brandDisplay(24)).foregroundStyle(Color.brandPaper)
+                ForEach(Array(coach.hints.enumerated()), id: \.offset) { _, hint in
+                    HStack(alignment: .top, spacing: 12) {
+                        Image(systemName: symbol(hint.gesture))
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundStyle(hint.gesture == .help ? Color.brandMuted : Color.brandRed)
+                            .frame(width: 26)
+                        Text(hint.text)
+                            .font(.brandBody(15))
+                            .foregroundStyle(hint.gesture == .help ? Color.brandMuted : Color.brandPaper)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                Text(coach.dismiss)
+                    .font(.brandBody(15, weight: .bold))
+                    .foregroundStyle(Color.brandInk)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(Color.brandRed)
+                    .background(Rectangle().fill(Color.brandPaper).offset(x: 3, y: 3))
+                    .padding(.top, 4)
+            }
+            .padding(22)
+            .frame(maxWidth: 420, alignment: .leading)
+            .background(Color.brandInk.opacity(0.94), in: RoundedRectangle(cornerRadius: 14))
+            .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.brandPaper.opacity(0.85), lineWidth: 2))
+            .padding(24)
+        }
+        .contentShape(Rectangle())
+        .onTapGesture { dismiss() }
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isButton)
+        .accessibilityAction { dismiss() }
+    }
+
+    private func symbol(_ gesture: CoachGesture) -> String {
+        switch gesture {
+        case .tap: return "hand.tap"
+        case .swipe: return "hand.draw"
+        case .doubleTap: return "plus.magnifyingglass"
+        case .pull: return "arrow.down.to.line"
+        default: return "questionmark.circle"
+        }
     }
 }
 

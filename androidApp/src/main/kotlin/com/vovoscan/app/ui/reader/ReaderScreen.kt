@@ -17,6 +17,7 @@ import androidx.compose.foundation.gestures.ScrollableState
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.DragInteraction
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -31,6 +32,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.VerticalPager
 import androidx.compose.foundation.pager.rememberPagerState
@@ -54,6 +56,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
@@ -74,6 +77,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -92,6 +96,8 @@ import com.vovoscan.core.common.i18n.I18n
 import com.vovoscan.feature.reader.domain.ReaderPage
 import com.vovoscan.feature.reader.domain.TallPages
 import com.vovoscan.feature.reader.domain.TapAction
+import com.vovoscan.feature.reader.presentation.CoachGesture
+import com.vovoscan.feature.reader.presentation.ReaderCoach
 import com.vovoscan.feature.reader.presentation.ReaderCommand
 import com.vovoscan.feature.reader.presentation.ReaderIntent
 import com.vovoscan.feature.reader.presentation.ReaderItem
@@ -234,8 +240,19 @@ fun ReaderScreen(
                 },
                 Modifier.align(Alignment.TopCenter),
                 onWatch = { onIntent(ReaderIntent.ReadWithVoice) },
+                onHelp = { onIntent(ReaderIntent.ShowCoach) },
             )
             BottomBar(state, onIntent, { onOpenChapter(it, 0) }, Modifier.align(Alignment.BottomCenter))
+        }
+        // How to read, the first time a chapter of its kind opens: any tap closes it.
+        AnimatedVisibility(
+            state.coach != null,
+            enter = if (state.reducedMotion) EnterTransition.None else fadeIn(tween(250)),
+            exit = if (state.reducedMotion) ExitTransition.None else fadeOut(tween(250)),
+        ) {
+            var shown by remember { mutableStateOf(state.coach) }
+            state.coach?.let { shown = it }
+            shown?.let { CoachOverlay(it) { onIntent(ReaderIntent.DismissCoach) } }
         }
     }
     if (settingsOpen && !state.isBook) {
@@ -519,6 +536,81 @@ internal fun TransitionCardView(
     }
 }
 
+/**
+ * "How to read": the reader's real tap zones under a card of gesture lines. Static, no timer: the first tap anywhere
+ * closes it (and is not a page turn); the "?" in the bars brings it back.
+ */
+@Composable
+private fun CoachOverlay(
+    coach: ReaderCoach,
+    onDismiss: () -> Unit,
+) {
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(Brand.Ink.copy(alpha = if (coach.zones == null) 0.82f else 0.5f))
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClickLabel = coach.dismiss,
+                onClick = onDismiss,
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
+        coach.zones?.let { TapZonesOverlay(it) }
+        Column(
+            Modifier
+                .padding(24.dp)
+                .widthIn(max = 420.dp)
+                .background(Brand.Ink.copy(alpha = 0.94f), RoundedCornerShape(14.dp))
+                .border(2.dp, Brand.Paper.copy(alpha = 0.85f), RoundedCornerShape(14.dp))
+                .padding(22.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            Text(
+                coach.kicker.uppercase(),
+                style = MaterialTheme.typography.labelMedium.copy(color = Brand.Ink, letterSpacing = 1.6.sp),
+                modifier = Modifier.background(Brand.Yellow).padding(horizontal = 8.dp, vertical = 3.dp),
+            )
+            Text(coach.title, style = MaterialTheme.typography.headlineSmall.copy(color = Brand.Paper))
+            coach.hints.forEach { hint ->
+                val help = hint.gesture == CoachGesture.Help
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(
+                        coachGlyph(hint.gesture),
+                        style = MaterialTheme.typography.titleMedium.copy(color = if (help) Brand.Muted else Brand.Red),
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.width(26.dp),
+                    )
+                    Text(hint.text, style = MaterialTheme.typography.bodyMedium.copy(color = if (help) Brand.Muted else Brand.Paper))
+                }
+            }
+            Text(
+                coach.dismiss,
+                style = MaterialTheme.typography.labelLarge.copy(color = Brand.Ink),
+                modifier =
+                    Modifier
+                        .padding(top = 4.dp)
+                        .drawBehind {
+                            val shift = 3.dp.toPx()
+                            drawRect(Brand.Paper, topLeft = Offset(shift, shift), size = size)
+                            drawRect(Brand.Red, size = size)
+                        }.padding(horizontal = 16.dp, vertical = 10.dp),
+            )
+        }
+    }
+}
+
+/** A text pictogram per gesture (no icon library on Android). */
+private fun coachGlyph(gesture: CoachGesture): String =
+    when (gesture) {
+        CoachGesture.Tap -> "●"
+        CoachGesture.Swipe -> "⇆"
+        CoachGesture.DoubleTap -> "⊕"
+        CoachGesture.Pull -> "↧"
+        CoachGesture.Help -> "?"
+    }
+
 /** The tap zones for a moment: red goes forward, cyan goes back, ink opens the menu. */
 @Composable
 private fun TapZonesOverlay(overlay: TapOverlay) {
@@ -679,6 +771,7 @@ private fun TopBar(
     onSettings: () -> Unit,
     modifier: Modifier,
     onWatch: () -> Unit = {},
+    onHelp: () -> Unit = {},
 ) {
     Row(
         modifier.fillMaxWidth().background(Brand.Ink.copy(alpha = 0.92f)).padding(horizontal = 16.dp, vertical = 12.dp),
@@ -700,6 +793,16 @@ private fun TopBar(
                         .padding(start = 16.dp, top = 4.dp, bottom = 4.dp),
             )
         }
+        val help = I18n.text("reader.coach.show")
+        Text(
+            "?",
+            style = MaterialTheme.typography.titleMedium.copy(color = Brand.Muted),
+            modifier =
+                Modifier
+                    .clickable(onClickLabel = help, onClick = onHelp)
+                    .semantics { contentDescription = help }
+                    .padding(start = 16.dp, top = 4.dp, bottom = 4.dp),
+        )
         if (!state.isBook) {
             // Text presentation of the gear (not the emoji).
             Text(

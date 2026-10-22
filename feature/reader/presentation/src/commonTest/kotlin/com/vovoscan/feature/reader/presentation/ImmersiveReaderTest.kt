@@ -113,7 +113,7 @@ class ImmersiveReaderTest {
     }
 
     private fun TestScope.reader(
-        settings: PositionSettings = PositionSettings(ReaderPreferences(tapZonesSeen = true)),
+        settings: PositionSettings = PositionSettings(ReaderPreferences(coachSeen = ALL_COACHES, tapZonesSeen = true)),
         panels: ChapterPanels = ChapterPanels.None,
         sourceKey: String = "vovoscan",
         startPage: Int = 0,
@@ -171,7 +171,8 @@ class ImmersiveReaderTest {
         runTest(dispatcher) {
             // The source calls it a manga and the reader chose paged manga: until the images arrive, that is the mode.
             val unsized = manga.copy(sourceKey = "inkwell-press", pages = manga.pages.map { it.copy(width = 0, height = 0) })
-            val settings = PositionSettings(ReaderPreferences(tapZonesSeen = true, mangaMode = ReadingMode.PagedRightToLeft))
+            val settings =
+                PositionSettings(ReaderPreferences(coachSeen = ALL_COACHES, tapZonesSeen = true, mangaMode = ReadingMode.PagedRightToLeft))
             val vm = reader(settings = settings, sourceKey = "inkwell-press", chapter = unsized)
             assertEquals(ReadingMode.PagedRightToLeft, vm.state.value.mode)
             assertEquals("Manga ✦ right to left", vm.state.value.formatLabel)
@@ -271,7 +272,7 @@ class ImmersiveReaderTest {
         runTest(dispatcher) {
             // Page 1: two panels side by side (right first: a manga), then one below.
             val row = listOf(PanelBox(1, 0.5f, 0f, 0.5f, 0.4f), PanelBox(1, 0f, 0f, 0.5f, 0.4f), PanelBox(1, 0f, 0.5f, 1f, 0.5f))
-            val settings = PositionSettings(ReaderPreferences(tapZonesSeen = true, focus = true))
+            val settings = PositionSettings(ReaderPreferences(coachSeen = ALL_COACHES, tapZonesSeen = true, focus = true))
             val vm = reader(settings = settings, panels = ChapterPanels { _, _ -> mapOf(1 to row) })
             assertEquals(PanelBox.page(0), vm.state.value.focus)
             vm.next()
@@ -330,7 +331,7 @@ class ImmersiveReaderTest {
     @Test
     fun progressPositionAndPrefetch() =
         runTest(dispatcher) {
-            val settings = PositionSettings(ReaderPreferences(tapZonesSeen = true))
+            val settings = PositionSettings(ReaderPreferences(coachSeen = ALL_COACHES, tapZonesSeen = true))
             val vm = reader(settings = settings)
             assertEquals(listOf("https://api.test/p1", "https://api.test/p2", "https://api.test/p3"), vm.state.value.prefetch)
             vm.onIntent(ReaderIntent.StripScrolled(1500f, byUser = true, settled = true))
@@ -344,7 +345,7 @@ class ImmersiveReaderTest {
     @Test
     fun aSavedPositionIsRestoredInsideItsPage() =
         runTest(dispatcher) {
-            val settings = PositionSettings(ReaderPreferences(tapZonesSeen = true))
+            val settings = PositionSettings(ReaderPreferences(coachSeen = ALL_COACHES, tapZonesSeen = true))
             settings.positions["vovoscan/c3"] = ReadingPosition(2, 0.25f)
             val vm = reader(settings = settings, startPage = 2)
             val restore = vm.glide()
@@ -356,7 +357,21 @@ class ImmersiveReaderTest {
     fun theTitleCardShowsForAMoment() =
         runTest(dispatcher) {
             val vm =
-                ReaderViewModel("vovoscan", "t1", manga.id, 0, StaticReader(manga), FakeSettings(), ChapterHeadings { _, _, _ -> null }) {
+                ReaderViewModel(
+                    "vovoscan",
+                    "t1",
+                    manga.id,
+                    0,
+                    StaticReader(manga),
+                    FakeSettings(ReaderPreferences(coachSeen = ALL_COACHES)),
+                    ChapterHeadings {
+                        _,
+                        _,
+                        _,
+                        ->
+                        null
+                    },
+                ) {
                     _,
                     _,
                     _,

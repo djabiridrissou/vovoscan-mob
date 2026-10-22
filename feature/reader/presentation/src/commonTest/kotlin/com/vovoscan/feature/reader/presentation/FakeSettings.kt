@@ -1,5 +1,6 @@
 package com.vovoscan.feature.reader.presentation
 
+import com.vovoscan.feature.reader.domain.CoachKind
 import com.vovoscan.feature.reader.domain.ReaderPreferences
 import com.vovoscan.feature.reader.domain.ReaderSettingsRepository
 import com.vovoscan.feature.reader.domain.ReadingMode
@@ -30,3 +31,6 @@ class FakeSettings(
         mode: ReadingMode?,
     ) = series.update { if (mode == null) it - "$sourceKey/$titleId" else it + ("$sourceKey/$titleId" to mode) }
 }
+
+/** Every first-open coach already seen: tests about something else are not stopped by it. */
+val ALL_COACHES: Set<CoachKind> = CoachKind.entries.toSet()

@@ -4,6 +4,7 @@ import com.vovoscan.core.common.AppResult
 import com.vovoscan.feature.reader.domain.Book
 import com.vovoscan.feature.reader.domain.ChapterHeading
 import com.vovoscan.feature.reader.domain.ChapterHeadings
+import com.vovoscan.feature.reader.domain.CoachKind
 import com.vovoscan.feature.reader.domain.ComicFormat
 import com.vovoscan.feature.reader.domain.ReaderChapter
 import com.vovoscan.feature.reader.domain.ReaderPage
@@ -102,7 +103,8 @@ class ReaderTapsTest {
 
     // Overlay already seen: the tests that are not about it start without it. Manga read as right-to-left pages (the
     // default is now the continuous strip, `ImmersiveReaderTest`).
-    private val paged = ReaderPreferences(mangaMode = ReadingMode.PagedRightToLeft)
+    // The first-open coach already closed for every kind (`ReaderCoachTest`).
+    private val paged = ReaderPreferences(mangaMode = ReadingMode.PagedRightToLeft, coachSeen = CoachKind.entries.toSet())
     private val seen = paged.copy(tapZonesSeen = true)
 
     // Vertical pages, where a tall page scrolls inside its page (`TallPages`).
