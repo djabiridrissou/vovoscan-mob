@@ -79,18 +79,25 @@ internal class FakeEpisodes(
     /** Episodes in other languages, by code; the original is [stored]. */
     val inLanguage = mutableMapOf<String, MutableStateFlow<Episode?>>()
 
+    /** The chapter id of every observe, refresh and run, in order. */
+    val chapterIds = mutableListOf<String>()
+
     private fun store(lang: String) = if (lang.isEmpty()) stored else inLanguage.getOrPut(lang) { MutableStateFlow(null) }
 
     override fun observe(
         chapterId: String,
         lang: String,
-    ): Flow<Episode?> = store(lang)
+    ): Flow<Episode?> {
+        chapterIds += chapterId
+        return store(lang)
+    }
 
     override suspend fun refresh(
         chapterId: String,
         lang: String,
     ): AppResult<Episode?> {
         languages += lang
+        chapterIds += chapterId
         return refreshResult ?: AppResult.Ok(store(lang).value)
     }
 
@@ -99,6 +106,7 @@ internal class FakeEpisodes(
         lang: String,
     ): AppResult<PrepareResult> {
         languages += lang
+        chapterIds += chapterId
         return run(false)
     }
 
