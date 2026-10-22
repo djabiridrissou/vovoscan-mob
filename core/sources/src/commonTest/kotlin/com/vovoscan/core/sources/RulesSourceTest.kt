@@ -223,7 +223,9 @@ class RulesSourceTest {
             assertEquals("https://uploads.example.org/covers/m1/c1.png.256.jpg", page.items[0].coverUrl)
             assertEquals(null, page.items[1].coverUrl)
             assertEquals(false to 40, page.hasNext to page.total)
-            assertTrue(Regex("availableTranslatedLanguage%5B%5D=[a-z]{2}").containsMatchIn(sent.single()))
+            val lang = deviceLanguage()
+            // {{lang}} is the device's language; an empty value is not sent at all.
+            assertEquals(lang.isNotEmpty(), sent.single().contains("availableTranslatedLanguage%5B%5D=$lang"))
             assertTrue(sent.single().contains("title=alpha"))
 
             // Page 2 shifts the offset by pageSize (base 0).
@@ -240,7 +242,8 @@ class RulesSourceTest {
                 title.units,
             )
             val chaptersCall = sent.first { it.startsWith("https://api.example.org/chapter") }
-            assertTrue(chaptersCall.contains("manga=m1") && Regex("translatedLanguage%5B%5D=[a-z]{2}").containsMatchIn(chaptersCall))
+            assertTrue(chaptersCall.contains("manga=m1"))
+            assertEquals(lang.isNotEmpty(), chaptersCall.contains("translatedLanguage%5B%5D=$lang"))
 
             // `let` names response values the page URLs are built from.
             val pages = (exampleApi.comicPages("m1", "u1") as AppResult.Ok).value

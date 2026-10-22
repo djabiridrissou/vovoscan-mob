@@ -1,16 +1,12 @@
 package com.vovoscan.core.sources
 
-import kotlinx.cinterop.ExperimentalForeignApi
-import kotlinx.cinterop.toKString
-import platform.posix.LC_CTYPE
-import platform.posix.setlocale
+import platform.Foundation.NSLocale
+import platform.Foundation.preferredLanguages
 
-/** The app's C locale ("en_US.UTF-8" style); null when the platform doesn't report one. */
-@OptIn(ExperimentalForeignApi::class)
+/** The user's first preferred language ("fr-FR" → "fr"); the C locale is no guide on iOS (it stays "C"). */
 internal actual fun deviceLanguage(): String =
-    setlocale(LC_CTYPE, null)
-        ?.toKString()
+    (NSLocale.preferredLanguages.firstOrNull() as? String)
+        ?.substringBefore('-')
         ?.substringBefore('_')
         ?.lowercase()
-        ?.takeUnless { it == "c" || it == "posix" }
         .orEmpty()
