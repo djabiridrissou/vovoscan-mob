@@ -73,8 +73,11 @@ object Spreads {
         item: Int,
     ): Int = spreads.indexOfFirst { item in it }.coerceAtLeast(0)
 
-    /** Height / width from which a page is a strip, not a printed page: it stands alone and scrolls in its page. */
-    const val STRIP_ALONE = 2f
+    /**
+     * Height / width from which a page is a strip, not a printed page: it stands alone and scrolls in its page. A long
+     * printed page (800 × 1700) still pairs and fits the height; a webtoon strip is far beyond (800 × 14 000).
+     */
+    const val STRIP_ALONE = 3f
 
     /**
      * A page whose shape is known and wider than tall (a double spread), or a strip ([STRIP_ALONE]): on its own.

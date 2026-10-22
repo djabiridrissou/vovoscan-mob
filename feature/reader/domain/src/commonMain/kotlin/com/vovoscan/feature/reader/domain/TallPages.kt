@@ -27,6 +27,9 @@ object TallPages {
      * clearly taller than the screen held upright (its long side over its short side), whichever way the device is
      * held. Judged against the reading area's own shape, a manga page turned "tall" in landscape (fit to the width,
      * it is taller than the screen) and had to be scrolled: it stays a whole page, and only strip-like pages scroll.
+     * On an area that takes two pages (`Spreads.fit`: a tablet or an unfolded foldable, wider than tall) a page is
+     * never cropped: only a strip (at least [ComicFormat.STRIP_RATIO] times taller than wide) scrolls, every other page
+     * fits the height.
      */
     fun fitsWidth(
         pageRatio: Float,
@@ -35,7 +38,8 @@ object TallPages {
     ): Boolean {
         if (pageRatio <= 0f || areaWidth <= 0f || areaHeight <= 0f) return false
         val portrait = maxOf(areaWidth, areaHeight) / minOf(areaWidth, areaHeight)
-        return 1f / pageRatio > portrait * MARGIN
+        return 1f / pageRatio > portrait * MARGIN &&
+            (!Spreads.fit(areaWidth, areaHeight) || 1f / pageRatio >= ComicFormat.STRIP_RATIO)
     }
 
     /** The page's height in the reading area: its fit-width height when tall, else the area's height. */
