@@ -93,6 +93,8 @@ data class SourceItem(
     val rightsNotes: String? = null,
     /** Hosts the phone connects to for this source (declared hosts and those of url settings). */
     val hosts: List<String> = emptyList(),
+    /** Rule-based sources: the manifest's request cap per minute; null for the internal source. */
+    val requestsPerMinute: Int? = null,
     val settingsSpec: List<SettingField> = emptyList(),
     val settings: Map<String, String> = emptyMap(),
     /** Repository index (`repo.json`) or link the source was added from. */
@@ -129,6 +131,8 @@ data class PluginInfo(
     val rightsNotes: String?,
     val hosts: List<String>,
     val settings: List<SettingField>,
+    /** The manifest's `rateLimit.requestsPerMinute` (30 when it declares none). */
+    val requestsPerMinute: Int = 30,
 )
 
 /** A source checked and ready to install (or to update an installed one). */

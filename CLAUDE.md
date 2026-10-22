@@ -111,7 +111,10 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
 - Third-party sources (user plugins, spec v1): added from a link (single manifest or `repo.json`, GitHub pages
   resolved to raw files) or a `.vovo` file, private to the user, not reviewed by vovoscan. `core/sources` has the
   pure parts (`PluginLinks`, `PluginFetcher`: https only, no session, ≤ 3 redirects, byte limits; `RepositoryIndex`,
-  `ManifestCheck`, `Semver`, `VovoPackageReader`, `sha256Hex`). `feature/sources` stores them in the same `source`
+  `ManifestCheck`, `Semver`, `VovoPackageReader`, `sha256Hex`). A repository entry is reviewed before anything is installed
+  (`AddSourceUiState.review`: hosts, `rateLimit.requestsPerMinute`, rights, the third-party warning; `ConfirmReview` /
+  `CancelReview`; an update's review names its new hosts and stands for their confirmation), like a link's or a file's
+  preview; every source's details show its request cap. `feature/sources` stores them in the same `source`
   table (so `ManifestProvider` serves them), queues writes in `plugin_outbox` (`PUT/DELETE api/v1/plugins`,
   `api/v1/plugin-repositories`), keeps verified updates in `plugin_extra`. Removal goes through the
   `SourceRemovedListener` port, wired in `shared` to the catalog and reader caches.

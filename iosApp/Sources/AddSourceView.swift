@@ -57,6 +57,33 @@ struct AddSourceView: View {
         } message: {
             Text(model.state.hostsConfirmation ?? "")
         }
+        // A repository entry is reviewed before anything is installed: hosts, request cap, rights.
+        .sheet(
+            isPresented: Binding(
+                get: { model.state.review != nil },
+                set: { if !$0 && model.state.review != nil { model.send(AddSourceIntentCancelReview.shared) } }
+            )
+        ) {
+            if let review = model.state.review {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 16) {
+                        Text(L("sources.reviewTitle")).font(.brandDisplay(22)).foregroundStyle(Color.brandPaper)
+                        SourceInfoBlock(info: review.info)
+                        if let hosts = review.newHostsLabel { Text(hosts).font(.brandBody(13)).foregroundStyle(Color.brandYellow) }
+                        Text(model.state.warning).font(.brandBody(13)).foregroundStyle(Color.brandMuted)
+                        Button(L(review.newHostsLabel != nil || review.statusLabel != nil ? "sources.reviewUpdate" : "sources.reviewConfirm")) {
+                            Haptics.press()
+                            model.send(AddSourceIntentConfirmReview.shared)
+                        }
+                        .buttonStyle(PrimaryButtonStyle())
+                        Button(L("common.cancel")) { model.send(AddSourceIntentCancelReview.shared) }.buttonStyle(GhostButtonStyle())
+                    }
+                    .padding(20)
+                }
+                .presentationDetents([.medium, .large])
+                .presentationBackground(Color.brandInk2)
+            }
+        }
         .sheet(
             isPresented: Binding(
                 get: { model.state.showsSettingsForm },
