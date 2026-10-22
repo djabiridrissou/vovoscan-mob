@@ -59,7 +59,9 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
 - Writes (library): applied locally right away, queued (`outbox`, one operation per title), sent by `sync()` with
   the time of the action. The server settles conflicts (last-write-wins) and returns the winning state;
   `updatedSince` fetches changes from other devices, deletions included.
-- One database per feature; after a schema change, add a `.sqm` migration. Target SQLite 3.18 (Android 8):
+- One database per feature; after a schema change, add a `.sqm` migration. A database left by a newer build (an older build
+  installed over it) is rebuilt, never fatal (`DowngradeGuard`: iOS deletes and reopens it, Android empties it in
+  `onDowngrade`); the iOS app used to stop at launch ("Database version 4 newer than config version 3"). Target SQLite 3.18 (Android 8):
   no `ON CONFLICT … DO UPDATE`. Session token in `SecureStore` only; everything is wiped on sign-out.
 
 ## Sources
