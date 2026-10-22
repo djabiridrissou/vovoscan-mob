@@ -117,7 +117,7 @@ class TitleDetailViewModel(
             isBook = detail.summary.kind == ContentKind.Book,
             name = detail.summary.name,
             coverUrl = detail.summary.coverUrl,
-            synopsis = detail.description,
+            synopsis = detail.synopsis,
             meta =
                 listOfNotNull(
                     when {

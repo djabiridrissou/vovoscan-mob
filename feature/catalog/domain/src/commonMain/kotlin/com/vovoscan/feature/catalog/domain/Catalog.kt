@@ -63,7 +63,7 @@ data class Chapter(
 
 data class TitleDetail(
     val summary: TitleSummary,
-    val description: String,
+    val synopsis: String,
     val authors: List<String>,
     val genres: List<String>,
     /** Newest to oldest. */

@@ -192,7 +192,7 @@ class SqlCatalogLocalDataSource(
             titles.firstOrNull()?.let { title ->
                 TitleDetail(
                     summary = summary(title.source_key, title.id, title.name, title.cover_url, title.kind, title.format, title.status),
-                    description = title.description.orEmpty(),
+                    synopsis = title.description.orEmpty(),
                     authors = title.authors.splitList(),
                     genres = title.genres.splitList(),
                     chapters = chapters.map { Chapter(it.id, it.number, it.name, it.page_count.toInt(), it.published_at) },

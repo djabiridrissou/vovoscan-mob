@@ -145,7 +145,7 @@ class CatalogRepositoryImplTest {
             repo.refreshTitle("vovoscan", "t1")
             online = false
             repo.observeTitle("vovoscan", "t1").test {
-                assertEquals("A road of ink.", awaitItem()!!.description)
+                assertEquals("A road of ink.", awaitItem()!!.synopsis)
                 cancelAndIgnoreRemainingEvents()
             }
             val result = repo.search("vovoscan", "ink")
