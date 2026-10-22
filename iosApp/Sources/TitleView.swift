@@ -123,7 +123,7 @@ struct TitleView: View {
         .task { await model.observeFollow() }
         .task { await model.observeDownloads() }
         .alert(
-            confirmDelete == "*" ? "Delete the downloads?" : "Delete this download?",
+            confirmDelete == "*" ? model.downloads.deleteAllTitle : "Delete this download?",
             isPresented: Binding(get: { confirmDelete != nil }, set: { if !$0 { confirmDelete = nil } }),
             presenting: confirmDelete
         ) { target in
@@ -134,13 +134,14 @@ struct TitleView: View {
         } message: { target in
             Text(
                 target == "*"
-                    ? "Every chapter of \(model.state.name) saved on this device goes. Reading them will need the network again."
+                    ? model.downloads.deleteAllMessage
                     : "\(model.state.chapterLabel(chapterId: target)) will need the network again."
             )
         }
     }
 
-    /// Downloads of the title: what is on the device, why the queue waits, "Download next 5", "Download all", delete.
+    /// Downloads of the title: what is on the device, why the queue waits, "Download next 5", "Download all" (a book:
+    /// "Download the book"), delete.
     @ViewBuilder private var downloadsBlock: some View {
         let downloads = model.downloads
         if let summary = downloads.summary {
@@ -159,7 +160,7 @@ struct TitleView: View {
                 }
             }
             if downloads.canDeleteAll {
-                Button("Delete downloads") { confirmDelete = "*" }
+                Button(downloads.deleteAllLabel) { confirmDelete = "*" }
                     .font(.brandBody(13, weight: .bold)).foregroundStyle(Color.brandMuted)
             }
         }

@@ -3,6 +3,8 @@ import SwiftUI
 
 @main
 struct VovoscanApp: App {
+    @Environment(\.scenePhase) private var scenePhase
+
     init() {
         // Covers: kept by the shared HTTP cache that AsyncImage uses.
         URLCache.shared = URLCache(memoryCapacity: 32 * 1024 * 1024, diskCapacity: 200 * 1024 * 1024, directory: nil)
@@ -10,6 +12,8 @@ struct VovoscanApp: App {
         URLProtocol.registerClass(SourceRefererProtocol.self)
         if AppEnvironment.simulateOffline { URLProtocol.registerClass(SimulatedOffline.self) }
         IosAppKt.doInitKoin(apiBaseUrl: AppEnvironment.apiBaseUrl, simulateOffline: AppEnvironment.simulateOffline)
+        // Background tasks must be registered before the app finishes launching.
+        BackgroundDownloads.shared.register()
     }
 
     var body: some Scene {
@@ -17,6 +21,14 @@ struct VovoscanApp: App {
             RootView()
                 .preferredColorScheme(.dark)
                 .tint(Color.brandRed)
+        }
+        // Downloads: keep going for the time iOS gives in the background, then pause cleanly; carry on when back.
+        .onChange(of: scenePhase) { _, phase in
+            switch phase {
+            case .background: BackgroundDownloads.shared.enterBackground()
+            case .active: BackgroundDownloads.shared.becomeActive()
+            default: break
+            }
         }
     }
 }
