@@ -20,19 +20,19 @@ struct SourcesView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
                 HStack {
-                    Kicker(text: "Sources")
+                    Kicker(text: L("nav.sources"))
                     Spacer()
-                    NavigationLink(value: AddSourceRoute(repositoryId: nil)) { Text("+ Add") }
+                    NavigationLink(value: AddSourceRoute(repositoryId: nil)) { Text(L("sources.addShort")) }
                         .buttonStyle(SmallActionStyle())
                 }
-                Text("Choose what you read.").font(.brandDisplay(26)).foregroundStyle(Color.brandPaper)
-                Text("Sources read on your device are fetched by your phone, never through vovoscan.")
+                Text(L("sources.headline")).font(.brandDisplay(26)).foregroundStyle(Color.brandPaper)
+                Text(L("sources.onDeviceNote"))
                     .font(.brandBody(13)).foregroundStyle(Color.brandMuted)
                 if let updates = model.state.updatesLabel { UpdatesBanner(text: updates) }
                 if model.state.checkingUpdates {
                     HStack(spacing: 8) {
                         Circle().fill(Color.brandCyan).frame(width: 8, height: 8)
-                        Text("Checking for updates…").font(.brandBody(13)).foregroundStyle(Color.brandMuted)
+                        Text(L("sources.checkingUpdates")).font(.brandBody(13)).foregroundStyle(Color.brandMuted)
                     }
                 }
                 if let notice = model.state.pendingNotice { OfflineNotice(text: notice) }
@@ -44,7 +44,7 @@ struct SourcesView: View {
                 }
                 ForEach(model.state.rows, id: \.key) { row in sourceRow(row) }
                 if !model.state.repositories.isEmpty {
-                    Text("Repositories").font(.brandDisplay(18)).foregroundStyle(Color.brandPaper).padding(.top, 12)
+                    Text(L("sources.repositories")).font(.brandDisplay(18)).foregroundStyle(Color.brandPaper).padding(.top, 12)
                     ForEach(model.state.repositories, id: \.id) { repo in repositoryRow(repo) }
                 }
             }
@@ -78,7 +78,7 @@ struct SourcesView: View {
                         Text(row.kindsLabel).font(.brandBody(13)).foregroundStyle(Color.brandMuted).lineLimit(1)
                         Text(row.engineLabel).font(.brandBody(13)).foregroundStyle(Color.brandMuted).lineLimit(1).minimumScaleFactor(0.85)
                         if row.needsSettings {
-                            Text("Settings needed").font(.brandBody(13)).foregroundStyle(Color.brandYellow)
+                            Text(L("sources.settingsNeededShort")).font(.brandBody(13)).foregroundStyle(Color.brandYellow)
                         }
                     }
                     Spacer(minLength: 0)
@@ -110,7 +110,7 @@ struct SourcesView: View {
             .buttonStyle(.plain)
             if repo.pendingSync { Circle().fill(Color.brandCyan).frame(width: 8, height: 8) }
             Menu {
-                Button("Remove", role: .destructive) { model.send(SourcesIntentRemoveRepository(id: repo.id)) }
+                Button(L("common.remove"), role: .destructive) { model.send(SourcesIntentRemoveRepository(id: repo.id)) }
             } label: {
                 Image(systemName: "ellipsis").foregroundStyle(Color.brandPaper).padding(10)
             }
@@ -121,7 +121,7 @@ struct SourcesView: View {
         .background(Color.brandInk2, in: RoundedRectangle(cornerRadius: 12))
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.brandLine, lineWidth: 1))
         .contextMenu {
-            Button("Remove", role: .destructive) { model.send(SourcesIntentRemoveRepository(id: repo.id)) }
+            Button(L("common.remove"), role: .destructive) { model.send(SourcesIntentRemoveRepository(id: repo.id)) }
         }
     }
 

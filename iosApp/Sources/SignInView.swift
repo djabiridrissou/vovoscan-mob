@@ -56,8 +56,8 @@ struct SignInView: View {
                     .lineSpacing(-4)
                     .contentTransition(.opacity)
                 HStack(spacing: 8) {
-                    Kicker(text: "Invite only")
-                    Text("Your scans, fully voiced.").font(.brandBody(13)).foregroundStyle(Color.brandPaper.opacity(0.76))
+                    Kicker(text: L("auth.inviteOnly"))
+                    Text(L("auth.tagline")).font(.brandBody(13)).foregroundStyle(Color.brandPaper.opacity(0.76))
                 }
             }
             .padding(24)
@@ -72,21 +72,21 @@ struct SignInView: View {
     private var form: some View {
         VStack(alignment: .leading, spacing: 16) {
             if model.state.mode == .invite {
-                IntentField(label: "Invite code", text: $inviteCode, value: model.state.inviteCode, error: model.state.inviteError,
+                IntentField(label: L("auth.inviteCode"), text: $inviteCode, value: model.state.inviteCode, error: model.state.inviteError,
                             placeholder: "VOVO-XXXX-XXXX") {
                     model.send(SignInIntentInviteCode(value: $0))
                 }
                 .textContentType(.oneTimeCode)
-                IntentField(label: "Display name", text: $displayName, value: model.state.displayName) {
+                IntentField(label: L("auth.displayName"), text: $displayName, value: model.state.displayName) {
                     model.send(SignInIntentDisplayName(value: $0))
                 }
                 .textContentType(.nickname)
             }
-            IntentField(label: "Email", text: $email, value: model.state.email, error: model.state.emailError, keyboard: .emailAddress) {
+            IntentField(label: L("auth.email"), text: $email, value: model.state.email, error: model.state.emailError, keyboard: .emailAddress) {
                 model.send(SignInIntentEmail(value: $0))
             }
             .textContentType(.username)
-            IntentField(label: "Password", text: $password, value: model.state.password, error: model.state.passwordError, secret: true) {
+            IntentField(label: L("auth.password"), text: $password, value: model.state.password, error: model.state.passwordError, secret: true) {
                 model.send(SignInIntentPassword(value: $0))
             }
             .textContentType(model.state.mode == .invite ? .newPassword : .password)
@@ -118,7 +118,7 @@ struct SignInView: View {
             .buttonStyle(GhostButtonStyle())
             HStack(spacing: 6) {
                 Image(systemName: "lock.fill").font(.system(size: 11, weight: .bold))
-                Text("Locked down like a vault: invite only, sealed keys, sessions you can revoke.")
+                Text(L("auth.vault"))
             }
             .font(.brandBody(12))
             .foregroundStyle(Color.brandMuted)

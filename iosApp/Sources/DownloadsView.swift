@@ -43,10 +43,10 @@ struct DownloadControl: View {
 
     private var accessibility: String {
         switch row.action {
-        case .download: return "Download"
-        case .delete: return "Downloaded. Delete"
-        case .retry: return "Failed. Try again"
-        default: return "Stop the download"
+        case .download: return L("downloads.a11yDownload")
+        case .delete: return L("downloads.a11yDelete")
+        case .retry: return L("downloads.a11yRetry")
+        default: return L("downloads.a11yStop")
         }
     }
 }
@@ -72,8 +72,8 @@ struct DownloadsView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
-                Kicker(text: "Downloads")
-                Text("Read offline.").font(.brandDisplay(26)).foregroundStyle(Color.brandPaper)
+                Kicker(text: L("downloads.title"))
+                Text(L("downloads.headline")).font(.brandDisplay(26)).foregroundStyle(Color.brandPaper)
                 if !model.state.total.isEmpty {
                     Text(model.state.total).font(.brandBody(13)).foregroundStyle(Color.brandMuted)
                 }
@@ -106,21 +106,21 @@ struct DownloadsView: View {
             isPresented: Binding(get: { confirm != nil }, set: { if !$0 { confirm = nil } }),
             presenting: confirm
         ) { target in
-            Button("Delete", role: .destructive) {
+            Button(L("common.delete"), role: .destructive) {
                 switch target {
                 case let .chapter(source, chapter): model.send(DownloadsIntentAct(sourceKey: source, chapterId: chapter))
                 case let .title(source, title): model.send(DownloadsIntentDeleteTitle(sourceKey: source, titleId: title))
                 }
             }
-            Button("Cancel", role: .cancel) {}
+            Button(L("common.cancel"), role: .cancel) {}
         } message: { _ in
-            Text("Reading it will need the network again.")
+            Text(L("downloads.needsNetwork"))
         }
     }
 
     private var confirmTitle: String {
-        if case .title = confirm { return "Delete the downloads?" }
-        return "Delete this download?"
+        if case .title = confirm { return L("downloads.deleteAllTitle") }
+        return L("downloads.deleteOneTitle")
     }
 
     private struct GroupCard: View {
@@ -140,7 +140,7 @@ struct DownloadsView: View {
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    Button("Delete") { confirm = .title(sourceKey: group.sourceKey, titleId: group.titleId) }
+                    Button(L("common.delete")) { confirm = .title(sourceKey: group.sourceKey, titleId: group.titleId) }
                         .font(.brandBody(13, weight: .bold)).foregroundStyle(Color.brandMuted)
                 }
                 ForEach(group.rows, id: \.chapterId) { row in
@@ -154,7 +154,7 @@ struct DownloadsView: View {
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
                         if row.removable {
-                            Button("Remove") { model.send(DownloadsIntentRemove(sourceKey: row.sourceKey, chapterId: row.chapterId)) }
+                            Button(L("common.remove")) { model.send(DownloadsIntentRemove(sourceKey: row.sourceKey, chapterId: row.chapterId)) }
                                 .font(.brandBody(13, weight: .bold)).foregroundStyle(Color.brandMuted)
                         }
                         DownloadControl(row: row) {

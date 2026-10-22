@@ -14,13 +14,13 @@ struct SettingsView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
-                ScreenHeader(kicker: "Settings", title: "Your keys, your episodes.", subtitle: session.email)
+                ScreenHeader(kicker: L("nav.settings"), title: L("settings.headline"), subtitle: session.email)
                 if wallet.state.shown { WalletCard(state: wallet.state).riseIn() }
                 StudioCard(isCreator: session.isCreator).riseIn(1)
                 keysSection
                 readingSection
                 costsSection
-                Button("Sign out", action: onSignOut).buttonStyle(GhostButtonStyle()).padding(.top, 8)
+                Button(L("common.signOut"), action: onSignOut).buttonStyle(GhostButtonStyle()).padding(.top, 8)
             }
             .padding(20)
         }
@@ -51,7 +51,7 @@ struct SettingsView: View {
 
     private var keysSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            SectionTitle(text: "Keys")
+            SectionTitle(text: L("settings.keys"))
             if let notice = keys.state.offlineNotice { OfflineNotice(text: notice) }
             Text(keys.state.privacyNote).font(.brandBody(13)).foregroundStyle(Color.brandMuted)
             if let disabled = keys.state.disabledNotice { Text(disabled).font(.brandBody(15)).foregroundStyle(Color.brandPaper) }
@@ -71,7 +71,7 @@ struct SettingsView: View {
                             Button(slot.actionLabel) { keys.send(ProviderKeysIntentOpenForm(provider: slot.provider)) }
                                 .buttonStyle(GhostButtonStyle())
                             if let key = slot.key {
-                                Button("Remove") { keys.send(ProviderKeysIntentAskRemove(keyId: key.id)) }
+                                Button(L("common.remove")) { keys.send(ProviderKeysIntentAskRemove(keyId: key.id)) }
                                     .buttonStyle(GhostButtonStyle())
                             }
                         }
@@ -91,7 +91,7 @@ struct SettingsView: View {
 
     private var readingSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            SectionTitle(text: "Reading model")
+            SectionTitle(text: L("settings.readingModel"))
             if let notice = reading.state.offlineNotice { OfflineNotice(text: notice) }
             ForEach(reading.state.options, id: \.label) { option in
                 Button {
@@ -123,7 +123,7 @@ struct SettingsView: View {
     private var costsSection: some View {
         let state = usage.state
         return VStack(alignment: .leading, spacing: 10) {
-            SectionTitle(text: "Costs")
+            SectionTitle(text: L("settings.costs"))
             HStack(spacing: 8) {
                 ForEach(state.periods, id: \.label) { chip in
                     Button(chip.label) { usage.send(UsageIntentSelectPeriod(period: chip.period)) }
@@ -131,10 +131,10 @@ struct SettingsView: View {
                 }
             }
             if state.loading {
-                Text("Loading the costs…").font(.brandBody(13)).foregroundStyle(Color.brandMuted)
+                Text(L("usage.loading")).font(.brandBody(13)).foregroundStyle(Color.brandMuted)
             } else if let error = state.error {
                 ErrorText(text: error)
-                Button("Try again") { usage.send(UsageIntentRefresh.shared) }.buttonStyle(GhostButtonStyle())
+                Button(L("common.tryAgain")) { usage.send(UsageIntentRefresh.shared) }.buttonStyle(GhostButtonStyle())
             } else {
                 if state.empty { Text(state.emptyLabel).font(.brandBody(15)).foregroundStyle(Color.brandPaper) }
                 if !state.empty, let total = state.totalCostLabel { Text(total).font(.brandDisplay(26)).foregroundStyle(Color.brandPaper) }
@@ -182,7 +182,7 @@ private struct KeyForm: View {
         VStack(alignment: .leading, spacing: 12) {
             Text(state.formTitle).font(.brandDisplay(18)).foregroundStyle(Color.brandPaper)
             VStack(alignment: .leading, spacing: 6) {
-                Text("Key").font(.brandBody(13)).foregroundStyle(Color.brandMuted)
+                Text(L("keys.key")).font(.brandBody(13)).foregroundStyle(Color.brandMuted)
                 SecureField("", text: $secret, prompt: Text(state.secretPlaceholder).foregroundColor(Color.brandMuted))
                     .textContentType(.oneTimeCode)
                     .textInputAutocapitalization(.never)
@@ -197,7 +197,7 @@ private struct KeyForm: View {
                     .onChange(of: secret) { _, typed in model.send(ProviderKeysIntentSecretChanged(value: typed)) }
                 if let error = state.secretError { ErrorText(text: error) }
             }
-            IntentField(label: "Label", text: $label, value: state.formLabel, error: state.labelError, placeholder: state.labelPlaceholder) {
+            IntentField(label: L("keys.label"), text: $label, value: state.formLabel, error: state.labelError, placeholder: state.labelPlaceholder) {
                 model.send(ProviderKeysIntentLabelChanged(value: $0))
             }
             if let error = state.formError { ErrorText(text: error) }
@@ -210,7 +210,7 @@ private struct KeyForm: View {
             }
             .buttonStyle(PrimaryButtonStyle())
             .disabled(!state.canSubmit)
-            Button("Cancel") { model.send(ProviderKeysIntentCloseForm.shared) }.buttonStyle(GhostButtonStyle())
+            Button(L("common.cancel")) { model.send(ProviderKeysIntentCloseForm.shared) }.buttonStyle(GhostButtonStyle())
         }
         .padding(16)
         .background(Color.brandInk2, in: RoundedRectangle(cornerRadius: 12))
@@ -296,9 +296,9 @@ private struct StudioCard: View {
                     .frame(width: 40, height: 40)
                     .background(Color.brandYellow, in: RoundedRectangle(cornerRadius: 8))
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(isCreator ? "Creator studio" : "Publish your own series")
+                    Text(isCreator ? L("settings.studio") : L("settings.publish"))
                         .font(.brandBody(15, weight: .bold)).foregroundStyle(Color.brandPaper)
-                    Text(isCreator ? "Upload, translate and schedule releases on the web." : "Apply as a creator on the web.")
+                    Text(isCreator ? L("settings.studioDetail") : L("settings.publishDetail"))
                         .font(.brandBody(13)).foregroundStyle(Color.brandMuted)
                 }
                 Spacer()
@@ -309,6 +309,6 @@ private struct StudioCard: View {
             .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.brandLine, lineWidth: 1))
         }
         .buttonStyle(PressableCardStyle())
-        .accessibilityHint("Opens the website")
+        .accessibilityHint(L("settings.opensWebsite"))
     }
 }

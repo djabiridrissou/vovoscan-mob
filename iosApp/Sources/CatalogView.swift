@@ -13,7 +13,7 @@ struct CatalogView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
-                ScreenHeader(kicker: "Catalog", title: "Pick a title.")
+                ScreenHeader(kicker: L("nav.catalog"), title: L("catalog.headline"))
                 // Two features side by side, unaware of each other: sources (the visible ones, in order) and catalog.
                 filters
                     .onAppear { model.send(CatalogIntentSourcesChanged(sources: visibleSources)) }
@@ -21,7 +21,7 @@ struct CatalogView: View {
                 if let note = model.state.categoryNote {
                     Text(note).font(.brandBody(13)).foregroundStyle(Color.brandMuted)
                 }
-                IntentField(label: "Search", text: $query, value: model.state.query) { model.send(CatalogIntentQuery(value: $0)) }
+                IntentField(label: L("common.search"), text: $query, value: model.state.query) { model.send(CatalogIntentQuery(value: $0)) }
                 if let notice = model.state.offlineNotice {
                     OfflineNotice(text: notice, onRetry: model.state.canRetry ? { model.send(CatalogIntentRefresh.shared) } : nil)
                 }
@@ -36,7 +36,7 @@ struct CatalogView: View {
                     ) { openTab(.sources) }
                     .riseIn()
                 } else if model.state.empty {
-                    EmptyStateCard(sfx: "シーン", title: model.state.emptyMessage, message: "Pull down to check again.")
+                    EmptyStateCard(sfx: "シーン", title: model.state.emptyMessage, message: L("catalog.pullToRefresh"))
                 }
                 LazyVGrid(columns: columns, spacing: 14) {
                     ForEach(Array(model.state.visible.enumerated()), id: \.element) { index, card in
@@ -52,7 +52,7 @@ struct CatalogView: View {
                     }
                 }
                 if model.state.canLoadMore && model.state.results == nil {
-                    Button(model.state.loadingMore ? "Loading…" : "Load more") { model.send(CatalogIntentLoadMore.shared) }
+                    Button(model.state.loadingMore ? L("common.loading") : L("catalog.loadMore")) { model.send(CatalogIntentLoadMore.shared) }
                         .buttonStyle(GhostButtonStyle())
                 }
             }
@@ -129,11 +129,11 @@ private struct FilterSheet: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 4) {
-                Text(which == .sources ? "Sources" : "Categories")
+                Text(which == .sources ? L("nav.sources") : L("catalog.categories"))
                     .font(.brandDisplay(20)).foregroundStyle(Color.brandPaper)
                     .padding(.bottom, 8)
                 if which == .sources {
-                    CheckRow(label: "All", checked: model.state.allSources) { model.send(CatalogIntentShowAllSources.shared) }
+                    CheckRow(label: L("catalog.all"), checked: model.state.allSources) { model.send(CatalogIntentShowAllSources.shared) }
                     ForEach(model.state.sources, id: \.key) { source in
                         CheckRow(label: source.name, checked: source.selected) {
                             Haptics.select()
@@ -141,7 +141,7 @@ private struct FilterSheet: View {
                         }
                     }
                 } else {
-                    CheckRow(label: "All categories", checked: model.state.category == nil) {
+                    CheckRow(label: L("catalog.allCategories"), checked: model.state.category == nil) {
                         model.send(CatalogIntentSelectCategory(name: nil))
                         dismiss()
                     }

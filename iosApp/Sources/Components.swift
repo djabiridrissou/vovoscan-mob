@@ -95,7 +95,7 @@ struct OfflineNotice: View {
             Text(text).font(.brandBody(13)).foregroundStyle(Color.brandMuted)
                 .frame(maxWidth: .infinity, alignment: .leading)
             if let onRetry {
-                Button("Retry", action: onRetry).font(.brandBody(13, weight: .bold)).foregroundStyle(Color.brandRed)
+                Button(L("common.retry"), action: onRetry).font(.brandBody(13, weight: .bold)).foregroundStyle(Color.brandRed)
             }
         }
         .padding(.horizontal, 14)

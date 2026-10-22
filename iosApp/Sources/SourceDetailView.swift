@@ -30,7 +30,7 @@ struct SourceDetailView: View {
                     Button(model.state.visibilityLabel) { model.send(SourceDetailIntentToggleVisibility.shared) }
                         .buttonStyle(GhostButtonStyle())
                     if model.state.canRemove {
-                        Button("Remove") { model.send(SourceDetailIntentRemove.shared) }.buttonStyle(GhostButtonStyle())
+                        Button(L("common.remove")) { model.send(SourceDetailIntentRemove.shared) }.buttonStyle(GhostButtonStyle())
                     }
                 }
             }
@@ -39,19 +39,19 @@ struct SourceDetailView: View {
                 model.state.removalTitle,
                 isPresented: Binding(get: { model.state.confirmingRemoval }, set: { _ in })
             ) {
-                Button("Remove", role: .destructive) { model.send(SourceDetailIntentConfirmRemove.shared) }
-                Button("Cancel", role: .cancel) { model.send(SourceDetailIntentCancelRemove.shared) }
+                Button(L("common.remove"), role: .destructive) { model.send(SourceDetailIntentConfirmRemove.shared) }
+                Button(L("common.cancel"), role: .cancel) { model.send(SourceDetailIntentCancelRemove.shared) }
             } message: {
                 Text(model.state.removalMessage)
             }
         }
         .background(Color.brandInk)
         .alert(
-            "New connections",
+            L("sources.newConnections"),
             isPresented: Binding(get: { model.state.hostsConfirmation != nil }, set: { _ in })
         ) {
-            Button("Continue") { model.send(SourceDetailIntentConfirmHosts.shared) }
-            Button("Cancel", role: .cancel) { model.send(SourceDetailIntentCancelHosts.shared) }
+            Button(L("common.continue")) { model.send(SourceDetailIntentConfirmHosts.shared) }
+            Button(L("common.cancel"), role: .cancel) { model.send(SourceDetailIntentCancelHosts.shared) }
         } message: {
             Text(model.state.hostsConfirmation ?? "")
         }
@@ -61,11 +61,11 @@ struct SourceDetailView: View {
 
     private func updateCard(_ update: SourceUpdateUi) -> some View {
         SourceCard {
-            Text("Update available").font(.brandDisplay(18)).foregroundStyle(Color.brandPaper)
+            Text(L("sources.updateAvailable")).font(.brandDisplay(18)).foregroundStyle(Color.brandPaper)
             Text(update.versionLabel).font(.brandBody(15)).foregroundStyle(Color.brandPaper)
             if let changes = update.changes { Text(changes).font(.brandBody(13)).foregroundStyle(Color.brandPaper.opacity(0.76)) }
             if let hosts = update.newHostsLabel { Text(hosts).font(.brandBody(13)).foregroundStyle(Color.brandYellow) }
-            Button(model.state.working ? "Updating…" : "\(update.actionLabel) →") { model.send(SourceDetailIntentUpdate.shared) }
+            Button(model.state.working ? L("sources.updating") : "\(update.actionLabel) →") { model.send(SourceDetailIntentUpdate.shared) }
                 .buttonStyle(PrimaryButtonStyle())
                 .disabled(model.state.working)
                 .padding(.top, 4)
@@ -75,7 +75,7 @@ struct SourceDetailView: View {
 
     @ViewBuilder private var settingsSection: some View {
         if !model.state.settings.isEmpty {
-            Text("Settings").font(.brandDisplay(18)).foregroundStyle(Color.brandPaper)
+            Text(L("nav.settings")).font(.brandDisplay(18)).foregroundStyle(Color.brandPaper)
             if let notice = model.state.settingsNotice { Text(notice).font(.brandBody(13)).foregroundStyle(Color.brandYellow) }
             if model.state.settingsEditable {
                 ForEach(model.state.settings, id: \.name) { field in
@@ -83,7 +83,7 @@ struct SourceDetailView: View {
                         model.send(SourceDetailIntentSettingChanged(name: field.name, value: $0))
                     }
                 }
-                Button("Save →") {
+                Button(L("common.saveArrow")) {
                     submitAfterCommittingInput {
                         // The exact value of each field, then the save: the ViewModel handles intents in order.
                         for (name, value) in values { model.send(SourceDetailIntentSettingChanged(name: name, value: value)) }

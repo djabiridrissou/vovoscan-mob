@@ -46,7 +46,7 @@ struct OriginChip: View {
 
 /// Red "Update" badge, ink text.
 struct UpdateBadge: View {
-    var label = "Update"
+    var label = L("sources.update")
 
     var body: some View {
         Text(label)
@@ -133,7 +133,7 @@ struct SourceInfoBlock: View {
             if !meta.isEmpty { Text(meta.joined(separator: " ✦ ")).font(.brandBody(13)).foregroundStyle(Color.brandMuted) }
             if info.rightsLabel != nil || info.rightsNotes != nil {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Rights").font(.brandBody(16, weight: .bold)).foregroundStyle(Color.brandPaper)
+                    Text(L("sources.rights")).font(.brandBody(16, weight: .bold)).foregroundStyle(Color.brandPaper)
                     if let label = info.rightsLabel { Text(label).font(.brandBody(15)).foregroundStyle(Color.brandPaper) }
                     if let notes = info.rightsNotes { Text(notes).font(.brandBody(13)).foregroundStyle(Color.brandPaper.opacity(0.76)) }
                     if let disclaimer = info.rightsDisclaimer { Text(disclaimer).font(.brandBody(13)).foregroundStyle(Color.brandMuted) }
@@ -141,7 +141,7 @@ struct SourceInfoBlock: View {
             }
             if info.hostsLabel != nil {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("This source connects your phone to:").font(.brandBody(16, weight: .bold)).foregroundStyle(Color.brandPaper)
+                    Text(L("sources.connectsTo")).font(.brandBody(16, weight: .bold)).foregroundStyle(Color.brandPaper)
                     ForEach(info.hosts, id: \.self) { host in
                         Text("✦ \(host)").font(.brandBody(13)).foregroundStyle(Color.brandPaper.opacity(0.76))
                     }

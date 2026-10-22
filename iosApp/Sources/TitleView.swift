@@ -41,25 +41,25 @@ struct TitleView: View {
                 .clipped()
                 VStack(alignment: .leading, spacing: 12) {
                     if model.state.unavailable {
-                        Text("This title isn't saved on this device yet.").font(.brandBody(15)).foregroundStyle(Color.brandPaper)
+                        Text(L("catalog.titleNotSaved")).font(.brandBody(15)).foregroundStyle(Color.brandPaper)
                     }
                     if let notice = model.state.notice {
                         OfflineNotice(text: notice, onRetry: model.state.canRetry ? { model.refresh() } : nil)
                     }
                     if let error = model.state.error { ErrorText(text: error) }
                     if model.state.unavailable && model.state.canRetry {
-                        Button("Try again") { model.refresh() }.buttonStyle(GhostButtonStyle())
+                        Button(L("common.tryAgain")) { model.refresh() }.buttonStyle(GhostButtonStyle())
                     }
                     Text(model.state.name).font(.brandDisplay(26)).foregroundStyle(Color.brandPaper)
                     Text(model.state.meta).font(.brandBody(13)).foregroundStyle(Color.brandMuted)
                     // Resume where the reader left off, otherwise start at the first chapter (list runs newest to oldest).
                     if let resume = model.follow.resumeChapterId {
                         NavigationLink(value: read(resume, Int(model.follow.resumePage))) {
-                            Text(model.follow.resumeLabel(book: model.state.isBook) ?? "Continue →")
+                            Text(model.follow.resumeLabel(book: model.state.isBook) ?? L("library.continueArrow"))
                         }
                         .buttonStyle(PrimaryButtonStyle())
                     } else if let first = model.state.chapters.last {
-                        NavigationLink(value: read(first.id)) { Text(model.state.isBook ? "Read →" : "Start reading →") }
+                        NavigationLink(value: read(first.id)) { Text(model.state.isBook ? L("catalog.readArrow") : L("catalog.startReading")) }
                             .buttonStyle(PrimaryButtonStyle())
                     }
                     if !model.state.name.isEmpty {
@@ -94,7 +94,7 @@ struct TitleView: View {
                             // A comic of our catalog: the chapter's voiced episode, next to reading it.
                             if model.state.offersEpisodes {
                                 NavigationLink(value: EpisodeRoute(chapterId: chapter.id, title: model.state)) {
-                                    Text("Episode")
+                                    Text(L("episode.kickerChip"))
                                         .font(.brandBody(12, weight: .bold))
                                         .tracking(1.2)
                                         .foregroundStyle(Color.brandPaper)
@@ -129,19 +129,19 @@ struct TitleView: View {
         .task { await model.observeFollow() }
         .task { await model.observeDownloads() }
         .alert(
-            confirmDelete == "*" ? model.downloads.deleteAllTitle : "Delete this download?",
+            confirmDelete == "*" ? model.downloads.deleteAllTitle : L("downloads.deleteOneTitle"),
             isPresented: Binding(get: { confirmDelete != nil }, set: { if !$0 { confirmDelete = nil } }),
             presenting: confirmDelete
         ) { target in
-            Button("Delete", role: .destructive) {
+            Button(L("common.delete"), role: .destructive) {
                 model.send(target == "*" ? TitleDownloadsIntentDeleteAll.shared : TitleDownloadsIntentAct(chapterId: target))
             }
-            Button("Cancel", role: .cancel) {}
+            Button(L("common.cancel"), role: .cancel) {}
         } message: { target in
             Text(
                 target == "*"
                     ? model.downloads.deleteAllMessage
-                    : "\(model.state.chapterLabel(chapterId: target)) will need the network again."
+                    : L("downloads.chapterNeedsNetwork", ["chapter": model.state.chapterLabel(chapterId: target)])
             )
         }
     }

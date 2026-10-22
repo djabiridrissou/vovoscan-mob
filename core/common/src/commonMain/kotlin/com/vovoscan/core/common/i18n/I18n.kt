@@ -44,6 +44,15 @@ object I18n {
         vararg args: Pair<String, Any?>,
     ): String = format(key, current.value.locale, args.toMap())
 
+    /** For Swift and Compose: [key] without arguments (Kotlin varargs read badly from Swift). */
+    fun text(key: String): String = format(key, current.value.locale, emptyMap())
+
+    /** For Swift and Compose: [key] with named arguments. */
+    fun textWith(
+        key: String,
+        args: Map<String, Any?>,
+    ): String = format(key, current.value.locale, args)
+
     /** The same key in a given locale (the language picker shows each language in its own words). */
     fun inLocale(
         locale: String,

@@ -44,9 +44,9 @@ struct ReaderView: View {
             Color.brandInk.ignoresSafeArea()
             if model.state.unavailable {
                 VStack(alignment: .leading, spacing: 12) {
-                    Text("This chapter isn't saved on this device yet.").font(.brandBody(15)).foregroundStyle(Color.brandPaper)
+                    Text(L("reader.notSaved")).font(.brandBody(15)).foregroundStyle(Color.brandPaper)
                     if let error = model.state.error { ErrorText(text: error) }
-                    Button("Try again") { model.send(ReaderIntentRetry.shared) }.buttonStyle(GhostButtonStyle())
+                    Button(L("common.tryAgain")) { model.send(ReaderIntentRetry.shared) }.buttonStyle(GhostButtonStyle())
                 }
                 .padding(24)
             } else if model.state.isBook {
@@ -110,7 +110,7 @@ struct ReaderView: View {
                     } label: {
                         Image(systemName: "gearshape").font(.system(size: 18)).foregroundStyle(Color.brandPaper)
                     }
-                    .accessibilityLabel("Reader settings")
+                    .accessibilityLabel(L("reader.settingsTitle"))
                 }
             }
             .padding(.horizontal, 16)
@@ -127,14 +127,14 @@ struct ReaderView: View {
                 Text(model.state.positionLabel).font(.brandBody(13)).foregroundStyle(Color.brandMuted)
                 Spacer()
                 if model.state.isBook && model.state.canGoForward {
-                    Button("Next section →") { model.send(ReaderIntentNext.shared) }
+                    Button(L("reader.nextSection")) { model.send(ReaderIntentNext.shared) }
                         .font(.brandBody(16, weight: .bold)).foregroundStyle(Color.brandRed)
                 }
                 if let previous = model.state.previousChapterId {
-                    Button("← Previous") { onOpenChapter(previous, 0) }.font(.brandBody(13)).foregroundStyle(Color.brandMuted)
+                    Button(L("reader.previousArrow")) { onOpenChapter(previous, 0) }.font(.brandBody(13)).foregroundStyle(Color.brandMuted)
                 }
                 if let next = model.state.nextChapterId {
-                    Button("Next →") { onOpenChapter(next, 0) }.font(.brandBody(16, weight: .bold)).foregroundStyle(Color.brandRed)
+                    Button(L("reader.nextArrow")) { onOpenChapter(next, 0) }.font(.brandBody(16, weight: .bold)).foregroundStyle(Color.brandRed)
                 }
             }
             .padding(.horizontal, 16)
@@ -430,8 +430,8 @@ private struct PageImage: View {
                 Image(uiImage: image).resizable().aspectRatio(contentMode: .fit)
             } else if loader.failed {
                 VStack(spacing: 12) {
-                    Text("This page didn't load.").font(.brandBody(14)).foregroundStyle(Color.brandMuted)
-                    Button("Retry") { loader.load(page.url) }.buttonStyle(GhostButtonStyle()).frame(width: 160)
+                    Text(L("reader.pageFailed")).font(.brandBody(14)).foregroundStyle(Color.brandMuted)
+                    Button(L("common.tryAgain")) { loader.load(page.url) }.buttonStyle(GhostButtonStyle()).frame(width: 160)
                 }
                 .padding(24)
             }
@@ -446,7 +446,7 @@ private struct PageImage: View {
         .onAppear { loader.show(page.url) }
         // The saved copy of a chapter shows first; the fresh one may bring new signed links.
         .onChange(of: page.url) { _, url in loader.show(url) }
-        .accessibilityLabel("Page \(page.index + 1)")
+        .accessibilityLabel(L("library.page", ["n": Int(page.index) + 1]))
     }
 
     private var ratio: CGFloat {
@@ -507,12 +507,12 @@ private struct BookReader: View {
             if let document = model.state.sectionDocument {
                 BookWebView(html: document)
             } else {
-                Text(model.state.preparingBook ? "Opening the book…" : "")
+                Text(model.state.preparingBook ? L("reader.openingBook") : "")
                     .font(.brandBody(13)).foregroundStyle(Color.brandMuted)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
             if model.state.atEnd, let next = model.state.nextChapterId, model.state.sectionDocument != nil {
-                Button(model.state.nextLabel ?? "Next →") { onOpenChapter(next) }
+                Button(model.state.nextLabel ?? L("reader.nextArrow")) { onOpenChapter(next) }
                     .buttonStyle(PrimaryButtonStyle())
                     .padding(16)
             }

@@ -38,16 +38,16 @@ struct RootView: View {
             if let current = session.session {
                 TabView(selection: $tab) {
                     NavigationStack { CatalogView() }
-                        .tabItem { Label("Catalog", systemImage: "square.grid.2x2") }
+                        .tabItem { Label(L("nav.catalog"), systemImage: "square.grid.2x2") }
                         .tag(AppTab.catalog)
                     NavigationStack { LibraryView(onSignOut: session.signOut) }
-                        .tabItem { Label("Library", systemImage: "books.vertical") }
+                        .tabItem { Label(L("nav.library"), systemImage: "books.vertical") }
                         .tag(AppTab.library)
                     NavigationStack { SourcesView() }
-                        .tabItem { Label("Sources", systemImage: "square.stack.3d.up") }
+                        .tabItem { Label(L("nav.sources"), systemImage: "square.stack.3d.up") }
                         .tag(AppTab.sources)
                     NavigationStack { SettingsView(session: current, onSignOut: session.signOut) }
-                        .tabItem { Label("Settings", systemImage: "gearshape") }
+                        .tabItem { Label(L("nav.settings"), systemImage: "gearshape") }
                         .tag(AppTab.settings)
                 }
                 .environment(\.openTab, OpenTabAction { tab = $0 })
