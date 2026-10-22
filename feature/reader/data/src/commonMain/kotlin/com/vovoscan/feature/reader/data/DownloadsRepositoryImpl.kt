@@ -7,7 +7,9 @@ import com.vovoscan.core.common.NetworkMonitor
 import com.vovoscan.core.common.NetworkState
 import com.vovoscan.core.common.userMessage
 import com.vovoscan.feature.reader.domain.ChapterDownload
+import com.vovoscan.feature.reader.domain.DownloadActivity
 import com.vovoscan.feature.reader.domain.DownloadBlock
+import com.vovoscan.feature.reader.domain.DownloadScheduler
 import com.vovoscan.feature.reader.domain.DownloadState
 import com.vovoscan.feature.reader.domain.DownloadableChapter
 import com.vovoscan.feature.reader.domain.DownloadableTitle
@@ -17,11 +19,13 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -30,11 +34,15 @@ import kotlinx.coroutines.withContext
 
 /**
  * The download queue, run in the app's scope: one chapter at a time, page by page, each page written to disk then
- * recorded (a chapter interrupted halfway resumes at its first missing page). Every change to a chapter's rows and
- * files happens under one lock, so a chapter removed while it downloads leaves nothing behind.
+ * recorded (a chapter interrupted halfway resumes at its first missing page). A book is one step: its file fetched,
+ * read into sections and saved, as opening it does. Every change to a chapter's rows and files happens under one
+ * lock, so a chapter removed while it downloads leaves nothing behind.
  *
  * Network: with no connection, or on mobile data with "Wi-Fi only", the chapter waits and starts again by itself.
  * A failure while online (source down, expired link) marks it failed; "Try again" queues it again.
+ *
+ * Background: whenever there is work, [scheduler] asks the platform to keep it going (Android WorkManager); the
+ * platform's background work only calls [drain] and, before the app is suspended, [pause].
  */
 class DownloadsRepositoryImpl(
     private val remote: ReaderRemoteDataSource,
@@ -44,6 +52,8 @@ class DownloadsRepositoryImpl(
     private val network: NetworkMonitor,
     private val scope: CoroutineScope,
     private val io: CoroutineDispatcher,
+    private val scheduler: DownloadScheduler = DownloadScheduler.None,
+    private val epub: EpubParser = EpubParser(),
     private val clock: Clock,
 ) : DownloadsRepository {
     private class Running(
@@ -67,23 +77,47 @@ class DownloadsRepositoryImpl(
 
     override fun observeBlock(): Flow<DownloadBlock?> = block.asStateFlow()
 
+    override fun observeActivity(): Flow<DownloadActivity> =
+        combine(local.observeAll(), block) { all, block ->
+            val left = all.filter { it.state.unfinished }
+            DownloadActivity(
+                chapters = left.count { !it.isBook },
+                books = left.count { it.isBook },
+                current =
+                    left.firstOrNull { it.state == DownloadState.Downloading } ?: left.firstOrNull { it.state == DownloadState.Waiting },
+                block = if (left.isEmpty()) null else block,
+            )
+        }.distinctUntilChanged()
+
     override fun observeWifiOnly(): Flow<Boolean> = local.observeWifiOnly()
 
-    override suspend fun setWifiOnly(enabled: Boolean) = local.setWifiOnly(enabled)
+    override suspend fun setWifiOnly(enabled: Boolean) {
+        local.setWifiOnly(enabled)
+        // What was scheduled waits for the other network: schedule it again.
+        if (local.unfinished().isNotEmpty()) scheduler.schedule(enabled, replace = true)
+    }
 
     override suspend fun enqueue(
         title: DownloadableTitle,
         chapters: List<DownloadableChapter>,
     ) {
-        if (title.isBook || chapters.isEmpty()) return
+        if (chapters.isEmpty()) return
         val now = clock.nowMillis()
         local.add(
             chapters.mapIndexed { i, chapter ->
-                NewDownload(title.sourceKey, title.titleId, chapter.id, title.titleName, chapter.label, chapter.number, now + i)
+                NewDownload(
+                    title.sourceKey,
+                    title.titleId,
+                    chapter.id,
+                    title.titleName,
+                    chapter.label,
+                    chapter.number,
+                    now + i,
+                    title.isBook,
+                )
             },
         )
-        start()
-        wake.trySend(Unit)
+        kick()
     }
 
     override suspend fun remove(
@@ -112,12 +146,42 @@ class DownloadsRepositoryImpl(
         val key = chapterKey(sourceKey, chapterId)
         if (local.download(key)?.state != DownloadState.Failed) return
         local.setState(key, DownloadState.Queued, null)
-        start()
-        wake.trySend(Unit)
+        kick()
+    }
+
+    override suspend fun cancelAll() {
+        local.unfinished().forEach { (source, chapter) -> remove(source, chapter) }
+        scheduler.cancel()
     }
 
     override fun resume() {
-        scope.launch { start() }
+        scope.launch {
+            start()
+            if (local.unfinished().isNotEmpty()) scheduler.schedule(local.wifiOnly())
+        }
+    }
+
+    override suspend fun pause() {
+        val (loop, job) =
+            lock.withLock {
+                val loop = worker
+                worker = null
+                loop to running?.job
+            }
+        loop?.cancelAndJoin()
+        job?.cancelAndJoin()
+        lock.withLock {
+            running = null
+            // The chapter that was downloading (or waiting) is queued again; its pages on disk stay.
+            local.requeueInterrupted()
+        }
+        block.value = null
+    }
+
+    override suspend fun drain(): DownloadBlock? {
+        start()
+        wake.trySend(Unit)
+        return observeActivity().first { !it.busy || it.block != null }.block
     }
 
     override suspend fun clearLocal() {
@@ -128,6 +192,7 @@ class DownloadsRepositoryImpl(
                 running?.job
             }
         job?.cancel()
+        scheduler.cancel()
     }
 
     override suspend fun clearSource(sourceKey: String) {
@@ -138,6 +203,13 @@ class DownloadsRepositoryImpl(
                 running?.takeIf { it.sourceKey == sourceKey }?.job
             }
         job?.cancel()
+    }
+
+    /** New work: run it now, and have the platform keep it going in the background. */
+    private suspend fun kick() {
+        start()
+        wake.trySend(Unit)
+        scheduler.schedule(local.wifiOnly())
     }
 
     private suspend fun start() =
@@ -185,6 +257,7 @@ class DownloadsRepositoryImpl(
                 }
             // The reader opens it offline from this copy.
             readerLocal.save(item.sourceKey, chapter)
+            if (item.isBook) return downloadBook(item, chapter)
             if (chapter.pages.isEmpty()) return failed(key, AppError.Rejected("NO_PAGES", "This chapter has no pages to download."))
             local.setPageCount(key, chapter.pages.size)
             val done = local.pages(key)
@@ -212,6 +285,26 @@ class DownloadsRepositoryImpl(
         } catch (e: Exception) {
             local.setState(key, DownloadState.Failed, FAILED)
         }
+    }
+
+    /** A book: its file fetched and read into sections, saved as opening it does (then it shows as a saved book). */
+    private suspend fun downloadBook(
+        item: QueuedDownload,
+        chapter: ReaderChapterDto,
+    ) {
+        val key = item.key
+        // Opened meanwhile: it is already on the device.
+        if (readerLocal.observeBook(item.sourceKey, item.chapterId).first() != null) {
+            lock.withLock { if (local.download(key) != null) local.finishBook(key, null) }
+            return
+        }
+        val url = chapter.document?.url ?: return failed(key, NoBookFile)
+        val sections =
+            when (val fetched = fetchBook(remote, epub, io, item.sourceKey, url)) {
+                is AppResult.Err -> return failed(key, fetched.error)
+                is AppResult.Ok -> fetched.value
+            }
+        lock.withLock { if (local.download(key) != null) local.finishBook(key, sections) }
     }
 
     /**
@@ -256,5 +349,8 @@ class DownloadsRepositoryImpl(
 
     private companion object {
         const val FAILED = "The download stopped. Try again."
+
+        val DownloadState.unfinished: Boolean
+            get() = this == DownloadState.Queued || this == DownloadState.Waiting || this == DownloadState.Downloading
     }
 }

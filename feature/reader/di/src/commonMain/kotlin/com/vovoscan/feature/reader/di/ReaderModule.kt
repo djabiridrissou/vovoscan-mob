@@ -19,6 +19,7 @@ import com.vovoscan.feature.reader.data.SqlDownloadsLocalDataSource
 import com.vovoscan.feature.reader.data.SqlReaderLocalDataSource
 import com.vovoscan.feature.reader.data.SqlReaderSettingsRepository
 import com.vovoscan.feature.reader.data.db.ReaderDatabase
+import com.vovoscan.feature.reader.domain.DownloadScheduler
 import com.vovoscan.feature.reader.domain.DownloadsRepository
 import com.vovoscan.feature.reader.domain.ReaderRepository
 import com.vovoscan.feature.reader.domain.ReaderSettingsRepository
@@ -34,7 +35,7 @@ import org.koin.dsl.module
  * Koin module for the reader: local (SQLDelight) and remote (Ktor) sources injected into the repository.
  * Expects from the app: `HttpClient`, `DatabaseDriverFactory`, `AppDispatchers`, `ReadingProgressSink`,
  * `ManifestProvider`, `RulesHttp`, `ChapterHeadings`, and for downloads `AppFolders`, `NetworkMonitor`, the app's
- * `CoroutineScope` and `TitleChapters`.
+ * `CoroutineScope` and `TitleChapters`; optionally a `DownloadScheduler` (background downloads).
  */
 val readerModule =
     module {
@@ -50,9 +51,20 @@ val readerModule =
         single<ReaderRepository> {
             ReaderRepositoryImpl(get(), get(), EpubParser(), get<AppDispatchers>().io, DownloadedPages(get(), get()))
         }
-        // The queue runs in the app's scope: it outlives the screen that starts a download.
+        // The queue runs in the app's scope: it outlives the screen that starts a download. The platform's scheduler
+        // (Android WorkManager) keeps it going in the background; none on iOS (its background tasks are in Swift).
         single<DownloadsRepository> {
-            DownloadsRepositoryImpl(get(), get(), get(), get(), get(), get<CoroutineScope>(), get<AppDispatchers>().io, SystemClock)
+            DownloadsRepositoryImpl(
+                remote = get(),
+                readerLocal = get(),
+                local = get(),
+                files = get(),
+                network = get(),
+                scope = get<CoroutineScope>(),
+                io = get<AppDispatchers>().io,
+                scheduler = getOrNull<DownloadScheduler>() ?: DownloadScheduler.None,
+                clock = SystemClock,
+            )
         }
         // Reading modes, tap zones and the other reader settings: on this device only.
         single<ReaderSettingsRepository> { SqlReaderSettingsRepository(get(), get<AppDispatchers>().io) }

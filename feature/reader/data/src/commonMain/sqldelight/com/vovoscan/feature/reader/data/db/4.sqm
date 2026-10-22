@@ -1,0 +1,2 @@
+-- v4 → v5: books join the download queue (fetched and stored as sections, as opening them does).
+ALTER TABLE download ADD COLUMN kind TEXT NOT NULL DEFAULT 'comic';

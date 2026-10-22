@@ -21,6 +21,7 @@ data class QueuedDownload(
     val titleId: String,
     val chapterId: String,
     val state: DownloadState,
+    val isBook: Boolean = false,
 )
 
 /** One chapter to add to the queue. */
@@ -32,6 +33,7 @@ data class NewDownload(
     val label: String,
     val number: Double,
     val requestedAt: Long,
+    val isBook: Boolean = false,
 )
 
 /** The download queue, downloaded pages and saved books, in the reader's database. */
@@ -75,6 +77,18 @@ interface DownloadsLocalDataSource {
 
     /** What was interrupted (the app stopped) goes back to the queue. */
     suspend fun requeueInterrupted()
+
+    /** Queued, waiting or downloading: `(sourceKey, chapterId)`. */
+    suspend fun unfinished(): List<Pair<String, String>>
+
+    /**
+     * A downloaded book: its sections saved and its queue row gone, in one go (it then shows as a saved book).
+     * `sections` null: already saved (opened meanwhile), only the row goes.
+     */
+    suspend fun finishBook(
+        key: String,
+        sections: List<ParsedSection>?,
+    )
 
     /** The queue row, its pages and, for a book, its saved sections. */
     suspend fun delete(key: String)
@@ -145,6 +159,7 @@ class SqlDownloadsLocalDataSource(
                         it.label,
                         it.number,
                         it.requestedAt,
+                        if (it.isBook) BOOK else COMIC,
                     )
                 }
             }
@@ -176,6 +191,22 @@ class SqlDownloadsLocalDataSource(
 
     override suspend fun requeueInterrupted() {
         withContext(io) { queries.requeueInterrupted() }
+    }
+
+    override suspend fun unfinished(): List<Pair<String, String>> =
+        withContext(io) { queries.unfinishedDownloads().executeAsList().map { it.source_key to it.chapter_id } }
+
+    override suspend fun finishBook(
+        key: String,
+        sections: List<ParsedSection>?,
+    ) = withContext(io) {
+        queries.transaction {
+            if (sections != null) {
+                queries.deleteSections(key)
+                sections.forEachIndexed { index, section -> queries.putSection(key, index.toLong(), section.title, section.html) }
+            }
+            queries.deleteDownload(key)
+        }
     }
 
     override suspend fun delete(key: String) =
@@ -229,7 +260,7 @@ class SqlDownloadsLocalDataSource(
         }
 
     private fun com.vovoscan.feature.reader.data.db.Download.queued() =
-        QueuedDownload(chapter_key, source_key, title_id, chapter_id, stateOf(state))
+        QueuedDownload(chapter_key, source_key, title_id, chapter_id, stateOf(state), kind == BOOK)
 
     @Suppress("LongParameterList", "UNUSED_PARAMETER")
     private fun comic(
@@ -243,6 +274,7 @@ class SqlDownloadsLocalDataSource(
         state: String,
         pageCount: Long,
         error: String?,
+        kind: String,
         pagesDone: Long,
         bytes: Double,
     ) = ChapterDownload(
@@ -257,6 +289,7 @@ class SqlDownloadsLocalDataSource(
         pageCount = pageCount.toInt(),
         bytes = bytes.toLong(),
         error = error,
+        isBook = kind == BOOK,
     )
 
     @Suppress("LongParameterList", "UNUSED_PARAMETER")
@@ -286,6 +319,8 @@ class SqlDownloadsLocalDataSource(
 
     private companion object {
         const val WIFI_ONLY = "download_wifi_only"
+        const val COMIC = "comic"
+        const val BOOK = "book"
 
         fun stateOf(value: String): DownloadState =
             DownloadState.entries.firstOrNull { it.name.lowercase() == value } ?: DownloadState.Queued

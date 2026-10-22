@@ -1,6 +1,7 @@
 package com.vovoscan.feature.reader.presentation
 
 import com.vovoscan.feature.reader.domain.ChapterDownload
+import com.vovoscan.feature.reader.domain.DownloadActivity
 import com.vovoscan.feature.reader.domain.DownloadBlock
 import com.vovoscan.feature.reader.domain.DownloadState
 import com.vovoscan.feature.reader.domain.DownloadableChapter
@@ -44,6 +45,8 @@ class DownloadsViewModelsTest {
 
         override fun observeBlock(): Flow<DownloadBlock?> = block
 
+        override fun observeActivity(): Flow<DownloadActivity> = MutableStateFlow(DownloadActivity())
+
         override fun observeWifiOnly(): Flow<Boolean> = wifiOnly
 
         override suspend fun setWifiOnly(enabled: Boolean) {
@@ -78,7 +81,15 @@ class DownloadsViewModelsTest {
             calls += "retry $chapterId"
         }
 
+        override suspend fun cancelAll() {
+            calls += "cancelAll"
+        }
+
         override fun resume() = Unit
+
+        override suspend fun pause() = Unit
+
+        override suspend fun drain(): DownloadBlock? = null
 
         override suspend fun clearLocal() = Unit
 
@@ -228,7 +239,7 @@ class DownloadsViewModelsTest {
         }
 
     @Test
-    fun aBookIsShownAsSavedOnceOpened() =
+    fun aBookNeverOpenedCanBeDownloadedThenShowsAsSaved() =
         runTest(dispatcher) {
             val repo = FakeDownloads()
             val book =
@@ -242,32 +253,102 @@ class DownloadsViewModelsTest {
                 )
             val vm = TitleDownloadsViewModel("gutenberg", "1342", repo, TitleChapters { _, _ -> MutableStateFlow(book) })
             advanceUntilIdle()
-            assertFalse(vm.state.value.offersDownloads)
-            assertEquals(
-                DownloadAction.Unavailable,
-                vm.state.value
-                    .row("1342")
-                    .action,
-            )
-            assertNull(vm.state.value.downloadNextLabel)
-
-            repo.all.value =
-                listOf(download("1342", DownloadState.Done, bytes = 820_000, titleId = "1342", isBook = true, sourceKey = "gutenberg"))
+            with(vm.state.value) {
+                assertTrue(offersDownloads)
+                assertTrue(isBook)
+                assertEquals(DownloadAction.Download, row("1342").action)
+                assertNull(downloadNextLabel)
+                assertEquals("Download the book", downloadAllLabel)
+                assertNull(summary)
+            }
+            vm.onIntent(TitleDownloadsIntent.DownloadAll)
             advanceUntilIdle()
+            assertEquals(listOf("enqueue 1342"), repo.calls)
+
+            // In the queue, waiting for Wi-Fi, then downloading: no page count for a book.
+            repo.block.value = DownloadBlock.NotOnWifi
+            repo.all.value = listOf(download("1342", DownloadState.Waiting, titleId = "1342", isBook = true, sourceKey = "gutenberg"))
+            advanceUntilIdle()
+            assertEquals("In the queue", vm.state.value.summary)
             assertEquals(
-                "Saved on this device ✦ 820 KB",
+                "Waiting for Wi-Fi",
                 vm.state.value
                     .row("1342")
                     .text,
             )
-            assertEquals("Saved on this device ✦ 820 KB", vm.state.value.summary)
             assertEquals(
-                DownloadAction.Delete,
+                DownloadAction.Cancel,
                 vm.state.value
                     .row("1342")
                     .action,
             )
+            assertNull(vm.state.value.downloadAllLabel)
+            assertTrue(
+                vm.state.value.notice!!
+                    .startsWith("Downloads wait for Wi-Fi."),
+            )
+            repo.block.value = null
+            repo.all.value = listOf(download("1342", DownloadState.Downloading, titleId = "1342", isBook = true, sourceKey = "gutenberg"))
+            advanceUntilIdle()
+            assertEquals("Downloading", vm.state.value.summary)
+            assertEquals(
+                "Downloading",
+                vm.state.value
+                    .row("1342")
+                    .text,
+            )
+
+            // Saved: as an opened book.
+            repo.all.value =
+                listOf(download("1342", DownloadState.Done, bytes = 820_000, titleId = "1342", isBook = true, sourceKey = "gutenberg"))
+            advanceUntilIdle()
+            with(vm.state.value) {
+                assertEquals("Saved on this device ✦ 820 KB", row("1342").text)
+                assertEquals("Saved on this device ✦ 820 KB", summary)
+                assertEquals(DownloadAction.Delete, row("1342").action)
+                assertNull(downloadAllLabel)
+                assertEquals("Remove from this device", deleteAllLabel)
+                assertTrue(deleteAllMessage.contains("Pride and Prejudice"))
+            }
         }
+
+    @Test
+    fun aBookInPartsSaysHowManyAreSaved() =
+        runTest(dispatcher) {
+            val repo = FakeDownloads()
+            val parts = (1..3).map { DownloadableChapter("p$it", it.toDouble(), "Part $it") }
+            val book = DownloadableTitle("vovoscan", "b1", "Letters", true, parts, null)
+            val vm = TitleDownloadsViewModel("vovoscan", "b1", repo, TitleChapters { _, _ -> MutableStateFlow(book) })
+            repo.all.value =
+                listOf(download("p1", DownloadState.Done, bytes = 1_200_000, titleId = "b1", titleName = "Letters", isBook = true))
+            advanceUntilIdle()
+            assertEquals("1 of 3 parts saved ✦ 1.2 MB", vm.state.value.summary)
+            assertEquals("Download the rest (2)", vm.state.value.downloadAllLabel)
+            vm.onIntent(TitleDownloadsIntent.DownloadAll)
+            advanceUntilIdle()
+            assertEquals(listOf("enqueue p2,p3"), repo.calls)
+        }
+
+    @Test
+    fun theNotificationSaysWhatIsLeftAndWhatDownloadsNow() {
+        assertEquals(
+            DownloadNotice("Downloading 2 chapters…", "Le Griot de Guerre ✦ Chapter 3 ✦ 12 / 19", 12f / 19),
+            DownloadText.notification(DownloadActivity(chapters = 2, current = download("c3", DownloadState.Downloading, 12, 19))),
+        )
+        assertEquals(
+            DownloadNotice("Downloading 1 chapter and 1 book…", "Waiting for Wi-Fi", null),
+            DownloadText.notification(
+                DownloadActivity(chapters = 1, books = 1, current = download("c3", DownloadState.Waiting), block = DownloadBlock.NotOnWifi),
+            ),
+        )
+        val book =
+            download("1342", DownloadState.Downloading, titleName = "Pride and Prejudice", isBook = true)
+                .copy(label = "Pride and Prejudice")
+        assertEquals(
+            DownloadNotice("Downloading 1 book…", "Pride and Prejudice", null),
+            DownloadText.notification(DownloadActivity(books = 1, current = book)),
+        )
+    }
 
     @Test
     fun downloadsScreenGroupsByTitle() =

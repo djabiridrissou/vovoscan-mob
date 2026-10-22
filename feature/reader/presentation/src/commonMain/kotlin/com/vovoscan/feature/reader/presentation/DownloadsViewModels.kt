@@ -3,6 +3,7 @@ package com.vovoscan.feature.reader.presentation
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.vovoscan.feature.reader.domain.ChapterDownload
+import com.vovoscan.feature.reader.domain.DownloadActivity
 import com.vovoscan.feature.reader.domain.DownloadBlock
 import com.vovoscan.feature.reader.domain.DownloadState
 import com.vovoscan.feature.reader.domain.DownloadableChapter
@@ -19,7 +20,7 @@ import kotlinx.coroutines.launch
 
 /** What tapping a chapter's download control does. */
 enum class DownloadAction {
-    /** Not on the device (comic): download it. */
+    /** Not on the device (a comic chapter, a book or a part of it): download it. */
     Download,
 
     /** Queued, waiting or downloading: stop and forget it. */
@@ -30,7 +31,7 @@ enum class DownloadAction {
 
     Retry,
 
-    /** Nothing to offer (a book not opened yet: it is saved when it is first read). */
+    /** Nothing to offer (the title page isn't known yet). */
     Unavailable,
 }
 
@@ -92,6 +93,33 @@ object DownloadText {
             null -> null
         }
 
+    /** What the background work shows (Android's notification): how much is left and what downloads now. */
+    fun notification(activity: DownloadActivity): DownloadNotice {
+        val what =
+            listOfNotNull(
+                activity.chapters.takeIf { it > 0 }?.let(::chapters),
+                activity.books.takeIf { it > 0 }?.let { if (it == 1) "1 book" else "$it books" },
+            ).joinToString(" and ")
+        val current = activity.current
+        val text =
+            when {
+                activity.block != null -> waiting(activity.block)
+                current == null -> "Starting"
+                else ->
+                    listOfNotNull(
+                        current.titleName,
+                        current.label.takeIf { !current.isBook || it != current.titleName },
+                        if (current.pageCount > 0) "${current.pagesDone} / ${current.pageCount}" else null,
+                    ).joinToString(" ✦ ")
+            }
+        return DownloadNotice(
+            title = if (what.isEmpty()) "Downloads" else "Downloading $what…",
+            text = text,
+            progress =
+                current?.takeIf { activity.block == null && it.pageCount > 0 }?.let { it.pagesDone.toFloat() / it.pageCount },
+        )
+    }
+
     fun row(
         download: ChapterDownload,
         block: DownloadBlock?,
@@ -137,6 +165,16 @@ object DownloadText {
     }
 }
 
+/** The background work's notification, ready to draw. */
+data class DownloadNotice(
+    /** "Downloading 2 chapters…", "Downloading 1 book…". */
+    val title: String,
+    /** "Le Griot de Guerre ✦ Chapter 3 ✦ 12 / 19", or why the queue waits. */
+    val text: String,
+    /** 0..1 for the chapter downloading now; null when unknown (a book, a page list being fetched). */
+    val progress: Float?,
+)
+
 data class TitleDownloadsUiState(
     /** A comic with chapters: download controls and bulk actions are shown. */
     val offersDownloads: Boolean = false,
@@ -145,15 +183,19 @@ data class TitleDownloadsUiState(
     val summary: String? = null,
     /** "Download next 5" (from the chapter being read), null when nothing is left. */
     val downloadNextLabel: String? = null,
-    /** "Download all (12)", null when nothing is left beyond the next chapters. */
+    /** "Download all (12)", null when nothing is left beyond the next chapters; "Download the book" for a book. */
     val downloadAllLabel: String? = null,
     val canDeleteAll: Boolean = false,
+    /** The "delete every download" link and its confirmation. */
+    val deleteAllLabel: String = "Delete downloads",
+    val deleteAllTitle: String = "Delete the downloads?",
+    val deleteAllMessage: String = "",
     /** Why the queue waits (no connection, not on Wi-Fi). */
     val notice: String? = null,
     val rows: Map<String, DownloadRow> = emptyMap(),
     val sourceKey: String = "",
 ) {
-    /** The row of one chapter of the title page (not downloaded: Download for a comic, nothing for a book). */
+    /** The row of one chapter (or book part) of the title page; not on the device: Download. */
     fun row(chapterId: String): DownloadRow =
         rows[chapterId] ?: DownloadRow(
             sourceKey = sourceKey,
@@ -188,7 +230,8 @@ sealed interface TitleDownloadsIntent {
 
 /**
  * Downloads on a title page, next to the catalog's chapter list (two features on one screen, wired by the app):
- * a control per chapter, "Download next 5" from the chapter being read, "Download all", and deleting them.
+ * a control per chapter, "Download next 5" from the chapter being read, "Download all", and deleting them. A book
+ * (opened or not) gets "Download the book" and a control per part; once saved it reads "Saved on this device".
  */
 class TitleDownloadsViewModel(
     private val sourceKey: String,
@@ -240,15 +283,7 @@ class TitleDownloadsViewModel(
         val rows = downloads.associate { it.chapterId to DownloadText.row(it, block) }
         if (title == null) return TitleDownloadsUiState(rows = rows, sourceKey = sourceKey)
         val total = downloads.sumOf { it.bytes }
-        if (title.isBook) {
-            return TitleDownloadsUiState(
-                isBook = true,
-                summary = if (downloads.isEmpty()) null else "Saved on this device ✦ " + DownloadText.size(total),
-                canDeleteAll = downloads.isNotEmpty(),
-                rows = rows,
-                sourceKey = sourceKey,
-            )
-        }
+        if (title.isBook) return bookState(title, downloads, block, rows, total)
         val ids = title.chapters.map { it.id }.toSet()
         val done = downloads.count { it.state == DownloadState.Done && it.chapterId in ids }
         val active = downloads.count { it.state != DownloadState.Done && it.state != DownloadState.Failed }
@@ -265,6 +300,54 @@ class TitleDownloadsViewModel(
             downloadNextLabel = if (next.isEmpty()) null else "Download next ${next.size}",
             downloadAllLabel = if (left.size > next.size) "Download all (${left.size})" else null,
             canDeleteAll = downloads.isNotEmpty(),
+            deleteAllMessage = "Every chapter of ${title.titleName} saved on this device goes. Reading them will need the network again.",
+            notice = if (active > 0) DownloadText.notice(block) else null,
+            rows = rows,
+            sourceKey = sourceKey,
+        )
+    }
+
+    /** A book: saved once its file is read into sections (opened, or downloaded from here). */
+    private fun bookState(
+        title: DownloadableTitle,
+        downloads: List<ChapterDownload>,
+        block: DownloadBlock?,
+        rows: Map<String, DownloadRow>,
+        total: Long,
+    ): TitleDownloadsUiState {
+        val parts = title.chapters.size
+        val saved = downloads.count { it.state == DownloadState.Done }
+        val active = downloads.count { it.state != DownloadState.Done && it.state != DownloadState.Failed }
+        val left = remaining(title, downloads)
+        return TitleDownloadsUiState(
+            offersDownloads = parts > 0,
+            isBook = true,
+            summary =
+                listOfNotNull(
+                    when {
+                        saved == 0 -> null
+                        parts > 1 && saved < parts -> "$saved of $parts parts saved"
+                        else -> "Saved on this device"
+                    },
+                    if (active >
+                        0
+                    ) {
+                        (if (downloads.any { it.state == DownloadState.Downloading }) "Downloading" else "In the queue")
+                    } else {
+                        null
+                    },
+                    if (total > 0) DownloadText.size(total) else null,
+                ).joinToString(" ✦ ").ifEmpty { null },
+            downloadAllLabel =
+                when {
+                    left.isEmpty() -> null
+                    left.size < parts -> "Download the rest (${left.size})"
+                    else -> "Download the book"
+                },
+            canDeleteAll = downloads.isNotEmpty(),
+            deleteAllLabel = "Remove from this device",
+            deleteAllTitle = "Remove the book from this device?",
+            deleteAllMessage = "The copy of ${title.titleName} saved on this device goes. Reading it will need the network again.",
             notice = if (active > 0) DownloadText.notice(block) else null,
             rows = rows,
             sourceKey = sourceKey,
