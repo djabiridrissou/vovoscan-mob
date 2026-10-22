@@ -182,7 +182,7 @@ private fun Root(session: SessionViewModel = koinViewModel()) {
     var openReader by rememberSaveable { mutableStateOf<String?>(null) }
     // Open episode card (over the title page): "chapter|language" (language empty = the original).
     var openEpisode by rememberSaveable { mutableStateOf<String?>(null) }
-    // Open player (full screen): "chapter|next chapter or empty|language or empty".
+    // Open player (full screen): "chapter|next chapter or empty|language or empty|start page or empty".
     var openPlayer by rememberSaveable { mutableStateOf<String?>(null) }
     if (user != null && tutorial.shown) {
         // The first-launch tour, full screen over everything (replayable from Settings › Preferences).
@@ -216,6 +216,7 @@ private fun Root(session: SessionViewModel = koinViewModel()) {
             chapterId = player[0],
             nextChapterId = player[1].ifEmpty { null },
             language = language,
+            startPage = player.getOrNull(3)?.toIntOrNull(),
             onClose = { openPlayer = null },
             onNextChapter = {
                 // The next chapter's episode card, in the language just watched: watch it from there, or prepare it.
@@ -247,6 +248,8 @@ private fun Root(session: SessionViewModel = koinViewModel()) {
                 startPage = reader[3].toInt(),
                 onBack = { openReader = null },
                 onOpenChapter = { chapter, page -> openReader = "${reader[0]}|${reader[1]}|$chapter|$page" },
+                // The episode from the page being read; closing it comes back to the reader where it was.
+                onWatch = { chapter, page -> openPlayer = "$chapter|||$page" },
             )
             return@Column
         }

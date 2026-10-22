@@ -1,12 +1,14 @@
 package com.vovoscan.app.ui.reader
 
 import android.annotation.SuppressLint
+import android.provider.Settings
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.compose.LocalActivity
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.animate
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -25,17 +27,15 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.VerticalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -62,11 +62,19 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
@@ -86,9 +94,7 @@ import com.vovoscan.feature.reader.presentation.ReaderUiState
 import com.vovoscan.feature.reader.presentation.ReaderViewModel
 import com.vovoscan.feature.reader.presentation.TapOverlay
 import com.vovoscan.feature.reader.presentation.TransitionCard
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.launch
 import org.koin.compose.viewmodel.koinViewModel
 import org.koin.core.parameter.parametersOf
@@ -107,6 +113,8 @@ fun ReaderScreen(
     startPage: Int,
     onBack: () -> Unit,
     onOpenChapter: (String, Int) -> Unit,
+    /** "Watch the episode from here": the episode of this chapter, from that page. */
+    onWatch: (chapterId: String, page: Int) -> Unit = { _, _ -> },
     viewModel: ReaderViewModel =
         koinViewModel(key = "reader:$sourceKey/$chapterId") { parametersOf(sourceKey, titleId, chapterId, startPage) },
 ) {
@@ -133,6 +141,28 @@ fun ReaderScreen(
             onIntent(ReaderIntent.CommandHandled(command.seq))
             onOpenChapter(command.chapterId, command.startPage)
         }
+        if (command is ReaderCommand.OpenEpisode) {
+            onIntent(ReaderIntent.CommandHandled(command.seq))
+            onWatch(command.chapterId, command.page)
+        }
+    }
+    // Remove animations (developer options, accessibility): jumps instead of the spring, no glide, no fades.
+    val context = LocalContext.current
+    LaunchedEffect(Unit) {
+        val scale = Settings.Global.getFloat(context.contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f)
+        onIntent(ReaderIntent.ReducedMotion(scale == 0f))
+    }
+    // Immersive: the system bars leave with the reader's own bars (a swipe from the edge shows them for a moment).
+    val window = activity?.window
+    DisposableEffect(window, state.chromeVisible, state.isBook) {
+        val controller = window?.let { WindowCompat.getInsetsController(it, view) }
+        controller?.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        if (state.chromeVisible || state.isBook) {
+            controller?.show(WindowInsetsCompat.Type.systemBars())
+        } else {
+            controller?.hide(WindowInsetsCompat.Type.systemBars())
+        }
+        onDispose { controller?.show(WindowInsetsCompat.Type.systemBars()) }
     }
 
     Box(Modifier.fillMaxSize().background(Brand.Ink)) {
@@ -155,6 +185,37 @@ fun ReaderScreen(
                 shown?.let { TapZonesOverlay(it) }
             }
         }
+        // The bars hidden: a thin line at the very top says how much of the strip is read.
+        if (!state.chromeVisible && state.isStrip) {
+            Box(
+                Modifier
+                    .align(Alignment.TopStart)
+                    .fillMaxWidth(state.progress)
+                    .height(2.dp)
+                    .background(Brand.Red)
+                    .semantics { contentDescription = state.progressLabel },
+            )
+        }
+        // The chapter's title over the first page, for a moment.
+        AnimatedVisibility(
+            state.titleCard != null,
+            enter = if (state.reducedMotion) EnterTransition.None else fadeIn(tween(400)),
+            exit = if (state.reducedMotion) ExitTransition.None else fadeOut(tween(600)),
+            modifier = Modifier.align(Alignment.Center),
+        ) {
+            var shown by remember { mutableStateOf(state.titleCard.orEmpty()) }
+            state.titleCard?.let { shown = it }
+            Text(
+                shown,
+                style = MaterialTheme.typography.titleLarge.copy(color = Brand.Paper),
+                modifier =
+                    Modifier
+                        .background(
+                            Brand.Ink.copy(alpha = 0.78f),
+                            RoundedCornerShape(10.dp),
+                        ).padding(horizontal = 18.dp, vertical = 12.dp),
+            )
+        }
         // A book keeps its bars: the web view receives the taps (text scrolling).
         if (state.chromeVisible || state.isBook) {
             TopBar(
@@ -165,6 +226,7 @@ fun ReaderScreen(
                     settingsOpen = true
                 },
                 Modifier.align(Alignment.TopCenter),
+                onWatch = { onIntent(ReaderIntent.ReadWithVoice) },
             )
             BottomBar(state, onIntent, { onOpenChapter(it, 0) }, Modifier.align(Alignment.BottomCenter))
         }
@@ -263,7 +325,7 @@ private fun ComicReader(
                     scrollEnabled = !zoomed,
                 )
             } else {
-                StripReader(state, onIntent, scrollEnabled = !zoomed)
+                FlowStrip(state, onIntent, scrollEnabled = !zoomed)
             }
         }
     }
@@ -318,75 +380,9 @@ private fun PagedReader(
     }
 }
 
-/** Continuous vertical strip (webtoon), with the mode's gap between pages. */
-@Composable
-private fun StripReader(
-    state: ReaderUiState,
-    onIntent: (ReaderIntent) -> Unit,
-    scrollEnabled: Boolean,
-) {
-    // Resume (and a mode change) at the current item.
-    val list = rememberLazyListState(initialFirstVisibleItemIndex = state.currentItem)
-    val scope = rememberCoroutineScope()
-    // Until the strip moves (finger or tap scroll), positioning at the current item (clamped at the end of the
-    // chapter) must not change the page.
-    var moved by remember { mutableStateOf(false) }
-    LaunchedEffect(list) {
-        snapshotFlow { list.isScrollInProgress }.collect { if (it) moved = true }
-    }
-    LaunchedEffect(list) {
-        snapshotFlow { if (moved) list.firstVisibleItemIndex else null }
-            .filterNotNull()
-            .distinctUntilChanged()
-            .collect { onIntent(ReaderIntent.ItemVisible(it)) }
-    }
-    LaunchedEffect(list) {
-        snapshotFlow { !list.canScrollBackward to !list.canScrollForward }
-            .distinctUntilChanged()
-            .collect { (top, bottom) -> onIntent(ReaderIntent.StripEdges(top, bottom)) }
-    }
-    // Taps faster than the animation add up: what the previous one had left to scroll is carried over. A finger
-    // cancels the animation, so nothing is carried after it.
-    val tapScroll = remember { TapScroll() }
-    val command = state.command
-    LaunchedEffect(command) {
-        if (command is ReaderCommand.ScrollBy) {
-            val carry = if (tapScroll.job?.isActive == true) tapScroll.left else 0f
-            tapScroll.job?.cancel()
-            val total = carry + command.fraction * list.layoutInfo.viewportSize.height
-            tapScroll.left = total
-            tapScroll.job =
-                scope.launch {
-                    list.scroll {
-                        var done = 0f
-                        animate(0f, total, animationSpec = tween(TAP_SCROLL_MS)) { value, _ ->
-                            scrollBy(value - done)
-                            done = value
-                            tapScroll.left = total - value
-                        }
-                    }
-                }
-            onIntent(ReaderIntent.CommandHandled(command.seq))
-        }
-    }
-    LazyColumn(
-        state = list,
-        userScrollEnabled = scrollEnabled,
-        verticalArrangement = Arrangement.spacedBy(state.pageGap.dp),
-        modifier = Modifier.fillMaxSize(),
-    ) {
-        items(state.items, key = { it.key }) { item ->
-            when (item) {
-                is ReaderItem.Page -> PageImage(item.page, Modifier.fillMaxWidth())
-                is ReaderItem.Transition -> TransitionCardView(item.card, onIntent, Modifier.fillMaxWidth().heightIn(min = 280.dp))
-            }
-        }
-    }
-}
-
 /** "Finished: Chapter 3" / "Next: Chapter 4 · The last gate" and "Next chapter →". */
 @Composable
-private fun TransitionCardView(
+internal fun TransitionCardView(
     card: TransitionCard,
     onIntent: (ReaderIntent) -> Unit,
     modifier: Modifier,
@@ -450,13 +446,6 @@ private fun TapZonesOverlay(overlay: TapOverlay) {
     }
 }
 
-/** The tap scroll in progress (a strip): its job and the distance it has left. */
-private class TapScroll {
-    var job: Job? = null
-    var left = 0f
-}
-
-private const val TAP_SCROLL_MS = 300
 private const val MAX_HARDWARE_SIDE = 4096
 private val LABEL_WIDTH = 140.dp
 private const val ZOOM = 2f
@@ -469,7 +458,7 @@ private fun zoneColor(action: TapAction): Color =
     }
 
 @Composable
-private fun PageImage(
+internal fun PageImage(
     page: ReaderPage,
     modifier: Modifier,
     scale: ContentScale = ContentScale.FillWidth,
@@ -532,6 +521,7 @@ private fun TopBar(
     onBack: () -> Unit,
     onSettings: () -> Unit,
     modifier: Modifier,
+    onWatch: () -> Unit = {},
 ) {
     Row(
         modifier.fillMaxWidth().background(Brand.Ink.copy(alpha = 0.92f)).padding(horizontal = 16.dp, vertical = 12.dp),
@@ -541,6 +531,17 @@ private fun TopBar(
         Column(Modifier.weight(1f)) {
             Text(state.titleName, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(state.chapterLabel, style = MaterialTheme.typography.bodySmall)
+        }
+        if (state.voiceAvailable) {
+            Text(
+                "▶︎",
+                style = MaterialTheme.typography.titleMedium.copy(color = Brand.Red),
+                modifier =
+                    Modifier
+                        .clickable(onClickLabel = state.voiceLabel) { onWatch() }
+                        .semantics { contentDescription = state.voiceLabel }
+                        .padding(start = 16.dp, top = 4.dp, bottom = 4.dp),
+            )
         }
         if (!state.isBook) {
             // Text presentation of the gear (not the emoji).
@@ -571,7 +572,21 @@ private fun BottomBar(
                 modifier = Modifier.clickable(enabled = state.canGoBack) { onIntent(ReaderIntent.Previous) }.padding(end = 16.dp),
             )
         }
-        Text(state.positionLabel, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+        Text(
+            state.positionLabel,
+            style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.weight(1f).semantics { liveRegion = LiveRegionMode.Polite },
+        )
+        if (state.canFocus) {
+            Text(
+                state.focusLabel,
+                style = MaterialTheme.typography.labelLarge.copy(color = if (state.focusOn) Brand.Yellow else Brand.Muted),
+                modifier =
+                    Modifier
+                        .toggleable(state.focusOn, role = Role.Switch) { onIntent(ReaderIntent.ToggleFocus) }
+                        .padding(end = 20.dp),
+            )
+        }
         if (state.isBook && state.canGoForward) {
             Text(
                 I18n.text("reader.nextSection"),
