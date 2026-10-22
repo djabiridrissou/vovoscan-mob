@@ -3,7 +3,7 @@ package com.vovoscan.feature.reader.domain
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 
-/** How far one tap scrolls a long strip, as a fraction of the screen height. */
+/** How far one tap scrolls a long strip, or a tall page inside its page, as a fraction of the screen height. */
 enum class ScrollAmount(
     val fraction: Float,
 ) {

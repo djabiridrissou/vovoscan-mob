@@ -30,6 +30,7 @@ class ReadingModesTest {
     fun booksStayBooks() {
         val prefs = none.copy(mangaMode = ReadingMode.LongStrip)
         assertEquals(ReadingMode.Book, ReadingModes.resolve(ReadingMode.Book, ComicFormat.Manga, ReadingMode.PagedVertical, prefs))
+        // A comic never takes the book mode, even if stored for its series: the format rule applies.
         assertEquals(
             ReadingMode.LongStrip,
             ReadingModes.resolve(ReadingMode.LongStrip, ComicFormat.Manga, ReadingMode.Book, none),
