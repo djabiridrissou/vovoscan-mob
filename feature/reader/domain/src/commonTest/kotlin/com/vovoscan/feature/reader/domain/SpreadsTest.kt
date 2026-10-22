@@ -78,6 +78,8 @@ class SpreadsTest {
     fun slotOfAPage() {
         assertEquals(SpreadSlot.Alone, Spreads.slotOf(ReaderPage(0, "u", 2000, 1400)))
         assertEquals(SpreadSlot.Page, Spreads.slotOf(ReaderPage(0, "u", 1000, 1400)))
+        // A webtoon strip in a paged mode scrolls inside its own page, never squeezed into half the screen.
+        assertEquals(SpreadSlot.Alone, Spreads.slotOf(ReaderPage(0, "u", 800, 14000)))
         // Unknown size (a source read on the device): a page until its shape says otherwise.
         assertEquals(SpreadSlot.Page, Spreads.slotOf(ReaderPage(0, "u", 0, 0)))
     }

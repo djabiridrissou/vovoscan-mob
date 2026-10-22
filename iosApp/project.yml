@@ -44,6 +44,13 @@ targets:
         CADisableMinimumFrameDurationOnPhone: true
         UIAppFonts: [DelaGothicOne-Regular.ttf, SpaceGrotesk-Regular.ttf, SpaceGrotesk-Medium.ttf, SpaceGrotesk-Bold.ttf]
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+        # iPad: every orientation, so Split View, Slide Over and Stage Manager can size the app freely (no
+        # UIRequiresFullScreen). The layout follows the window (core/common Adaptive.kt), never the device's name.
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
         # The share sheet's "Save Video" for an episode's MP4 (adds to Photos, never reads it).
         NSPhotoLibraryAddUsageDescription: Saves the episode videos you choose to keep in Photos.
         # Downloads that carry on later (BackgroundDownloads.swift): a processing task (network required) and an app
@@ -59,6 +66,8 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.vovoscan.app
+        # iPhone and iPad (a native iPad layout, not the iPhone app scaled up).
+        TARGETED_DEVICE_FAMILY: "1,2"
         FRAMEWORK_SEARCH_PATHS: $(SRCROOT)/../shared/build/xcode-frameworks/$(CONFIGURATION)/$(SDK_NAME)
         OTHER_LDFLAGS: [-framework, Shared, -lsqlite3]
         ENABLE_USER_SCRIPT_SANDBOXING: NO

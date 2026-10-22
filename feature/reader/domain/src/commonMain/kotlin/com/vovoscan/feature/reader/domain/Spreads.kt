@@ -73,8 +73,19 @@ object Spreads {
         item: Int,
     ): Int = spreads.indexOfFirst { item in it }.coerceAtLeast(0)
 
-    /** A page whose shape is known and wider than tall: a double spread on its own. Unknown sizes pair. */
-    fun slotOf(page: ReaderPage): SpreadSlot = if (page.hasSize && page.width > page.height) SpreadSlot.Alone else SpreadSlot.Page
+    /** Height / width from which a page is a strip, not a printed page: it stands alone and scrolls in its page. */
+    const val STRIP_ALONE = 2f
+
+    /**
+     * A page whose shape is known and wider than tall (a double spread), or a strip ([STRIP_ALONE]): on its own.
+     * Unknown sizes pair.
+     */
+    fun slotOf(page: ReaderPage): SpreadSlot =
+        if (page.hasSize && (page.width > page.height || page.height >= page.width * STRIP_ALONE)) {
+            SpreadSlot.Alone
+        } else {
+            SpreadSlot.Page
+        }
 }
 
 /** A hardware key in the reader (iPad keyboard, a Chromebook or a foldable's keyboard, a remote). */
