@@ -71,6 +71,7 @@ struct SignInView: View {
 
     private var form: some View {
         VStack(alignment: .leading, spacing: 16) {
+            localeChips
             if model.state.mode == .invite {
                 IntentField(label: L("auth.inviteCode"), text: $inviteCode, value: model.state.inviteCode, error: model.state.inviteError,
                             placeholder: "VOVO-XXXX-XXXX") {
@@ -90,6 +91,7 @@ struct SignInView: View {
                 model.send(SignInIntentPassword(value: $0))
             }
             .textContentType(model.state.mode == .invite ? .newPassword : .password)
+            if model.state.mode == .invite { ageBox }
             if let error = model.state.error { ErrorText(text: error).transition(.opacity) }
             Button {
                 submitAfterCommittingInput {
@@ -125,5 +127,48 @@ struct SignInView: View {
             .padding(.top, 8)
         }
         .animation(.snappy, value: model.state.mode)
+    }
+
+    /// The app's own language, before any account exists: the choice is kept on the device and sent at sign-up.
+    private var localeChips: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "globe").font(.system(size: 13, weight: .bold)).foregroundStyle(Color.brandMuted)
+            ForEach(model.state.locales, id: \.code) { option in
+                Button {
+                    Haptics.select()
+                    model.send(SignInIntentChooseLocale(code: option.code))
+                } label: {
+                    Text(option.label)
+                        .font(.brandBody(13, weight: option.selected ? .bold : .regular))
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .foregroundStyle(option.selected ? Color.brandInk : Color.brandPaper)
+                        .background(option.selected ? Color.brandYellow : Color.brandPaper.opacity(0.08), in: Capsule())
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(option.selected ? .isSelected : [])
+            }
+        }
+    }
+
+    private var ageBox: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Button {
+                Haptics.select()
+                model.send(SignInIntentAgeConfirmed(value: !model.state.ageConfirmed))
+            } label: {
+                HStack(spacing: 10) {
+                    Image(systemName: model.state.ageConfirmed ? "checkmark.square.fill" : "square")
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundStyle(model.state.ageConfirmed ? Color.brandRed : Color.brandMuted)
+                    Text(model.state.ageLabel).font(.brandBody(14)).foregroundStyle(Color.brandPaper)
+                    Spacer(minLength: 0)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityAddTraits(model.state.ageConfirmed ? .isSelected : [])
+            if let error = model.state.ageError { ErrorText(text: error) }
+        }
     }
 }

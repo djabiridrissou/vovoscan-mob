@@ -273,7 +273,7 @@ struct OnboardingView: View {
 
     private func done(_ state: OnboardingUiState) -> some View {
         VStack(alignment: .leading, spacing: 18) {
-            Onomatopoeia(text: "ドン!", color: .brandYellow, size: 56)
+            Onomatopoeia(text: "ドン!", size: 56, color: .brandYellow)
             Text(state.doneTitle).font(.brandDisplay(40)).foregroundStyle(Color.brandPaper).lineSpacing(-4)
             Text(state.doneLead).font(.brandBody(17)).foregroundStyle(Color.brandPaper.opacity(0.86))
         }
