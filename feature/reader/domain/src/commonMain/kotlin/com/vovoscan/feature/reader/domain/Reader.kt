@@ -43,13 +43,49 @@ enum class ReadingMode {
 /** A comic's format, as the source declares it: the per-format default mode and the paged direction. */
 enum class ComicFormat(
     val defaultMode: ReadingMode,
+    /** The way its pages and panels are read when paged: Japanese manga right to left, the others left to right. */
+    val rightToLeft: Boolean,
 ) {
-    Manga(ReadingMode.LongStrip),
-    Webtoon(ReadingMode.LongStrip),
+    Manga(ReadingMode.LongStrip, rightToLeft = true),
+    Webtoon(ReadingMode.LongStrip, rightToLeft = false),
+
+    /** Western comics and bandes dessinées. */
+    Comic(ReadingMode.LongStrip, rightToLeft = false),
     ;
 
+    /** The paged mode that reads it in its own direction. */
+    val pagedMode: ReadingMode get() = if (rightToLeft) ReadingMode.PagedRightToLeft else ReadingMode.PagedLeftToRight
+
     companion object {
-        fun from(format: String): ComicFormat = if (format == "webtoon") Webtoon else Manga
+        /**
+         * What a source says, in its own words: our API's `manga` / `webtoon` / `comic`, a plugin's own labels
+         * ("Long Strip", "Web Comic", "manhwa", "manhua", "BD") or the work's original language (`ko`, `zh`: webtoons;
+         * `ja`: manga). Anything else is a manga.
+         */
+        fun from(format: String): ComicFormat {
+            val said = format.trim().lowercase()
+            return when {
+                said in STRIP_LANGUAGES || STRIP_WORDS.any { it in said } -> Webtoon
+                said in COMIC_WORDS -> Comic
+                else -> Manga
+            }
+        }
+
+        /**
+         * The pages' own shape: a chapter whose sized pages are mostly taller than [STRIP_RATIO] times their width is
+         * a vertical strip, whatever the source said. null while no page has a size.
+         */
+        fun fromPages(pages: List<ReaderPage>): ComicFormat? {
+            val sized = pages.filter { it.hasSize }
+            if (sized.isEmpty()) return null
+            val strips = sized.count { it.height.toFloat() / it.width > STRIP_RATIO }
+            return if (strips * 2 > sized.size) Webtoon else null
+        }
+
+        const val STRIP_RATIO = 2.5f
+        private val STRIP_LANGUAGES = setOf("ko", "zh", "zh-hk", "zh-hans", "zh-hant", "ko-ro", "zh-ro")
+        private val STRIP_WORDS = listOf("webtoon", "long strip", "longstrip", "web comic", "webcomic", "manhwa", "manhua", "vertical")
+        private val COMIC_WORDS = setOf("comic", "comics", "western", "bd", "bande dessinée", "bande dessinee", "ltr")
     }
 }
 

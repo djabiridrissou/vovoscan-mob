@@ -148,6 +148,8 @@ data class ReaderUiState(
     val chapterLabel: String = "",
     /** The mode in use: per-series choice, else the user's default for the format, else the format rule. */
     val mode: ReadingMode = ReadingMode.LongStrip,
+    /** The comic's format as recognised (the source's word, else the pages' shape); null for a book. */
+    val format: ComicFormat? = null,
     val pages: List<ReaderPage> = emptyList(),
     /** Comics: the previous-chapter card, the pages, the next-chapter card. */
     val items: List<ReaderItem> = emptyList(),
@@ -217,6 +219,9 @@ data class ReaderUiState(
     val isPaged: Boolean get() = mode.isPaged
 
     val isStrip: Boolean get() = mode.isStrip
+
+    /** "Webtoon ✦ top to bottom", "Manga ✦ right to left", shown on the title card. */
+    val formatLabel: String? get() = format?.let { ReaderText.format(it, mode) }
 
     /** Paged modes: pages side by side (else one above the other). */
     val pagedHorizontally: Boolean get() = mode.isHorizontal
@@ -526,6 +531,7 @@ class ReaderViewModel(
                         when (intent.format) {
                             ComicFormat.Manga -> it.copy(mangaMode = intent.mode)
                             ComicFormat.Webtoon -> it.copy(webtoonMode = intent.mode)
+                            ComicFormat.Comic -> it
                         }
                     }
                 }
@@ -673,7 +679,15 @@ class ReaderViewModel(
         // Our own pages carry their size: theirs is the one drawn.
         if (chapter?.pages?.firstOrNull { it.index == page }?.hasSize != false) return
         measuredSizes[page] = width to height
-        mutableState.update { it.copy(pages = chapter?.let { c -> sized(c.pages) } ?: it.pages) }
+        val current = state.value
+        val wasStrip = current.format == ComicFormat.Webtoon
+        val open = chapter ?: return
+        if ((ComicFormat.fromPages(sized(open.pages)) == ComicFormat.Webtoon) != wasStrip) {
+            // The images turn out to be a vertical strip (or not): the mode follows their shape.
+            show(open, current.preferences, seriesMode)
+        } else {
+            mutableState.update { it.copy(pages = sized(open.pages)) }
+        }
         rebuildStops()
     }
 
@@ -792,7 +806,11 @@ class ReaderViewModel(
             mutableState.update { it.copy(preferences = preferences) }
             return
         }
-        val mode = ReadingModes.resolve(chapter.mode, chapter.format, seriesMode, preferences)
+        val pages = sized(chapter.pages)
+        // The format as recognised: what the source says, unless the pages themselves are a vertical strip.
+        val strip = ComicFormat.fromPages(pages) == ComicFormat.Webtoon
+        val format = if (strip) ComicFormat.Webtoon else chapter.format
+        val mode = ReadingModes.resolve(chapter.mode, format, seriesMode, preferences, strip)
         val isBook = mode == ReadingMode.Book
         mutableState.update {
             val index = if (isBook) it.currentIndex else it.currentIndex.coerceIn(0, (chapter.pages.size - 1).coerceAtLeast(0))
@@ -801,7 +819,8 @@ class ReaderViewModel(
                 titleName = chapter.titleName,
                 chapterLabel = if (isBook) chapter.label else listOfNotNull(chapter.label, chapter.name).joinToString(" · "),
                 mode = mode,
-                pages = sized(chapter.pages),
+                format = if (isBook) null else format,
+                pages = pages,
                 items = items,
                 currentIndex = index,
                 // The previous-chapter card comes first: page i is item i + 1. The same item stays on screen when
@@ -818,7 +837,7 @@ class ReaderViewModel(
                 settings =
                     ReaderSettingsSheet.of(
                         if (isBook) chapter.format.defaultMode else mode,
-                        chapter.format,
+                        format,
                         seriesMode,
                         preferences,
                     ),

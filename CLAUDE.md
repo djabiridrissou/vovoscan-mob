@@ -250,6 +250,12 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   the mode chosen for the series (`series_mode`, per `(sourceKey, titleId)`), else the user's default for the format
   (manga / webtoon), else `LongStrip` for every format ("Continuous", reader/SPEC.md shared with the web reader).
   Switching keeps the page.
+- Format recognition (`ComicFormat`: `Manga` right to left, `Webtoon`, `Comic` left to right when paged): the source's
+  word first (our API's `format`; a plugin's own labels "Long Strip", "Web Comic", manhwa, manhua, BD; an original
+  language `ko` / `zh` = webtoon), then the pages' shape: most sized pages taller than 2.5 × their width
+  (`ComicFormat.fromPages`, re-checked as images of unknown size load) = a strip, read continuously at full width
+  whatever the per-format default says (only the series' own mode overrides it). The title card names it
+  (`formatLabel`: "Webtoon ✦ top to bottom").
 - Continuous reader (`Glide.kt` in domain, `ReaderViewModel`, Android `ui/reader/FlowStrip.kt`, iOS `FlowStrip` in
   `ReaderView.swift`): the native side reports `StripMeasured(width, viewport)` and `StripScrolled(offset, byUser,
   settled)` (points / dp from the first page's top) and plays `GlideTo(offset, animated)`. Stops (`ReadingStops`):

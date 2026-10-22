@@ -113,6 +113,26 @@ object ReaderText {
             ReadingMode.Book -> t("reader.modeBook")
         }
 
+    /** "Webtoon ✦ top to bottom": the format recognised and the way it is read now. */
+    fun format(
+        format: ComicFormat,
+        mode: ReadingMode,
+    ): String {
+        val name =
+            when (format) {
+                ComicFormat.Manga -> t("reader.manga")
+                ComicFormat.Webtoon -> t("reader.webtoon")
+                ComicFormat.Comic -> t("reader.comic")
+            }
+        val flow =
+            when (mode) {
+                ReadingMode.PagedRightToLeft -> t("reader.flowRtl")
+                ReadingMode.PagedLeftToRight -> t("reader.flowLtr")
+                else -> t("reader.flowDown")
+            }
+        return t("reader.formatLine", "format" to name, "flow" to flow)
+    }
+
     fun layout(layout: TapLayout): String =
         when (layout) {
             TapLayout.Default -> t("reader.layoutDefault")

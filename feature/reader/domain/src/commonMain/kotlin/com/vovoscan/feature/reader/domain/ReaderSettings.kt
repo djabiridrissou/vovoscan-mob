@@ -36,22 +36,32 @@ data class ReaderPreferences(
         when (format) {
             ComicFormat.Manga -> mangaMode
             ComicFormat.Webtoon -> webtoonMode
+            // No setting of its own yet: a manga's default (right to left) would read it backwards.
+            ComicFormat.Comic -> null
         }
 }
 
 object ReadingModes {
-    /** Per-series override, then the user's default for the format, then the format rule. Books stay books. */
+    /**
+     * Per-series override, then the user's default for the format, then the format rule. Books stay books. Pages
+     * shaped as a strip ([strip]) are always read continuously unless the series was set otherwise: a strip is never
+     * shrunk into a page.
+     */
     fun resolve(
         chapterMode: ReadingMode,
         format: ComicFormat,
         seriesMode: ReadingMode?,
         preferences: ReaderPreferences,
-    ): ReadingMode =
-        when {
-            chapterMode == ReadingMode.Book -> ReadingMode.Book
-            seriesMode != null && seriesMode != ReadingMode.Book -> seriesMode
-            else -> preferences.defaultFor(format)?.takeIf { it != ReadingMode.Book } ?: format.defaultMode
+        strip: Boolean = false,
+    ): ReadingMode {
+        if (chapterMode == ReadingMode.Book) return ReadingMode.Book
+        if (seriesMode != null && seriesMode != ReadingMode.Book) return seriesMode
+        val chosen = preferences.defaultFor(if (strip) ComicFormat.Webtoon else format)?.takeIf { it != ReadingMode.Book }
+        return when {
+            strip && chosen?.isStrip != true -> ReadingMode.LongStrip
+            else -> chosen ?: format.defaultMode
         }
+    }
 }
 
 /** Reader settings on the device: the preferences, and the mode chosen for a series (`sourceKey`, `titleId`). */
