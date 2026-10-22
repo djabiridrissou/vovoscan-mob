@@ -60,6 +60,8 @@ fun TitleScreen(
     /** [language]: open it translated (the language last read in, when this chapter is ready in it); null: as it is. */
     onRead: (chapterId: String, startPage: Int, language: String?) -> Unit,
     onEpisode: (chapterId: String) -> Unit,
+    /** "Translate": the chapter opens in the reader on its language picker. */
+    onTranslate: (chapterId: String) -> Unit = {},
     detail: TitleDetailViewModel = koinViewModel(key = "title:$sourceKey/$titleId") { parametersOf(sourceKey, titleId) },
     follow: FollowViewModel = koinViewModel(key = "follow:$sourceKey/$titleId") { parametersOf(sourceKey, titleId) },
     downloads: TitleDownloadsViewModel = koinViewModel(key = "titleDownloads:$sourceKey/$titleId") { parametersOf(sourceKey, titleId) },
@@ -149,7 +151,19 @@ fun TitleScreen(
                         Text(it, style = MaterialTheme.typography.bodySmall.copy(color = color))
                     }
                 }
-                // A comic of our catalog: the chapter's voiced episode, next to reading it.
+                // Any comic: the chapter in another language (the reader opens on its picker).
+                if (state.offersTranslation) {
+                    Text(
+                        state.translateChip,
+                        style = MaterialTheme.typography.labelSmall.copy(color = Brand.Paper),
+                        modifier =
+                            Modifier
+                                .border(1.dp, Brand.Line, RoundedCornerShape(999.dp))
+                                .clickable { onTranslate(chapter.id) }
+                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                    )
+                }
+                // Any comic: the chapter's voiced episode, next to reading it.
                 if (state.offersEpisodes) {
                     Text(
                         I18n.text("episode.kicker"),

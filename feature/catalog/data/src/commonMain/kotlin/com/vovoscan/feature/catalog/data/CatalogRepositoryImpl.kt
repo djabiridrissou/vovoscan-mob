@@ -57,6 +57,18 @@ class CatalogRepositoryImpl(
         return ids.mapNotNull { id -> known[id]?.let { id to it } }.toMap()
     }
 
+    override fun askFormatsAgain(sourceKey: String) {
+        val known = learned.value[sourceKey].orEmpty()
+        // Under the lock when it is free; a call racing an ask simply asks again next time.
+        if (askedLock.tryLock()) {
+            try {
+                asked[sourceKey]?.retainAll(known.keys)
+            } finally {
+                askedLock.unlock()
+            }
+        }
+    }
+
     override suspend fun refreshListing(
         sourceKey: String,
         categoryId: String?,

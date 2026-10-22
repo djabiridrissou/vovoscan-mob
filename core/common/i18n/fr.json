@@ -214,6 +214,7 @@
   "episode.keysDisabled": "Les clés sont désactivées sur ce serveur : l’épisode ne sera ni lu ni doublé.",
   "episode.kicker": "Épisode",
   "episode.kickerChip": "Épisode",
+  "translation.chip": "Traduire",
   "episode.languageA11y": "Langue de l’épisode : {language}",
   "episode.languageTitle": "Langue de l’épisode",
   "episode.live": "EN DIRECT",

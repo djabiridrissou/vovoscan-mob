@@ -12,6 +12,8 @@ struct ReaderRoute: Hashable {
     let startPage: Int
     /// A source's chapter reopened on its translated copy (our catalog) shows this language at once.
     var language: String? = nil
+    /// Opened from a chapter's "Translate": the language picker shows at once.
+    var pickLanguage = false
 }
 
 struct ReaderContainer: View {
@@ -217,6 +219,7 @@ struct ReaderView: View {
         // Keep the screen awake while reading (setting, on by default).
         .onChange(of: model.state.keepScreenOn, initial: true) { _, on in UIApplication.shared.isIdleTimerDisabled = on }
         .onDisappear { UIApplication.shared.isIdleTimerDisabled = false }
+        .onAppear { if route.pickLanguage && translation.state.available { languagesOpen = true } }
         .sheet(isPresented: $languagesOpen) {
             LanguageSheet(translation: translation)
                 .presentationDetents([.medium, .large])

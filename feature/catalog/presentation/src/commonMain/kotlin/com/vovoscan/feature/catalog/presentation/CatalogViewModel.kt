@@ -317,6 +317,7 @@ class CatalogViewModel(
     private var hasMore: Map<String, Boolean> = emptyMap()
     private var generation = 0
     private var searchJob: Job? = null
+    private var resultFormatsJob: Job? = null
     private var suggestJob: Job? = null
     private var blurJob: Job? = null
 
@@ -370,7 +371,7 @@ class CatalogViewModel(
         when (intent) {
             CatalogIntent.Refresh -> {
                 seed.value = Random.nextLong()
-                refresh(categoriesToo = true)
+                refresh(categoriesToo = true, askFormats = true)
             }
             CatalogIntent.LoadMore -> loadMore()
             // The same text again (a native field echoing a search chosen under it) changes nothing.
@@ -603,7 +604,19 @@ class CatalogViewModel(
             ) { listings -> listings.toList() }.combine(seed) { listings, s -> CatalogMerge.merge(listings, s) }
         }
 
-    private fun refresh(categoriesToo: Boolean) {
+    /** The formats the server knew nothing of, asked again for what the filtered sources list now. */
+    private suspend fun askFormatsAgain(of: List<Reading>) {
+        of.filter { it.format != null }.forEach { reading ->
+            repository.askFormatsAgain(reading.source.key)
+            val ids = repository.observeListing(reading.source.key, reading.categoryId).first().map { it.title.id }
+            if (ids.isNotEmpty()) repository.learnFormats(reading.source.key, ids)
+        }
+    }
+
+    private fun refresh(
+        categoriesToo: Boolean,
+        askFormats: Boolean = false,
+    ) {
         val current = readings
         if (categoriesToo) {
             plan?.selected?.forEach { source -> viewModelScope.launch { repository.refreshCategories(source.key) } }
@@ -623,6 +636,7 @@ class CatalogViewModel(
             if (run != generation) return@launch
             hasMore = results.associate { (reading, result) -> reading.source.key to ((result as? AppResult.Ok)?.value == true) }
             mutableState.update { it.after(results, replacing = current.map { r -> r.source.key }.toSet()) }
+            if (askFormats) askFormatsAgain(current)
         }
     }
 
@@ -640,6 +654,7 @@ class CatalogViewModel(
             if (run != generation) return@launch
             hasMore = hasMore + results.associate { (reading, result) -> reading.source.key to ((result as? AppResult.Ok)?.value == true) }
             mutableState.update { it.after(results, replacing = more.map { r -> r.source.key }.toSet()).copy(loadingMore = false) }
+            askFormatsAgain(more)
         }
     }
 
@@ -652,6 +667,7 @@ class CatalogViewModel(
         if (changed) suggest(query)
         searchJob?.cancel()
         if (query.isBlank()) {
+            resultFormatsJob?.cancel()
             mutableState.update { it.copy(results = null, searchNotice = null) }
             resultPicks = emptyMap()
             return
@@ -730,7 +746,38 @@ class CatalogViewModel(
                             ),
                     )
                 }
+                followResultFormats(titles, names)
             }
+    }
+
+    /**
+     * Results stay in memory: a title page opened from them may learn the title's format (a strip read from its
+     * genres), and the result's card follows the saved row at once, like the grid's.
+     */
+    private fun followResultFormats(
+        titles: List<TitleSummary>,
+        names: Map<String, String>,
+    ) {
+        resultFormatsJob?.cancel()
+        val watched = titles.filter { it.sourceKey != INTERNAL_SOURCE && it.kind != ContentKind.Book }
+        if (watched.isEmpty()) return
+        resultFormatsJob =
+            combine(watched.map { t -> repository.observeTitle(t.sourceKey, t.id).map { d -> t to d?.summary?.format } }) { it.toList() }
+                .map { pairs -> pairs.mapNotNull { (t, f) -> f?.takeIf { it != t.format }?.let { (t.sourceKey to t.id) to it } }.toMap() }
+                .distinctUntilChanged()
+                .onEach { saved ->
+                    if (saved.isEmpty()) return@onEach
+                    mutableState.update { state ->
+                        state.copy(
+                            results =
+                                state.results?.map { card ->
+                                    val format = saved[card.sourceKey to card.id] ?: return@map card
+                                    val title = titles.firstOrNull { it.sourceKey == card.sourceKey && it.id == card.id } ?: return@map card
+                                    card(title.copy(format = format), names).copy(popular = card.popular, started = card.started)
+                                },
+                        )
+                    }
+                }.launchIn(viewModelScope)
     }
 
     /** After reloading these sources: their problems replace the ones they had, the others' stay. */

@@ -88,11 +88,12 @@ class ContinueReadingTest {
 
             // Our own source's format is the server's word.
             repository.detail.value = saved.copy(summary = manga.copy(sourceKey = "vovoscan"), genres = listOf("Webtoons"))
+            val ours = TitleDetailViewModel("vovoscan", "dle", repository, resume)
             advanceUntilIdle()
             assertTrue(
-                vm.state.value.meta
+                ours.state.value.meta
                     .startsWith("MANGA"),
-                vm.state.value.meta,
+                ours.state.value.meta,
             )
         }
 

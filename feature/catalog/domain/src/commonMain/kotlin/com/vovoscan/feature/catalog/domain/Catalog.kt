@@ -178,6 +178,12 @@ interface CatalogRepository {
         ids: List<String>,
     ): Map<String, ReadingFormat> = emptyMap()
 
+    /**
+     * The titles of [sourceKey] the server knew no format for may be asked again (it learns a few more on each call):
+     * on pull to refresh and Load more, never while browsing.
+     */
+    fun askFormatsAgain(sourceKey: String) = Unit
+
     suspend fun refreshCategories(sourceKey: String): AppResult<Unit>
 
     fun observeFilter(): Flow<CatalogFilter>

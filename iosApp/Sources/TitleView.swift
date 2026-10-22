@@ -112,7 +112,20 @@ struct TitleView: View {
                                 .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
-                            // A comic of our catalog: the chapter's voiced episode, next to reading it.
+                            // Any comic: the chapter in another language (the reader opens on its picker).
+                            if model.state.offersTranslation {
+                                NavigationLink(value: ReaderRoute(sourceKey: route.sourceKey, titleId: route.titleId, chapterId: chapter.id, startPage: 0, pickLanguage: true)) {
+                                    Text(model.state.translateChip)
+                                        .font(.brandBody(12, weight: .bold))
+                                        .tracking(1.2)
+                                        .foregroundStyle(Color.brandPaper)
+                                        .padding(.horizontal, 12)
+                                        .padding(.vertical, 8)
+                                        .overlay(Capsule().stroke(Color.brandLine, lineWidth: 1))
+                                }
+                                .buttonStyle(.plain)
+                            }
+                            // Any comic: the chapter's voiced episode, next to reading it.
                             if model.state.offersEpisodes {
                                 NavigationLink(value: EpisodeRoute(chapterId: chapter.id, title: model.state)) {
                                     Text(L("episode.kickerChip"))

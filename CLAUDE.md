@@ -125,8 +125,9 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
 - Format filter for sources: our categories carry `format` (`manga`, `webtoon`, `text`); a rule-based source without
   the chosen category is read unfiltered and its titles kept by format (`CatalogViewModel` readings); a manifest
   without `catalog.item.format` (`RulesSource.declaresFormat`) asks `GET api/v1/source-reader/{key}/formats?ref=…`
-  (`CatalogRepository.learnFormats`, 100 refs a call, each title once), else manga: only while such a filter needs it,
-  so browsing a source never tells the server what it lists. Category and learned formats are kept in memory (no
+  (`CatalogRepository.learnFormats`, 100 refs a call, each title once; the server learns a few unopened titles per
+  call, so pull to refresh and Load more ask again for those still unknown, `askFormatsAgain`), else manga: only while
+  such a filter needs it, so browsing a source never tells the server what it lists. Category and learned formats are kept in memory (no
   schema change).
 - Tests: `core/sources/src/commonTest/.../Fixtures.kt` copies the manifests (change them with `vovo-plugin`).
 - Third-party sources (user plugins, spec v1): added from a link (single manifest or `repo.json`, GitHub pages
@@ -347,7 +348,8 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   "longstrip", "webtoon(s)", "manhwa", "manhua", "vertical", "vertical scroll", trimmed, any case; `StripGenres` in
   `core/common`, the server's `STRIP_TAGS`). A listing of a source that names no format (`TitleSummaryDto.formatKnown`
   false) never overwrites the format the title page read, nor does the server's learned format; a title saved before
-  shows as a webtoon on its page when its genres say so.
+  shows as a webtoon on its page when its genres say so. Search results (kept in memory) follow the saved row's format
+  live (`followResultFormats`), so a card turns WEBTOON as soon as its page has read it.
 - Format recognition (`ComicFormat`: `Manga` right to left, `Webtoon`, `Comic` left to right when paged): the source's
   word first (our API's `format`; a plugin's own labels "Long Strip", "Web Comic", manhwa, manhua, BD; an original
   language `ko` / `zh` = webtoon), then the pages' shape: most sized pages taller than 2.5 × their width
@@ -661,7 +663,9 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   `secretFieldResets` changes), Reading model (three options), Costs (period chips, totals, entries), Sign out (also
   still in Library).
 - Title page of a comic of our catalog (`TitleDetailUiState.offersEpisodes`): each chapter row has an "Episode" chip
-  next to reading it → Episode card → Watch → full-screen player. `nextChapterId(…)` (reading order) gives "Next
+  next to reading it → Episode card → Watch → full-screen player. Any comic, any source: a "Translate" chip per row
+  (`offersTranslation`) opens the reader on its language picker (iOS `ReaderRoute.pickLanguage`, Android
+  `ReaderScreen(openLanguages = true)`). `nextChapterId(…)` (reading order) gives "Next
   chapter →"; at the end it swaps the card for the next chapter's (Android `openEpisode`, iOS `EpisodeContainer`).
 - Episode card: Start / Stop on start / stop (Android lifecycle) or appear / disappear (iOS): live events only while it
   is visible. Video: Android saves through `DownloadManager` (`Movies/vovoscan`, Android 10+; the app's own Movies

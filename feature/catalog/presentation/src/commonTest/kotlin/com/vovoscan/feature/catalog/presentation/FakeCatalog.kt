@@ -82,6 +82,13 @@ class FakeCatalog : CatalogRepository {
         return ids.mapNotNull { id -> learned.value["$sourceKey/$id"]?.let { id to it } }.toMap()
     }
 
+    override fun askFormatsAgain(sourceKey: String) {
+        for (i in formatsAsked.indices) {
+            val (s, asked) = formatsAsked[i]
+            if (s == sourceKey) formatsAsked[i] = s to asked.filter { "$s/$it" in learned.value }
+        }
+    }
+
     override suspend fun refreshListing(
         sourceKey: String,
         categoryId: String?,
@@ -165,7 +172,7 @@ class FakeCatalog : CatalogRepository {
     override fun observeTitle(
         sourceKey: String,
         id: String,
-    ): Flow<TitleDetail?> = detail
+    ): Flow<TitleDetail?> = detail.map { d -> d?.takeIf { it.summary.sourceKey == sourceKey && it.summary.id == id } }
 
     override suspend fun refreshTitle(
         sourceKey: String,

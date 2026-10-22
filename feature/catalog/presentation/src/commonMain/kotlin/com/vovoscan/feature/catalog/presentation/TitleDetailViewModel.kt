@@ -96,6 +96,10 @@ data class TitleDetailUiState(
      */
     val offersEpisodes: Boolean get() = !isBook && chapters.isNotEmpty()
 
+    /** "Translate" on each chapter row of a comic, any source: the reader opens on its language picker. */
+    val offersTranslation: Boolean get() = !isBook && chapters.isNotEmpty()
+    val translateChip: String get() = t("translation.chip")
+
     /** "Chapter 98 · The last gate" for a chapter of this title; "" when unknown. */
     fun chapterLabel(chapterId: String): String = chapters.firstOrNull { it.id == chapterId }?.label.orEmpty()
 

@@ -214,6 +214,7 @@
   "episode.keysDisabled": "Keys are turned off on this server: the episode will be unread and silent.",
   "episode.kicker": "Episode",
   "episode.kickerChip": "Episode",
+  "translation.chip": "Translate",
   "episode.languageA11y": "Episode language: {language}",
   "episode.languageTitle": "Episode language",
   "episode.live": "LIVE",

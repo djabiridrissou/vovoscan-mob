@@ -271,6 +271,7 @@ private fun Root(session: SessionViewModel = koinViewModel()) {
                     }
                 },
                 language = reader.getOrNull(4)?.ifEmpty { null },
+                openLanguages = reader.getOrNull(5) == "pick",
                 // A source's chapter translated: its copy on the server, in that language, at the same share.
                 onOpenCopy = { title, chapter, language, page -> openReader = "$INTERNAL_SOURCE_KEY|$title|$chapter|$page|$language" },
             )
@@ -325,6 +326,7 @@ private fun Root(session: SessionViewModel = koinViewModel()) {
                             openReader = "${title[0]}|${title[1]}|$chapter|$page" + language?.let { "|$it" }.orEmpty()
                         },
                         onEpisode = { openEpisode = it },
+                        onTranslate = { chapter -> openReader = "${title[0]}|${title[1]}|$chapter|0||pick" },
                     )
                 } else if (tab == Tab.Library && openDownloads) {
                     BackHandler { openDownloads = false }

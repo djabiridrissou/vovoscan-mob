@@ -161,6 +161,8 @@ fun ReaderScreen(
     language: String? = null,
     /** A source's chapter, translated: open its copy on the server (title, chapter, language, page). */
     onOpenCopy: (titleId: String, chapterId: String, language: String, page: Int) -> Unit = { _, _, _, _ -> },
+    /** Opened from a chapter's "Translate": the language picker shows at once. */
+    openLanguages: Boolean = false,
     viewModel: ReaderViewModel =
         koinViewModel(key = "reader:$sourceKey/$chapterId") { parametersOf(sourceKey, titleId, chapterId, startPage) },
 ) {
@@ -178,7 +180,7 @@ fun ReaderScreen(
         translation.onIntent(TranslationIntent.CopyOpened)
         onOpenCopy(copy.titleId, copy.chapterId, copy.language, copy.startPage(state.currentIndex, state.pages.size))
     }
-    var languagesOpen by rememberSaveable { mutableStateOf(false) }
+    var languagesOpen by rememberSaveable { mutableStateOf(openLanguages && translationState.available) }
     var keysOpen by rememberSaveable { mutableStateOf(false) }
     // What comes after this chapter in the language on the page (our catalog): end card, balloon, toast, series setting.
     val next: NextChapterViewModel = koinViewModel(key = "next:$sourceKey/$chapterId") { parametersOf(sourceKey, chapterId) }

@@ -7,6 +7,7 @@ import com.vovoscan.feature.catalog.domain.CatalogFilter
 import com.vovoscan.feature.catalog.domain.ListedTitle
 import com.vovoscan.feature.catalog.domain.ReadingFormat
 import com.vovoscan.feature.catalog.domain.SourceCategory
+import com.vovoscan.feature.catalog.domain.TitleDetail
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -277,6 +278,62 @@ class CatalogViewModelTest {
                 listOf("i1"),
                 vm.state.value.results
                     ?.map { it.id },
+            )
+        }
+
+    @Test
+    fun pullToRefreshAsksAgainForTheFormatsTheServerDidNotKnow() =
+        runTest(dispatcher) {
+            val inkwell = CatalogSource("inkwell", "Inkwell")
+            val repository =
+                FakeCatalog().apply {
+                    remote["vovoscan" to null] = listOf(listOf(title("vovoscan", "v1", ReadingFormat.Webtoon)))
+                    remote["vovoscan" to "webtoon"] = listOf(listOf(title("vovoscan", "v1", ReadingFormat.Webtoon)))
+                    remote["inkwell" to null] =
+                        listOf(listOf(title("inkwell", "i1", ReadingFormat.Manga), title("inkwell", "i2", ReadingFormat.Manga)))
+                    serverFormats["inkwell/i2"] = ReadingFormat.Webtoon
+                    categories["vovoscan"] = listOf(SourceCategory("webtoon", "Webtoon", ReadingFormat.Webtoon))
+                }
+            val vm = CatalogViewModel(repository)
+            vm.onIntent(CatalogIntent.SourcesChanged(listOf(vovoscan, inkwell)))
+            advanceUntilIdle()
+            vm.onIntent(CatalogIntent.SelectCategory("Webtoon"))
+            advanceUntilIdle()
+            assertEquals(setOf("v1", "i2"), ids(vm).toSet())
+
+            // The server learns a few more titles on each call: pull to refresh asks again for the one it didn't know.
+            repository.serverFormats["inkwell/i1"] = ReadingFormat.Webtoon
+            vm.onIntent(CatalogIntent.Refresh)
+            advanceUntilIdle()
+            assertEquals("inkwell" to listOf("i1"), repository.formatsAsked.last())
+            assertEquals(setOf("v1", "i1", "i2"), ids(vm).toSet())
+        }
+
+    @Test
+    fun aSearchResultFollowsTheFormatItsTitlePageLearned() =
+        runTest(dispatcher) {
+            val inkwell = CatalogSource("inkwell", "Inkwell")
+            val strip = title("inkwell", "i1", ReadingFormat.Manga)
+            val repository = FakeCatalog().apply { remote["inkwell" to null] = listOf(listOf(strip)) }
+            val vm = CatalogViewModel(repository)
+            vm.onIntent(CatalogIntent.SourcesChanged(listOf(inkwell)))
+            advanceUntilIdle()
+            vm.onIntent(CatalogIntent.Query("i1"))
+            advanceUntilIdle()
+            assertEquals(
+                listOf("MANGA"),
+                vm.state.value.results
+                    ?.map { it.formatLabel },
+            )
+
+            // Its page opened from the results: its genres say it is a strip, saved as such.
+            repository.detail.value =
+                TitleDetail(strip.copy(format = ReadingFormat.Webtoon), "", emptyList(), listOf("Webtoons"), emptyList())
+            advanceUntilIdle()
+            assertEquals(
+                listOf("WEBTOON"),
+                vm.state.value.results
+                    ?.map { it.formatLabel },
             )
         }
 
