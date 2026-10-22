@@ -106,6 +106,8 @@ class CatalogRepositoryImpl(
                 val guessed = items.filter { !it.formatKnown || it.format == MANGA }.map { it.id }
                 val saved = if (guessed.isEmpty()) emptyMap() else local.savedFormats(sourceKey, guessed)
                 val known = learned.value[sourceKey].orEmpty()
+                val coverless = items.filter { it.coverUrl == null }.map { it.id }
+                val covers = if (coverless.isEmpty()) emptyMap() else local.savedCovers(sourceKey, coverless)
                 SearchResult(
                     items.map { item ->
                         val format =
@@ -115,7 +117,8 @@ class CatalogRepositoryImpl(
                                 item.format == MANGA && saved[item.id] == WEBTOON -> WEBTOON
                                 else -> null
                             }
-                        (format?.let { item.copy(format = it) } ?: item).toDomain(sourceKey)
+                        val cover = item.coverUrl ?: covers[item.id]
+                        (format?.let { item.copy(format = it) } ?: item).copy(coverUrl = cover).toDomain(sourceKey)
                     },
                     offline = false,
                 )

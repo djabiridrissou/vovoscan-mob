@@ -151,9 +151,27 @@ class CatalogRepositoryImplTest {
                 listOf(TitleSummaryDto("ink-road", "Ink Road", format = "manga", status = "ongoing", formatKnown = false)),
             )
             assertEquals(mapOf("ink-road" to "webtoon"), local.savedFormats("inkwell", listOf("ink-road")))
-            // A source that names its format is believed.
+            // A source's own "manga" never turns a strip known here back (its genres, or the server's word).
             local.saveSummaries("inkwell", listOf(TitleSummaryDto("ink-road", "Ink Road", format = "manga", status = "ongoing")))
-            assertEquals(mapOf("ink-road" to "manga"), local.savedFormats("inkwell", listOf("ink-road")))
+            assertEquals(mapOf("ink-road" to "webtoon"), local.savedFormats("inkwell", listOf("ink-road")))
+            // A search answer without a cover keeps the cover the listing saved.
+            local.saveSummaries(
+                "inkwell",
+                listOf(
+                    TitleSummaryDto(
+                        "paper-kite",
+                        "Paper Kite",
+                        coverUrl = "https://inkwell.example/c.webp",
+                        format = "manga",
+                        status = "ongoing",
+                    ),
+                ),
+            )
+            local.saveSummaries("inkwell", listOf(TitleSummaryDto("paper-kite", "Paper Kite", format = "manga", status = "ongoing")))
+            assertEquals(
+                mapOf("paper-kite" to "https://inkwell.example/c.webp"),
+                local.savedCovers("inkwell", listOf("paper-kite", "ink-road")),
+            )
             // Our own catalog's format is the server's word, whatever the genres.
             local.saveDetail("vovoscan", TitleDetailDto("t1", "Griot", format = "manga", status = "ongoing", genres = listOf("Webtoon")))
             assertEquals(mapOf("t1" to "manga"), local.savedFormats("vovoscan", listOf("t1")))

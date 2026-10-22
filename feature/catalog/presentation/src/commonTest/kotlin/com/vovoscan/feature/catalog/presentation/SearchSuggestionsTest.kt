@@ -10,6 +10,7 @@ import com.vovoscan.feature.catalog.domain.SourceCategory
 import com.vovoscan.feature.catalog.domain.SuggestReason
 import com.vovoscan.feature.catalog.domain.SuggestedTitle
 import com.vovoscan.feature.catalog.domain.Suggestions
+import com.vovoscan.feature.catalog.domain.TitleDetail
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -92,6 +93,73 @@ class SearchSuggestionsTest {
                     SuggestedTitle("elsewhere", "x", "Elsewhere", ContentRating.Safe, reason = SuggestReason.Popular),
                 ),
         )
+
+    @Test
+    fun aTypedSearchShowsTheServersStripsAndTheSavedCoverWhileBrowsingAsksNothing() =
+        runTest(dispatcher) {
+            val catalog =
+                FakeCatalog().apply {
+                    remote["inkwell" to null] =
+                        listOf(listOf(title("inkwell", "strip-a"), title("inkwell", "strip-b"), title("inkwell", "plain")))
+                    // Learned by the server from imported pages (its backfill), unknown to the device.
+                    serverFormats["inkwell/strip-a"] = ReadingFormat.Webtoon
+                    // The listing saved a cover; the source's search answer sends none.
+                    detail.value =
+                        TitleDetail(
+                            title("inkwell", "plain").copy(coverUrl = "https://inkwell.example/plain.webp"),
+                            "",
+                            emptyList(),
+                            emptyList(),
+                            emptyList(),
+                        )
+                }
+            val search =
+                FakeSearch().apply {
+                    answer = { q, _ ->
+                        if (q.isEmpty()) {
+                            Suggestions()
+                        } else {
+                            Suggestions(
+                                titles =
+                                    listOf(
+                                        SuggestedTitle(
+                                            "inkwell",
+                                            "strip-b",
+                                            "inkwell strip-b",
+                                            ContentRating.Safe,
+                                            ReadingFormat.Webtoon,
+                                            reason = SuggestReason.Popular,
+                                        ),
+                                    ),
+                            )
+                        }
+                    }
+                }
+            val vm = CatalogViewModel(catalog, search = search)
+            vm.onIntent(CatalogIntent.SourcesChanged(listOf(inkwell)))
+            advanceUntilIdle()
+            assertEquals(emptyList(), catalog.formatsAsked)
+
+            vm.onIntent(CatalogIntent.Query("inkwell"))
+            advanceUntilIdle()
+            val results =
+                vm.state.value.results
+                    .orEmpty()
+                    .associateBy { it.id }
+            assertEquals("WEBTOON", results.getValue("strip-a").formatLabel)
+            assertEquals("WEBTOON", results.getValue("strip-b").formatLabel)
+            assertEquals("MANGA", results.getValue("plain").formatLabel)
+            assertEquals("https://inkwell.example/plain.webp", results.getValue("plain").coverUrl)
+            // The results' formats were asked once, for this source's results only.
+            assertEquals(listOf("inkwell"), catalog.formatsAsked.map { it.first })
+            assertEquals(
+                setOf("strip-a", "strip-b", "plain"),
+                catalog.formatsAsked
+                    .single()
+                    .second
+                    .toSet(),
+            )
+        }
 
     @Test
     fun focusShowsThisAccountsSearchesAndTypingShowsThreeSections() =

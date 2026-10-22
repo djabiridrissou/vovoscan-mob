@@ -72,6 +72,12 @@ interface CatalogLocalDataSource {
         ids: List<String>,
     ): Map<String, String>
 
+    /** The cover saved for each of these titles, by id; titles without one are left out. */
+    suspend fun savedCovers(
+        sourceKey: String,
+        ids: List<String>,
+    ): Map<String, String>
+
     fun observeCategories(sourceKey: String): Flow<List<SourceCategory>>
 
     suspend fun saveCategories(
@@ -172,6 +178,21 @@ class SqlCatalogLocalDataSource(
         sourceKey: String,
         formats: Map<String, String>,
     ) = withContext(io) { queries.transaction { formats.forEach { (id, format) -> queries.learnFormat(format, sourceKey, id) } } }
+
+    override suspend fun savedCovers(
+        sourceKey: String,
+        ids: List<String>,
+    ): Map<String, String> =
+        withContext(io) {
+            ids
+                .mapNotNull { id ->
+                    queries
+                        .titleById(sourceKey, id)
+                        .executeAsOneOrNull()
+                        ?.cover_url
+                        ?.let { id to it }
+                }.toMap()
+        }
 
     override suspend fun savedFormats(
         sourceKey: String,
@@ -311,14 +332,17 @@ class SqlCatalogLocalDataSource(
         queries.insertSummary(sourceKey, it.id, it.name, it.coverUrl, it.kind, it.format, it.status, it.contentRating)
         // A source that names no format sends the default: the format read from the title page (its genres) stays. A
         // saved webtoon (its genres, or the server's word) is never turned back into a manga by a listing.
-        val saved = queries.titleById(sourceKey, it.id).executeAsOneOrNull()?.format
+        val row = queries.titleById(sourceKey, it.id).executeAsOneOrNull()
+        val saved = row?.format
         val format =
             when {
                 !it.formatKnown -> saved ?: it.format
                 sourceKey != INTERNAL_SOURCE && it.format == "manga" && saved == "webtoon" -> saved
                 else -> it.format
             }
-        queries.updateSummary(it.name, it.coverUrl, it.kind, format, it.status, it.contentRating, sourceKey, it.id)
+        // A search answer that sends no cover keeps the one the listing saved.
+        val cover = it.coverUrl ?: row?.cover_url
+        queries.updateSummary(it.name, cover, it.kind, format, it.status, it.contentRating, sourceKey, it.id)
     }
 
     private companion object {

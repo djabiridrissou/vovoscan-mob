@@ -694,15 +694,24 @@ class CatalogViewModel(
                         .map { reading ->
                             async {
                                 repository.search(reading.source.key, query.trim(), reading.categoryId).let { found ->
+                                    // A typed search already goes to the server (suggestions): its results' formats are
+                                    // asked too (comic sources read on the device, once each), so a learned strip is a
+                                    // webtoon here as in the grid. Browsing never asks.
                                     val learned =
-                                        if (reading.format ==
-                                            null
-                                        ) {
+                                        if (found.offline) {
                                             emptyMap()
                                         } else {
-                                            repository.learnFormats(reading.source.key, found.titles.map { it.id })
+                                            repository.learnFormats(
+                                                reading.source.key,
+                                                found.titles.map { it.id },
+                                            )
                                         }
-                                    val titles = found.titles.map { t -> learned[t.id]?.let { t.copy(format = it) } ?: t }
+                                    val titles =
+                                        found.titles.map { t ->
+                                            learned[t.id]
+                                                ?.takeIf { reading.format != null || t.format == ReadingFormat.Manga }
+                                                ?.let { t.copy(format = it) } ?: t
+                                        }
                                     found.copy(titles = titles.filter(reading::keeps))
                                 }
                             }
@@ -717,9 +726,19 @@ class CatalogViewModel(
                         ?.titles
                         .orEmpty()
                         .filter { it.sourceKey in read }
+                // The server's word on a strip (it learned it from imported pages) beats a source's manga default.
+                val serverStrips =
+                    suggested.filter { it.format == ReadingFormat.Webtoon }.mapTo(HashSet()) { it.sourceKey to it.titleRef }
                 val all =
-                    SearchRules.order(suggested, mixed, extras).map { t ->
-                        if (t.coverUrl == null && mixed.none { m -> m.sourceKey == t.sourceKey && m.id == t.id }) {
+                    SearchRules.order(suggested, mixed, extras).map { found ->
+                        val t =
+                            if (found.format == ReadingFormat.Manga && (found.sourceKey to found.id) in serverStrips) {
+                                found.copy(format = ReadingFormat.Webtoon)
+                            } else {
+                                found
+                            }
+                        // No cover in the answer (a learned title, or a source's search that sends none): the saved one.
+                        if (t.coverUrl == null) {
                             t.copy(
                                 coverUrl =
                                     repository
