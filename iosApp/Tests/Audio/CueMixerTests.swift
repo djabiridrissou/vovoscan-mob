@@ -410,9 +410,15 @@ final class CueMixerTests: XCTestCase {
         let held = try XCTUnwrap(rig.mixer.positionMs(id))
         XCTAssertEqual(held, 500, accuracy: 1)
         let resumed = try rig.run(0.5) { [self] t in [cue(id, url, at: 500 + t * 1000)] }
-        let match = bestLag(resumed.left, window: 1200..<10_800, source: voice, expected: 24_000 + 1200)
+        // Rendered frame 2400 is clip frame 24 000 + 2400 (the place held), later by whole render cycles only: play()
+        // on a node of a running engine takes effect at the start of a render cycle, the first or one of the next
+        // (the start latency every node has, `startCycles`). A lag that is not a whole number of cycles would be the
+        // place lost (frames skipped or played twice); the window starts after the latest start.
+        let match = bestLag(resumed.left, window: 2400..<12_000, source: voice, expected: 24_000 + 2400)
         print("resume: lag \(match.lag) frames, correlation \(match.score)")
-        XCTAssertEqual(match.lag, 0)
+        XCTAssertEqual(match.lag % Int(Self.frameStep), 0)
+        XCTAssertLessThanOrEqual(match.lag, 0)
+        XCTAssertGreaterThanOrEqual(match.lag, -Self.startCycles * Int(Self.frameStep))
         XCTAssertGreaterThan(match.score, 0.999)
         XCTAssertEqual(rig.mixer.resyncs, 0)
     }
