@@ -353,7 +353,7 @@ class AccountViewModelsTest {
             assertEquals("Hold to see the original", demo.holdLabel)
             assertEquals("Demo page, in العربية. Real chapters read the same way.", demo.caption)
             vm.onIntent(OnboardingIntent.ChooseReading("fr"))
-            assertEquals("On y va, tout le monde !", vm.state.value.demo.translated)
+            assertEquals("On y va, tout le monde\u202F!", vm.state.value.demo.translated)
             // Any other language: the original stays, never a made-up line, and no hold button.
             vm.onIntent(OnboardingIntent.ChooseReading("ee"))
             demo = vm.state.value.demo

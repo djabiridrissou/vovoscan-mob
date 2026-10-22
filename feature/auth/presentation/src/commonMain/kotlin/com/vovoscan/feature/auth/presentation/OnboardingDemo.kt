@@ -32,7 +32,7 @@ object DemoLines {
     private val SAMPLES =
         mapOf(
             "en" to "Let’s go, everyone!",
-            "fr" to "On y va, tout le monde !",
+            "fr" to "On y va, tout le monde !",
             "es" to "¡Vamos, todos!",
             "pt" to "Vamos, pessoal!",
             "de" to "Los geht’s, alle zusammen!",

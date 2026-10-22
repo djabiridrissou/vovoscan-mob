@@ -193,8 +193,9 @@ class SqlCatalogLocalDataSource(
             .mapToOneOrNull(io)
             .map { it == "1" }
 
-    override suspend fun saveNewestFirst(newestFirst: Boolean) =
+    override suspend fun saveNewestFirst(newestFirst: Boolean) {
         withContext(io) { if (newestFirst) queries.putSetting(NEWEST_FIRST, "1") else queries.deleteSetting(NEWEST_FIRST) }
+    }
 
     override fun observeDetail(
         sourceKey: String,
