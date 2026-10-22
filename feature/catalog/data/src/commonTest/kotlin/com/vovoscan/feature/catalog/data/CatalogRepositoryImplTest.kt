@@ -243,9 +243,10 @@ class CatalogRepositoryImplTest {
                 listOf("1" to ReadingFormat.Webtoon, "2" to ReadingFormat.Webtoon),
                 relaunched.observeListing("inkwell").first().map { it.title.id to it.title.format },
             )
+            // This source answers nothing here: the saved rows are searched ("a" is in both names).
             assertEquals(
-                listOf("1" to ReadingFormat.Webtoon, "2" to ReadingFormat.Webtoon),
-                relaunched.search("inkwell", "ink").titles.map { it.id to it.format },
+                setOf("1" to ReadingFormat.Webtoon, "2" to ReadingFormat.Webtoon),
+                relaunched.search("inkwell", "a").titles.mapTo(HashSet()) { it.id to it.format },
             )
             assertEquals(2, asked.size)
         }
