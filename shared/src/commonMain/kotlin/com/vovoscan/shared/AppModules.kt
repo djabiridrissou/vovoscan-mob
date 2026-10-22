@@ -31,6 +31,7 @@ import com.vovoscan.feature.catalog.domain.ContentKind
 import com.vovoscan.feature.catalog.domain.ReadingResume
 import com.vovoscan.feature.catalog.domain.ResumePoint
 import com.vovoscan.feature.catalog.domain.ResumePoints
+import com.vovoscan.feature.catalog.domain.ContentPolicy
 import com.vovoscan.feature.episodes.di.episodesModule
 import com.vovoscan.feature.episodes.domain.EpisodeAccess
 import com.vovoscan.feature.episodes.domain.EpisodesRepository
@@ -219,6 +220,12 @@ fun appModules(
             single<EpisodeAccess> {
                 val auth = get<AuthRepository>()
                 EpisodeAccess { auth.session.map { it?.has(VIDEO_FEATURE) == true }.distinctUntilChanged() }
+            }
+            // Safe mode (the account's `showAdult`, off by default): the catalog filters titles read on the device by the
+            // same rule as the server, without knowing the auth slice. Signed out = safe.
+            single<ContentPolicy> {
+                val auth = get<AuthRepository>()
+                ContentPolicy { auth.session.map { it?.showAdult == true }.distinctUntilChanged() }
             }
             // What a run would cost, from the account's credits wallet (a server without credits: no quote).
             single<RunQuotes> {

@@ -481,6 +481,15 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
 - `/auth/me` (`UserDto`) reads both server generations: `displayName`/`roleName` (v1) and `name`/`role` (unified API),
   plus `isSuperAdmin`, `permissions`, `features`, `emailVerified`. `Session.has(feature)`: a super-admin has every
   feature. `Session.isCreator` = `titles:create`.
+- Safe mode (per account, on by default): `showAdult` on `/auth/me`, switched in Settings › Preferences (`PreferencesViewModel`:
+  on applies at once; off asks "I'm 18 or older" first, then `PUT api/v1/settings/content {showAdult, confirmAdult}`;
+  online only, never queued). Ratings: `ContentRating` (`core/common`: `safe | suggestive | erotica | pornographic`,
+  null = unknown); the rule `ContentRating.shown`: safe mode shows only `safe` (unknown hidden too). The server filters
+  what it serves; the device applies the same rule to titles read on the device: `RulesSource` reads
+  `catalog.item.contentRating` (mapped by the manifest's `ratings.map`, a value off the scale and unmapped = unknown;
+  nothing read = `ratings.default`), stored in `title.content_rating` (catalog `3.sqm`), and `CatalogViewModel` filters
+  listings and search through the `ContentPolicy` port (wired in `shared` to the session; signed out = safe) with one
+  line when titles were hidden (`safeNote`). A manifest without ratings has every title unknown, so hidden in safe mode.
 - `video` gates episodes: the `EpisodeAccess` port (episodes domain, wired in `shared` to the session) turns the
   episode card into "Episodes are coming soon." with no action (`EpisodeUiState.comingSoon`); a server answer
   `FEATURE_DISABLED` / `FEATURE_COMING_SOON` does the same. The server checks every call again.

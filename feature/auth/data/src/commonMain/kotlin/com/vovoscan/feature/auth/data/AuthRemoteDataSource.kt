@@ -10,6 +10,7 @@ import io.ktor.client.request.delete
 import io.ktor.client.request.get
 import io.ktor.client.request.patch
 import io.ktor.client.request.post
+import io.ktor.client.request.put
 import io.ktor.client.request.setBody
 import io.ktor.http.ContentType
 import io.ktor.http.contentType
@@ -41,6 +42,8 @@ data class UserDto(
     val onboarding: OnboardingDto? = null,
     val deletion: DeletionDto? = null,
     val hasPassword: Boolean = true,
+    /** Safe mode off (`false` on servers without it). */
+    val showAdult: Boolean = false,
 ) {
     val shownName: String get() = displayName.ifBlank { name }
     val roleLabel: String get() = roleName.ifBlank { role }
@@ -158,6 +161,8 @@ interface AuthRemoteDataSource {
     suspend fun scheduleDeletion(password: String): AppResult<DeletionDto>
 
     suspend fun cancelDeletion(): AppResult<Unit>
+
+    suspend fun putContentSettings(showAdult: Boolean): AppResult<ContentSettingsDto>
 }
 
 /** Sign-up fields; the password is never printed. */
@@ -253,4 +258,25 @@ class KtorAuthRemoteDataSource(
             }.map { it.data }
 
     override suspend fun cancelDeletion(): AppResult<Unit> = http.apiCallUnit { delete("api/v1/me/deletion") }
+
+    override suspend fun putContentSettings(showAdult: Boolean): AppResult<ContentSettingsDto> =
+        http
+            .apiCall<ApiData<ContentSettingsDto>> {
+                put("api/v1/settings/content") {
+                    contentType(ContentType.Application.Json)
+                    // Turning safe mode off is the account's own confirmed choice (the switch asks first).
+                    setBody(ContentSettingsBody(showAdult, confirmAdult = showAdult))
+                }
+            }.map { it.data }
 }
+
+@Serializable
+data class ContentSettingsDto(
+    val showAdult: Boolean = false,
+)
+
+@Serializable
+internal data class ContentSettingsBody(
+    val showAdult: Boolean,
+    val confirmAdult: Boolean,
+)

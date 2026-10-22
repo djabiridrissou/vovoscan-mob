@@ -141,6 +141,14 @@ class AuthRepositoryImpl(
         return result
     }
 
+    override suspend fun setShowAdult(on: Boolean): AppResult<Session> {
+        val user = local.user() ?: return AppResult.Err(AppError.Unauthorized)
+        return when (val result = remote.putContentSettings(on)) {
+            is AppResult.Ok -> AppResult.Ok(keepUser(user.copy(showAdult = result.value.showAdult)))
+            is AppResult.Err -> result
+        }
+    }
+
     private suspend fun AppResult<SessionDto>.keep(): AppResult<Session> {
         if (this is AppResult.Ok) {
             local.save(value)
@@ -222,4 +230,5 @@ internal fun UserDto.toDomain() =
         onboardingDue = onboarding?.due == true,
         deletionScheduledAtMillis = deletion?.scheduledFor?.let(::parseIsoMillis),
         hasPassword = hasPassword,
+        showAdult = showAdult,
     )

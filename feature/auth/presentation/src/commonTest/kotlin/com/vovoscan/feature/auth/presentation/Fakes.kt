@@ -126,6 +126,16 @@ internal class FakeAuth(
         return AppResult.Ok(Unit)
     }
 
+    val showAdultCalls = mutableListOf<Boolean>()
+
+    override suspend fun setShowAdult(on: Boolean): AppResult<Session> {
+        accountError?.let { return AppResult.Err(it) }
+        showAdultCalls += on
+        val session = current.value?.copy(showAdult = on) ?: return AppResult.Err(AppError.Unauthorized)
+        current.value = session
+        return AppResult.Ok(session)
+    }
+
     companion object {
         /** 2026-11-21T14:03:00Z. */
         const val DELETION_AT = 1_795_269_780_000L

@@ -28,6 +28,8 @@ data class Session(
     val deletionScheduledAtMillis: Long? = null,
     /** False for an account that only signs in by link: password change asks for none. */
     val hasPassword: Boolean = true,
+    /** Safe mode off: titles for adults (and unrated ones) are shown. Off by default; never on without the account's say. */
+    val showAdult: Boolean = false,
 ) {
     fun can(permission: String): Boolean = permission in permissions || "*" in permissions
 

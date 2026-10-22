@@ -3,6 +3,7 @@ package com.vovoscan.feature.catalog.data
 import app.cash.sqldelight.coroutines.asFlow
 import app.cash.sqldelight.coroutines.mapToList
 import app.cash.sqldelight.coroutines.mapToOneOrNull
+import com.vovoscan.core.common.ContentRating
 import com.vovoscan.feature.catalog.data.db.CatalogDatabase
 import com.vovoscan.feature.catalog.domain.CatalogFilter
 import com.vovoscan.feature.catalog.domain.Chapter
@@ -96,8 +97,8 @@ class SqlCatalogLocalDataSource(
         categoryId: String?,
     ): Flow<List<ListedTitle>> =
         queries
-            .listingTitles(sourceKey, listing(categoryId)) { key, id, name, cover, kind, format, status, page ->
-                ListedTitle(summary(key, id, name, cover, kind, format, status), page.toInt())
+            .listingTitles(sourceKey, listing(categoryId)) { key, id, name, cover, kind, format, status, rating, page ->
+                ListedTitle(summary(key, id, name, cover, kind, format, status, rating), page.toInt())
             }.asFlow()
             .mapToList(io)
 
@@ -207,7 +208,17 @@ class SqlCatalogLocalDataSource(
         ) { titles, chapters ->
             titles.firstOrNull()?.let { title ->
                 TitleDetail(
-                    summary = summary(title.source_key, title.id, title.name, title.cover_url, title.kind, title.format, title.status),
+                    summary =
+                        summary(
+                            title.source_key,
+                            title.id,
+                            title.name,
+                            title.cover_url,
+                            title.kind,
+                            title.format,
+                            title.status,
+                            title.content_rating,
+                        ),
                     synopsis = title.description.orEmpty(),
                     authors = title.authors.splitList(),
                     genres = title.genres.splitList(),
@@ -221,7 +232,10 @@ class SqlCatalogLocalDataSource(
         detail: TitleDetailDto,
     ) = withContext(io) {
         queries.transaction {
-            upsertSummary(sourceKey, TitleSummaryDto(detail.id, detail.name, detail.coverUrl, detail.kind, detail.format, detail.status))
+            upsertSummary(
+                sourceKey,
+                TitleSummaryDto(detail.id, detail.name, detail.coverUrl, detail.kind, detail.format, detail.status, detail.contentRating),
+            )
             queries.updateDetail(detail.description, detail.authors.joinList(), detail.genres.joinList(), sourceKey, detail.id)
             queries.deleteChaptersOf(sourceKey, detail.id)
             detail.chapters.forEach {
@@ -257,8 +271,8 @@ class SqlCatalogLocalDataSource(
         sourceKey: String,
         it: TitleSummaryDto,
     ) {
-        queries.insertSummary(sourceKey, it.id, it.name, it.coverUrl, it.kind, it.format, it.status)
-        queries.updateSummary(it.name, it.coverUrl, it.kind, it.format, it.status, sourceKey, it.id)
+        queries.insertSummary(sourceKey, it.id, it.name, it.coverUrl, it.kind, it.format, it.status, it.contentRating)
+        queries.updateSummary(it.name, it.coverUrl, it.kind, it.format, it.status, it.contentRating, sourceKey, it.id)
     }
 
     private companion object {
@@ -285,7 +299,26 @@ private fun summary(
     kind: String,
     format: String,
     status: String,
-) = TitleSummary(sourceKey, id, name, coverUrl, ContentKind.fromApi(kind), ReadingFormat.fromApi(format), status)
+    contentRating: String?,
+) = TitleSummary(
+    sourceKey,
+    id,
+    name,
+    coverUrl,
+    ContentKind.fromApi(kind),
+    ReadingFormat.fromApi(format),
+    status,
+    ContentRating.fromApi(contentRating),
+)
 
 internal fun TitleSummaryDto.toDomain(sourceKey: String) =
-    TitleSummary(sourceKey, id, name, coverUrl, ContentKind.fromApi(kind), ReadingFormat.fromApi(format), status)
+    TitleSummary(
+        sourceKey,
+        id,
+        name,
+        coverUrl,
+        ContentKind.fromApi(kind),
+        ReadingFormat.fromApi(format),
+        status,
+        ContentRating.fromApi(contentRating),
+    )

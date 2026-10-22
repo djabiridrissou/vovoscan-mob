@@ -18,6 +18,8 @@ data class RulesTitleSummary(
     val kind: String,
     val format: String,
     val status: String,
+    /** `safe`, `suggestive`, `erotica`, `pornographic`, or null when the source doesn't say (unknown). */
+    val contentRating: String? = null,
 )
 
 data class RulesPage(
@@ -173,7 +175,27 @@ class RulesSource(
             kind = kind,
             format = str(Rules.evaluate(ctx, item["format"])) ?: defaultFormat(kind),
             status = str(Rules.evaluate(ctx, item["status"])) ?: "ongoing",
+            contentRating = rating(str(Rules.evaluate(ctx, item["contentRating"]))),
         )
+    }
+
+    /**
+     * The value the item rule read, mapped to the shared scale by the manifest's `ratings.map` (the source's own words,
+     * "R18" → "pornographic"), else taken as it is when it already is one, else unknown (null); nothing read:
+     * `ratings.default`, else unknown.
+     */
+    private fun rating(read: String?): String? {
+        val ratings = json["ratings"] as? JsonObject
+        val scale = setOf("safe", "suggestive", "erotica", "pornographic")
+        val value = read?.trim()?.takeIf { it.isNotEmpty() }
+        val mapped =
+            value?.let { v ->
+                (ratings?.get("map") as? JsonObject)?.get(v)?.jsonPrimitive?.contentOrNull
+                    ?: v.lowercase().takeIf { it in scale }
+            }
+        // A value the manifest doesn't map stays unknown: the default is only for titles the site doesn't rate.
+        val rating = if (value != null) mapped else ratings?.get("default")?.jsonPrimitive?.contentOrNull
+        return rating?.lowercase()?.takeIf { it in scale }
     }
 
     /**

@@ -29,6 +29,9 @@ struct CatalogView: View {
                     if let note = model.state.categoryNote {
                         Text(note).font(.brandBody(13)).foregroundStyle(Color.brandMuted)
                     }
+                    if let note = model.state.safeNote {
+                        Text(note).font(.brandBody(13)).foregroundStyle(Color.brandMuted)
+                    }
                     IntentField(label: L("common.search"), text: $query, value: model.state.query) { model.send(CatalogIntentQuery(value: $0)) }
                     if let notice = model.state.offlineNotice {
                         OfflineNotice(text: notice, onRetry: model.state.canRetry ? { model.send(CatalogIntentRefresh.shared) } : nil)
