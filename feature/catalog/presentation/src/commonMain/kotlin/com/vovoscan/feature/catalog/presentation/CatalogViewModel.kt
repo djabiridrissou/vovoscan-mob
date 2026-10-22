@@ -392,9 +392,16 @@ class CatalogViewModel(
         } else {
             combine(
                 list.map { reading ->
-                    repository.observeListing(reading.source.key, reading.categoryId).map { titles ->
-                        titles.filter { reading.keeps(it.title) }
-                    }
+                    repository
+                        .observeListing(reading.source.key, reading.categoryId)
+                        // Filed by format: what the server learned of these titles (asked once each) before keeping them.
+                        .onEach { titles ->
+                            if (reading.format !=
+                                null
+                            ) {
+                                viewModelScope.launch { repository.learnFormats(reading.source.key, titles.map { it.title.id }) }
+                            }
+                        }.map { titles -> titles.filter { reading.keeps(it.title) } }
                 },
             ) { listings -> listings.toList() }.combine(seed) { listings, s -> CatalogMerge.merge(listings, s) }
         }
@@ -457,7 +464,16 @@ class CatalogViewModel(
                         .map { reading ->
                             async {
                                 repository.search(reading.source.key, query.trim(), reading.categoryId).let { found ->
-                                    found.copy(titles = found.titles.filter(reading::keeps))
+                                    val learned =
+                                        if (reading.format ==
+                                            null
+                                        ) {
+                                            emptyMap()
+                                        } else {
+                                            repository.learnFormats(reading.source.key, found.titles.map { it.id })
+                                        }
+                                    val titles = found.titles.map { t -> learned[t.id]?.let { t.copy(format = it) } ?: t }
+                                    found.copy(titles = titles.filter(reading::keeps))
                                 }
                             }
                         }.awaitAll()

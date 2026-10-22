@@ -233,9 +233,11 @@ class CatalogViewModelTest {
                     remote["vovoscan" to null] = listOf(listOf(title("vovoscan", "v1", ReadingFormat.Webtoon)))
                     remote["vovoscan" to "manga"] = listOf(listOf(title("vovoscan", "v2", ReadingFormat.Manga)))
                     remote["vovoscan" to "webtoon"] = listOf(listOf(title("vovoscan", "v1", ReadingFormat.Webtoon)))
-                    // A source with no categories: a manga (its catalog's default) and a strip the server learned.
+                    // A source with no categories, whose catalog names no format (manga by default): one title is a strip
+                    // the server learned from imported pages.
                     remote["inkwell" to null] =
-                        listOf(listOf(title("inkwell", "i1", ReadingFormat.Manga), title("inkwell", "i2", ReadingFormat.Webtoon)))
+                        listOf(listOf(title("inkwell", "i1", ReadingFormat.Manga), title("inkwell", "i2", ReadingFormat.Manga)))
+                    serverFormats["inkwell/i2"] = ReadingFormat.Webtoon
                     categories["vovoscan"] =
                         listOf(
                             SourceCategory("manga", "Manga", ReadingFormat.Manga),
@@ -246,6 +248,8 @@ class CatalogViewModelTest {
             val vm = CatalogViewModel(repository)
             vm.onIntent(CatalogIntent.SourcesChanged(listOf(vovoscan, inkwell)))
             advanceUntilIdle()
+            // Browsing everything never tells the server what a source on the device lists.
+            assertEquals(emptyList(), repository.formatsAsked)
 
             vm.onIntent(CatalogIntent.SelectCategory("Manga"))
             advanceUntilIdle()
@@ -253,9 +257,13 @@ class CatalogViewModelTest {
             assertNull(vm.state.value.categoryNote)
             assertEquals(2, vm.state.value.sourcesRead)
 
+            // Only the titles of the source filed by format were asked, once each.
+            assertEquals(listOf("inkwell" to listOf("i1", "i2")), repository.formatsAsked)
+
             vm.onIntent(CatalogIntent.SelectCategory("Webtoon"))
             advanceUntilIdle()
             assertEquals(setOf("v1", "i2"), ids(vm).toSet())
+            assertEquals(1, repository.formatsAsked.size)
 
             // A curated category stands for no format: a source without it is left out, as before.
             vm.onIntent(CatalogIntent.SelectCategory("Staff picks"))

@@ -168,6 +168,16 @@ interface CatalogRepository {
     /** The source's categories as last read (none until then, or when it has none). */
     fun observeCategories(sourceKey: String): Flow<List<SourceCategory>>
 
+    /**
+     * The formats the server learned for these titles of a source read on the device whose catalog names none (else
+     * manga), asked only while a format filter needs them: browsing a source never tells the server what is listed.
+     * Asked once per title; the listing shows them, and the answer gives those known for [ids].
+     */
+    suspend fun learnFormats(
+        sourceKey: String,
+        ids: List<String>,
+    ): Map<String, ReadingFormat> = emptyMap()
+
     suspend fun refreshCategories(sourceKey: String): AppResult<Unit>
 
     fun observeFilter(): Flow<CatalogFilter>

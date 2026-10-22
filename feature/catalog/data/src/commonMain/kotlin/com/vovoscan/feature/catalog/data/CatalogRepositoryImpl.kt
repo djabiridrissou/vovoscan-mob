@@ -14,6 +14,8 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /** Stale-while-revalidate: the local source shows at once, the remote source replaces it. */
 class CatalogRepositoryImpl(
@@ -23,7 +25,29 @@ class CatalogRepositoryImpl(
     override fun observeListing(
         sourceKey: String,
         categoryId: String?,
-    ): Flow<List<ListedTitle>> = local.observeListing(sourceKey, categoryId)
+    ): Flow<List<ListedTitle>> =
+        local.observeListing(sourceKey, categoryId).combine(learned) { titles, all ->
+            val known = all[sourceKey].orEmpty()
+            if (known.isEmpty()) titles else titles.map { t -> known[t.title.id]?.let { t.copy(title = t.title.copy(format = it)) } ?: t }
+        }
+
+    /** Formats learned from the server this run, per source (kept in memory: they only serve a filter). */
+    private val learned = MutableStateFlow<Map<String, Map<String, ReadingFormat>>>(emptyMap())
+    private val asked = mutableMapOf<String, MutableSet<String>>()
+    private val askedLock = Mutex()
+
+    override suspend fun learnFormats(
+        sourceKey: String,
+        ids: List<String>,
+    ): Map<String, ReadingFormat> {
+        val fresh = askedLock.withLock { asked.getOrPut(sourceKey) { mutableSetOf() }.let { seen -> ids.filter(seen::add) } }
+        if (fresh.isNotEmpty()) {
+            val found = remote.learnedFormats(sourceKey, fresh).map { (id, f) -> id to ReadingFormat.fromApi(f) }
+            if (found.isNotEmpty()) learned.update { all -> all + (sourceKey to all[sourceKey].orEmpty() + found) }
+        }
+        val known = learned.value[sourceKey].orEmpty()
+        return ids.mapNotNull { id -> known[id]?.let { id to it } }.toMap()
+    }
 
     override suspend fun refreshListing(
         sourceKey: String,
@@ -50,7 +74,7 @@ class CatalogRepositoryImpl(
     ): SearchResult =
         when (val result = remote.search(sourceKey, query.trim(), categoryId)) {
             is AppResult.Ok -> {
-                val items = withLearnedFormats(sourceKey, result.value.items)
+                val items = result.value.items
                 local.saveSummaries(sourceKey, items)
                 SearchResult(items.map { it.toDomain(sourceKey) }, offline = false)
             }
@@ -107,7 +131,11 @@ class CatalogRepositoryImpl(
 
     override suspend fun clearLocal() = local.clear()
 
-    override suspend fun clearSource(sourceKey: String) = local.clearSource(sourceKey)
+    override suspend fun clearSource(sourceKey: String) {
+        learned.update { it - sourceKey }
+        askedLock.withLock { asked.remove(sourceKey) }
+        local.clearSource(sourceKey)
+    }
 
     private suspend fun fetchPage(
         sourceKey: String,
@@ -116,17 +144,7 @@ class CatalogRepositoryImpl(
     ): AppResult<Boolean> =
         remote
             .titles(sourceKey, page, categoryId)
-            .map { it.copy(items = withLearnedFormats(sourceKey, it.items)) }
             .also {
                 if (it is AppResult.Ok) local.saveCatalogPage(sourceKey, it.value, categoryId)
             }.map { it.hasNext }
-
-    /** A source whose catalog names no format: the formats the server learned from imports replace the default (manga). */
-    private suspend fun withLearnedFormats(
-        sourceKey: String,
-        items: List<TitleSummaryDto>,
-    ): List<TitleSummaryDto> {
-        val learned = remote.learnedFormats(sourceKey, items.map { it.id })
-        return if (learned.isEmpty()) items else items.map { item -> learned[item.id]?.let { item.copy(format = it) } ?: item }
-    }
 }

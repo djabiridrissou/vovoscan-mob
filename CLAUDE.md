@@ -121,7 +121,9 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
 - Format filter for sources: our categories carry `format` (`manga`, `webtoon`, `text`); a rule-based source without
   the chosen category is read unfiltered and its titles kept by format (`CatalogViewModel` readings); a manifest
   without `catalog.item.format` (`RulesSource.declaresFormat`) asks `GET api/v1/source-reader/{key}/formats?ref=…`
-  (`learnedFormats`, 100 refs a call), else manga. Category formats are kept in memory (no schema change).
+  (`CatalogRepository.learnFormats`, 100 refs a call, each title once), else manga: only while such a filter needs it,
+  so browsing a source never tells the server what it lists. Category and learned formats are kept in memory (no
+  schema change).
 - Tests: `core/sources/src/commonTest/.../Fixtures.kt` copies the manifests (change them with `vovo-plugin`).
 - Third-party sources (user plugins, spec v1): added from a link (single manifest or `repo.json`, GitHub pages
   resolved to raw files) or a `.vovo` file, private to the user, not reviewed by vovoscan. `core/sources` has the

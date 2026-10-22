@@ -1,5 +1,6 @@
 package com.vovoscan.core.common
 
+import com.vovoscan.core.common.i18n.t
 import kotlinx.coroutines.delay
 
 /** Our own catalog's source key: its chapters are already on the server. */
@@ -98,7 +99,7 @@ suspend fun ChapterImports.bringIn(
         onUpdate(current)
         when (current.status) {
             ImportStatus.Ready -> return AppResult.Ok(current)
-            ImportStatus.Failed -> return AppResult.Err(AppError.Rejected(current.error ?: IMPORT_FAILED, ""))
+            ImportStatus.Failed -> return AppResult.Err(failed(current.error ?: IMPORT_FAILED))
             ImportStatus.Fetching -> Unit
         }
         if (waited >= ChapterImports.MAX_WAIT_MS) return AppResult.Err(AppError.Rejected(IMPORT_SLOW, ""))
@@ -118,3 +119,10 @@ const val IMPORT_FAILED = "IMPORT_FAILED"
 
 /** The copy is still running after [ChapterImports.MAX_WAIT_MS]. */
 const val IMPORT_SLOW = "IMPORT_SLOW"
+
+/**
+ * A fetch the server gave up on. `HOST_NOT_ALLOWED` names no host here (the device's own refusal does, so that code
+ * has no catalogue line of its own): the copy says what happened.
+ */
+private fun failed(code: String): AppError =
+    AppError.Rejected(code, if (code == "HOST_NOT_ALLOWED") t("errors.importHostNotAllowed") else "")

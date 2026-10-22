@@ -63,7 +63,9 @@ class ChapterImportsTest {
                     found = chapter(ImportStatus.Failed, error = "NO_PAGES"),
                     states = ArrayDeque(listOf(AppResult.Ok(chapter(ImportStatus.Failed, error = "HOST_NOT_ALLOWED")))),
                 )
-            assertEquals(AppResult.Err(AppError.Rejected("HOST_NOT_ALLOWED", "")), fake.bringIn(unit))
+            val failed = (fake.bringIn(unit) as AppResult.Err).error
+            assertEquals("HOST_NOT_ALLOWED", (failed as AppError.Rejected).code)
+            assertEquals("The source sent its pages from a site it doesn’t declare.", failed.userMessage())
             assertEquals(1, fake.imports)
         }
 
