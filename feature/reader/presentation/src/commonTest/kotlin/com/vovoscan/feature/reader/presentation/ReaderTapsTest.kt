@@ -284,7 +284,7 @@ class ReaderTapsTest {
                     .single { it.selected }
                     .mode == ReadingMode.PagedVertical,
             )
-            assertEquals("Default for this series: Long strip.", vm.state.value.settings.seriesHint)
+            assertEquals("Default for this series: Continuous.", vm.state.value.settings.seriesHint)
             // The format default applies once the series goes back to it.
             vm.onIntent(ReaderIntent.SetDefaultMode(ComicFormat.Webtoon, ReadingMode.LongStripGaps))
             vm.onIntent(ReaderIntent.ResetSeriesMode)
@@ -399,7 +399,7 @@ class ReaderTapsTest {
             val vm = reader()
             val sheet = vm.state.value.settings
             assertEquals(
-                listOf("Right to left", "Left to right", "Vertical pages", "Long strip", "Long strip with gaps"),
+                listOf("Right to left", "Left to right", "Vertical pages", "Continuous", "Continuous with gaps"),
                 sheet.seriesModes.map { it.label },
             )
             assertEquals(TapLayout.Default, sheet.layouts.single { it.selected }.layout)

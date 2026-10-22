@@ -10,7 +10,9 @@ struct PlayerRoute: Hashable, Identifiable {
     let nextChapterId: String?
     /// "" = the original; else the language of the episode the card showed.
     var language: String = ""
-    var id: String { "\(chapterId)~\(language)" }
+    /// From the reader ("Watch from here"): the first beat of this page.
+    var startPage: Int? = nil
+    var id: String { "\(chapterId)~\(language)@\(startPage ?? -1)" }
 }
 
 /// The full-screen episode player: a 9:16 stage (letterboxed on other screens) redrawn at the display's rate by a
@@ -30,7 +32,7 @@ struct PlayerView: View {
     let onNextChapter: (String) -> Void
 
     init(route: PlayerRoute, onNextChapter: @escaping (String) -> Void) {
-        _model = StateObject(wrappedValue: PlayerModel(chapterId: route.chapterId, nextChapterId: route.nextChapterId, language: route.language))
+        _model = StateObject(wrappedValue: PlayerModel(chapterId: route.chapterId, nextChapterId: route.nextChapterId, language: route.language, startPage: route.startPage))
         self.onNextChapter = onNextChapter
     }
 

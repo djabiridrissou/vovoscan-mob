@@ -37,7 +37,7 @@ data class ScrollOption(
 /** The reader settings sheet, ready to draw: every choice with its label and whether it is the current one. */
 data class ReaderSettingsSheet(
     val seriesModes: List<ModeOption>,
-    /** "Default for this series: Long strip." */
+    /** "Default for this series: Continuous." */
     val seriesHint: String,
     /** The series has its own mode: "Reset to default" is offered. */
     val canResetSeries: Boolean,

@@ -40,6 +40,8 @@ targets:
           UIImageRespectsSafeAreaInsets: true
         UIStatusBarStyle: UIStatusBarStyleLightContent
         UIUserInterfaceStyle: Dark
+        # ProMotion: the reader's spring and the player run at up to 120 Hz.
+        CADisableMinimumFrameDurationOnPhone: true
         UIAppFonts: [DelaGothicOne-Regular.ttf, SpaceGrotesk-Regular.ttf, SpaceGrotesk-Medium.ttf, SpaceGrotesk-Bold.ttf]
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
         # The share sheet's "Save Video" for an episode's MP4 (adds to Photos, never reads it).

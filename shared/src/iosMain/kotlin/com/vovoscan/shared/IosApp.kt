@@ -204,6 +204,16 @@ class ViewModels : KoinComponent {
     ): PlayerViewModel =
         remember("player:$chapterId~$language") { get<PlayerViewModel> { parametersOf(chapterId, nextChapterId, language) } }
 
+    /** The player opened from the reader ("Watch from here"): the episode in [language], from the first beat of [startPage]. */
+    fun playerFrom(
+        chapterId: String,
+        language: String,
+        startPage: Int,
+    ): PlayerViewModel =
+        remember("player:$chapterId~$language@$startPage") {
+            get<PlayerViewModel> { parametersOf(chapterId, null, language, startPage) }
+        }
+
     fun clear() = store.clear()
 
     @Suppress("UNCHECKED_CAST")

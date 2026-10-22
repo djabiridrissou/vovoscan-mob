@@ -446,8 +446,12 @@ final class PlayerModel: ObservableObject {
     private let owner = ViewModels()
     let viewModel: PlayerViewModel
 
-    init(chapterId: String, nextChapterId: String?, language: String = "") {
-        viewModel = owner.player(chapterId: chapterId, nextChapterId: nextChapterId, language: language)
+    init(chapterId: String, nextChapterId: String?, language: String = "", startPage: Int? = nil) {
+        if let startPage {
+            viewModel = owner.playerFrom(chapterId: chapterId, language: language, startPage: Int32(startPage))
+        } else {
+            viewModel = owner.player(chapterId: chapterId, nextChapterId: nextChapterId, language: language)
+        }
         state = viewModel.state.value
     }
 
