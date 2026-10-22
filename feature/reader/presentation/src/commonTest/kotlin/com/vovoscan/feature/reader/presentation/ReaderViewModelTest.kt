@@ -8,6 +8,7 @@ import com.vovoscan.feature.reader.domain.BookSection
 import com.vovoscan.feature.reader.domain.ChapterHeadings
 import com.vovoscan.feature.reader.domain.ReaderChapter
 import com.vovoscan.feature.reader.domain.ReaderPage
+import com.vovoscan.feature.reader.domain.ReaderPreferences
 import com.vovoscan.feature.reader.domain.ReaderRepository
 import com.vovoscan.feature.reader.domain.ReadingMode
 import kotlinx.coroutines.Dispatchers
@@ -24,6 +25,8 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -116,7 +119,7 @@ class ReaderViewModelTest {
                     "c1",
                     startPage = 3,
                     FakeReader(comic, AppResult.Ok(Unit)),
-                    FakeSettings(),
+                    FakeSettings(ReaderPreferences(mangaMode = ReadingMode.PagedRightToLeft)),
                     noHeadings,
                 ) { _, _, _, _ -> }
             advanceUntilIdle()
@@ -173,6 +176,144 @@ class ReaderViewModelTest {
                 vm.state.value.sectionDocument!!
                     .contains("<p>Section 0</p>"),
             )
+        }
+
+    @Test
+    fun pullingPastTheEndOfASectionOpensTheNext() =
+        runTest(dispatcher) {
+            val vm =
+                ReaderViewModel(
+                    "vovoscan",
+                    "t9",
+                    "b1",
+                    startPage = 0,
+                    FakeReader(book, AppResult.Ok(Unit)),
+                    FakeSettings(),
+                    noHeadings,
+                ) { _, _, _, _ -> }
+            advanceUntilIdle()
+            val threshold = ReaderUiState.PULL_THRESHOLD
+            // A bounce shows nothing; the hint grows with the pull, then says to let go.
+            assertNull(vm.state.value.pullHint(0.005f))
+            val half = vm.state.value.pullHint(threshold / 2)!!
+            assertEquals(
+                PullHint(forward = true, progress = 0.5f, armed = false, label = "Pull for the next section", enabled = true),
+                half,
+            )
+            val past = vm.state.value.pullHint(threshold * 1.5f)!!
+            assertEquals("Release for the next section", past.label)
+            assertTrue(past.armed)
+            assertEquals(1f, past.progress)
+            // At the top of the first section, and no previous part.
+            assertEquals(
+                PullHint(forward = false, progress = 1f, armed = false, label = "This is the first section.", enabled = false),
+                vm.state.value.pullHint(-threshold * 2),
+            )
+            // Let go before the threshold: nothing; past it: the next section, from its top.
+            vm.onIntent(ReaderIntent.PullReleased(threshold * 0.8f))
+            advanceUntilIdle()
+            assertEquals(0, vm.state.value.currentIndex)
+            vm.onIntent(ReaderIntent.PullReleased(threshold * 1.2f))
+            advanceUntilIdle()
+            assertEquals(1, vm.state.value.currentIndex)
+            assertFalse(vm.state.value.sectionFromEnd)
+            assertTrue(
+                vm.state.value.sectionDocument!!
+                    .contains("<p>Section 1</p>"),
+            )
+            // The last section of a book in several parts: the next part (the buttons' target).
+            assertEquals(
+                "Release for the next part",
+                vm.state.value
+                    .pullHint(threshold)!!
+                    .label,
+            )
+            assertEquals(
+                "Release for the previous section",
+                vm.state.value
+                    .pullHint(-threshold)!!
+                    .label,
+            )
+            vm.onIntent(ReaderIntent.PullReleased(-threshold))
+            advanceUntilIdle()
+            assertEquals(0, vm.state.value.currentIndex)
+            // Going back: the previous section from its end.
+            assertTrue(vm.state.value.sectionFromEnd)
+            vm.onIntent(ReaderIntent.PullReleased(threshold))
+            // While the section loads, a pull does nothing.
+            vm.onIntent(ReaderIntent.PullReleased(threshold))
+            assertEquals(1, vm.state.value.currentIndex)
+            advanceUntilIdle()
+            vm.onIntent(ReaderIntent.PullReleased(threshold))
+            assertEquals(ReaderCommand.OpenChapter(1, "c2", 0), vm.state.value.command)
+        }
+
+    @Test
+    fun pullingAtTheEdgesOfABookInOnePart() =
+        runTest(dispatcher) {
+            val single = book.copy(previousChapterId = "b0", nextChapterId = null)
+            val vm =
+                ReaderViewModel(
+                    "vovoscan",
+                    "t9",
+                    "b1",
+                    startPage = 1,
+                    FakeReader(single, AppResult.Ok(Unit)),
+                    FakeSettings(),
+                    noHeadings,
+                ) { _, _, _, _ -> }
+            advanceUntilIdle()
+            val threshold = ReaderUiState.PULL_THRESHOLD
+            val last = vm.state.value.pullHint(threshold)!!
+            assertEquals("This is the last section.", last.label)
+            assertFalse(last.armed)
+            vm.onIntent(ReaderIntent.PullReleased(threshold * 2))
+            advanceUntilIdle()
+            assertNull(vm.state.value.command)
+            assertEquals(1, vm.state.value.currentIndex)
+            vm.onIntent(ReaderIntent.Previous)
+            advanceUntilIdle()
+            // The button opens a section at its top; at the first section, a pull down goes to the previous part's end.
+            assertFalse(vm.state.value.sectionFromEnd)
+            assertEquals(
+                "Pull for the previous part",
+                vm.state.value
+                    .pullHint(-threshold / 2)!!
+                    .label,
+            )
+            vm.onIntent(ReaderIntent.PullReleased(-threshold))
+            assertEquals(ReaderCommand.OpenChapter(1, "b0", ReaderViewModel.START_AT_END), vm.state.value.command)
+        }
+
+    @Test
+    fun aBookOpenedFromItsEnd() =
+        runTest(dispatcher) {
+            val vm =
+                ReaderViewModel(
+                    "vovoscan",
+                    "t9",
+                    "b1",
+                    startPage = ReaderViewModel.START_AT_END,
+                    FakeReader(book, AppResult.Ok(Unit)),
+                    FakeSettings(),
+                    noHeadings,
+                ) { _, _, _, _ -> }
+            advanceUntilIdle()
+            assertEquals("Section 2 / 2", vm.state.value.positionLabel)
+            assertTrue(vm.state.value.sectionFromEnd)
+            // Comics have no pull.
+            val comicReader =
+                ReaderViewModel(
+                    "vovoscan",
+                    "t1",
+                    "c1",
+                    0,
+                    FakeReader(comic, AppResult.Ok(Unit)),
+                    FakeSettings(),
+                    noHeadings,
+                ) { _, _, _, _ -> }
+            advanceUntilIdle()
+            assertNull(comicReader.state.value.pullHint(1f))
         }
 
     @Test

@@ -1,9 +1,5 @@
 package com.vovoscan.app.ui.reader
 
-import android.annotation.SuppressLint
-import android.webkit.WebResourceRequest
-import android.webkit.WebView
-import android.webkit.WebViewClient
 import androidx.activity.compose.LocalActivity
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animate
@@ -14,8 +10,10 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.ScrollableState
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.interaction.DragInteraction
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -36,7 +34,9 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.VerticalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -66,7 +66,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
@@ -77,6 +76,7 @@ import com.vovoscan.app.ui.common.GhostButton
 import com.vovoscan.app.ui.common.PrimaryButton
 import com.vovoscan.app.ui.theme.Brand
 import com.vovoscan.feature.reader.domain.ReaderPage
+import com.vovoscan.feature.reader.domain.TallPages
 import com.vovoscan.feature.reader.domain.TapAction
 import com.vovoscan.feature.reader.presentation.ReaderCommand
 import com.vovoscan.feature.reader.presentation.ReaderIntent
@@ -85,6 +85,7 @@ import com.vovoscan.feature.reader.presentation.ReaderUiState
 import com.vovoscan.feature.reader.presentation.ReaderViewModel
 import com.vovoscan.feature.reader.presentation.TapOverlay
 import com.vovoscan.feature.reader.presentation.TransitionCard
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
@@ -268,7 +269,11 @@ private fun ComicReader(
     }
 }
 
-/** One page at a time: horizontal (right to left: reversed layout) or vertical. */
+/**
+ * One page at a time: horizontal (right to left: reversed layout) or vertical. A tall page (`TallPages`) is shown
+ * fit to width and scrolls inside its page; the pager takes over at its edges (nested scrolling: the page scrolls
+ * first, what is left of the drag moves the pager).
+ */
 @Composable
 private fun PagedReader(
     state: ReaderUiState,
@@ -277,43 +282,140 @@ private fun PagedReader(
 ) {
     val pager = rememberPagerState(initialPage = state.currentItem) { state.items.size }
     val scope = rememberCoroutineScope()
+    // A tall page asked to show its bottom (going back), until it has.
+    var bottomRequest by remember { mutableStateOf<Int?>(null) }
     LaunchedEffect(pager) {
         snapshotFlow { pager.settledPage }.distinctUntilChanged().collect { onIntent(ReaderIntent.ItemVisible(it)) }
     }
     val command = state.command
     LaunchedEffect(command) {
         if (command is ReaderCommand.GoToItem) {
+            if (command.atBottom) bottomRequest = command.item
             // Its own scope: the animation goes on once the command is cleared.
             scope.launch { if (command.animated) pager.animateScrollToPage(command.item) else pager.scrollToPage(command.item) }
             onIntent(ReaderIntent.CommandHandled(command.seq))
         }
     }
-    val page: @Composable (Int) -> Unit = { index ->
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            when (val item = state.items[index]) {
-                is ReaderItem.Page -> PageImage(item.page, Modifier.fillMaxSize(), ContentScale.Fit, reserve = false)
-                is ReaderItem.Transition -> TransitionCardView(item.card, onIntent, Modifier.fillMaxSize())
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val area = IntSize(constraints.maxWidth, constraints.maxHeight)
+        val page: @Composable (Int) -> Unit = { index ->
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                when (val item = state.items[index]) {
+                    is ReaderItem.Page ->
+                        PagedPage(
+                            item.page,
+                            index,
+                            state,
+                            onIntent,
+                            area,
+                            scrollEnabled,
+                            showBottom = bottomRequest == index,
+                            onBottomShown = { if (bottomRequest == index) bottomRequest = null },
+                        )
+                    is ReaderItem.Transition -> {
+                        if (index == state.currentItem) {
+                            LaunchedEffect(index) { onIntent(ReaderIntent.PageScroll(index, tall = false, atTop = true, atBottom = true)) }
+                        }
+                        TransitionCardView(item.card, onIntent, Modifier.fillMaxSize())
+                    }
+                }
+            }
+        }
+        if (state.pagedHorizontally) {
+            // reverseLayout: the first page is on the right, swiping right moves forward (manga direction).
+            HorizontalPager(
+                state = pager,
+                reverseLayout = state.rightToLeft,
+                beyondViewportPageCount = 1,
+                userScrollEnabled = scrollEnabled,
+                key = { state.items[it].key },
+                modifier = Modifier.fillMaxSize(),
+            ) { page(it) }
+        } else {
+            VerticalPager(
+                state = pager,
+                beyondViewportPageCount = 1,
+                userScrollEnabled = scrollEnabled,
+                key = { state.items[it].key },
+                modifier = Modifier.fillMaxSize(),
+            ) { page(it) }
+        }
+    }
+}
+
+/**
+ * A page of a paged mode: fitted to the screen, or, when tall (`TallPages.fitsWidth`, from its size or, unknown,
+ * the image's once loaded), fit to width and scrolled inside the page. The current page reports its scroll
+ * (`PageScroll`) and runs tap scrolls (`ScrollBy`). Pages before the current one wait at their bottom, pages after
+ * it at their top: swiping back reveals the end of the previous page.
+ */
+@Composable
+private fun PagedPage(
+    page: ReaderPage,
+    index: Int,
+    state: ReaderUiState,
+    onIntent: (ReaderIntent) -> Unit,
+    area: IntSize,
+    scrollEnabled: Boolean,
+    showBottom: Boolean,
+    onBottomShown: () -> Unit,
+) {
+    var loadedRatio by remember(page.url) { mutableStateOf<Float?>(null) }
+    val ratio = if (page.hasSize) page.aspectRatio else loadedRatio
+    val tall = ratio != null && TallPages.fitsWidth(ratio, area.width.toFloat(), area.height.toFloat())
+    val scroll = rememberScrollState()
+    val current = index == state.currentItem
+    var pinBottom by remember { mutableStateOf(index < state.currentItem) }
+    LaunchedEffect(state.currentItem) {
+        when {
+            index < state.currentItem -> pinBottom = true
+            index > state.currentItem -> {
+                pinBottom = false
+                scroll.scrollTo(0)
             }
         }
     }
-    if (state.pagedHorizontally) {
-        // reverseLayout: the first page is on the right, swiping right moves forward (manga direction).
-        HorizontalPager(
-            state = pager,
-            reverseLayout = state.rightToLeft,
-            beyondViewportPageCount = 1,
-            userScrollEnabled = scrollEnabled,
-            key = { state.items[it].key },
-            modifier = Modifier.fillMaxSize(),
-        ) { page(it) }
-    } else {
-        VerticalPager(
-            state = pager,
-            beyondViewportPageCount = 1,
-            userScrollEnabled = scrollEnabled,
-            key = { state.items[it].key },
-            modifier = Modifier.fillMaxSize(),
-        ) { page(it) }
+    LaunchedEffect(showBottom) { if (showBottom) pinBottom = true }
+    // Bottom wanted: once the page is measured (its height may come with the image), until the finger moves it.
+    LaunchedEffect(pinBottom, tall, scroll.maxValue) {
+        if (pinBottom && tall && scroll.maxValue in 1 until Int.MAX_VALUE) {
+            scroll.scrollTo(scroll.maxValue)
+            onBottomShown()
+        }
+    }
+    LaunchedEffect(scroll) {
+        scroll.interactionSource.interactions.collect { if (it is DragInteraction.Start) pinBottom = false }
+    }
+    if (current) {
+        LaunchedEffect(index, scroll) {
+            snapshotFlow { Triple(tall, !tall || !scroll.canScrollBackward, !tall || !scroll.canScrollForward) }
+                .distinctUntilChanged()
+                .collect { (t, top, bottom) -> onIntent(ReaderIntent.PageScroll(index, t, top, bottom)) }
+        }
+        val scope = rememberCoroutineScope()
+        val tapScroll = remember { TapScroll() }
+        val command = state.command
+        LaunchedEffect(command) {
+            if (command is ReaderCommand.ScrollBy) {
+                pinBottom = false
+                tapScroll.run(scope, scroll, command.fraction * area.height)
+                onIntent(ReaderIntent.CommandHandled(command.seq))
+            }
+        }
+    }
+    Box(
+        Modifier
+            .fillMaxSize()
+            .then(if (tall) Modifier.verticalScroll(scroll, enabled = scrollEnabled) else Modifier),
+        contentAlignment = if (tall) Alignment.TopCenter else Alignment.Center,
+    ) {
+        PageImage(
+            page,
+            if (tall) Modifier.fillMaxWidth() else Modifier.fillMaxSize(),
+            if (tall) ContentScale.FillWidth else ContentScale.Fit,
+            reserve = tall,
+            onLoadedRatio = { loadedRatio = it },
+        )
     }
 }
 
@@ -344,27 +446,11 @@ private fun StripReader(
             .distinctUntilChanged()
             .collect { (top, bottom) -> onIntent(ReaderIntent.StripEdges(top, bottom)) }
     }
-    // Taps faster than the animation add up: what the previous one had left to scroll is carried over. A finger
-    // cancels the animation, so nothing is carried after it.
     val tapScroll = remember { TapScroll() }
     val command = state.command
     LaunchedEffect(command) {
         if (command is ReaderCommand.ScrollBy) {
-            val carry = if (tapScroll.job?.isActive == true) tapScroll.left else 0f
-            tapScroll.job?.cancel()
-            val total = carry + command.fraction * list.layoutInfo.viewportSize.height
-            tapScroll.left = total
-            tapScroll.job =
-                scope.launch {
-                    list.scroll {
-                        var done = 0f
-                        animate(0f, total, animationSpec = tween(TAP_SCROLL_MS)) { value, _ ->
-                            scrollBy(value - done)
-                            done = value
-                            tapScroll.left = total - value
-                        }
-                    }
-                }
+            tapScroll.run(scope, list, command.fraction * list.layoutInfo.viewportSize.height)
             onIntent(ReaderIntent.CommandHandled(command.seq))
         }
     }
@@ -449,10 +535,36 @@ private fun TapZonesOverlay(overlay: TapOverlay) {
     }
 }
 
-/** The tap scroll in progress (a strip): its job and the distance it has left. */
+/**
+ * The tap scroll in progress (a strip, or a tall page): its job and the distance it has left. Taps faster than the
+ * animation add up: what the previous one had left to scroll is carried over. A finger cancels the animation, so
+ * nothing is carried after it.
+ */
 private class TapScroll {
     var job: Job? = null
     var left = 0f
+
+    fun run(
+        scope: CoroutineScope,
+        target: ScrollableState,
+        distance: Float,
+    ) {
+        val carry = if (job?.isActive == true) left else 0f
+        job?.cancel()
+        val total = carry + distance
+        left = total
+        job =
+            scope.launch {
+                target.scroll {
+                    var done = 0f
+                    animate(0f, total, animationSpec = tween(TAP_SCROLL_MS)) { value, _ ->
+                        scrollBy(value - done)
+                        done = value
+                        left = total - value
+                    }
+                }
+            }
+    }
 }
 
 private const val TAP_SCROLL_MS = 300
@@ -473,6 +585,7 @@ private fun PageImage(
     modifier: Modifier,
     scale: ContentScale = ContentScale.FillWidth,
     reserve: Boolean = true,
+    onLoadedRatio: (Float) -> Unit = {},
 ) {
     val context = LocalContext.current
     var attempt by remember(page.url) { mutableIntStateOf(0) }
@@ -518,7 +631,10 @@ private fun PageImage(
         contentScale = scale,
         onSuccess = { success ->
             val image = success.result.image
-            if (image.width > 0 && image.height > 0) loadedRatio = image.width.toFloat() / image.height
+            if (image.width > 0 && image.height > 0) {
+                loadedRatio = image.width.toFloat() / image.height
+                onLoadedRatio(image.width.toFloat() / image.height)
+            }
         },
         onError = { failed = true },
         modifier = sized.background(Brand.Ink2),
@@ -589,63 +705,6 @@ private fun BottomBar(
                 style = MaterialTheme.typography.labelLarge.copy(color = Brand.Red),
                 modifier = Modifier.clickable { onOpenChapter(next) },
             )
-        }
-    }
-}
-
-/**
- * Book: one section at a time, in a web view with JavaScript off, no network and no navigation. The HTML is
- * already sanitised and styled (BookStyle); images are embedded.
- */
-@SuppressLint("SetJavaScriptEnabled")
-@Composable
-private fun BookReader(
-    state: ReaderUiState,
-    onIntent: (ReaderIntent) -> Unit,
-    onOpenChapter: (String) -> Unit,
-) {
-    val document = state.sectionDocument
-    Box(Modifier.fillMaxSize().padding(top = 64.dp, bottom = 56.dp)) {
-        when {
-            state.preparingBook || document == null ->
-                Text(
-                    if (state.preparingBook) "Opening the book…" else "",
-                    style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.align(Alignment.Center),
-                )
-            else ->
-                AndroidView(
-                    modifier = Modifier.fillMaxSize(),
-                    factory = { context ->
-                        WebView(context).apply {
-                            setBackgroundColor(android.graphics.Color.parseColor("#0B0B0E"))
-                            settings.javaScriptEnabled = false
-                            settings.blockNetworkLoads = true
-                            settings.allowFileAccess = false
-                            settings.allowContentAccess = false
-                            // No link leaves the book.
-                            webViewClient =
-                                object : WebViewClient() {
-                                    override fun shouldOverrideUrlLoading(
-                                        view: WebView,
-                                        request: WebResourceRequest,
-                                    ) = true
-                                }
-                        }
-                    },
-                    update = { view ->
-                        if (view.tag != document) {
-                            view.tag = document
-                            view.loadDataWithBaseURL(null, document, "text/html", "utf-8", null)
-                            view.scrollTo(0, 0)
-                        }
-                    },
-                )
-        }
-        if (state.atEnd && state.nextChapterId != null && document != null) {
-            Box(Modifier.align(Alignment.BottomCenter).padding(16.dp)) {
-                PrimaryButton(state.nextLabel ?: "Next →", { onOpenChapter(state.nextChapterId!!) })
-            }
         }
     }
 }

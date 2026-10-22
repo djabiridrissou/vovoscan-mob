@@ -36,6 +36,7 @@ import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlin.math.abs
 
 /** One thing a comic reader shows in order: the previous-chapter card, the pages, the next-chapter card. */
 sealed interface ReaderItem {
@@ -68,6 +69,28 @@ data class TransitionCard(
     val chapterId: String?,
 )
 
+/**
+ * Book: what pulling past an edge of the section shows (`ReaderUiState.pullHint`). The hint grows with
+ * [progress] (0..1, the threshold at 1); [armed]: past the threshold, letting go turns ([label] then says
+ * "Release…"). Nothing on that side ([enabled] false): the hint only says so.
+ */
+data class PullHint(
+    /** true: pulled up past the bottom (what comes next); false: pulled down past the top. */
+    val forward: Boolean,
+    val progress: Float,
+    val armed: Boolean,
+    val label: String,
+    val enabled: Boolean,
+)
+
+/** Where a pull on a book section leads: the neighbouring section, else the neighbouring part (chapter). */
+internal enum class PullTarget {
+    NextSection,
+    NextPart,
+    PreviousSection,
+    PreviousPart,
+}
+
 /** A tap-zone label on the overlay, at a fraction of the reading area. */
 data class ZoneText(
     val action: TapAction,
@@ -93,14 +116,21 @@ data class TapOverlay(
 sealed interface ReaderCommand {
     val seq: Int
 
-    /** Paged modes: show this item (index in `items`), animated. */
+    /**
+     * Paged modes: show this item (index in `items`), animated. [atBottom]: a tall page (`TallPages`) shows its
+     * bottom (reached going back); otherwise its top.
+     */
     data class GoToItem(
         override val seq: Int,
         val item: Int,
         val animated: Boolean,
+        val atBottom: Boolean = false,
     ) : ReaderCommand
 
-    /** Long strips: smooth scroll by this fraction of the reading area's height (negative: up). */
+    /**
+     * Smooth scroll by this fraction of the reading area's height (negative: up): the strip (long strips), or the
+     * current tall page inside its page (paged modes), never past the page's edge.
+     */
     data class ScrollBy(
         override val seq: Int,
         val fraction: Float,
@@ -129,6 +159,8 @@ data class ReaderUiState(
     val sections: List<BookSection> = emptyList(),
     /** Book: the current section, ready to display (sanitized and styled HTML). */
     val sectionDocument: String? = null,
+    /** Book: show the section from its end (reached going back), else from its top. */
+    val sectionFromEnd: Boolean = false,
     /** Book being downloaded and opened. */
     val preparingBook: Boolean = false,
     /** Current page (comic) or section (book); initially the resume position. */
@@ -192,8 +224,46 @@ data class ReaderUiState(
 
     val rightToLeft: Boolean get() = mode == ReadingMode.PagedRightToLeft
 
-    private companion object {
-        const val PAGE_GAP = 16
+    /**
+     * Book: the hint for a pull past an edge of the section. [overscroll]: how far past the edge, as a fraction of
+     * the reading area's height, positive past the bottom (pulled up), negative past the top (pulled down). The
+     * targets are the buttons' (next section, else the next part; the same backwards). Null: no hint to show.
+     */
+    fun pullHint(overscroll: Float): PullHint? {
+        val distance = abs(overscroll)
+        if (!isBook || sectionDocument == null || distance < PULL_SHOW) return null
+        val forward = overscroll > 0
+        val target = pullTarget(forward)
+        val armed = target != null && distance >= PULL_THRESHOLD
+        val verb = if (armed) "Release" else "Pull"
+        val label =
+            when (target) {
+                PullTarget.NextSection -> "$verb for the next section"
+                PullTarget.NextPart -> "$verb for the next part"
+                PullTarget.PreviousSection -> "$verb for the previous section"
+                PullTarget.PreviousPart -> "$verb for the previous part"
+                null -> if (forward) "This is the last section." else "This is the first section."
+            }
+        return PullHint(forward, (distance / PULL_THRESHOLD).coerceIn(0f, 1f), armed, label, target != null)
+    }
+
+    internal fun pullTarget(forward: Boolean): PullTarget? =
+        when {
+            forward && canGoForward -> PullTarget.NextSection
+            forward && atEnd && nextChapterId != null -> PullTarget.NextPart
+            !forward && canGoBack -> PullTarget.PreviousSection
+            !forward && sections.isNotEmpty() && previousChapterId != null -> PullTarget.PreviousPart
+            else -> null
+        }
+
+    companion object {
+        private const val PAGE_GAP = 16
+
+        /** Book: past this pull (fraction of the reading area's height), letting go turns. */
+        const val PULL_THRESHOLD = 0.15f
+
+        /** Book: a smaller pull (a bounce) shows no hint. */
+        const val PULL_SHOW = 0.01f
     }
 }
 
@@ -212,6 +282,26 @@ sealed interface ReaderIntent {
     data class StripEdges(
         val atTop: Boolean,
         val atBottom: Boolean,
+    ) : ReaderIntent
+
+    /**
+     * Paged modes: the item on screen ([item], index in `items`) and, when it is a tall page shown fit to width
+     * ([tall], `TallPages.fitsWidth`), whether its scroll inside the page is at its top / bottom. Sent when the
+     * item becomes current and whenever these change.
+     */
+    data class PageScroll(
+        val item: Int,
+        val tall: Boolean,
+        val atTop: Boolean,
+        val atBottom: Boolean,
+    ) : ReaderIntent
+
+    /**
+     * Book: the finger let go after pulling past an edge of the section ([overscroll] as in
+     * `ReaderUiState.pullHint`): past the threshold, the next or previous section (or part) opens.
+     */
+    data class PullReleased(
+        val overscroll: Float,
     ) : ReaderIntent
 
     /** A single tap where the finger went up, normalized 0..1 of the reading area (origin top left). */
@@ -302,7 +392,8 @@ class ReaderViewModel(
     private val headings: ChapterHeadings,
     private val progress: ReadingProgressSink,
 ) : ViewModel() {
-    private val mutableState = MutableStateFlow(ReaderUiState(currentIndex = startPage.coerceAtLeast(0)))
+    private val mutableState =
+        MutableStateFlow(ReaderUiState(currentIndex = startPage.coerceAtLeast(0), sectionFromEnd = startPage == START_AT_END))
     val state: StateFlow<ReaderUiState> = mutableState.asStateFlow()
     private var saveJob: Job? = null
     private var overlayJob: Job? = null
@@ -317,6 +408,7 @@ class ReaderViewModel(
     private var zonesChangedInSettings = false
     private var stripAtTop = false
     private var stripAtBottom = false
+    private var pageScroll: ReaderIntent.PageScroll? = null
     private var seq = 0
 
     init {
@@ -352,6 +444,8 @@ class ReaderViewModel(
                 stripAtTop = intent.atTop
                 stripAtBottom = intent.atBottom
             }
+            is ReaderIntent.PageScroll -> pageScroll = intent
+            is ReaderIntent.PullReleased -> pullReleased(intent.overscroll)
             is ReaderIntent.Tap -> tap(intent.x, intent.y)
             is ReaderIntent.CommandHandled -> mutableState.update { if (it.command?.seq == intent.seq) it.copy(command = null) else it }
             ReaderIntent.Next -> if (state.value.isBook) moveTo(state.value.currentIndex + 1) else forward()
@@ -431,7 +525,10 @@ class ReaderViewModel(
         val current = state.value
         if (current.items.isEmpty()) return
         mutableState.update { it.copy(chromeVisible = false) }
+        val tall = tallPage(current)
         when {
+            // A tall page scrolls inside itself first, then the next page comes.
+            tall != null && !tall.atBottom -> command { ReaderCommand.ScrollBy(it, current.preferences.scrollAmount.fraction) }
             current.isPaged ->
                 if (current.currentItem < current.items.lastIndex) goTo(current.currentItem + 1) else openNext()
             stripAtBottom -> openNext()
@@ -443,16 +540,40 @@ class ReaderViewModel(
         val current = state.value
         if (current.items.isEmpty()) return
         mutableState.update { it.copy(chromeVisible = false) }
+        val tall = tallPage(current)
         when {
-            current.isPaged -> if (current.currentItem > 0) goTo(current.currentItem - 1) else openPrevious()
+            tall != null && !tall.atTop -> command { ReaderCommand.ScrollBy(it, -current.preferences.scrollAmount.fraction) }
+            // Going back, a tall page opens at its bottom (reading backwards).
+            current.isPaged -> if (current.currentItem > 0) goTo(current.currentItem - 1, atBottom = true) else openPrevious()
             stripAtTop -> openPrevious()
             else -> command { ReaderCommand.ScrollBy(it, -current.preferences.scrollAmount.fraction) }
         }
     }
 
-    private fun goTo(item: Int) {
+    /** Paged modes: the current item's scroll inside its page, when it is a tall page. */
+    private fun tallPage(current: ReaderUiState): ReaderIntent.PageScroll? =
+        pageScroll?.takeIf { current.isPaged && it.tall && it.item == current.currentItem }
+
+    private fun goTo(
+        item: Int,
+        atBottom: Boolean = false,
+    ) {
         itemVisible(item)
-        command { ReaderCommand.GoToItem(it, item, animated = true) }
+        command { ReaderCommand.GoToItem(it, item, animated = true, atBottom = atBottom) }
+    }
+
+    /** Book: letting go past the threshold opens what the hint announced (the buttons' targets). */
+    private fun pullReleased(overscroll: Float) {
+        val current = state.value
+        val hint = current.pullHint(overscroll) ?: return
+        if (!hint.armed) return
+        when (current.pullTarget(hint.forward)) {
+            PullTarget.NextSection -> moveTo(current.currentIndex + 1)
+            PullTarget.NextPart -> openNext()
+            PullTarget.PreviousSection -> moveTo(current.currentIndex - 1, fromEnd = true)
+            PullTarget.PreviousPart -> openPrevious()
+            null -> Unit
+        }
     }
 
     private fun openNext() {
@@ -474,6 +595,8 @@ class ReaderViewModel(
     private fun itemVisible(item: Int) {
         val current = state.value
         if (item !in current.items.indices) return
+        // Another item: its scroll inside the page is unknown until the screen reports it.
+        if (pageScroll?.item != item) pageScroll = null
         if (item != current.currentItem) mutableState.update { it.copy(currentItem = item) }
         (current.items[item] as? ReaderItem.Page)?.let { moveTo(it.page.index) }
     }
@@ -668,7 +791,10 @@ class ReaderViewModel(
         }
     }
 
-    private fun moveTo(index: Int) {
+    private fun moveTo(
+        index: Int,
+        fromEnd: Boolean = false,
+    ) {
         val current = state.value
         val count = if (current.isBook) current.sections.size else current.pages.size
         if (index == current.currentIndex || index !in 0 until count) return
@@ -677,6 +803,7 @@ class ReaderViewModel(
                 currentIndex = index,
                 currentItem = if (it.items.isEmpty()) it.currentItem else index + 1,
                 sectionDocument = if (it.isBook) null else it.sectionDocument,
+                sectionFromEnd = it.isBook && fromEnd,
             )
         }
         if (current.isBook) loadSection(index)

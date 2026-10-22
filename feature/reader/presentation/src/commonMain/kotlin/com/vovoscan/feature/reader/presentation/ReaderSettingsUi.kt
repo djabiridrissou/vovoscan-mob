@@ -91,7 +91,7 @@ object ReaderText {
     const val TAP_ZONES = "Tap zones"
     const val INVERT = "Invert"
     const val SCROLL_AMOUNT = "Tap scroll amount"
-    const val SCROLL_AMOUNT_HELP = "How far a tap moves a long strip. The gap between pages comes with the mode."
+    const val SCROLL_AMOUNT_HELP = "How far a tap moves a long strip or a tall page. The gap between pages comes with the mode."
     const val SHOW_TAP_ZONES = "Show tap zones"
     const val SHOW_TAP_ZONES_HELP = "Briefly, the first time and after a change."
     const val DOUBLE_TAP_ZOOM = "Double tap to zoom"

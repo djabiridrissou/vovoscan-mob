@@ -8,31 +8,41 @@ class ReadingModesTest {
 
     @Test
     fun formatRule() {
-        assertEquals(ReadingMode.LongStrip, ReadingMode.from("comic", "webtoon"))
-        assertEquals(ReadingMode.PagedRightToLeft, ReadingMode.from("comic", "manga"))
-        assertEquals(ReadingMode.PagedRightToLeft, ReadingMode.from("comic", "anything"))
+        // Every comic: vertical pages (tall pages fit the width and scroll inside their page).
+        assertEquals(ReadingMode.PagedVertical, ReadingMode.from("comic", "webtoon"))
+        assertEquals(ReadingMode.PagedVertical, ComicFormat.Webtoon.defaultMode)
+        assertEquals(ReadingMode.PagedVertical, ReadingMode.from("comic", "manga"))
+        assertEquals(ReadingMode.PagedVertical, ComicFormat.Manga.defaultMode)
+        assertEquals(ReadingMode.PagedVertical, ReadingMode.from("comic", "anything"))
         assertEquals(ReadingMode.Book, ReadingMode.from("book", "text"))
         assertEquals(ComicFormat.Webtoon, ComicFormat.from("webtoon"))
     }
 
     @Test
     fun seriesWinsThenFormatDefaultThenRule() {
-        val webtoon = ReadingMode.LongStrip
-        assertEquals(ReadingMode.LongStrip, ReadingModes.resolve(webtoon, ComicFormat.Webtoon, null, none))
+        val webtoon = ReadingMode.PagedVertical
+        assertEquals(ReadingMode.PagedVertical, ReadingModes.resolve(webtoon, ComicFormat.Webtoon, null, none))
         val prefs = none.copy(webtoonMode = ReadingMode.LongStripGaps, mangaMode = ReadingMode.PagedLeftToRight)
         assertEquals(ReadingMode.LongStripGaps, ReadingModes.resolve(webtoon, ComicFormat.Webtoon, null, prefs))
-        assertEquals(ReadingMode.PagedVertical, ReadingModes.resolve(webtoon, ComicFormat.Webtoon, ReadingMode.PagedVertical, prefs))
-        assertEquals(ReadingMode.PagedLeftToRight, ReadingModes.resolve(ReadingMode.PagedRightToLeft, ComicFormat.Manga, null, prefs))
-        assertEquals(ReadingMode.PagedRightToLeft, ReadingModes.resolve(ReadingMode.PagedRightToLeft, ComicFormat.Manga, null, none))
+        assertEquals(ReadingMode.LongStrip, ReadingModes.resolve(webtoon, ComicFormat.Webtoon, ReadingMode.LongStrip, prefs))
+        assertEquals(ReadingMode.LongStrip, ReadingModes.resolve(webtoon, ComicFormat.Webtoon, ReadingMode.LongStrip, none))
+        val manga = ReadingMode.PagedVertical
+        assertEquals(ReadingMode.PagedLeftToRight, ReadingModes.resolve(manga, ComicFormat.Manga, null, prefs))
+        assertEquals(ReadingMode.PagedVertical, ReadingModes.resolve(manga, ComicFormat.Manga, null, none))
+        // Right to left only when chosen: for the series, or as the manga default.
+        assertEquals(ReadingMode.PagedRightToLeft, ReadingModes.resolve(manga, ComicFormat.Manga, ReadingMode.PagedRightToLeft, prefs))
+        val rtl = none.copy(mangaMode = ReadingMode.PagedRightToLeft)
+        assertEquals(ReadingMode.PagedRightToLeft, ReadingModes.resolve(manga, ComicFormat.Manga, null, rtl))
     }
 
     @Test
     fun booksStayBooks() {
         val prefs = none.copy(mangaMode = ReadingMode.LongStrip)
         assertEquals(ReadingMode.Book, ReadingModes.resolve(ReadingMode.Book, ComicFormat.Manga, ReadingMode.PagedVertical, prefs))
+        // A comic never takes the book mode, even if stored for its series: the format rule applies.
         assertEquals(
-            ReadingMode.PagedRightToLeft,
-            ReadingModes.resolve(ReadingMode.PagedRightToLeft, ComicFormat.Manga, ReadingMode.Book, none),
+            ReadingMode.PagedVertical,
+            ReadingModes.resolve(ReadingMode.PagedVertical, ComicFormat.Manga, ReadingMode.Book, none),
         )
     }
 

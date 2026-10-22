@@ -103,6 +103,12 @@ class ReaderTapsTest {
     // Overlay already seen: the tests that are not about it start without it.
     private val seen = ReaderPreferences(tapZonesSeen = true)
 
+    // Webtoons read as a long strip (the user's default for the format).
+    private val strips = seen.copy(webtoonMode = ReadingMode.LongStrip)
+
+    // Manga read right to left (the user's default for the format; the format rule is vertical pages).
+    private val rtl = seen.copy(mangaMode = ReadingMode.PagedRightToLeft)
+
     private fun TestScope.reader(
         chapter: ReaderChapter = manga,
         startPage: Int = 0,
@@ -162,7 +168,8 @@ class ReaderTapsTest {
     @Test
     fun rightToLeftPagesTurnOnASingleTap() =
         runTest(dispatcher) {
-            val vm = reader()
+            val vm = reader(settings = FakeSettings(rtl))
+            assertEquals(ReadingMode.PagedRightToLeft, vm.state.value.mode)
             assertTrue(vm.state.value.chromeVisible)
             // Right to left: the left side goes forward.
             vm.onIntent(ReaderIntent.Tap(0.1f, 0.5f))
@@ -196,7 +203,7 @@ class ReaderTapsTest {
     @Test
     fun pastTheLastPageTheTransitionThenTheNextChapter() =
         runTest(dispatcher) {
-            val vm = reader(startPage = 4)
+            val vm = reader(startPage = 4, settings = FakeSettings(rtl))
             vm.onIntent(ReaderIntent.Tap(0.1f, 0.5f))
             assertEquals(6, (vm.command as ReaderCommand.GoToItem).item)
             assertEquals(6, vm.state.value.currentItem)
@@ -208,7 +215,7 @@ class ReaderTapsTest {
     @Test
     fun beforeTheFirstPageThePreviousChapterFromItsEnd() =
         runTest(dispatcher) {
-            val vm = reader()
+            val vm = reader(settings = FakeSettings(rtl))
             vm.onIntent(ReaderIntent.Tap(0.9f, 0.5f))
             assertEquals(0, (vm.command as ReaderCommand.GoToItem).item)
             vm.onIntent(ReaderIntent.Tap(0.9f, 0.5f))
@@ -231,7 +238,7 @@ class ReaderTapsTest {
     @Test
     fun longStripScrollsByAFractionOfTheScreen() =
         runTest(dispatcher) {
-            val vm = reader(webtoon)
+            val vm = reader(webtoon, settings = FakeSettings(strips))
             assertEquals(ReadingMode.LongStrip, vm.state.value.mode)
             assertTrue(vm.state.value.isStrip)
             // L-shaped by default: the bottom row goes forward, the top row back.
@@ -257,7 +264,7 @@ class ReaderTapsTest {
     @Test
     fun noNextChapterNothingHappensAtTheEnd() =
         runTest(dispatcher) {
-            val vm = reader(webtoon.copy(nextChapterId = null))
+            val vm = reader(webtoon.copy(nextChapterId = null), settings = FakeSettings(strips))
             vm.onIntent(ReaderIntent.StripEdges(atTop = false, atBottom = true))
             vm.onIntent(ReaderIntent.Tap(0.5f, 0.9f))
             assertNull(vm.command)
@@ -268,21 +275,30 @@ class ReaderTapsTest {
         runTest(dispatcher) {
             val settings = FakeSettings(seen)
             val vm = reader(webtoon, startPage = 3, settings = settings)
-            assertEquals(4, vm.state.value.currentItem)
-            assertEquals(0, vm.state.value.pageGap)
-            vm.onIntent(ReaderIntent.SetMode(ReadingMode.PagedVertical))
-            advanceUntilIdle()
+            // A webtoon reads in vertical pages by default.
             assertEquals(ReadingMode.PagedVertical, vm.state.value.mode)
-            assertEquals(ReadingMode.PagedVertical, settings.series.value["vovoscan/t1"])
+            assertEquals(4, vm.state.value.currentItem)
+            assertEquals("Default for this series: Vertical pages.", vm.state.value.settings.seriesHint)
+            assertEquals(
+                ReadingMode.PagedVertical,
+                vm.state.value.settings.webtoonModes
+                    .single { it.selected }
+                    .mode,
+            )
+            vm.onIntent(ReaderIntent.SetMode(ReadingMode.LongStrip))
+            advanceUntilIdle()
+            assertEquals(ReadingMode.LongStrip, vm.state.value.mode)
+            assertEquals(0, vm.state.value.pageGap)
+            assertEquals(ReadingMode.LongStrip, settings.series.value["vovoscan/t1"])
             assertEquals(3, vm.state.value.currentIndex)
             assertEquals(4, vm.state.value.currentItem)
             assertTrue(vm.state.value.settings.canResetSeries)
             assertTrue(
                 vm.state.value.settings.seriesModes
                     .single { it.selected }
-                    .mode == ReadingMode.PagedVertical,
+                    .mode == ReadingMode.LongStrip,
             )
-            assertEquals("Default for this series: Long strip.", vm.state.value.settings.seriesHint)
+            assertEquals("Default for this series: Vertical pages.", vm.state.value.settings.seriesHint)
             // The format default applies once the series goes back to it.
             vm.onIntent(ReaderIntent.SetDefaultMode(ComicFormat.Webtoon, ReadingMode.LongStripGaps))
             vm.onIntent(ReaderIntent.ResetSeriesMode)
@@ -302,7 +318,7 @@ class ReaderTapsTest {
     @Test
     fun overlayOnTheFirstOpeningThenAfterAChange() =
         runTest(dispatcher) {
-            val settings = FakeSettings()
+            val settings = FakeSettings(ReaderPreferences(mangaMode = ReadingMode.PagedRightToLeft))
             val vm = ReaderViewModel("vovoscan", "t1", "c3", 0, StaticReader(manga), settings, headings) { _, _, _, _ -> }
             runCurrent()
             val overlay = assertNotNull(vm.state.value.tapOverlay)
@@ -389,6 +405,96 @@ class ReaderTapsTest {
             advanceUntilIdle()
             vm.onVolumeKey(up = true)
             assertEquals(2, (vm.command as ReaderCommand.GoToItem).item)
+        }
+
+    @Test
+    fun aSeriesModeSetBeforeIsKept() =
+        runTest(dispatcher) {
+            val settings = FakeSettings(seen)
+            settings.setSeriesMode("vovoscan", "t1", ReadingMode.LongStrip)
+            assertEquals(ReadingMode.LongStrip, reader(webtoon, settings = settings).state.value.mode)
+            settings.setSeriesMode("vovoscan", "t1", null)
+            settings.updatePreferences { it.copy(webtoonMode = ReadingMode.LongStripGaps) }
+            assertEquals(ReadingMode.LongStripGaps, reader(webtoon, settings = settings).state.value.mode)
+            // Manga: vertical pages by the format rule, right to left once chosen as the manga default.
+            assertEquals(ReadingMode.PagedVertical, reader(manga, settings = settings).state.value.mode)
+            settings.updatePreferences { it.copy(mangaMode = ReadingMode.PagedRightToLeft) }
+            assertEquals(ReadingMode.PagedRightToLeft, reader(manga, settings = settings).state.value.mode)
+        }
+
+    @Test
+    fun aTallPageScrollsInsideThenTurns() =
+        runTest(dispatcher) {
+            val vm = reader(webtoon, startPage = 1)
+            assertEquals(ReadingMode.PagedVertical, vm.state.value.mode)
+            assertEquals(2, vm.state.value.currentItem)
+            val next = 0.5f to 0.9f
+            val previous = 0.5f to 0.1f
+            // A tall page at its top: Next scrolls inside it.
+            vm.onIntent(ReaderIntent.PageScroll(item = 2, tall = true, atTop = true, atBottom = false))
+            vm.onIntent(ReaderIntent.Tap(next.first, next.second))
+            assertEquals(ReaderCommand.ScrollBy(1, 0.75f), vm.command)
+            assertEquals(2, vm.state.value.currentItem)
+            // At the top, Previous goes to the previous page, at its bottom.
+            vm.onIntent(ReaderIntent.Tap(previous.first, previous.second))
+            assertEquals(ReaderCommand.GoToItem(2, item = 1, animated = true, atBottom = true), vm.command)
+            assertEquals(1, vm.state.value.currentItem)
+            // The page we left reported long ago: ignored for the new one until it reports.
+            vm.onIntent(ReaderIntent.Tap(next.first, next.second))
+            assertEquals(ReaderCommand.GoToItem(3, item = 2, animated = true), vm.command)
+            vm.onIntent(ReaderIntent.PageScroll(item = 2, tall = true, atTop = false, atBottom = false))
+            vm.onIntent(ReaderIntent.Tap(previous.first, previous.second))
+            assertEquals(ReaderCommand.ScrollBy(4, -0.75f), vm.command)
+            vm.onIntent(ReaderIntent.Tap(next.first, next.second))
+            assertEquals(ReaderCommand.ScrollBy(5, 0.75f), vm.command)
+            // At its bottom, Next turns; the tap scroll amount is the strips' setting.
+            vm.onIntent(ReaderIntent.PageScroll(item = 2, tall = true, atTop = false, atBottom = true))
+            vm.onIntent(ReaderIntent.Tap(next.first, next.second))
+            assertEquals(ReaderCommand.GoToItem(6, item = 3, animated = true), vm.command)
+            vm.onIntent(ReaderIntent.SetScrollFraction(ScrollAmount.Most))
+            advanceUntilIdle()
+            vm.onIntent(ReaderIntent.PageScroll(item = 3, tall = true, atTop = true, atBottom = false))
+            vm.onIntent(ReaderIntent.Tap(next.first, next.second))
+            assertEquals(ReaderCommand.ScrollBy(7, 0.9f), vm.command)
+            // A report for another item than the current one changes nothing.
+            vm.onIntent(ReaderIntent.PageScroll(item = 4, tall = true, atTop = true, atBottom = false))
+            vm.onIntent(ReaderIntent.Tap(previous.first, previous.second))
+            assertEquals(ReaderCommand.GoToItem(8, item = 2, animated = true, atBottom = true), vm.command)
+        }
+
+    @Test
+    fun shortPagesTurnAtOnce() =
+        runTest(dispatcher) {
+            val vm = reader(webtoon, startPage = 1)
+            vm.onIntent(ReaderIntent.PageScroll(item = 2, tall = false, atTop = true, atBottom = true))
+            vm.onIntent(ReaderIntent.Tap(0.5f, 0.9f))
+            assertEquals(3, (vm.command as ReaderCommand.GoToItem).item)
+        }
+
+    @Test
+    fun aTallPageInHorizontalPagesAndTheVolumeKeys() =
+        runTest(dispatcher) {
+            val vm = reader(startPage = 1, settings = FakeSettings(rtl.copy(volumeKeys = true)))
+            assertTrue(vm.state.value.pagedHorizontally)
+            vm.onIntent(ReaderIntent.PageScroll(item = 2, tall = true, atTop = true, atBottom = false))
+            // Right to left: the left side goes forward, and scrolls the tall page first.
+            vm.onIntent(ReaderIntent.Tap(0.1f, 0.5f))
+            assertEquals(ReaderCommand.ScrollBy(1, 0.75f), vm.command)
+            assertTrue(vm.onVolumeKey(up = false))
+            assertEquals(ReaderCommand.ScrollBy(2, 0.75f), vm.command)
+            assertTrue(vm.onVolumeKey(up = true))
+            assertEquals(ReaderCommand.GoToItem(3, item = 1, animated = true, atBottom = true), vm.command)
+        }
+
+    @Test
+    fun aTallLastPageThenTheChapterCard() =
+        runTest(dispatcher) {
+            val vm = reader(webtoon, startPage = 4)
+            vm.onIntent(ReaderIntent.PageScroll(item = 5, tall = true, atTop = false, atBottom = true))
+            vm.onIntent(ReaderIntent.Tap(0.5f, 0.9f))
+            assertEquals(6, (vm.command as ReaderCommand.GoToItem).item)
+            vm.onIntent(ReaderIntent.Tap(0.5f, 0.9f))
+            assertEquals(ReaderCommand.OpenChapter(2, "c4", 0), vm.command)
         }
 
     @Test

@@ -2,7 +2,7 @@ package com.vovoscan.feature.reader.domain
 
 import kotlinx.coroutines.flow.Flow
 
-/** How far one tap scrolls a long strip, as a fraction of the screen height. */
+/** How far one tap scrolls a long strip, or a tall page inside its page, as a fraction of the screen height. */
 enum class ScrollAmount(
     val fraction: Float,
 ) {
@@ -38,7 +38,10 @@ data class ReaderPreferences(
 }
 
 object ReadingModes {
-    /** Per-series override, then the user's default for the format, then the format rule. Books stay books. */
+    /**
+     * Per-series override, then the user's default for the format, then the format rule (vertical pages for manga
+     * and webtoons alike). Books stay books.
+     */
     fun resolve(
         chapterMode: ReadingMode,
         format: ComicFormat,

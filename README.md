@@ -150,6 +150,23 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   sanitized (allowlist, images as `data:` only, links removed) and stored in the database: offline rereading.
   Displayed in a WebView / WKWebView with no JavaScript and no network, styles and CSP from `BookStyle`. A book's
   progress counts in sections.
+- Books: pull to turn. Pulling up past the bottom of a section (down past its top) shows a hint that grows with the
+  pull: "↑ Pull for the next section" → past the threshold, red, "Release for the next section"; letting go there
+  opens it at its top. The targets are the buttons' (kept): the next section, else at the last section the next part
+  ("… the next part", opens the next chapter), else "This is the last section." (no action); backwards the previous
+  section (opened at its end, `sectionFromEnd`), else the previous part (opened at its last section, at its end), else
+  "This is the first section.". Shared (`ReaderUiState.pullHint(overscroll)`, `ReaderIntent.PullReleased`): the pull is a
+  fraction of the reading area's height, positive past the bottom; hint from 0.01, threshold `PULL_THRESHOLD` 0.15;
+  nothing happens while the next section loads. Native code only measures and draws: Android `PullWebView`
+  (`ui/reader/BookReader.kt`) counts the finger's travel once the web view can't scroll further that way
+  (`canScrollVertically`), halved like a rubber band, every event still going to the web view; iOS reads the
+  WKWebView scroll view's `contentOffset` past its edges while the finger is down (`bounces`, `alwaysBounceVertical`,
+  `scrollViewDidScroll` / `scrollViewWillEndDragging`), and only the hint observes it (`PullTracker`), not the web
+  view. A haptic tick when the threshold is crossed (Android `GESTURE_THRESHOLD_ACTIVATE`, else `CONTEXT_CLICK`; iOS
+  `.sensoryFeedback`). Reduced motion (Android "Remove animations", iOS Reduce Motion): the hint neither slides, grows
+  nor fades, its bar still fills. A short fling that reaches the end does not turn (only the drag past the edge counts);
+  a long drag past it does, as the threshold says. iOS rubber-bands harder than the halved drag: the same threshold
+  takes a longer pull there (about 250 pt of finger travel on the iPhone 16 Pro, 240 dp on the Pixel 7).
 - Progress goes through the `ReadingProgressSink` port, wired to the library in `shared`: the reader does not
   know about `library`. It is kept only for a followed title.
 - Images are signed URLs, unchanged for a day: the image cache serves pages already seen.
@@ -248,7 +265,17 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
 - Modes (`ReadingMode`): `PagedRightToLeft`, `PagedLeftToRight`, `PagedVertical` (one page at a time), `LongStrip`
   (continuous, no gap: webtoons), `LongStripGaps` (16 dp/pt between pages); `Book` for books. `ReadingModes.resolve`:
   the mode chosen for the series (`series_mode`, per `(sourceKey, titleId)`), else the user's default for the format
-  (manga / webtoon), else the format rule (`manga` → right to left, `webtoon` → long strip). Switching keeps the page.
+  (manga / webtoon), else the format rule: vertical pages for every comic, manga and webtoon (it was right to left
+  for manga and long strip for webtoons before: a mode chosen for a series or a format default chosen before is
+  kept). Switching keeps the page.
+- Tall pages in the paged modes (`TallPages`, as Mihon's paged viewer): a page whose fit-to-width height is more than
+  1.25 × the reading area (`fitsWidth`, by its ratio: its size, or its image's once loaded) is shown fit to width and
+  scrolls vertically inside its page; the next page starts after its bottom. Other pages (a manga page, Le Griot's
+  800 × 1280) are fitted to the screen as before. The native side reports the current page's scroll
+  (`ReaderIntent.PageScroll(item, tall, atTop, atBottom)`, like `StripEdges`) and runs commands: Next on a tall page
+  not at its bottom is `ScrollBy(+tap scroll amount)` inside the page (never past its edge), at its bottom the next
+  page; Previous mirrors it, and the previous page opens at its bottom (`GoToItem.atBottom`). Volume keys follow the
+  same path. A report for another item than the current one is ignored (cleared when the item changes).
 - Tap zones (`TapZones`, pure, `domain`): a 3 × 3 grid of the reading area (thirds); the native side sends where the
   finger went up as `ReaderIntent.Tap(x, y)` (0..1, origin top left) and nothing else. Rows top to bottom
   (P = Previous, N = Next, M = Menu): Right and left `PMN/PMN/PMN`, L-shaped `PPP/PMN/NNN`, Kindle-ish
@@ -272,15 +299,27 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   zones change (layout, invert, or a mode that changes them), after the settings sheet closes; "Show tap zones" off
   never shows it.
 - Settings sheet (gear in the top bar), kept on the device in the reader's database (`reader_setting` key-value
-  table, `series_mode`; migration `2.sqm`), no backend: mode for this series (+ Reset to default), default mode for
-  manga / webtoon, tap zones, invert, show tap zones (on), tap scroll amount (75 %), double tap to zoom (off), keep
-  screen awake (on), Android only: volume keys turn pages (off; down = next, up = previous) and invert them (off).
+  table, `series_mode`; migration `2.sqm`), no backend: mode for this series (+ Reset to default; "Default for this
+  series: Vertical pages." unless a format default was chosen), default mode for manga / webtoon, tap zones, invert,
+  show tap zones (on), tap scroll amount (75 %, strips and tall pages), double tap to zoom (off), keep screen awake
+  (on), Android only: volume keys turn pages (off; down = next, up = previous) and invert them (off).
   Sign-out and a removed source erase the series modes; the device-wide preferences stay.
 - Android: `HorizontalPager` (reversed for right to left) / `VerticalPager` / `LazyColumn`, `detectTapGestures`
   around them, volume keys through `MainActivity.onKeyDown`/`onKeyUp` while the reader is on screen. Pages taller than
   4096 px, and pages of unknown height, are decoded as software bitmaps (a hardware bitmap of an 800 × 14 000 webtoon
-  page never drew). iOS: paging `ScrollView` (`scrollTargetBehavior(.paging)`, right-to-left layout direction) /
-  `ScrollView` + `ScrollPosition`, one `SpatialTapGesture` on the container.
+  page never drew). A tall page is a `verticalScroll` inside its pager page (`PagedPage`): nested scrolling scrolls the
+  page first, the rest of the drag moves the pager, a fling stops at the page's edge (the pager's own rule). Pages
+  before the current one wait at their bottom, pages after it at their top, so a swipe back shows the end of the
+  previous page. iOS: horizontal pages are a paging `ScrollView` (`scrollTargetBehavior(.paging)`, right-to-left layout
+  direction) and a tall page an inner vertical `ScrollView` (`TallPageView`, another axis). Vertical pages are one
+  `ScrollView` in which a tall page takes its full height (`VerticalPages`): UIKit does not hand a vertical swipe from
+  an inner scroll view to an outer one, so two nested ones would never chain. Where a drag comes to rest is shared
+  (`TallPages.restingOffset`, a custom `ScrollTargetBehavior`, for user drags only): inside a tall page the scroll
+  stays in it and a fling stops at its edge; from an edge or past it, it is a page turn when the rest point is half
+  the screen past the edge (`TURN_FRACTION`), else back to the edge, one page per gesture. The stack is a `VStack`,
+  not lazy (a lazy stack's estimated positions for pages not laid out yet made scrolls to the next page stop short or
+  not move), and only pages within 2 of the current one hold their image (`PageImage.active`). Strips: `ScrollView` +
+  `ScrollPosition`; one `SpatialTapGesture` on the container.
 - Page size (`ReaderPage.hasSize`): our pages come with their size, so the space is reserved and nothing jumps. A source
   read on the device usually sends none (0 × 0): the page shows a placeholder (0.7, portrait) until the image has loaded,
   then takes **the image's own shape** (Android: Coil's `onSuccess`; iOS: `PageLoader`, which fetches through the shared
@@ -495,6 +534,10 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
 - No Kotlin property named `description` in an exported state: on iOS it is `toString()` (NSObject).
 - Simulator: build signed (`CODE_SIGN_IDENTITY="-"`, which Xcode does by default), otherwise the Keychain
   refuses to write and the session does not persist.
+- Custom `ScrollTargetBehavior`: `updateTarget` also runs for programmatic scrolls, on every frame of a `ScrollPosition`
+  animation, with the scroll's target as proposal: apply a gesture rule only while a finger drag is in progress, or a
+  `scrollTo` is bent too. A `scrollTo(id:)` towards an item a lazy stack has not laid out yet aims at an estimated
+  place (with tall items, far off). Measured frames come back as non-integers: compare offsets with a tolerance.
 - AVAudioEngine: `AVAudioPlayerNode.play()` while the engine is not running raises an Objective-C exception (a
   crash): `CueMixer` starts the engine first and never plays a node in a stopped engine. Do not run audio work in a
   SwiftUI view's body other than through `PlayerAudio.sync` (cheap: volume, pan, a drift check every 300 ms).
