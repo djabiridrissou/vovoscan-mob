@@ -37,8 +37,9 @@ val episodesModule =
                 params.values[0] as String,
                 params.values.getOrNull(1) as String?,
                 get(),
-                lang = params.values.getOrNull(2) as String? ?: "",
+                language = params.values.getOrNull(2) as String? ?: "",
                 startPage = params.values.getOrNull(3) as Int?,
+                quotes = get(),
             )
         }
     }

@@ -72,9 +72,9 @@ struct EpisodeView: View {
         }
         .sheet(item: $share) { ShareSheet(items: [$0.url]) }
         .fullScreenCover(item: $player) { route in
-            PlayerView(route: route) { next in
+            PlayerView(route: route) { next, language in
                 player = nil
-                onOpenChapter(next, route.language)
+                onOpenChapter(next, language)
             }
         }
         .sheet(isPresented: $choosingLanguage) {
@@ -221,20 +221,36 @@ struct EpisodeView: View {
 /// The episode's languages, searchable (own name, English name or code); the rows come from `EpisodeViewModel`.
 private struct EpisodeLanguageSheet: View {
     @ObservedObject var model: EpisodeModel
+
+    var body: some View {
+        EpisodeLanguageList(
+            options: model.state.languageOptions,
+            initialQuery: model.state.languageQuery,
+            onQuery: { model.send(EpisodeIntentLanguageQuery(text: $0)) },
+            onChoose: { model.send(EpisodeIntentChooseLanguage(code: $0)) }
+        )
+    }
+}
+
+/// A searchable list of an episode's languages (the card's picker and the player's): a pick closes it.
+struct EpisodeLanguageList: View {
+    let options: [EpisodeLanguageOption]
+    let initialQuery: String
+    let onQuery: (String) -> Void
+    let onChoose: (String?) -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var query = ""
 
     var body: some View {
-        let state = model.state
         NavigationStack {
             List {
-                if state.languageOptions.isEmpty {
+                if options.isEmpty {
                     Text(L("common.noLanguage")).font(.brandBody(13)).foregroundStyle(Color.brandMuted).listRowBackground(Color.brandInk2)
                 }
-                ForEach(state.languageOptions, id: \.self) { option in
+                ForEach(options, id: \.self) { option in
                     Button {
                         Haptics.select()
-                        model.send(EpisodeIntentChooseLanguage(code: option.code))
+                        onChoose(option.code)
                         dismiss()
                     } label: {
                         HStack(spacing: 12) {
@@ -255,15 +271,15 @@ private struct EpisodeLanguageSheet: View {
             .scrollContentBackground(.hidden)
             .background(Color.brandInk2)
             .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: L("common.searchLanguage"))
-            .onChange(of: query) { _, text in model.send(EpisodeIntentLanguageQuery(text: text)) }
+            .onChange(of: query) { _, text in onQuery(text) }
             .navigationTitle(L("episode.languageTitle"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) { Button(L("common.done")) { dismiss() } }
             }
         }
-        .onAppear { query = state.languageQuery }
-        .onDisappear { model.send(EpisodeIntentLanguageQuery(text: "")) }
+        .onAppear { query = initialQuery }
+        .onDisappear { onQuery("") }
     }
 }
 

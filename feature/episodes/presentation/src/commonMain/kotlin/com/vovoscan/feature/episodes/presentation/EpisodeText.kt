@@ -44,6 +44,14 @@ object EpisodeText {
     val DUBBED: String get() = t("episode.dubbed")
     val SUBTITLED: String get() = t("episode.subtitled")
     val BETA: String get() = t("episode.beta")
+    val CHECKING: String get() = t("translation.offer.checking")
+    val KEEP_WATCHING: String get() = t("player.lang.keepWatching")
+    val NOT_NOW: String get() = t("translation.offer.cancel")
+    val CANCEL: String get() = t("common.cancel")
+    val CLOSE: String get() = t("common.close")
+
+    /** "Switching to Français…". */
+    fun switching(code: String): String = t("player.lang.switching", "language" to (Language.of(code)?.native ?: ORIGINAL))
 
     fun languageDetail(language: Language): String =
         listOfNotNull(language.displayTitle(), if (language.dub) DUBBED else SUBTITLED, BETA.takeIf { language.beta }).joinToString(" ✦ ")

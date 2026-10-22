@@ -186,6 +186,66 @@ class TranslationViewModelTest {
             assertEquals(listOf("fr"), french.map { it.code })
         }
 
+    @Test
+    fun aNewLanguageNeverTakesThePageAwayAndSwapsInPlaceWhenReady() =
+        runTest(dispatcher) {
+            val repo = FakeTranslations(languages = listOf(ChapterTranslation("fr", TranslationStatus.Ready, null)))
+            val vm = TranslationViewModel("vovoscan", "c1", repo)
+            advanceUntilIdle()
+            vm.onIntent(TranslationIntent.Choose("fr"))
+            advanceUntilIdle()
+            val french = vm.state.value.letteringFor(0)
+            repo.requestResult = AppResult.Ok(ChapterTranslation("ee", TranslationStatus.Queued, null))
+            vm.onIntent(TranslationIntent.Choose("ee"))
+            advanceTimeBy(100)
+            // Still the French lettering under a docked panel; the button names what the page shows.
+            assertEquals(french, vm.state.value.letteringFor(0))
+            assertEquals("Français", vm.state.value.buttonLabel)
+            val making = assertNotNull(vm.state.value.dock)
+            assertEquals("Translating into Eʋegbe", making.title)
+            assertTrue(making.busy)
+            assertEquals("Cancel", making.closeLabel)
+            repo.languages = listOf(ChapterTranslation("ee", TranslationStatus.Running, 40))
+            advanceTimeBy(4_100)
+            val running = assertNotNull(vm.state.value.dock)
+            assertEquals(0.4f, running.progress)
+            assertEquals("Translating ✦ 40% ✦ Keep reading: the bubbles change by themselves when it's ready.", running.line)
+            // Cancel: back to French, nothing else changes.
+            vm.onIntent(TranslationIntent.CloseDock)
+            assertNull(vm.state.value.dock)
+            assertEquals("fr", vm.state.value.selected)
+            assertEquals(french, vm.state.value.letteringFor(0))
+            // Picked again, it is found ready and swaps in.
+            repo.languages = listOf(ChapterTranslation("ee", TranslationStatus.Ready, null))
+            advanceUntilIdle()
+            vm.onIntent(TranslationIntent.Choose("ee"))
+            advanceUntilIdle()
+            assertNull(vm.state.value.dock)
+            assertEquals("Eʋegbe", vm.state.value.buttonLabel)
+            assertEquals("Read it in another language", vm.state.value.endCardLabel)
+        }
+
+    @Test
+    fun aFailureStaysInTheDockWithTryAgain() =
+        runTest(dispatcher) {
+            val repo = FakeTranslations()
+            repo.requestResult = AppResult.Err(AppError.Rejected("INSUFFICIENT_CREDITS", "No credits."))
+            val vm = TranslationViewModel("vovoscan", "c1", repo)
+            advanceUntilIdle()
+            vm.onIntent(TranslationIntent.Choose("yo"))
+            advanceUntilIdle()
+            val dock = assertNotNull(vm.state.value.dock)
+            assertTrue(dock.failed)
+            assertEquals("Try again", dock.retryLabel)
+            assertEquals("Add a key", dock.addKeyLabel)
+            assertEquals("Original", vm.state.value.buttonLabel)
+            repo.requestResult = AppResult.Ok(ChapterTranslation("yo", TranslationStatus.Ready, null))
+            vm.onIntent(TranslationIntent.Retry)
+            advanceUntilIdle()
+            assertNull(vm.state.value.dock)
+            assertTrue(vm.state.value.translated)
+        }
+
     private inner class FakeTranslations(
         var languages: List<ChapterTranslation> = emptyList(),
     ) : TranslationsRepository {

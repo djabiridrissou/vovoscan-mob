@@ -33,6 +33,7 @@ struct ReaderView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var settingsOpen = false
     @State private var languagesOpen = false
+    @State private var keysOpen = false
     @State private var player: PlayerRoute?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let onOpenChapter: (String, Int) -> Void
@@ -62,6 +63,20 @@ struct ReaderView: View {
                     .accessibilityLabel(model.state.chapterLabel)
                     .accessibilityHint(model.state.tapsHint)
                     .environment(\.pageLettering, { [state = translation.state] index in state.letteringFor(index: Int32(index)) })
+                    .environment(\.readerLanguageAction, translation.state.available
+                        ? ReaderLanguageAction(label: translation.state.endCardLabel) { languagesOpen = true }
+                        : nil)
+            }
+            // A language on its way: the page keeps its lettering, the dock shows the cost, then the progress.
+            if let dock = translation.state.dock, !model.state.isBook {
+                LanguageDock(
+                    content: dock.content,
+                    confirm: { translation.send(TranslationIntentConfirmOffer.shared) },
+                    addKey: { keysOpen = true },
+                    retry: { translation.send(TranslationIntentRetry.shared) },
+                    close: { translation.send(TranslationIntentCloseDock.shared) }
+                )
+                .transition(.move(edge: .bottom).combined(with: .opacity))
             }
             if let overlay = model.state.tapOverlay {
                 TapZonesOverlay(overlay: overlay).transition(.opacity)
@@ -88,6 +103,7 @@ struct ReaderView: View {
         .task { await model.observe() }
         .task { await translation.observe() }
         .animation(.easeInOut(duration: 0.25), value: translation.state.translated)
+        .animation(model.state.reducedMotion ? nil : .spring(response: 0.35, dampingFraction: 0.85), value: translation.state.dock == nil)
         // Opening another chapter (a chapter card, or a tap past the end), whatever the mode.
         .onChange(of: model.state.command?.seq) { _, _ in
             if let open = model.state.command as? ReaderCommandOpenChapter {
@@ -100,7 +116,7 @@ struct ReaderView: View {
                 player = PlayerRoute(chapterId: episode.chapterId, nextChapterId: nil, startPage: Int(episode.page))
             }
         }
-        .fullScreenCover(item: $player) { route in PlayerView(route: route) { _ in player = nil } }
+        .fullScreenCover(item: $player) { route in PlayerView(route: route) { _, _ in player = nil } }
         // Reduce Motion: jumps instead of the spring, no spotlight glide, no fades.
         .onChange(of: reduceMotion, initial: true) { _, on in model.send(ReaderIntentReducedMotion(on: on)) }
         // VoiceOver: "Page 5 of 19" when the page changes, never on every frame.
@@ -115,6 +131,11 @@ struct ReaderView: View {
         .sheet(isPresented: $languagesOpen) {
             LanguageSheet(translation: translation)
                 .presentationDetents([.medium, .large])
+                .presentationBackground(Color.brandInk2)
+        }
+        // "Add a key" from the dock: the keys over the reader, which stays where it was.
+        .sheet(isPresented: $keysOpen) {
+            NavigationStack { KeysScreen() }
                 .presentationBackground(Color.brandInk2)
         }
         .sheet(isPresented: $settingsOpen, onDismiss: { model.send(ReaderIntentSettingsClosed.shared) }) {
@@ -359,7 +380,7 @@ private struct HorizontalPages: View {
                             if ratios.isTall(page.page, in: size) {
                                 TallPageView(model: model, page: page.page, index: index, size: size)
                             } else {
-                                PageImage(page: page.page, fit: true) { ratios.set(page.page.url, $0) }
+                                PageImage(page: page.page, fit: true, onLoaded: { ratios.set(page.page.url, $0) })
                             }
                         } else if let transition = item as? ReaderItemTransition {
                             TransitionCardView(card: transition.card, model: model)
@@ -482,7 +503,7 @@ private struct VerticalPages: View {
                             if ratios.isTall(page.page, in: size), let ratio = ratios.ratio(page.page) {
                                 PageImage(page: page.page, active: active).frame(width: size.width, height: size.width / ratio)
                             } else {
-                                PageImage(page: page.page, fit: true, active: active) { ratios.set(page.page.url, $0) }
+                                PageImage(page: page.page, fit: true, active: active, onLoaded: { ratios.set(page.page.url, $0) })
                                     .frame(width: size.width, height: size.height)
                             }
                         } else if let transition = item as? ReaderItemTransition {
@@ -735,9 +756,9 @@ private struct FlowStrip: View {
                 ForEach(Array(items.enumerated()), id: \.offset) { index, item in
                     Group {
                         if let page = item as? ReaderItemPage {
-                            PageImage(page: page.page) { size in
+                            PageImage(page: page.page, onSize: { size in
                                 model.send(ReaderIntentPageSized(page: page.page.index, width: Int32(size.width.rounded()), height: Int32(size.height.rounded())))
-                            }
+                            })
                             .task(id: page.page.url) { await luminance(page.page) }
                         } else if let transition = item as? ReaderItemTransition {
                             if transition.card.forward {
@@ -1030,6 +1051,7 @@ private enum Luminance {
 private struct TransitionCardView: View {
     let card: TransitionCard
     @ObservedObject var model: ReaderModel
+    @Environment(\.readerLanguageAction) private var language
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -1041,6 +1063,16 @@ private struct TransitionCardView: View {
                 } else {
                     Button(label) { model.send(ReaderIntentOpenPreviousChapter.shared) }.buttonStyle(GhostButtonStyle()).padding(.top, 4)
                 }
+            }
+            // Reader SPEC §11: the language is one tap away here too.
+            if card.forward, let language {
+                Button {
+                    Haptics.select()
+                    language.open()
+                } label: {
+                    Label(language.label, systemImage: "character.bubble")
+                }
+                .buttonStyle(GhostButtonStyle())
             }
         }
         .padding(20)

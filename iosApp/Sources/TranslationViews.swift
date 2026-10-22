@@ -87,55 +87,22 @@ struct LanguageButton: View {
     }
 }
 
-/// The language picker: searchable, languages already made first ("Ready": free, shared), then every other one.
+/// The language picker: searchable, languages already made first ("Ready": free, shared), then every other one. A pick
+/// closes it at once: a language already made swaps in, a new one is quoted in the dock over the page (reader SPEC §11).
 struct LanguageSheet: View {
     @ObservedObject var translation: TranslationModel
     @Environment(\.dismiss) private var dismiss
     @State private var query = ""
-    /** "Add a key" from an offer: the keys, pushed inside the sheet (the reader stays where it was). */
-    @State private var keysOpen = false
 
     var body: some View {
         let state = translation.state
         NavigationStack {
             List {
-                if let checking = state.checking {
-                    HStack(spacing: 8) {
-                        ProgressView().controlSize(.small).tint(Color.brandCyan)
-                        Text(checking).font(.brandBody(13)).foregroundStyle(Color.brandMuted)
-                    }
-                    .listRowBackground(Color.brandInk2)
-                }
-                if let offer = state.offer {
-                    OfferCard(offer: offer, translate: {
-                        Haptics.press()
-                        translation.send(TranslationIntentConfirmOffer.shared)
-                    }, cancel: {
-                        translation.send(TranslationIntentDismissOffer.shared)
-                    }, addKey: { keysOpen = true })
-                    .listRowBackground(Color.brandInk2)
-                }
-                if let progress = state.progressLabel {
-                    Label(progress, systemImage: "waveform").font(.brandBody(13, weight: .bold)).foregroundStyle(Color.brandCyan)
-                        .listRowBackground(Color.brandInk2)
-                }
-                if let notice = state.notice {
-                    Text(notice).font(.brandBody(13)).foregroundStyle(Color.brandPaper).listRowBackground(Color.brandInk2)
-                }
-                if let error = state.error {
-                    VStack(alignment: .leading, spacing: 8) {
-                        ErrorText(text: error)
-                        Button(L("common.tryAgain")) { translation.send(TranslationIntentRetry.shared) }
-                            .font(.brandBody(13, weight: .bold)).foregroundStyle(Color.brandRed)
-                    }
-                    .listRowBackground(Color.brandInk2)
-                }
                 ForEach(state.options, id: \.self) { option in
                     Button {
                         Haptics.select()
                         translation.send(TranslationIntentChoose(code: option.code))
-                        // A language already made shows at once; a new one keeps the sheet for its cost and progress.
-                        if option.ready { dismiss() }
+                        dismiss()
                     } label: {
                         HStack(spacing: 12) {
                             VStack(alignment: .leading, spacing: 2) {
@@ -167,40 +134,104 @@ struct LanguageSheet: View {
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) { Button(L("common.done")) { dismiss() } }
             }
-            .navigationDestination(isPresented: $keysOpen) { KeysScreen() }
         }
         .onAppear { query = state.query }
-        .onDisappear {
-            translation.send(TranslationIntentDismissMessage.shared)
-            translation.send(TranslationIntentDismissOffer.shared)
-        }
     }
 }
 
-/// "Translate into Yorùbá?": what it costs this account, then Translate / Add a key / Not now. Nothing is paid before.
-private struct OfferCard: View {
-    let offer: TranslationOffer
-    let translate: () -> Void
-    let cancel: () -> Void
+/// What a dock shows, from either shared state (the reader's `TranslationDock`, the player's `PlayerLanguageDock`).
+struct LanguageDockContent {
+    let title: String
+    let line: String?
+    let progress: Float?
+    let busy: Bool
+    let confirmLabel: String?
+    let addKeyLabel: String?
+    let retryLabel: String?
+    let closeLabel: String
+    let failed: Bool
+}
+
+/// The panel docked at the bottom while a language is on its way (reader SPEC §11): its cost, then a bar while the
+/// reader (or the episode) goes on, or why it failed. The page under it keeps what it shows.
+struct LanguageDock: View {
+    let content: LanguageDockContent
+    let confirm: () -> Void
     let addKey: () -> Void
+    let retry: () -> Void
+    let close: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(offer.title).font(.brandDisplay(18)).foregroundStyle(Color.brandPaper)
-            Text(offer.line).font(.brandBody(14)).foregroundStyle(offer.canTranslate ? Color.brandPaper : Color.brandYellow)
-                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 8) {
+                if content.busy { ProgressView().controlSize(.small).tint(Color.brandCyan) }
+                Text(content.title).font(.brandDisplay(17)).foregroundStyle(Color.brandPaper)
+                Spacer(minLength: 0)
+            }
+            if let line = content.line {
+                Text(line).font(.brandBody(14))
+                    .foregroundStyle(content.failed || (content.confirmLabel == nil && content.addKeyLabel != nil) ? Color.brandYellow : Color.brandPaper)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if let progress = content.progress {
+                ProgressView(value: Double(progress)).tint(Color.brandCyan)
+            }
             HStack(spacing: 10) {
-                if offer.canTranslate {
-                    Button(offer.translateLabel, action: translate).buttonStyle(PrimaryButtonStyle())
+                if let label = content.confirmLabel {
+                    Button(label) { Haptics.press(); confirm() }.buttonStyle(PrimaryButtonStyle())
                 }
-                if let label = offer.addKeyLabel {
+                if let label = content.retryLabel {
+                    Button(label, action: retry).buttonStyle(PrimaryButtonStyle())
+                }
+                if let label = content.addKeyLabel {
                     Button(label, action: addKey).buttonStyle(GhostButtonStyle())
                 }
-                Button(offer.cancelLabel, action: cancel)
+                Button(content.closeLabel, action: close)
                     .font(.brandBody(13, weight: .bold)).foregroundStyle(Color.brandMuted)
             }
         }
-        .padding(.vertical, 6)
+        .padding(16)
+        .frame(maxWidth: 520, alignment: .leading)
+        .background(Color.brandInk2, in: RoundedRectangle(cornerRadius: 14))
+        .overlay(RoundedRectangle(cornerRadius: 14).stroke(content.busy || content.progress != nil ? Color.brandCyan : Color.brandLine, lineWidth: 1.5))
+        .padding(.horizontal, 16)
+        .padding(.bottom, 12)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
         .accessibilityElement(children: .contain)
+    }
+}
+
+extension TranslationDock {
+    var content: LanguageDockContent {
+        LanguageDockContent(
+            title: title, line: line, progress: progress?.floatValue, busy: busy, confirmLabel: confirmLabel,
+            addKeyLabel: addKeyLabel, retryLabel: retryLabel, closeLabel: closeLabel, failed: failed
+        )
+    }
+}
+
+extension PlayerLanguageDock {
+    var content: LanguageDockContent {
+        LanguageDockContent(
+            title: title, line: line, progress: progress?.floatValue, busy: busy, confirmLabel: startLabel,
+            addKeyLabel: addKeyLabel, retryLabel: retryLabel, closeLabel: closeLabel, failed: failed
+        )
+    }
+}
+
+/// The end card's "Read it in another language", set by the reader for chapters that can be translated.
+struct ReaderLanguageAction {
+    let label: String
+    let open: () -> Void
+}
+
+private struct ReaderLanguageActionKey: EnvironmentKey {
+    static let defaultValue: ReaderLanguageAction? = nil
+}
+
+extension EnvironmentValues {
+    var readerLanguageAction: ReaderLanguageAction? {
+        get { self[ReaderLanguageActionKey.self] }
+        set { self[ReaderLanguageActionKey.self] = newValue }
     }
 }

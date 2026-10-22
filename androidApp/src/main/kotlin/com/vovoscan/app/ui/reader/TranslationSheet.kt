@@ -18,24 +18,17 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.vovoscan.app.ui.common.BrandField
-import com.vovoscan.app.ui.common.ErrorText
-import com.vovoscan.app.ui.common.GhostButton
-import com.vovoscan.app.ui.common.PrimaryButton
 import com.vovoscan.app.ui.settings.KeysScreen
 import com.vovoscan.app.ui.theme.Brand
 import com.vovoscan.core.common.i18n.I18n
 import com.vovoscan.feature.reader.presentation.TranslationIntent
-import com.vovoscan.feature.reader.presentation.TranslationOffer
 import com.vovoscan.feature.reader.presentation.TranslationUiState
 
 /** The reader's language button: the language in use, red while a translation shows, cyan while one is made. */
@@ -69,8 +62,8 @@ fun LanguageButton(
 }
 
 /**
- * Every language, those already made first ("Ready": shared, free, shown at once); one nobody made yet shows its cost
- * first (own key, credits, or "Add a key"), then its progress, and the page swaps its lettering when it is ready.
+ * Every language, those already made first ("Ready": shared, free). A pick closes the sheet: a language already made
+ * swaps in, a new one is quoted in the dock over the page (reader SPEC §11).
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -79,22 +72,12 @@ fun TranslationSheet(
     onIntent: (TranslationIntent) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    var keysOpen by rememberSaveable { mutableStateOf(false) }
     ModalBottomSheet(
-        onDismissRequest = {
-            onIntent(TranslationIntent.DismissMessage)
-            onIntent(TranslationIntent.DismissOffer)
-            onDismiss()
-        },
+        onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
         containerColor = Brand.Ink2,
         contentColor = Brand.Paper,
     ) {
-        if (keysOpen) {
-            // "Add a key" from an offer: the keys here, the reader stays where it was.
-            Column(Modifier.fillMaxHeight(0.9f)) { KeysScreen(onBack = { keysOpen = false }) }
-            return@ModalBottomSheet
-        }
         LazyColumn(
             Modifier.fillMaxWidth().fillMaxHeight(0.9f),
             verticalArrangement = Arrangement.spacedBy(2.dp),
@@ -103,14 +86,6 @@ fun TranslationSheet(
                 Column(Modifier.padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(I18n.text("translation.languageTitle"), style = MaterialTheme.typography.titleLarge)
                     BrandField(I18n.text("common.searchLanguage"), state.query, { onIntent(TranslationIntent.Query(it)) })
-                    state.checking?.let { Text(it, style = MaterialTheme.typography.bodySmall.copy(color = Brand.Muted)) }
-                    state.offer?.let { OfferCard(it, onIntent) { keysOpen = true } }
-                    state.progressLabel?.let { Text(it, style = MaterialTheme.typography.labelLarge.copy(color = Brand.Cyan)) }
-                    state.notice?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
-                    state.error?.let {
-                        ErrorText(it)
-                        GhostButton(I18n.text("common.tryAgain"), { onIntent(TranslationIntent.Retry) })
-                    }
                 }
             }
             items(state.options, key = { it.code ?: "original" }) { option ->
@@ -120,8 +95,7 @@ fun TranslationSheet(
                         .background(if (option.selected) Brand.Line else Brand.Ink2)
                         .clickable {
                             onIntent(TranslationIntent.Choose(option.code))
-                            // A language already made shows at once; a new one keeps the sheet for its cost and progress.
-                            if (option.ready) onDismiss()
+                            onDismiss()
                         }.semantics { selected = option.selected }
                         .padding(horizontal = 20.dp, vertical = 12.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -142,28 +116,24 @@ fun TranslationSheet(
     }
 }
 
-/** "Translate into Yorùbá?": what it costs this account, then Translate / Add a key / Not now. Nothing is paid before. */
+/** "Add your own key" from a dock: the keys in a sheet over the reader or the player, which stay where they were. */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun OfferCard(
-    offer: TranslationOffer,
-    onIntent: (TranslationIntent) -> Unit,
-    onAddKey: () -> Unit,
-) {
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .background(Brand.Ink, MaterialTheme.shapes.medium)
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
+fun KeysSheet(onDismiss: () -> Unit) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        containerColor = Brand.Ink2,
+        contentColor = Brand.Paper,
     ) {
-        Text(offer.title, style = MaterialTheme.typography.titleMedium)
-        Text(offer.line, style = MaterialTheme.typography.bodyMedium.copy(color = if (offer.canTranslate) Brand.Paper else Brand.Yellow))
-        if (offer.canTranslate) PrimaryButton(offer.translateLabel, { onIntent(TranslationIntent.ConfirmOffer) })
-        offer.addKeyLabel?.let { GhostButton(it, onAddKey) }
-        Text(
-            offer.cancelLabel,
-            style = MaterialTheme.typography.labelLarge.copy(color = Brand.Muted),
-            modifier = Modifier.clickable { onIntent(TranslationIntent.DismissOffer) }.padding(vertical = 4.dp),
-        )
+        Column(Modifier.fillMaxHeight(0.9f)) { KeysScreen(onBack = onDismiss) }
     }
 }
+
+/** The end card's "Read it in another language", provided by the reader for chapters that can be translated. */
+class ReaderLanguageAction(
+    val label: String,
+    val open: () -> Unit,
+)
+
+val LocalReaderLanguageAction = staticCompositionLocalOf<ReaderLanguageAction?> { null }

@@ -10,6 +10,8 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -91,7 +93,9 @@ import coil3.size.Size
 import com.vovoscan.app.MainActivity
 import com.vovoscan.app.ui.common.ErrorText
 import com.vovoscan.app.ui.common.GhostButton
+import com.vovoscan.app.ui.common.LanguageDock
 import com.vovoscan.app.ui.common.PrimaryButton
+import com.vovoscan.app.ui.common.content
 import com.vovoscan.app.ui.theme.Brand
 import com.vovoscan.core.common.i18n.I18n
 import com.vovoscan.feature.reader.domain.ReaderPage
@@ -106,6 +110,7 @@ import com.vovoscan.feature.reader.presentation.ReaderUiState
 import com.vovoscan.feature.reader.presentation.ReaderViewModel
 import com.vovoscan.feature.reader.presentation.TapOverlay
 import com.vovoscan.feature.reader.presentation.TransitionCard
+import com.vovoscan.feature.reader.presentation.TranslationIntent
 import com.vovoscan.feature.reader.presentation.TranslationViewModel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -141,6 +146,11 @@ fun ReaderScreen(
         koinViewModel(key = "translation:$sourceKey/$chapterId") { parametersOf(sourceKey, chapterId) }
     val translationState by translation.state.collectAsStateWithLifecycle()
     var languagesOpen by rememberSaveable { mutableStateOf(false) }
+    var keysOpen by rememberSaveable { mutableStateOf(false) }
+    val languageAction =
+        remember(translationState.available) {
+            if (translationState.available) ReaderLanguageAction(translationState.endCardLabel) { languagesOpen = true } else null
+        }
 
     // Keep the screen awake while reading (setting, on by default).
     val view = LocalView.current
@@ -196,7 +206,10 @@ fun ReaderScreen(
             state.isBook -> BookReader(state, onIntent) { onOpenChapter(it, 0) }
             state.items.isEmpty() -> Unit
             else ->
-                CompositionLocalProvider(LocalPageLettering provides { translationState.letteringFor(it) }) {
+                CompositionLocalProvider(
+                    LocalPageLettering provides { translationState.letteringFor(it) },
+                    LocalReaderLanguageAction provides languageAction,
+                ) {
                     ComicReader(state, onIntent)
                 }
         }
@@ -257,6 +270,25 @@ fun ReaderScreen(
             )
             BottomBar(state, onIntent, { onOpenChapter(it, 0) }, Modifier.align(Alignment.BottomCenter))
         }
+        // A language on its way: the page keeps its lettering, the dock shows the cost, then the progress.
+        AnimatedVisibility(
+            translationState.dock != null && !state.isBook,
+            enter = if (state.reducedMotion) EnterTransition.None else slideInVertically { it } + fadeIn(),
+            exit = if (state.reducedMotion) ExitTransition.None else slideOutVertically { it } + fadeOut(),
+            modifier = Modifier.align(Alignment.BottomCenter),
+        ) {
+            var shown by remember { mutableStateOf(translationState.dock) }
+            translationState.dock?.let { shown = it }
+            shown?.let { dock ->
+                LanguageDock(
+                    dock.content(),
+                    onConfirm = { translation.onIntent(TranslationIntent.ConfirmOffer) },
+                    onAddKey = { keysOpen = true },
+                    onRetry = { translation.onIntent(TranslationIntent.Retry) },
+                    onClose = { translation.onIntent(TranslationIntent.CloseDock) },
+                )
+            }
+        }
         // How to read, the first time a chapter of its kind opens: any tap closes it.
         AnimatedVisibility(
             state.coach != null,
@@ -269,6 +301,7 @@ fun ReaderScreen(
         }
     }
     if (languagesOpen) TranslationSheet(translationState, translation::onIntent) { languagesOpen = false }
+    if (keysOpen) KeysSheet { keysOpen = false }
     if (settingsOpen && !state.isBook) {
         ReaderSettingsSheet(state.settings, onIntent) {
             settingsOpen = false
@@ -546,6 +579,9 @@ internal fun TransitionCardView(
                     GhostButton(label, { onIntent(ReaderIntent.OpenPreviousChapter) })
                 }
             }
+            // Reader SPEC §11: the language is one tap away here too.
+            val language = LocalReaderLanguageAction.current
+            if (card.forward && language != null) GhostButton("文A  ${language.label}", language.open)
         }
     }
 }
