@@ -1,6 +1,7 @@
 package com.vovoscan.app
 
 import android.os.Bundle
+import android.view.KeyEvent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
@@ -43,6 +44,37 @@ import org.koin.compose.viewmodel.koinViewModel
 import org.koin.core.parameter.parametersOf
 
 class MainActivity : ComponentActivity() {
+    /** Set by the reader while it is on screen: true when it used the volume key (up = volume up). */
+    var volumeKeys: ((up: Boolean) -> Boolean)? = null
+    private var volumeKeyTaken = false
+
+    override fun onKeyDown(
+        keyCode: Int,
+        event: KeyEvent,
+    ): Boolean {
+        val handler = volumeKeys
+        if (handler != null && isVolumeKey(keyCode)) {
+            // A held key repeats: one page per press.
+            if (event.repeatCount > 0 && volumeKeyTaken) return true
+            volumeKeyTaken = handler(keyCode == KeyEvent.KEYCODE_VOLUME_UP)
+            if (volumeKeyTaken) return true
+        }
+        return super.onKeyDown(keyCode, event)
+    }
+
+    override fun onKeyUp(
+        keyCode: Int,
+        event: KeyEvent,
+    ): Boolean {
+        if (isVolumeKey(keyCode) && volumeKeyTaken) {
+            volumeKeyTaken = false
+            return true
+        }
+        return super.onKeyUp(keyCode, event)
+    }
+
+    private fun isVolumeKey(keyCode: Int) = keyCode == KeyEvent.KEYCODE_VOLUME_UP || keyCode == KeyEvent.KEYCODE_VOLUME_DOWN
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
@@ -74,7 +106,7 @@ private fun Root(session: SessionViewModel = koinViewModel()) {
     var openTitle by rememberSaveable { mutableStateOf<String?>(null) }
     // Open sources screen (Sources tab): "add-source", "add-source|repository id" or "source-detail|source key".
     var openSource by rememberSaveable { mutableStateOf<String?>(null) }
-    // Open reader: "source|title|chapter|start page".
+    // Open reader: "source|title|chapter|start page" (`ReaderViewModel.START_AT_END`: from its last page).
     var openReader by rememberSaveable { mutableStateOf<String?>(null) }
     // Open episode card (over the title page): chapter id.
     var openEpisode by rememberSaveable { mutableStateOf<String?>(null) }
@@ -115,7 +147,7 @@ private fun Root(session: SessionViewModel = koinViewModel()) {
                 chapterId = reader[2],
                 startPage = reader[3].toInt(),
                 onBack = { openReader = null },
-                onOpenChapter = { openReader = "${reader[0]}|${reader[1]}|$it|0" },
+                onOpenChapter = { chapter, page -> openReader = "${reader[0]}|${reader[1]}|$chapter|$page" },
             )
             return@Column
         }

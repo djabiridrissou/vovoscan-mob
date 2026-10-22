@@ -1,0 +1,12 @@
+-- v2 → v3: reader settings on the device and the reading mode chosen per series.
+CREATE TABLE reader_setting (
+    name TEXT NOT NULL PRIMARY KEY,
+    setting_value TEXT NOT NULL
+);
+
+CREATE TABLE series_mode (
+    source_key TEXT NOT NULL,
+    title_id TEXT NOT NULL,
+    mode TEXT NOT NULL,
+    PRIMARY KEY (source_key, title_id)
+);

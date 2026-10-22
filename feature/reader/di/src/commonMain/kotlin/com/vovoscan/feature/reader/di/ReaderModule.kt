@@ -10,8 +10,10 @@ import com.vovoscan.feature.reader.data.ReaderRemoteDataSource
 import com.vovoscan.feature.reader.data.ReaderRepositoryImpl
 import com.vovoscan.feature.reader.data.RoutingReaderRemoteDataSource
 import com.vovoscan.feature.reader.data.SqlReaderLocalDataSource
+import com.vovoscan.feature.reader.data.SqlReaderSettingsRepository
 import com.vovoscan.feature.reader.data.db.ReaderDatabase
 import com.vovoscan.feature.reader.domain.ReaderRepository
+import com.vovoscan.feature.reader.domain.ReaderSettingsRepository
 import com.vovoscan.feature.reader.presentation.ReaderViewModel
 import org.koin.core.module.dsl.viewModel
 import org.koin.dsl.module
@@ -19,7 +21,7 @@ import org.koin.dsl.module
 /**
  * Koin module for the reader: local (SQLDelight) and remote (Ktor) sources injected into the repository.
  * Expects from the app: `HttpClient`, `DatabaseDriverFactory`, `AppDispatchers`, `ReadingProgressSink`,
- * `ManifestProvider` and `RulesHttp`.
+ * `ManifestProvider`, `RulesHttp` and `ChapterHeadings`.
  */
 val readerModule =
     module {
@@ -30,7 +32,9 @@ val readerModule =
         }
         single<ReaderLocalDataSource> { SqlReaderLocalDataSource(get(), get<AppDispatchers>().io) }
         single<ReaderRepository> { ReaderRepositoryImpl(get(), get(), EpubParser(), get<AppDispatchers>().io) }
+        // Reading modes, tap zones and the other reader settings: on this device only.
+        single<ReaderSettingsRepository> { SqlReaderSettingsRepository(get(), get<AppDispatchers>().io) }
         viewModel { (sourceKey: String, titleId: String, chapterId: String, startPage: Int) ->
-            ReaderViewModel(sourceKey, titleId, chapterId, startPage, get(), get())
+            ReaderViewModel(sourceKey, titleId, chapterId, startPage, get(), get(), get(), get())
         }
     }

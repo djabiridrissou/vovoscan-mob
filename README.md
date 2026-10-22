@@ -89,6 +89,45 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
 - Images are signed URLs, unchanged for a day: the image cache serves pages already seen.
   Downloading chapters for full offline reading is still to do.
 
+## Reader: modes, tap zones, settings (comics, modelled on Mihon)
+
+- Modes (`ReadingMode`): `PagedRightToLeft`, `PagedLeftToRight`, `PagedVertical` (one page at a time), `LongStrip`
+  (continuous, no gap: webtoons), `LongStripGaps` (16 dp/pt between pages); `Book` for books. `ReadingModes.resolve`:
+  the mode chosen for the series (`series_mode`, per `(sourceKey, titleId)`), else the user's default for the format
+  (manga / webtoon), else the format rule (`manga` → right to left, `webtoon` → long strip). Switching keeps the page.
+- Tap zones (`TapZones`, pure, `domain`): a 3 × 3 grid of the reading area (thirds); the native side sends where the
+  finger went up as `ReaderIntent.Tap(x, y)` (0..1, origin top left) and nothing else. Rows top to bottom
+  (P = Previous, N = Next, M = Menu): Right and left `PMN/PMN/PMN`, L-shaped `PPP/PMN/NNN`, Kindle-ish
+  `MMM/PNN/PNN`, Edge `NMN/NMN/NPN`, Disabled all `M`. Default: Right and left for horizontal pages, L-shaped for
+  vertical pages and strips. Invert None / Horizontal (columns) / Vertical (rows) / Both; right-to-left pages mirror
+  the columns, and a horizontal invert flips that back (XOR). `TapZones.map` merges the cells into the overlay's
+  rectangles and labels.
+- Actions: paged → `ReaderCommand.GoToItem` (animated); strips → `ScrollBy(±fraction)` of the reading area's height
+  (50 / 75 / 90 %, default 75 %); Menu toggles the bars; Next / Previous also hide them. `ReaderUiState.items`: the
+  previous-chapter card, the pages, the next-chapter card (page i = item i + 1). Past the last page: the card
+  ("Finished: Chapter 3" / "Next: Chapter 4 · name" / "This is the last chapter for now."), a further Next opens the
+  next chapter; before the first page the same backwards, and the previous chapter opens at its last page
+  (`ReaderViewModel.START_AT_END`). Strips report their edges (`StripEdges`): Next at the bottom opens the next
+  chapter. Chapter names come through the `ChapterHeadings` port (wired in `shared` to the title page kept by the
+  catalog). Commands carry a `seq`; the native side starts them and answers `CommandHandled(seq)`.
+- Single taps act on touch-up (measured 6-19 ms from touch-up to the intent on the iOS simulator). Double tap to zoom
+  (off by default; 2×, pan by dragging, scrolling paused while zoomed) makes single taps wait for a possible second
+  tap (~370 ms). A drag, fling or pinch is never a tap (the scroll view takes it first). Taps faster than the scroll
+  animation add up.
+- Overlay (red next, cyan previous, ink menu, ~1.5 s): on the reader's first opening on the device, then when the
+  zones change (layout, invert, or a mode that changes them), after the settings sheet closes; "Show tap zones" off
+  never shows it.
+- Settings sheet (gear in the top bar), kept on the device in the reader's database (`reader_setting` key-value
+  table, `series_mode`; migration `2.sqm`), no backend: mode for this series (+ Reset to default), default mode for
+  manga / webtoon, tap zones, invert, show tap zones (on), tap scroll amount (75 %), double tap to zoom (off), keep
+  screen awake (on), Android only: volume keys turn pages (off; down = next, up = previous) and invert them (off).
+  Sign-out and a removed source erase the series modes; the device-wide preferences stay.
+- Android: `HorizontalPager` (reversed for right to left) / `VerticalPager` / `LazyColumn`, `detectTapGestures`
+  around them, volume keys through `MainActivity.onKeyDown`/`onKeyUp` while the reader is on screen. Pages taller than
+  4096 px are decoded as software bitmaps (a hardware bitmap of an 800 × 14 000 webtoon page never drew). iOS: paging
+  `ScrollView` (`scrollTargetBehavior(.paging)`, right-to-left layout direction) / `ScrollView` + `ScrollPosition`,
+  one `SpatialTapGesture` on the container.
+
 ## Account (keys, reading model, costs)
 
 - `feature/account`: the user's own AI settings, one slice for the backend modules `provider-keys` and `settings`

@@ -23,6 +23,8 @@ import com.vovoscan.feature.episodes.domain.KeyStatusProvider
 import com.vovoscan.feature.library.di.libraryModule
 import com.vovoscan.feature.library.domain.LibraryRepository
 import com.vovoscan.feature.reader.di.readerModule
+import com.vovoscan.feature.reader.domain.ChapterHeading
+import com.vovoscan.feature.reader.domain.ChapterHeadings
 import com.vovoscan.feature.reader.domain.ReaderRepository
 import com.vovoscan.feature.reader.domain.ReadingProgressSink
 import com.vovoscan.feature.sources.di.sourcesModule
@@ -32,6 +34,7 @@ import io.ktor.client.HttpClient
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import org.koin.core.module.Module
@@ -92,6 +95,18 @@ fun appModules(
                 val scope = get<CoroutineScope>()
                 ReadingProgressSink { sourceKey, titleId, chapterId, page ->
                     scope.launch { library.saveProgress(sourceKey, titleId, chapterId, page) }
+                }
+            }
+            // The reader's chapter transitions name the next / previous chapter from the title page kept on the device.
+            single {
+                val catalog = get<CatalogRepository>()
+                ChapterHeadings { sourceKey, titleId, chapterId ->
+                    catalog
+                        .observeTitle(sourceKey, titleId)
+                        .first()
+                        ?.chapters
+                        ?.firstOrNull { it.id == chapterId }
+                        ?.let { ChapterHeading(it.number, it.name) }
                 }
             }
             // Episodes show which of the user's keys a run would use, without knowing the account slice.

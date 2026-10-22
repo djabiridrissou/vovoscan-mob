@@ -6,6 +6,7 @@ import app.cash.sqldelight.coroutines.mapToOneOrNull
 import com.vovoscan.feature.reader.data.db.ReaderDatabase
 import com.vovoscan.feature.reader.domain.Book
 import com.vovoscan.feature.reader.domain.BookSection
+import com.vovoscan.feature.reader.domain.ComicFormat
 import com.vovoscan.feature.reader.domain.ReaderChapter
 import com.vovoscan.feature.reader.domain.ReaderPage
 import com.vovoscan.feature.reader.domain.ReadingMode
@@ -88,6 +89,7 @@ class SqlReaderLocalDataSource(
                     nextChapterId = it.next_id,
                     pages = pages.map { page -> ReaderPage(page.page_index.toInt(), page.url, page.width.toInt(), page.height.toInt()) },
                     documentUrl = it.document_url,
+                    format = ComicFormat.from(it.format),
                 )
             }
         }
@@ -111,6 +113,7 @@ class SqlReaderLocalDataSource(
                     it.next_id,
                     emptyList(),
                     it.document_url,
+                    ComicFormat.from(it.format),
                 )
             }
         }
@@ -176,6 +179,8 @@ class SqlReaderLocalDataSource(
                 queries.clearPages()
                 queries.clearSections()
                 queries.clearChapters()
+                // The modes chosen per series go with the account; the device-wide preferences stay.
+                queries.clearSeriesModes()
             }
         }
 
@@ -185,6 +190,7 @@ class SqlReaderLocalDataSource(
                 queries.clearPagesOf(sourceKey)
                 queries.clearSectionsOf(sourceKey)
                 queries.clearChaptersOf(sourceKey)
+                queries.clearSeriesModesOf(sourceKey)
             }
         }
 }

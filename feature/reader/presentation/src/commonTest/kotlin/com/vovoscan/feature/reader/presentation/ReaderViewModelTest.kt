@@ -5,6 +5,7 @@ import com.vovoscan.core.common.AppResult
 import com.vovoscan.core.common.Freshness
 import com.vovoscan.feature.reader.domain.Book
 import com.vovoscan.feature.reader.domain.BookSection
+import com.vovoscan.feature.reader.domain.ChapterHeadings
 import com.vovoscan.feature.reader.domain.ReaderChapter
 import com.vovoscan.feature.reader.domain.ReaderPage
 import com.vovoscan.feature.reader.domain.ReaderRepository
@@ -97,6 +98,8 @@ class ReaderViewModelTest {
         override suspend fun clearSource(sourceKey: String) = Unit
     }
 
+    private val noHeadings = ChapterHeadings { _, _, _ -> null }
+
     @BeforeTest
     fun setUp() = Dispatchers.setMain(dispatcher)
 
@@ -106,7 +109,16 @@ class ReaderViewModelTest {
     @Test
     fun resumesAtSavedPage() =
         runTest(dispatcher) {
-            val vm = ReaderViewModel("vovoscan", "t1", "c1", startPage = 3, FakeReader(comic, AppResult.Ok(Unit))) { _, _, _, _ -> }
+            val vm =
+                ReaderViewModel(
+                    "vovoscan",
+                    "t1",
+                    "c1",
+                    startPage = 3,
+                    FakeReader(comic, AppResult.Ok(Unit)),
+                    FakeSettings(),
+                    noHeadings,
+                ) { _, _, _, _ -> }
             advanceUntilIdle()
             assertEquals("4 / 5", vm.state.value.positionLabel)
             assertTrue(vm.state.value.rightToLeft)
@@ -118,7 +130,15 @@ class ReaderViewModelTest {
         runTest(dispatcher) {
             val saved = mutableListOf<Pair<String, Int>>()
             val vm =
-                ReaderViewModel("gutenberg", "t1", "c1", 0, FakeReader(comic, AppResult.Ok(Unit))) { source, _, _, page ->
+                ReaderViewModel(
+                    "gutenberg",
+                    "t1",
+                    "c1",
+                    0,
+                    FakeReader(comic, AppResult.Ok(Unit)),
+                    FakeSettings(),
+                    noHeadings,
+                ) { source, _, _, page ->
                     saved +=
                         source to page
                 }
@@ -134,7 +154,7 @@ class ReaderViewModelTest {
     fun bookOpensAndReadsBySection() =
         runTest(dispatcher) {
             val reader = FakeReader(book, AppResult.Ok(Unit))
-            val vm = ReaderViewModel("vovoscan", "t9", "b1", startPage = 1, reader) { _, _, _, _ -> }
+            val vm = ReaderViewModel("vovoscan", "t9", "b1", startPage = 1, reader, FakeSettings(), noHeadings) { _, _, _, _ -> }
             advanceUntilIdle()
             assertEquals(1, reader.loads)
             assertEquals("Section 2 / 2", vm.state.value.positionLabel)
@@ -158,7 +178,16 @@ class ReaderViewModelTest {
     @Test
     fun neverOpenedAndOffline() =
         runTest(dispatcher) {
-            val vm = ReaderViewModel("vovoscan", "t1", "c1", 0, FakeReader(null, AppResult.Err(AppError.Network))) { _, _, _, _ -> }
+            val vm =
+                ReaderViewModel(
+                    "vovoscan",
+                    "t1",
+                    "c1",
+                    0,
+                    FakeReader(null, AppResult.Err(AppError.Network)),
+                    FakeSettings(),
+                    noHeadings,
+                ) { _, _, _, _ -> }
             advanceUntilIdle()
             assertTrue(vm.state.value.unavailable)
             assertEquals(Freshness.Offline, vm.state.value.freshness)

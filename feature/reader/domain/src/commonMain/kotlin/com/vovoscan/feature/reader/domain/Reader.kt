@@ -3,23 +3,52 @@ package com.vovoscan.feature.reader.domain
 import com.vovoscan.core.common.AppResult
 import kotlinx.coroutines.flow.Flow
 
-/** How a unit is read: right-to-left pages (manga), vertical strip (webtoon), text (book). */
+/**
+ * How a unit is read. Comics: paged (right to left, left to right, vertical) or a continuous strip (with or
+ * without gaps between pages). Books: text.
+ */
 enum class ReadingMode {
     PagedRightToLeft,
-    Vertical,
+    PagedLeftToRight,
+    PagedVertical,
+    LongStrip,
+    LongStripGaps,
     Book,
     ;
 
+    val isPaged: Boolean get() = this == PagedRightToLeft || this == PagedLeftToRight || this == PagedVertical
+
+    val isStrip: Boolean get() = this == LongStrip || this == LongStripGaps
+
+    /** Pages side by side (a horizontal swipe turns them). */
+    val isHorizontal: Boolean get() = this == PagedRightToLeft || this == PagedLeftToRight
+
     companion object {
+        /** The modes a comic can be read in, in the order the settings show them. */
+        val comicModes: List<ReadingMode> = listOf(PagedRightToLeft, PagedLeftToRight, PagedVertical, LongStrip, LongStripGaps)
+
+        /** The format rule: a book is text, a webtoon a long strip, anything else right-to-left pages (manga). */
         fun from(
             kind: String,
             format: String,
         ): ReadingMode =
             when {
                 kind == "book" -> Book
-                format == "webtoon" -> Vertical
-                else -> PagedRightToLeft
+                else -> ComicFormat.from(format).defaultMode
             }
+    }
+}
+
+/** A comic's format, as the source declares it: what decides its default reading mode. */
+enum class ComicFormat(
+    val defaultMode: ReadingMode,
+) {
+    Manga(ReadingMode.PagedRightToLeft),
+    Webtoon(ReadingMode.LongStrip),
+    ;
+
+    companion object {
+        fun from(format: String): ComicFormat = if (format == "webtoon") Webtoon else Manga
     }
 }
 
@@ -47,17 +76,25 @@ data class ReaderChapter(
     val pages: List<ReaderPage>,
     /** Book: URL of the EPUB file (downloaded, then opened on the device). */
     val documentUrl: String?,
+    /** The source's format (comics): decides the default mode with the user's per-format default. */
+    val format: ComicFormat = if (mode == ReadingMode.LongStrip) ComicFormat.Webtoon else ComicFormat.Manga,
 ) {
     val label: String
         get() =
             if (mode == ReadingMode.Book) {
                 name ?: "Part ${numberLabel()}"
             } else {
-                "Chapter " + numberLabel()
+                chapterLabel(number)
             }
 
-    private fun numberLabel() = if (number % 1.0 == 0.0) number.toLong().toString() else number.toString()
+    private fun numberLabel() = numberLabel(number)
 }
+
+/** "12" or "12.5", never "12.0". */
+fun numberLabel(number: Double): String = if (number % 1.0 == 0.0) number.toLong().toString() else number.toString()
+
+/** "Chapter 12". */
+fun chapterLabel(number: Double): String = "Chapter " + numberLabel(number)
 
 /** A book section (in reading order): table-of-contents title and sanitized HTML. */
 data class BookSection(

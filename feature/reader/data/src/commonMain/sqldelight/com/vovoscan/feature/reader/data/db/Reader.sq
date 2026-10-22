@@ -32,6 +32,20 @@ CREATE TABLE book_section (
     PRIMARY KEY (chapter_key, section_index)
 );
 
+-- Reader settings kept on this device (no backend): one row per setting, value as text.
+CREATE TABLE reader_setting (
+    name TEXT NOT NULL PRIMARY KEY,
+    setting_value TEXT NOT NULL
+);
+
+-- The reading mode the user chose for one series, overriding the defaults.
+CREATE TABLE series_mode (
+    source_key TEXT NOT NULL,
+    title_id TEXT NOT NULL,
+    mode TEXT NOT NULL,
+    PRIMARY KEY (source_key, title_id)
+);
+
 chapter:
 SELECT * FROM reader_chapter WHERE chapter_key = ?;
 
@@ -77,3 +91,24 @@ DELETE FROM book_section WHERE chapter_key IN (SELECT chapter_key FROM reader_ch
 
 clearChaptersOf:
 DELETE FROM reader_chapter WHERE source_key = ?;
+
+settings:
+SELECT * FROM reader_setting;
+
+putSetting:
+INSERT OR REPLACE INTO reader_setting (name, setting_value) VALUES (?, ?);
+
+seriesMode:
+SELECT mode FROM series_mode WHERE source_key = ? AND title_id = ?;
+
+putSeriesMode:
+INSERT OR REPLACE INTO series_mode (source_key, title_id, mode) VALUES (?, ?, ?);
+
+deleteSeriesMode:
+DELETE FROM series_mode WHERE source_key = ? AND title_id = ?;
+
+clearSeriesModes:
+DELETE FROM series_mode;
+
+clearSeriesModesOf:
+DELETE FROM series_mode WHERE source_key = ?;
