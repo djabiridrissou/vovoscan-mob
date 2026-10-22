@@ -75,7 +75,9 @@ struct CatalogView: View {
                         EmptyStateCard(sfx: "シーン", title: model.state.emptyMessage, message: L("catalog.pullToRefresh"))
                     }
                     LazyVGrid(columns: columns, spacing: 14) {
-                        ForEach(Array(model.state.visible.enumerated()), id: \.element) { index, card in
+                        // By title, never by the whole card: a card whose badges change (the title page saved its format or status)
+                        // stays the same view, so the zoom transition's source survives under the open title page.
+                        ForEach(Array(model.state.visible.enumerated()), id: \.element.key) { index, card in
                             let route = TitleRoute(sourceKey: card.sourceKey, titleId: card.id)
                             NavigationLink(value: route) { TitleTile(card: card, popularLabel: model.state.popularLabel) }
                                 .buttonStyle(PressableCardStyle())

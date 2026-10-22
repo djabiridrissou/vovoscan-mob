@@ -87,13 +87,13 @@ class CatalogRepositoryImplTest {
     private val deviceRequests = mutableListOf<String>()
 
     private fun TestScope.repository(
+        local: SqlCatalogLocalDataSource =
+            SqlCatalogLocalDataSource(CatalogDatabase(inMemoryDriver(CatalogDatabase.Schema)), StandardTestDispatcher(testScheduler)),
         apiHandler:
             suspend io.ktor.client.engine.mock.MockRequestHandleScope.(
                 io.ktor.client.request.HttpRequestData,
             ) -> io.ktor.client.request.HttpResponseData,
     ): CatalogRepositoryImpl {
-        val local =
-            SqlCatalogLocalDataSource(CatalogDatabase(inMemoryDriver(CatalogDatabase.Schema)), StandardTestDispatcher(testScheduler))
         val device =
             MockEngine { request ->
                 if (deviceDown) return@MockEngine respond("", HttpStatusCode.ServiceUnavailable)
@@ -163,8 +163,10 @@ class CatalogRepositoryImplTest {
     fun formatsAreAskedForEveryComicSourceAndTheServersWordBeatsTheMangaDefault() =
         runTest {
             val asked = mutableListOf<String>()
+            val local =
+                SqlCatalogLocalDataSource(CatalogDatabase(inMemoryDriver(CatalogDatabase.Schema)), StandardTestDispatcher(testScheduler))
             val repo =
-                repository { request ->
+                repository(local) { request ->
                     val path = request.url.encodedPath
                     if (!path.endsWith("/formats")) return@repository respond("", HttpStatusCode.NotFound)
                     asked += path + "?" +
@@ -209,6 +211,15 @@ class CatalogRepositoryImplTest {
             )
             // Asked once each.
             repo.learnFormats("inkwell", listOf("1", "2"))
+            assertEquals(2, asked.size)
+
+            // Kept on the device: the next launch (a new repository) and a listing that names no format still show it.
+            val relaunched = repository(local) { respond("", HttpStatusCode.NotFound) }
+            relaunched.refreshListing("inkwell")
+            assertEquals(
+                listOf("1" to ReadingFormat.Webtoon, "2" to ReadingFormat.Manga),
+                relaunched.observeListing("inkwell").first().map { it.title.id to it.title.format },
+            )
             assertEquals(2, asked.size)
         }
 

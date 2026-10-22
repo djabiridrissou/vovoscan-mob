@@ -128,9 +128,10 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   default, `RulesTitleSummary.formatRead` false) asks `GET api/v1/source-reader/{key}/formats?ref=…`
   (`CatalogRepository.learnFormats`, 100 refs a call, each title once; the server learns a few unopened titles per
   call, so pull to refresh and Load more ask again for those still unknown, `askFormatsAgain`), else manga: only while
-  such a filter needs it, so browsing a source never tells the server what it lists. A learned format beats the manga
-  default in every listing of that source, every category included. Category and learned formats are kept in memory (no
-  schema change).
+  such a filter needs it, so browsing a source never tells the server what it lists. A learned webtoon beats the manga
+  default in every listing of that source, every category included, and is saved over it (`title.format`, query
+  `learnFormat`, only where it says manga; no schema change), so "All categories" and the next launch show it. The
+  chosen category is kept in memory.
 - Tests: `core/sources/src/commonTest/.../Fixtures.kt` copies the manifests (change them with `vovo-plugin`).
 - Third-party sources (user plugins, spec v1): added from a link (single manifest or `repo.json`, GitHub pages
   resolved to raw files) or a `.vovo` file, private to the user, not reviewed by vovoscan. `core/sources` has the
@@ -744,6 +745,9 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   binding computed from a dictionary), copies every keystroke into the form's `[name: text]` record, does not resend
   a value Kotlin already has (a field filled on appear would mark the form edited), and Save / Confirm resend every
   recorded value before the intent.
+- Grids of cards are keyed by the title (`TitleCard.key`), never by the whole card: a title page saving its format or
+  status replaced the catalog tile that was its zoom transition's source while the page opened, and the page then took
+  no tap (only Back worked).
 - No Kotlin property named `description` in an exported state: on iOS it is `toString()` (NSObject).
 - Simulator: build signed (`CODE_SIGN_IDENTITY="-"`, which Xcode does by default), otherwise the Keychain
   refuses to write and the session does not persist.

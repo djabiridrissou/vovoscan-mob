@@ -57,6 +57,15 @@ interface CatalogLocalDataSource {
         items: List<TitleSummaryDto>,
     )
 
+    /**
+     * Formats the server learned (id → format), kept over the manga default only, so every listing and every launch
+     * shows them; a source's later listings that name no format keep them too.
+     */
+    suspend fun saveLearnedFormats(
+        sourceKey: String,
+        formats: Map<String, String>,
+    )
+
     /** The format saved for each of these titles (what the title page read), by id; titles not saved are left out. */
     suspend fun savedFormats(
         sourceKey: String,
@@ -158,6 +167,11 @@ class SqlCatalogLocalDataSource(
         sourceKey: String,
         items: List<TitleSummaryDto>,
     ) = withContext(io) { queries.transaction { items.forEach { upsertSummary(sourceKey, it) } } }
+
+    override suspend fun saveLearnedFormats(
+        sourceKey: String,
+        formats: Map<String, String>,
+    ) = withContext(io) { queries.transaction { formats.forEach { (id, format) -> queries.learnFormat(format, sourceKey, id) } } }
 
     override suspend fun savedFormats(
         sourceKey: String,

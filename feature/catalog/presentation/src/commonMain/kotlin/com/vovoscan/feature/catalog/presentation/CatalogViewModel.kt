@@ -64,7 +64,13 @@ data class TitleCard(
     val started: Boolean = false,
     /** A search result readers who searched the same opened: the "Popular" badge. */
     val popular: Boolean = false,
-)
+) {
+    /**
+     * The card's identity on screen, whatever its badges say: a card whose format, status or cover changes stays the
+     * same view (iOS: the zoom transition's source tile must outlive the title page it opened).
+     */
+    val key: String get() = "$sourceKey/$id"
+}
 
 enum class SuggestionKind {
     /** This account's own search (↺): fills the field and runs it. */
@@ -169,7 +175,7 @@ data class CatalogUiState(
     val popularLabel: String get() = t("search.popular")
 
     val visible: List<TitleCard>
-        get() = (results ?: cards).map { if ("${it.sourceKey}/${it.id}" in startedKeys) it.copy(started = true) else it }
+        get() = (results ?: cards).distinctBy { it.key }.map { if (it.key in startedKeys) it.copy(started = true) else it }
 
     /** "Reading": the mark on a started title's card. */
     val startedLabel: String get() = t("catalog.started")

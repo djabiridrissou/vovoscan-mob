@@ -50,8 +50,13 @@ class CatalogRepositoryImpl(
     ): Map<String, ReadingFormat> {
         val fresh = askedLock.withLock { asked.getOrPut(sourceKey) { mutableSetOf() }.let { seen -> ids.filter(seen::add) } }
         if (fresh.isNotEmpty()) {
-            val found = remote.learnedFormats(sourceKey, fresh).map { (id, f) -> id to ReadingFormat.fromApi(f) }
-            if (found.isNotEmpty()) learned.update { all -> all + (sourceKey to all[sourceKey].orEmpty() + found) }
+            val raw = remote.learnedFormats(sourceKey, fresh)
+            val found = raw.map { (id, f) -> id to ReadingFormat.fromApi(f) }
+            if (found.isNotEmpty()) {
+                learned.update { all -> all + (sourceKey to all[sourceKey].orEmpty() + found) }
+                // Saved too: "All categories" and the next launch show what the server said.
+                local.saveLearnedFormats(sourceKey, raw.filterValues { it == WEBTOON })
+            }
         }
         val known = learned.value[sourceKey].orEmpty()
         return ids.mapNotNull { id -> known[id]?.let { id to it } }.toMap()
@@ -170,4 +175,9 @@ class CatalogRepositoryImpl(
             .also {
                 if (it is AppResult.Ok) local.saveCatalogPage(sourceKey, it.value, categoryId)
             }.map { it.hasNext }
+
+    private companion object {
+        /** The one learned format kept on the device (over the manga default). */
+        const val WEBTOON = "webtoon"
+    }
 }

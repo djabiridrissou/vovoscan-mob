@@ -70,6 +70,10 @@ INSERT OR IGNORE INTO title (source_key, id, name, cover_url, kind, format, stat
 updateSummary:
 UPDATE title SET name = ?, cover_url = ?, kind = ?, format = ?, status = ?, content_rating = ? WHERE source_key = ? AND id = ?;
 
+-- The server's word on a title it learned from imported pages: only over the manga default.
+learnFormat:
+UPDATE title SET format = ? WHERE source_key = ? AND id = ? AND format = 'manga';
+
 updateDetail:
 UPDATE title SET description = ?, authors = ?, genres = ? WHERE source_key = ? AND id = ?;
 
