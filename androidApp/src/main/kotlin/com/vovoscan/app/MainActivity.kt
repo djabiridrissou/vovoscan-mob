@@ -1,10 +1,15 @@
 package com.vovoscan.app
 
+import android.Manifest
+import android.content.Context
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import android.view.KeyEvent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -29,7 +34,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import com.vovoscan.app.ui.catalog.CatalogScreen
 import com.vovoscan.app.ui.common.AppIcons
 import com.vovoscan.app.ui.downloads.DownloadsScreen
@@ -47,6 +56,10 @@ import com.vovoscan.app.ui.theme.VovoscanTheme
 import com.vovoscan.app.ui.title.TitleScreen
 import com.vovoscan.feature.auth.presentation.SessionViewModel
 import com.vovoscan.feature.catalog.presentation.TitleDetailViewModel
+import com.vovoscan.feature.reader.domain.DownloadsRepository
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
+import org.koin.android.ext.android.inject
 import org.koin.compose.viewmodel.koinViewModel
 import org.koin.core.parameter.parametersOf
 
@@ -54,6 +67,11 @@ class MainActivity : ComponentActivity() {
     /** Set by the reader while it is on screen: true when it used the volume key (up = volume up). */
     var volumeKeys: ((up: Boolean) -> Boolean)? = null
     private var volumeKeyTaken = false
+    private val downloads: DownloadsRepository by inject()
+
+    // Android 13+: the downloads notification needs the permission, asked once at the first download. Refused, the
+    // downloads go on all the same (the foreground service shows in the system's task manager only).
+    private val askNotifications = registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
 
     override fun onKeyDown(
         keyCode: Int,
@@ -89,6 +107,33 @@ class MainActivity : ComponentActivity() {
                 Root()
             }
         }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            lifecycleScope.launch {
+                repeatOnLifecycle(Lifecycle.State.STARTED) {
+                    downloads.observeActivity().first { it.busy }
+                    askNotificationsOnce()
+                }
+            }
+        }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        // Back on screen: a queue paused in the background carries on.
+        downloads.resume()
+    }
+
+    private fun askNotificationsOnce() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
+        val granted = ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+        val prefs = getSharedPreferences("downloads", Context.MODE_PRIVATE)
+        if (granted || prefs.getBoolean(NOTIFICATIONS_ASKED, false)) return
+        prefs.edit().putBoolean(NOTIFICATIONS_ASKED, true).apply()
+        askNotifications.launch(Manifest.permission.POST_NOTIFICATIONS)
+    }
+
+    private companion object {
+        const val NOTIFICATIONS_ASKED = "notifications_asked"
     }
 }
 
