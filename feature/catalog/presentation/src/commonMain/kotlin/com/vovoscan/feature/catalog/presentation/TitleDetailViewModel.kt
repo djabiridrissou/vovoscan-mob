@@ -275,9 +275,11 @@ internal fun badgeLabel(
     language: String,
 ): String {
     val name = Language.of(language)?.native ?: language
+    // A local: a property of another module's class can't be smart cast.
+    val progress = badge.progress
     return when {
         badge.ready -> t("catalog.translationReady", "language" to name)
-        badge.progress != null -> t("catalog.translationProgress", "language" to name, "percent" to badge.progress.coerceIn(0, 100))
+        progress != null -> t("catalog.translationProgress", "language" to name, "percent" to progress.coerceIn(0, 100))
         else -> t("catalog.translationQueued", "language" to name)
     }
 }
