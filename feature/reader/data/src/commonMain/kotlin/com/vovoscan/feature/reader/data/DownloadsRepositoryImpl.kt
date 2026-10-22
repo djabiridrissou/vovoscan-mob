@@ -31,6 +31,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * The download queue, run in the app's scope: one chapter at a time, page by page, each page written to disk then
@@ -169,7 +170,9 @@ class DownloadsRepositoryImpl(
                 loop to running?.job
             }
         loop?.cancelAndJoin()
-        job?.cancelAndJoin()
+        job?.cancel()
+        // A book being read into sections stops at its next section; don't hold the system's time longer than that.
+        withTimeoutOrNull(PAUSE_WAIT_MS) { job?.join() }
         lock.withLock {
             running = null
             // The chapter that was downloading (or waiting) is queued again; its pages on disk stay.
@@ -181,7 +184,19 @@ class DownloadsRepositoryImpl(
     override suspend fun drain(): DownloadBlock? {
         start()
         wake.trySend(Unit)
-        return observeActivity().first { !it.busy || it.block != null }.block
+        // A block the queue hasn't cleared yet (the network just came back, Wi-Fi only just turned off) doesn't count.
+        val settled = observeActivity().first { !it.busy || (it.block != null && blockNow() != null) }
+        return if (settled.busy) blockNow() else null
+    }
+
+    /** What the network allows right now: null when the queue may download. */
+    private suspend fun blockNow(): DownloadBlock? {
+        val state = network.state.value
+        return when {
+            !state.online -> DownloadBlock.NoConnection
+            !state.unmetered && local.wifiOnly() -> DownloadBlock.NotOnWifi
+            else -> null
+        }
     }
 
     override suspend fun clearLocal() {
@@ -349,6 +364,7 @@ class DownloadsRepositoryImpl(
 
     private companion object {
         const val FAILED = "The download stopped. Try again."
+        const val PAUSE_WAIT_MS = 2_000L
 
         val DownloadState.unfinished: Boolean
             get() = this == DownloadState.Queued || this == DownloadState.Waiting || this == DownloadState.Downloading

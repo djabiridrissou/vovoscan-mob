@@ -270,6 +270,7 @@ class DownloadsViewModelsTest {
             repo.all.value = listOf(download("1342", DownloadState.Waiting, titleId = "1342", isBook = true, sourceKey = "gutenberg"))
             advanceUntilIdle()
             assertEquals("In the queue", vm.state.value.summary)
+            assertFalse(vm.state.value.canDeleteAll)
             assertEquals(
                 "Waiting for Wi-Fi",
                 vm.state.value

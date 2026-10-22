@@ -36,7 +36,14 @@ class EpubParser(
             .addTags("section", "article", "figure", "figcaption", "aside", "hr", "small", "sup", "sub")
             .addProtocols("img", "src", "data")
 
-    fun parse(bytes: ByteArray): List<ParsedSection> {
+    /**
+     * `checkpoint` runs before each section: a big book takes seconds to read, and the download queue must be able to
+     * stop it (it throws to stop).
+     */
+    fun parse(
+        bytes: ByteArray,
+        checkpoint: () -> Unit = {},
+    ): List<ParsedSection> {
         val file = tempDir / "vovoscan-${Random.nextLong().toULong()}.epub"
         fileSystem.write(file) { write(bytes) }
         try {
@@ -61,6 +68,7 @@ class EpubParser(
             if (spine.isEmpty()) throw InvalidEpub("EPUB without readable sections.")
             val titles = tableOfContents(opf, items, base, ::text)
             return spine.mapIndexed { index, item ->
+                checkpoint()
                 val path = resolve(base, item.attr("href"))
                 val document = Ksoup.parse(text(path).orEmpty())
                 inlineImages(document, path.substringBeforeLast('/', ""), ::binary)

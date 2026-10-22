@@ -517,7 +517,9 @@ class DownloadsRepositoryImplTest {
             // Background work runs it again: only the missing page is fetched.
             assertNull(s.downloads.drain())
             assertEquals(DownloadState.Done, s.only().state)
-            assertEquals(listOf("/media/pages/p0", "/media/pages/p1", "/media/pages/p1"), pageRequests)
+            // The page already on disk isn't fetched again (p1 may have been asked once or twice, as pause came).
+            assertEquals(1, pageRequests.count { it == "/media/pages/p0" })
+            assertEquals("/media/pages/p1", pageRequests.last())
             assertEquals(2, files().size)
         }
 
@@ -537,6 +539,18 @@ class DownloadsRepositoryImplTest {
                     .block,
             )
             s.network.set(NetworkState(online = true, unmetered = true))
+            assertNull(s.downloads.drain())
+            assertEquals(DownloadState.Done, s.only().state)
+        }
+
+    @Test
+    fun drainingRightAfterWifiOnlyIsTurnedOffDoesNotStopAtTheOldBlock() =
+        runTest {
+            val s = setup(network = NetworkState(online = true, unmetered = false)) { internal(it) }
+            s.downloads.enqueue(griot, griot.chapters.filter { it.id == "c2" })
+            assertEquals(DownloadBlock.NotOnWifi, s.downloads.drain())
+            s.downloads.setWifiOnly(false)
+            // The queue may not have cleared its block yet: draining still runs it to the end.
             assertNull(s.downloads.drain())
             assertEquals(DownloadState.Done, s.only().state)
         }

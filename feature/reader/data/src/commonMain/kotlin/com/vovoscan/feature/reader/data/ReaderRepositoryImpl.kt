@@ -7,6 +7,8 @@ import com.vovoscan.feature.reader.domain.Book
 import com.vovoscan.feature.reader.domain.ReaderChapter
 import com.vovoscan.feature.reader.domain.ReaderRepository
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
@@ -117,7 +119,13 @@ internal suspend fun fetchBook(
             is AppResult.Ok -> downloaded.value
         }
     return try {
-        AppResult.Ok(withContext(io) { epub.parse(bytes) })
+        AppResult.Ok(
+            withContext(io) {
+                // Stoppable between sections (the queue pauses before the app is suspended).
+                val job = coroutineContext[Job]
+                epub.parse(bytes) { job?.ensureActive() }
+            },
+        )
     } catch (e: InvalidEpub) {
         AppResult.Err(AppError.Rejected("INVALID_BOOK", e.message ?: "This book file can't be opened."))
     }
