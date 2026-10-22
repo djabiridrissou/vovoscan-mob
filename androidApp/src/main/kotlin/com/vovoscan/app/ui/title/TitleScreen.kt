@@ -148,10 +148,10 @@ fun TitleScreen(
     confirmDelete?.let { target ->
         val all = target == "*"
         BrandAlert(
-            title = if (all) "Delete the downloads?" else "Delete this download?",
+            title = if (all) downloadState.deleteAllTitle else "Delete this download?",
             message =
                 if (all) {
-                    "Every chapter of ${state.name} saved on this device goes. Reading them will need the network again."
+                    downloadState.deleteAllMessage
                 } else {
                     "${state.chapterLabel(target)} will need the network again."
                 },
@@ -165,7 +165,10 @@ fun TitleScreen(
     }
 }
 
-/** Downloads of the title: what is on the device, why the queue waits, "Download next 5", "Download all", delete. */
+/**
+ * Downloads of the title: what is on the device, why the queue waits, "Download next 5", "Download all" (a book:
+ * "Download the book"), delete.
+ */
 @Composable
 private fun DownloadsBlock(
     state: TitleDownloadsUiState,
@@ -185,7 +188,7 @@ private fun DownloadsBlock(
     }
     if (state.canDeleteAll) {
         Text(
-            "Delete downloads",
+            state.deleteAllLabel,
             style = MaterialTheme.typography.labelLarge.copy(color = Brand.Muted),
             modifier = Modifier.clickable(onClick = onDeleteAll).padding(vertical = 4.dp),
         )
