@@ -184,7 +184,13 @@ final class TitleModel: ObservableObject {
         for await next in downloading.state { downloads = next }
     }
 
-    func send(_ intent: TitleDownloadsIntent) { downloading.onIntent(intent: intent) }
+    func send(_ intent: TitleDownloadsIntent) {
+        downloading.onIntent(intent: intent)
+        // Downloads the user starts can carry on in the background (iOS 26+: a continued processing task).
+        if intent is TitleDownloadsIntentAct || intent is TitleDownloadsIntentDownloadNext || intent is TitleDownloadsIntentDownloadAll {
+            BackgroundDownloads.shared.userStarted()
+        }
+    }
 
     func refresh() { detail.refresh() }
 
@@ -230,7 +236,11 @@ final class DownloadsModel: ObservableObject {
         for await next in viewModel.state { state = next }
     }
 
-    func send(_ intent: DownloadsIntent) { viewModel.onIntent(intent: intent) }
+    func send(_ intent: DownloadsIntent) {
+        viewModel.onIntent(intent: intent)
+        // A retry starts downloads again (iOS 26+: a continued processing task, see BackgroundDownloads).
+        if intent is DownloadsIntentAct { BackgroundDownloads.shared.userStarted() }
+    }
 
     deinit { owner.clear() }
 }

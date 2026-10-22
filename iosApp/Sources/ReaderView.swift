@@ -494,6 +494,9 @@ private struct VerticalPages: View {
         .onAppear {
             layout.count = items.count
             layout.shown = Int(model.state.currentItem)
+            // The resume position (or the page kept across a change of mode), held until the reader moves.
+            layout.anchor = PagedLayout.Anchor(item: Int(model.state.currentItem), within: 0, atBottom: false)
+            layout.opening = true
             scroll.scrollTo(id: Int(model.state.currentItem), anchor: .top)
         }
         .onChange(of: items.count) { _, count in layout.count = count }
@@ -502,29 +505,52 @@ private struct VerticalPages: View {
         } action: { _, new in
             layout.offset = new.offset
             layout.viewport = new.viewport
-            if layout.idle { settle() }
+            // Until the reader moves, the opening position holds: `scrollTo(id:anchor: .top)` towards a page taller
+            // than the screen came to rest at its bottom (the resume page then opened at its end).
+            if layout.idle, layout.opening { holdAnchor() }
+            if layout.idle { scheduleSettle() }
         }
-        .onScrollPhaseChange { _, phase in
+        .onScrollPhaseChange { old, phase in
             layout.idle = phase == .idle
+            if phase == .interacting { layout.opening = false }
             if phase == .interacting, layout.gestureItem == nil { layout.gestureItem = layout.item(at: layout.offset) }
             if phase == .idle {
                 layout.gestureItem = nil
-                settle()
+                // The finger (or an animated page turn) moved the reading: what is read now is the new anchor.
+                if old != .idle { layout.anchorHere() }
+                scheduleSettle()
             }
         }
         .onChange(of: model.state.command?.seq) { _, _ in run(model.state.command) }
     }
 
-    /// A page whose size the source didn't give takes its real height once its image has loaded: one above the page
-    /// on screen pushes it down, so the scroll follows (what is read stays in place).
+    /// A page whose size the source didn't give takes its real height once its image has loaded (the placeholder's
+    /// 0.7, then a tall page's full height): pages above the one read push it down. At rest, the scroll follows the
+    /// page read (`PagedLayout.anchor`: the item and the offset inside it), so the reader stays where it was, the
+    /// resume position included. Several pages growing in one layout pass each move the anchor's frame: the target
+    /// comes from that frame, never from the last offset plus a difference.
     private func measured(_ index: Int, _ frame: CGRect) {
-        let before = layout.frames[index]
-        let reading = layout.item(at: layout.offset)
         layout.measured(index, frame)
-        if let before, let reading, index < reading, layout.idle, before.height != frame.height {
-            scroll.scrollTo(y: layout.offset + frame.height - before.height)
+        if layout.idle { holdAnchor() }
+        if layout.idle { scheduleSettle() }
+    }
+
+    /// Puts the page read back where the anchor says (frames or the offset moved under it).
+    private func holdAnchor() {
+        guard let target = layout.anchorOffset(), abs(target - layout.offset) > 0.5 else { return }
+        layout.offset = target
+        scroll.scrollTo(y: target)
+    }
+
+    /// Settles once the layout pass is over: frames are reported one item at a time, and a page read from frames half
+    /// updated would be the wrong one (and saved as the progress).
+    private func scheduleSettle() {
+        guard !layout.settleScheduled else { return }
+        layout.settleScheduled = true
+        DispatchQueue.main.async {
+            layout.settleScheduled = false
+            if layout.idle { settle() }
         }
-        if layout.idle { settle() }
     }
 
     /// At rest: the page at the top of the screen is the current one; it reports its scroll inside the page.
@@ -556,6 +582,8 @@ private struct VerticalPages: View {
         if let go = command as? ReaderCommandGoToItem {
             model.send(ReaderIntentCommandHandled(seq: go.seq))
             layout.shown = Int(go.item)
+            layout.opening = false
+            layout.anchor = PagedLayout.Anchor(item: Int(go.item), within: 0, atBottom: go.atBottom)
             let animation: Animation? = go.animated ? .easeInOut(duration: 0.25) : nil
             // A tall page shows its bottom when asked (going back), else its top.
             if let y = layout.offset(of: Int(go.item), atBottom: go.atBottom) {
@@ -565,6 +593,7 @@ private struct VerticalPages: View {
             }
         } else if let by = command as? ReaderCommandScrollBy {
             model.send(ReaderIntentCommandHandled(seq: by.seq))
+            layout.opening = false
             // Inside the current page, never past its edges; taps faster than the animation add up.
             guard let frame = layout.frames[Int(model.state.currentItem)] else { return }
             let now = Date()
@@ -580,6 +609,14 @@ private struct VerticalPages: View {
 /// drag began on. A reference shared with the scroll target behaviour; not observed (nothing redraws from it).
 private final class PagedLayout {
     static let space = "pagedContent"
+    /// Paged: an item fills the screen at least, the top of the screen never rests past its last screen. Strip: it may
+    /// rest anywhere in an item, the next one showing below.
+    let pagesFillScreen: Bool
+
+    init(pagesFillScreen: Bool = true) {
+        self.pagesFillScreen = pagesFillScreen
+    }
+
     var frames: [Int: CGRect] = [:]
     var offset: CGFloat = 0
     var viewport: CGFloat = 0
@@ -589,9 +626,38 @@ private final class PagedLayout {
     /// The item last reported on screen; `started` once the scroll view has reached the one it opened at.
     var shown = -1
     var started = false
+    var settleScheduled = false
+    /// From the opening (or a change of mode) until the reader moves: the opening position is held.
+    var opening = false
+
+    /// What is being read: an item and how far into it the top of the screen is (or its bottom, reached going back).
+    struct Anchor {
+        let item: Int
+        let within: CGFloat
+        let atBottom: Bool
+    }
+
+    var anchor: Anchor?
 
     func measured(_ index: Int, _ frame: CGRect) {
         frames[index] = frame
+    }
+
+    /// The reading moved (a drag, a page turn, a tap scroll): anchor at the item at the top of the screen.
+    func anchorHere() {
+        // The item at the top of the screen; in a strip's gap, the one above it.
+        guard let item = frames.filter({ $0.value.minY - 1 <= offset }).max(by: { $0.value.minY < $1.value.minY })?.key,
+              let frame = frames[item] else { return }
+        let bottom = frame.height > viewport + 1 && offset >= frame.maxY - viewport - 1
+        anchor = Anchor(item: item, within: offset - frame.minY, atBottom: bottom)
+    }
+
+    /// Where the scroll must be for the anchor to stay on screen as measured now (inside its item's bounds).
+    func anchorOffset() -> CGFloat? {
+        guard let anchor, let frame = frames[anchor.item] else { return nil }
+        guard pagesFillScreen else { return frame.minY + min(anchor.within, max(0, frame.height - 1)) }
+        let last = max(frame.minY, frame.maxY - viewport)
+        return anchor.atBottom ? last : min(frame.minY + anchor.within, last)
     }
 
     /// Where an item shows from its top, or its bottom: from its own frame, or a neighbour's (an item not laid out
@@ -648,6 +714,8 @@ private struct FlowStrip: View {
     /// The previous-chapter card has a fixed height, so the first page's top is known without measuring it.
     private static let cardHeight: CGFloat = 280
     private var lead: CGFloat { Self.cardHeight + CGFloat(model.state.pageGap) }
+    /// Pages of unknown size grow from the placeholder to their image's height: the strip keeps what is read in place.
+    @State private var layout = PagedLayout(pagesFillScreen: false)
 
     var body: some View {
         let items = model.state.items
@@ -668,9 +736,13 @@ private struct FlowStrip: View {
                             }
                         }
                     }
+                    .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(PagedLayout.space)) } action: { frame in
+                        frameMeasured(index, frame)
+                    }
                     .id(index)
                 }
             }
+            .coordinateSpace(.named(PagedLayout.space))
             .scrollTargetLayout()
         }
         .scrollIndicators(.hidden)
@@ -680,17 +752,27 @@ private struct FlowStrip: View {
                 Color.clear.onAppear { measure(area.size) }.onChange(of: area.size) { _, size in measure(size) }
             }
         }
-        // Opening at the current item; a saved position comes as a `GlideTo` once the strip is measured.
+        // Opening at the current item, held there as pages above and the page itself take their real height; a saved
+        // position comes as a `GlideTo` once the strip is measured.
         .onAppear {
+            layout.anchor = PagedLayout.Anchor(item: Int(model.state.currentItem), within: 0, atBottom: false)
             scroll.scrollTo(id: Int(model.state.currentItem), anchor: .top)
             spring.apply = { [self] y in scroll.scrollTo(y: min(max(0, y + lead), geometry.maxOffset)) }
-            spring.onStop = { [self] in report(settled: phase == .idle) }
+            spring.onStop = { [self] in
+                layout.idle = phase == .idle
+                layout.anchorHere()
+                report(settled: phase == .idle)
+            }
         }
         .onDisappear { spring.stop() }
         .onScrollGeometryChange(for: StripGeometry.self) { g in
             StripGeometry(offset: g.contentOffset.y, viewport: g.containerSize.height, content: g.contentSize.height)
         } action: { _, new in
             geometry = new
+            layout.offset = new.offset
+            layout.viewport = new.viewport
+            // A scroll the reader played (a jump, a tap scroll): what is at the top of the screen now is what to keep.
+            if layout.anchor == nil { layout.anchorHere() }
             report(settled: phase == .idle && !spring.running)
             let edges = [new.offset <= 1, new.offset >= new.maxOffset - 1]
             if edges != reportedEdges {
@@ -698,10 +780,13 @@ private struct FlowStrip: View {
                 model.send(ReaderIntentStripEdges(atTop: edges[0], atBottom: edges[1]))
             }
         }
-        .onScrollPhaseChange { _, new in
+        .onScrollPhaseChange { old, new in
             phase = new
             // A finger always wins: the spring stops where it is and the scroll view's momentum takes over.
             if new == .tracking || new == .interacting { spring.stop() }
+            layout.idle = new == .idle && !spring.running
+            // The finger or a tap scroll moved the strip: what is at the top of the screen now is what to keep.
+            if new == .idle, old != .idle { layout.anchorHere() }
             if new == .idle { report(settled: !spring.running) }
         }
         .overlay { focusDim }
@@ -731,15 +816,18 @@ private struct FlowStrip: View {
             let target = CGFloat(glide.offset)
             if !glide.animated {
                 spring.stop()
+                layout.anchor = nil
                 scroll.scrollTo(y: max(0, target + lead))
             } else {
                 Haptics.select()
+                layout.idle = false
                 // Taps add up: from where the spring is, at its speed, towards the new stop.
                 spring.glide(from: spring.running ? spring.position : offset, to: target)
             }
         case let go as ReaderCommandGoToItem:
             model.send(ReaderIntentCommandHandled(seq: go.seq))
             spring.stop()
+            layout.anchor = PagedLayout.Anchor(item: Int(go.item), within: 0, atBottom: false)
             if go.animated && !model.state.reducedMotion {
                 withAnimation(.easeInOut(duration: 0.35)) { scroll.scrollTo(id: Int(go.item), anchor: .top) }
             } else {
@@ -749,6 +837,7 @@ private struct FlowStrip: View {
             // Before the strip is measured: a plain share of the screen.
             model.send(ReaderIntentCommandHandled(seq: by.seq))
             let target = min(max(0, geometry.offset + CGFloat(by.fraction) * geometry.viewport), geometry.maxOffset)
+            layout.anchor = nil
             withAnimation(.easeInOut(duration: 0.3)) { scroll.scrollTo(y: target) }
         default:
             break
@@ -790,6 +879,15 @@ private struct FlowStrip: View {
         let array = KotlinIntArray(size: Int32(values.count))
         for (i, v) in values.enumerated() { array.set(index: Int32(i), value: Int32(v)) }
         model.send(ReaderIntentPageLuminance(page: page.index, values: array))
+    }
+
+    /// At rest, a page that changed height above (or at) the one read moves the scroll with it (see `VerticalPages`).
+    private func frameMeasured(_ index: Int, _ frame: CGRect) {
+        layout.measured(index, frame)
+        if layout.idle, let target = layout.anchorOffset(), abs(target - layout.offset) > 0.5 {
+            layout.offset = target
+            scroll.scrollTo(y: target)
+        }
     }
 }
 
@@ -1196,7 +1294,9 @@ private struct BookWebView: UIViewRepresentable {
         // Pulls past the edges, short sections included.
         view.scrollView.bounces = true
         view.scrollView.alwaysBounceVertical = true
-        view.scrollView.delegate = context.coordinator
+        // The pull is the finger's travel past the edge (as on Android), read from the scroll view's own pan: the
+        // web view still scrolls and rubber-bands as usual.
+        view.scrollView.panGestureRecognizer.addTarget(context.coordinator, action: #selector(Coordinator.panned(_:)))
         view.navigationDelegate = context.coordinator
         return view
     }
@@ -1211,7 +1311,7 @@ private struct BookWebView: UIViewRepresentable {
     }
 
     @MainActor
-    final class Coordinator: NSObject, WKNavigationDelegate, UIScrollViewDelegate {
+    final class Coordinator: NSObject, WKNavigationDelegate {
         var loaded: String?
         var fromEnd = false
         var pull: PullTracker?
@@ -1238,31 +1338,54 @@ private struct BookWebView: UIViewRepresentable {
             }
         }
 
-        /// How far the content is pulled past an edge, as a fraction of the visible height (positive: past the bottom).
-        private func overscroll(_ scroll: UIScrollView) -> CGFloat {
+        /// The finger's travel past an edge since it reached it, in points: positive past the bottom (the finger going
+        /// up). Counted once the content can't scroll further that way, as Android's `PullWebView` does.
+        private var drag: CGFloat = 0
+        private var lastY: CGFloat = 0
+
+        /// Half the finger's travel (a rubber band's feel, Android's `RESISTANCE`), as a fraction of the visible
+        /// height: the same threshold is the same gesture on both platforms. The content offset is not used: iOS
+        /// rubber-bands it harder than half, so the threshold took about 250 pt of travel here against 240 dp there.
+        static let resistance: CGFloat = 0.5
+
+        @objc func panned(_ pan: UIPanGestureRecognizer) {
+            guard let scroll = pan.view as? UIScrollView else { return }
+            let y = pan.translation(in: scroll).y
+            switch pan.state {
+            case .began, .changed:
+                // From touch-down, as Android counts: the travel before the pan was recognised counts too.
+                if pan.state == .began {
+                    drag = 0
+                    lastY = 0
+                }
+                // Positive: the finger goes up (towards what comes next).
+                let dy = lastY - y
+                lastY = y
+                let top = -scroll.adjustedContentInset.top
+                let bottom = max(top, scroll.contentSize.height - scroll.bounds.height + scroll.adjustedContentInset.bottom)
+                let offset = scroll.contentOffset.y
+                if drag > 0 || (drag == 0 && dy > 0 && offset >= bottom - 0.5) {
+                    drag = max(0, drag + dy)
+                } else if drag < 0 || (drag == 0 && dy < 0 && offset <= top + 0.5) {
+                    drag = min(0, drag + dy)
+                } else {
+                    drag = 0
+                }
+                pull?.set(fraction(drag, scroll))
+            case .ended:
+                let value = fraction(drag, scroll)
+                drag = 0
+                pull?.set(0)
+                if value != 0 { onRelease?(value) }
+            default:
+                drag = 0
+                pull?.set(0)
+            }
+        }
+
+        private func fraction(_ drag: CGFloat, _ scroll: UIScrollView) -> CGFloat {
             let height = scroll.bounds.height
-            guard height > 0 else { return 0 }
-            let top = -scroll.adjustedContentInset.top
-            let bottom = max(top, scroll.contentSize.height - height + scroll.adjustedContentInset.bottom)
-            let y = scroll.contentOffset.y
-            if y > bottom { return (y - bottom) / height }
-            if y < top { return (y - top) / height }
-            return 0
-        }
-
-        func scrollViewDidScroll(_ scroll: UIScrollView) {
-            // Only while the finger pulls: the bounce back after letting go is not a pull.
-            pull?.set(scroll.isTracking ? overscroll(scroll) : 0)
-        }
-
-        func scrollViewWillEndDragging(
-            _ scroll: UIScrollView,
-            withVelocity velocity: CGPoint,
-            targetContentOffset: UnsafeMutablePointer<CGPoint>
-        ) {
-            let value = overscroll(scroll)
-            pull?.set(0)
-            if value != 0 { onRelease?(value) }
+            return height > 0 ? drag * Self.resistance / height : 0
         }
     }
 }

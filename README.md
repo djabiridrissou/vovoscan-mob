@@ -160,16 +160,18 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   section (opened at its end, `sectionFromEnd`), else the previous part (opened at its last section, at its end), else
   "This is the first section.". Shared (`ReaderUiState.pullHint(overscroll)`, `ReaderIntent.PullReleased`): the pull is a
   fraction of the reading area's height, positive past the bottom; hint from 0.01, threshold `PULL_THRESHOLD` 0.15;
-  nothing happens while the next section loads. Native code only measures and draws: Android `PullWebView`
-  (`ui/reader/BookReader.kt`) counts the finger's travel once the web view can't scroll further that way
-  (`canScrollVertically`), halved like a rubber band, every event still going to the web view; iOS reads the
-  WKWebView scroll view's `contentOffset` past its edges while the finger is down (`bounces`, `alwaysBounceVertical`,
-  `scrollViewDidScroll` / `scrollViewWillEndDragging`), and only the hint observes it (`PullTracker`), not the web
-  view. A haptic tick when the threshold is crossed (Android `GESTURE_THRESHOLD_ACTIVATE`, else `CONTEXT_CLICK`; iOS
+  nothing happens while the next section loads. Native code only measures and draws, the same way on both: the
+  finger's travel from the moment the web view can't scroll further that way, halved like a rubber band, as a fraction
+  of the web view's height. Android `PullWebView` (`ui/reader/BookReader.kt`, `canScrollVertically`, every event still
+  going to the web view); iOS a second target on the WKWebView scroll view's own `panGestureRecognizer` (its
+  translation once `contentOffset` is at an edge; `bounces`, `alwaysBounceVertical` keep the rubber band), and only
+  the hint observes it (`PullTracker`), not the web view. The rubber-banded `contentOffset` is not the measure: iOS
+  damps it harder than half, so the same threshold took about 250 pt of travel on the iPhone 16 Pro against 240 dp on
+  the Pixel 7; with the pan's travel it is the same gesture (checked on the simulator with Alice's Adventures in
+  Wonderland: 120 pt of travel past the top, −0.092, no turn; 210 pt, −0.162, the previous section opened at its end). A haptic tick when the threshold is crossed (Android `GESTURE_THRESHOLD_ACTIVATE`, else `CONTEXT_CLICK`; iOS
   `.sensoryFeedback`). Reduced motion (Android "Remove animations", iOS Reduce Motion): the hint neither slides, grows
   nor fades, its bar still fills. A short fling that reaches the end does not turn (only the drag past the edge counts);
-  a long drag past it does, as the threshold says. iOS rubber-bands harder than the halved drag: the same threshold
-  takes a longer pull there (about 250 pt of finger travel on the iPhone 16 Pro, 240 dp on the Pixel 7).
+  a long drag past it does, as the threshold says.
 - Progress goes through the `ReadingProgressSink` port, wired to the library in `shared`: the reader does not
   know about `library`. It is kept only for a followed title.
 - Images are signed URLs, unchanged for a day: the image cache serves pages already seen.
@@ -259,9 +261,27 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   power and idle, never after the user force-quits the app) or the app is opened; background tasks never run in the
   simulator (`submit` answers `BGTaskSchedulerErrorDomain` 1), so only the background time and the pause were checked
   there (iPhone 16 Pro, iOS 18.6: a Gutenberg book and Shakespeare's complete works finished in the background, the
-  next book paused at the 30 s mark as `queued` and finished on return). iOS 26's `BGContinuedProcessingTask` (a
-  user-started task with system progress UI) would fit better and is not used yet (deployment target 18.4, no iOS 26
-  simulator for this app).
+  next book paused at the 30 s mark as `queued` and finished on return).
+- iOS 26+: continued processing (`BackgroundDownloads.swift`, `#available(iOS 26, *)`; the deployment target stays
+  18.4 and the above stays the fallback). A download the user starts (a chapter's control, "Download next", "Download
+  all", Retry in Downloads: `TitleModel.send` / `DownloadsModel.send` call `userStarted()`) submits a
+  `BGContinuedProcessingTaskRequest` (`<bundle id>.downloads.continued.<8 hex>`, the wildcard
+  `….downloads.continued.*` in `BGTaskSchedulerPermittedIdentifiers` from `project.yml`; strategy `.fail`, default
+  resources, no background mode needed) once the shared queue has the work, the app on screen and no network block.
+  Its handler is registered just before (continued tasks are exempt from the launch-time rule). Running, it calls
+  `drain()`; the system's progress UI shows `DownloadText.notification` (title and subtitle, updated as
+  `observeActivity()` changes) and a progress of one unit per chapter or book (100 steps, the one downloading counted by
+  its pages; work added meanwhile raises the total). It ends (`setTaskCompleted`) when the queue is empty or waits for
+  the network; expired (the system, or the user stopping it from its UI), it pauses the queue if the app is in the
+  background and submits the processing tasks above. While it runs, leaving the app does not start the 30 s background
+  time. Limits: the system may refuse or expire it (load, battery, thermal state; a task that reports no progress for
+  a while looks stalled), it is only offered while the app is on screen right after the user's action (downloads
+  resumed at launch or by a background task are not "user-started"), a queue waiting for Wi-Fi does not start one, and
+  the user can stop it at any time. Not checked running: the iOS 26.5 simulator (a temporary iPhone 17 Pro, deleted
+  afterwards) refuses the submission with `BGTaskSchedulerErrorDomain` 1 (unavailable), like the other background
+  tasks; checked there: the request is built and submitted on "Download all (24)" ("Downloading 24 chapters…",
+  "Starting"), the refusal is logged and the downloads carry on in the foreground. A device on iOS 26 is needed to see
+  the system progress UI.
 
 ## Reader: modes, tap zones, settings (comics, modelled on Mihon)
 
@@ -271,10 +291,13 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   (manga / webtoon), else the format rule: vertical pages for every comic, manga and webtoon (it was right to left
   for manga and long strip for webtoons before: a mode chosen for a series or a format default chosen before is
   kept). Switching keeps the page.
-- Tall pages in the paged modes (`TallPages`, as Mihon's paged viewer): a page whose fit-to-width height is more than
-  1.25 × the reading area (`fitsWidth`, by its ratio: its size, or its image's once loaded) is shown fit to width and
-  scrolls vertically inside its page; the next page starts after its bottom. Other pages (a manga page, Le Griot's
-  800 × 1280) are fitted to the screen as before. The native side reports the current page's scroll
+- Tall pages in the paged modes (`TallPages`, as Mihon's paged viewer): a page whose height / width is more than
+  1.25 × the screen's portrait shape (long side / short side of the reading area, whichever way the device is held;
+  `fitsWidth`, by its ratio: its size, or its image's once loaded) is shown fit to width and scrolls vertically inside
+  its page; the next page starts after its bottom. Other pages (a manga page, Le Griot's 800 × 1280) are fitted to the
+  screen as before, in landscape too: judged against the area's own shape, a manga page fit to a landscape width was
+  taller than the screen and scrolled. Checked on the Pixel 7 in landscape: Le Griot's page whole, Reaper's strips fit
+  to width (the iOS app is portrait only). The native side reports the current page's scroll
   (`ReaderIntent.PageScroll(item, tall, atTop, atBottom)`, like `StripEdges`) and runs commands: Next on a tall page
   not at its bottom is `ScrollBy(+tap scroll amount)` inside the page (never past its edge), at its bottom the next
   page; Previous mirrors it, and the previous page opens at its bottom (`GoToItem.atBottom`). Volume keys follow the
@@ -327,10 +350,28 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   read on the device usually sends none (0 × 0): the page shows a placeholder (0.7, portrait) until the image has loaded,
   then takes **the image's own shape** (Android: Coil's `onSuccess`; iOS: `PageLoader`, which fetches through the shared
   session so the cache and `SourceRefererProtocol` still apply). Never the placeholder's shape: a webtoon strip squeezed
-  into it was a thin band on iOS and cropped to its top on Android. iOS keeps the page a frame of known ratio at full
+  into it was a thin band on iOS and cropped to its top on Android. Android decodes such a page for the screen's width,
+  whatever its height (`size(Size(width, Dimension.Undefined))`): sized for the placeholder's screen-fitted box, a strip
+  came out a few hundred pixels wide and was blurred once it filled the width.
+- Resume with pages of unknown size (and as they change shape). The reader opens at the saved page in every mode and
+  stays there while pages go from the placeholder to their real height. Cause of the bug ("page 1 / 7" instead of the
+  saved page 5, right to left, a rule-based source): `SqlReaderLocalDataSource.observe` combined two queries (the
+  chapter row, its page rows); a chapter saved for the first time was seen once with the pages it had before (none),
+  and `ReaderViewModel.show` clamped the resume page to that empty list, so the reader opened at page 1 and saved it.
+  Fixed twice: the chapter and its pages are read together (one transaction whenever either table changes), and the
+  view model keeps the resume page while a chapter has no pages (tests: `SqlReaderLocalDataSourceTest`,
+  `ReaderViewModelTest.resume…`). Sources sending sizes rarely reached it (their chapters were usually saved already).
+  Native side: horizontal pages are fixed-width items (nothing moves); Android's `LazyColumn` and pagers keep their
+  first item; iOS vertical pages and strips keep an anchor (`PagedLayout.anchor`: the item read and the offset inside
+  it, set at opening, after a gesture or a command) and, at rest, follow it when frames change, from the anchor's frame
+  (several pages growing in one layout pass each moved the old offset-plus-difference). Checked with Reaper's chapter 1
+  at size 0 (and with its sizes back): iOS right to left, left to right, vertical pages, long strip, strip with gaps;
+  Android vertical pages, right to left, long strip. iOS keeps the page a frame of known ratio at full
   width: in the strip's `LazyVStack`, a view sized from an image or a colour with no height proposed collapses (pages
   then took no height at all). The loader starts again when the page's URL changes (the saved copy of a chapter shows
-  first, the fresh one may bring new signed links). A page that fails shows "This page didn't load." and Retry.
+  first, the fresh one may bring new signed links). A page that fails shows "This page didn't load." and Retry; Retry
+  sits under the reader's tap detector and takes the tap itself (the button consumes it, no tap zone fires; checked
+  on the Pixel 7 with a page whose file was missing: the page loaded on Retry and took its tall shape).
 
 ## Account (keys, reading model, costs)
 
@@ -537,6 +578,9 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
 - No Kotlin property named `description` in an exported state: on iOS it is `toString()` (NSObject).
 - Simulator: build signed (`CODE_SIGN_IDENTITY="-"`, which Xcode does by default), otherwise the Keychain
   refuses to write and the session does not persist.
+- `scrollTo(id:anchor: .top)` towards an item taller than the screen (a tall page in `VerticalPages`, a non-lazy
+  `VStack` with a custom scroll target behaviour) came to rest at the item's bottom: the opening position is held
+  from the measured frame (`PagedLayout.anchor`, `opening`) until the reader moves.
 - Custom `ScrollTargetBehavior`: `updateTarget` also runs for programmatic scrolls, on every frame of a `ScrollPosition`
   animation, with the scroll's target as proposal: apply a gesture rule only while a finger drag is in progress, or a
   `scrollTo` is bent too. A `scrollTo(id:)` towards an item a lazy stack has not laid out yet aims at an estimated

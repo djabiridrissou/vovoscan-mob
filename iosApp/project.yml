@@ -47,11 +47,13 @@ targets:
         # The share sheet's "Save Video" for an episode's MP4 (adds to Photos, never reads it).
         NSPhotoLibraryAddUsageDescription: Saves the episode videos you choose to keep in Photos.
         # Downloads that carry on later (BackgroundDownloads.swift): a processing task (network required) and an app
-        # refresh task. The identifiers follow the bundle id (".dev" in Debug).
+        # refresh task; on iOS 26+, a continued processing task for downloads the user starts (one identifier per
+        # request, hence the wildcard; it needs no background mode). The identifiers follow the bundle id (".dev" in Debug).
         UIBackgroundModes: [processing, fetch]
         BGTaskSchedulerPermittedIdentifiers:
           - $(PRODUCT_BUNDLE_IDENTIFIER).downloads
           - $(PRODUCT_BUNDLE_IDENTIFIER).downloads.refresh
+          - $(PRODUCT_BUNDLE_IDENTIFIER).downloads.continued.*
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
     settings:

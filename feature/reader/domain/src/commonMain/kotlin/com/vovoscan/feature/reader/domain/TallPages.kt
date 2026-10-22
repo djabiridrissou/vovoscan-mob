@@ -22,12 +22,21 @@ object TallPages {
     /** Within this distance (points or pixels) of a page's edge, the scroll is at that edge (layout rounding). */
     const val EDGE = 1f
 
-    /** Whether a page of this width / height ratio is shown fit to width and scrolled inside its page. */
+    /**
+     * Whether a page of this width / height ratio is shown fit to width and scrolled inside its page: when it is
+     * clearly taller than the screen held upright (its long side over its short side), whichever way the device is
+     * held. Judged against the reading area's own shape, a manga page turned "tall" in landscape (fit to the width,
+     * it is taller than the screen) and had to be scrolled: it stays a whole page, and only strip-like pages scroll.
+     */
     fun fitsWidth(
         pageRatio: Float,
         areaWidth: Float,
         areaHeight: Float,
-    ): Boolean = pageRatio > 0f && areaWidth > 0f && areaHeight > 0f && areaWidth / pageRatio > areaHeight * MARGIN
+    ): Boolean {
+        if (pageRatio <= 0f || areaWidth <= 0f || areaHeight <= 0f) return false
+        val portrait = maxOf(areaWidth, areaHeight) / minOf(areaWidth, areaHeight)
+        return 1f / pageRatio > portrait * MARGIN
+    }
 
     /** The page's height in the reading area: its fit-width height when tall, else the area's height. */
     fun height(
