@@ -15,7 +15,8 @@ object I18n {
         val region: String?,
     )
 
-    private val current = MutableStateFlow(Current(UiLocales.resolve(null, null, DeviceLocale.languages()), null))
+    // English until the app resolves the locale at launch (`UiLocales.resolve`): tests read the reference wording.
+    private val current = MutableStateFlow(Current(UiLocales.DEFAULT, null))
 
     /** The UI locale now ("en", "fr"). Changing it rebuilds the screens (their ViewModels write texts once). */
     val locale: StateFlow<String> get() = localeFlow.asStateFlow()

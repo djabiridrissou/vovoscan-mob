@@ -27,6 +27,12 @@ expect object PlatformFormats : MessageFormat.Formats {
         tag: String,
     ): String
 
+    /** "anglais" for en in French; null when the platform doesn't know the language. */
+    fun languageName(
+        code: String,
+        tag: String,
+    ): String?
+
     /** "Togo" (en), "Togo" (fr), "Allemagne" for DE in French. */
     fun regionName(
         code: String,
