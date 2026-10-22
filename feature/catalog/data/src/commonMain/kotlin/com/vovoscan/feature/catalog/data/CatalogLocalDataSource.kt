@@ -4,10 +4,12 @@ import app.cash.sqldelight.coroutines.asFlow
 import app.cash.sqldelight.coroutines.mapToList
 import app.cash.sqldelight.coroutines.mapToOneOrNull
 import com.vovoscan.core.common.ContentRating
+import com.vovoscan.core.common.StripGenres
 import com.vovoscan.feature.catalog.data.db.CatalogDatabase
 import com.vovoscan.feature.catalog.domain.CatalogFilter
 import com.vovoscan.feature.catalog.domain.Chapter
 import com.vovoscan.feature.catalog.domain.ContentKind
+import com.vovoscan.feature.catalog.domain.INTERNAL_SOURCE
 import com.vovoscan.feature.catalog.domain.ListedTitle
 import com.vovoscan.feature.catalog.domain.ReadingFormat
 import com.vovoscan.feature.catalog.domain.SourceCategory
@@ -54,6 +56,12 @@ interface CatalogLocalDataSource {
         sourceKey: String,
         items: List<TitleSummaryDto>,
     )
+
+    /** The format saved for each of these titles (what the title page read), by id; titles not saved are left out. */
+    suspend fun savedFormats(
+        sourceKey: String,
+        ids: List<String>,
+    ): Map<String, String>
 
     fun observeCategories(sourceKey: String): Flow<List<SourceCategory>>
 
@@ -151,6 +159,12 @@ class SqlCatalogLocalDataSource(
         items: List<TitleSummaryDto>,
     ) = withContext(io) { queries.transaction { items.forEach { upsertSummary(sourceKey, it) } } }
 
+    override suspend fun savedFormats(
+        sourceKey: String,
+        ids: List<String>,
+    ): Map<String, String> =
+        withContext(io) { ids.mapNotNull { id -> queries.titleById(sourceKey, id).executeAsOneOrNull()?.let { id to it.format } }.toMap() }
+
     override fun observeCategories(sourceKey: String): Flow<List<SourceCategory>> =
         queries.categoriesOf(sourceKey) { id, name -> SourceCategory(id, name) }.asFlow().mapToList(io)
 
@@ -239,10 +253,10 @@ class SqlCatalogLocalDataSource(
                     detail.name,
                     detail.coverUrl,
                     detail.kind,
-                    detail.format,
+                    stripAware(sourceKey, detail),
                     detail.status,
                     detail.contentRating,
-                    formatKnown = detail.formatKnown,
+                    formatKnown = detail.formatKnown || stripAware(sourceKey, detail) != detail.format,
                 ),
             )
             queries.updateDetail(detail.description, detail.authors.joinList(), detail.genres.joinList(), sourceKey, detail.id)
@@ -292,6 +306,20 @@ class SqlCatalogLocalDataSource(
         const val NEWEST_FIRST = "chapters_newest_first"
     }
 }
+
+/**
+ * A title of a source read on the device saved as the default manga whose genres name a vertical strip is saved as a
+ * webtoon, so its card, its search result and its page agree.
+ */
+private fun stripAware(
+    sourceKey: String,
+    detail: TitleDetailDto,
+): String =
+    if (sourceKey != INTERNAL_SOURCE && detail.kind != "book" && detail.format == "manga" && StripGenres.named(detail.genres)) {
+        "webtoon"
+    } else {
+        detail.format
+    }
 
 /** The listing of everything is '' (a category id is never empty). */
 private fun listing(categoryId: String?) = categoryId.orEmpty()

@@ -43,7 +43,10 @@ struct CatalogView: View {
                         // (an inline list closed on the focus loss and let the tap through to the card under it).
                         .overlay(alignment: .bottom) {
                             if model.state.showSuggestions && !searchFloating {
+                                // Its own height, not the field's (a list squeezed into the field's frame overflowed
+                                // upwards over the field and the filters), hung 6 pt under the field.
                                 SuggestionList(sections: model.state.suggestions, onSearch: useSearch, onTitle: openSuggested)
+                                    .fixedSize(horizontal: false, vertical: true)
                                     .alignmentGuide(.bottom) { $0[.top] - 6 }
                             }
                         }

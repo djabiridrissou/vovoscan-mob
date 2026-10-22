@@ -103,6 +103,38 @@ class CatalogRepositoryImplTest {
     }
 
     @Test
+    fun aStripReadFromItsGenresStaysAWebtoonWhateverTheListingsGuess() =
+        runTest {
+            val local =
+                SqlCatalogLocalDataSource(CatalogDatabase(inMemoryDriver(CatalogDatabase.Schema)), StandardTestDispatcher(testScheduler))
+            // The title page: no format named, genres say it is a strip.
+            local.saveDetail(
+                "inkwell",
+                TitleDetailDto(
+                    "ink-road",
+                    "Ink Road",
+                    format = "manga",
+                    status = "ongoing",
+                    genres = listOf("Action", "Webtoons"),
+                    formatKnown = false,
+                ),
+            )
+            assertEquals(mapOf("ink-road" to "webtoon"), local.savedFormats("inkwell", listOf("ink-road", "unknown")))
+            // A later listing or search from a source that names no format sends the default: it never wins.
+            local.saveSummaries(
+                "inkwell",
+                listOf(TitleSummaryDto("ink-road", "Ink Road", format = "manga", status = "ongoing", formatKnown = false)),
+            )
+            assertEquals(mapOf("ink-road" to "webtoon"), local.savedFormats("inkwell", listOf("ink-road")))
+            // A source that names its format is believed.
+            local.saveSummaries("inkwell", listOf(TitleSummaryDto("ink-road", "Ink Road", format = "manga", status = "ongoing")))
+            assertEquals(mapOf("ink-road" to "manga"), local.savedFormats("inkwell", listOf("ink-road")))
+            // Our own catalog's format is the server's word, whatever the genres.
+            local.saveDetail("vovoscan", TitleDetailDto("t1", "Griot", format = "manga", status = "ongoing", genres = listOf("Webtoon")))
+            assertEquals(mapOf("t1" to "manga"), local.savedFormats("vovoscan", listOf("t1")))
+        }
+
+    @Test
     fun internalSourceThroughTheApi() =
         runTest {
             val repo = repository { respondJson(page) }

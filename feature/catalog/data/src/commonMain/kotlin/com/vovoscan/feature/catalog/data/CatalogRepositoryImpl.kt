@@ -84,7 +84,10 @@ class CatalogRepositoryImpl(
             is AppResult.Ok -> {
                 val items = result.value.items
                 local.saveSummaries(sourceKey, items)
-                SearchResult(items.map { it.toDomain(sourceKey) }, offline = false)
+                // A source that names no format: the format saved from the title page, as the grid shows it.
+                val guessed = items.filterNot { it.formatKnown }.map { it.id }
+                val saved = if (guessed.isEmpty()) emptyMap() else local.savedFormats(sourceKey, guessed)
+                SearchResult(items.map { (saved[it.id]?.let { f -> it.copy(format = f) } ?: it).toDomain(sourceKey) }, offline = false)
             }
             is AppResult.Err ->
                 when (val error = result.error) {
