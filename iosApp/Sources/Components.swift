@@ -178,3 +178,20 @@ func submitAfterCommittingInput(_ submit: @escaping () -> Void) {
     let hadFocus = UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
     DispatchQueue.main.asyncAfter(deadline: .now() + (hadFocus ? 0.8 : 0.05)) { fire() }
 }
+
+/// Text screens on a wide window (iPad, Split View): the content keeps a readable column centred, the scroll and its
+/// background still span the window. On a phone it changes nothing.
+private struct ReadableWidth: ViewModifier {
+    var maxWidth: CGFloat = 720
+    @State private var width: CGFloat = 0
+
+    func body(content: Content) -> some View {
+        content
+            .contentMargins(.horizontal, max(0, (width - maxWidth) / 2), for: .scrollContent)
+            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
+    }
+}
+
+extension View {
+    func readableWidth(_ maxWidth: CGFloat = 720) -> some View { modifier(ReadableWidth(maxWidth: maxWidth)) }
+}

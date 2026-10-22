@@ -138,6 +138,7 @@ struct TitleView: View {
                 .padding(.horizontal, 20)
             }
         }
+        .readableWidth()
         .background(Color.brandInk)
         .refreshable { model.refresh() }
         .navigationDestination(for: EpisodeRoute.self) { EpisodeContainer(route: $0) }

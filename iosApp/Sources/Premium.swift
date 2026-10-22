@@ -158,6 +158,8 @@ struct PressableCardStyle: ButtonStyle {
             .brightness(configuration.isPressed ? -0.04 : 0)
             .animation(.spring(response: 0.25, dampingFraction: 0.7), value: configuration.isPressed)
             .onChange(of: configuration.isPressed) { _, pressed in if pressed { Haptics.tap() } }
+            // iPad with a trackpad or a mouse: the card lifts under the pointer.
+            .hoverEffect(.lift)
     }
 }
 

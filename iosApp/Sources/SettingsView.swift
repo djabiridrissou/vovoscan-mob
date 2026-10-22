@@ -35,6 +35,7 @@ struct SettingsView: View {
             }
             .padding(20)
         }
+        .readableWidth()
         .background(Color.brandInk)
         .refreshable {
             wallet.send(WalletIntentRefresh.shared)
@@ -187,6 +188,7 @@ struct KeysScreen: View {
         ScrollView {
             KeysSection(keys: keys).padding(20)
         }
+        .readableWidth()
         .background(Color.brandInk)
         .task { await keys.observe() }
         .keyRemovalAlert(keys)

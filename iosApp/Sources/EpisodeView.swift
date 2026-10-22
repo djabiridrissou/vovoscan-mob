@@ -52,6 +52,7 @@ struct EpisodeView: View {
             }
             .padding(20)
         }
+        .readableWidth()
         .background(Color.brandInk)
         .refreshable { model.send(EpisodeIntentRefresh.shared) }
         .task { await model.observe() }

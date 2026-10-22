@@ -99,6 +99,7 @@ struct DownloadsView: View {
             }
             .padding(20)
         }
+        .readableWidth()
         .background(Color.brandInk)
         .task { await model.observe() }
         .alert(
