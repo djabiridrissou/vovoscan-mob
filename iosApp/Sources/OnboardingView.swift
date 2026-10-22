@@ -7,6 +7,8 @@ import SwiftUI
 struct OnboardingView: View {
     let onClose: () -> Void
     let openTab: (AppTab) -> Void
+    /// The real title the tour ends on: opened in the catalog once the tutorial closes.
+    let openTitle: (TitleRoute) -> Void
     @StateObject private var model = OnboardingModel()
     @State private var regionsOpen = false
     @State private var readingOpen = false
@@ -36,7 +38,7 @@ struct OnboardingView: View {
                     .scrollDismissesKeyboard(.interactively)
                     bottomBar(state)
                 }
-                .animation(reduceMotion ? nil : .snappy(duration: 0.3), value: state.step)
+                .animation(reduceMotion ? nil : .spring(response: 0.42, dampingFraction: 0.84), value: state.step)
             }
             .navigationBarHidden(true)
             .navigationDestination(isPresented: Binding(
@@ -112,12 +114,26 @@ struct OnboardingView: View {
                 Button(state.addKeysLabel) { model.send(OnboardingIntentOpen(destination: .keys)) }.buttonStyle(PrimaryButtonStyle())
                 Button(state.notNowLabel) { model.send(OnboardingIntentNext.shared) }.buttonStyle(GhostButtonStyle())
             case .done:
-                Button(state.doneAction) {
-                    Haptics.success()
-                    openTab(.library)
-                    model.send(OnboardingIntentNext.shared)
+                if let featured = state.featured, let read = state.featuredAction {
+                    Button(read) {
+                        Haptics.success()
+                        openTitle(TitleRoute(sourceKey: featured.sourceKey, titleId: featured.id))
+                        model.send(OnboardingIntentNext.shared)
+                    }
+                    .buttonStyle(PrimaryButtonStyle())
+                    Button(state.doneAction) {
+                        openTab(.library)
+                        model.send(OnboardingIntentNext.shared)
+                    }
+                    .buttonStyle(GhostButtonStyle())
+                } else {
+                    Button(state.doneAction) {
+                        Haptics.success()
+                        openTab(.library)
+                        model.send(OnboardingIntentNext.shared)
+                    }
+                    .buttonStyle(PrimaryButtonStyle())
                 }
-                .buttonStyle(PrimaryButtonStyle())
             default:
                 Button {
                     model.send(OnboardingIntentNext.shared)
@@ -153,7 +169,7 @@ struct OnboardingView: View {
 
     private func welcome(_ state: OnboardingUiState) -> some View {
         VStack(alignment: .leading, spacing: 18) {
-            Sticker(text: L("auth.inviteOnly"))
+            ColdOpen(line: state.welcomeCold, balloonFrom: state.demo.original, balloonTo: state.demo.translated)
             Text(state.welcomeTitle).font(.brandDisplay(40)).foregroundStyle(Color.brandPaper).lineSpacing(-4)
             Text(state.welcomeLead).font(.brandBody(17)).foregroundStyle(Color.brandPaper.opacity(0.86))
             Text(state.welcomeList).font(.brandBody(13, weight: .bold)).foregroundStyle(Color.brandMuted).padding(.top, 6)
@@ -190,6 +206,9 @@ struct OnboardingView: View {
                 Text(state.readingLabel).font(.brandBody(13)).foregroundStyle(Color.brandMuted)
                 PickerRow(label: state.readingChoice) { readingOpen = true }
             }
+            // The choice at work: the same balloon, lettered again in it.
+            TranslatedPageDemo(kicker: state.demoKicker, balloon: state.demo)
+                .padding(.top, 6)
         }
     }
 
@@ -210,8 +229,9 @@ struct OnboardingView: View {
                     Text(unavailable).font(.brandBody(13)).foregroundStyle(Color.brandMuted)
                 } else if state.sources.officialOn {
                     Label(state.officialAction, systemImage: "checkmark.circle.fill")
-                        .font(.brandBody(16, weight: .bold))
+                        .font(.brandDisplay(20))
                         .foregroundStyle(Color.brandCyan)
+                        .transition(reduceMotion ? .opacity : .scale(scale: 2.2).combined(with: .opacity))
                 } else {
                     Button {
                         Haptics.press()
@@ -231,6 +251,8 @@ struct OnboardingView: View {
             .background(Color.brandInk2, in: RoundedRectangle(cornerRadius: 14))
             .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.brandRed, lineWidth: 2))
             .background(RoundedRectangle(cornerRadius: 14).fill(Color.brandRed.opacity(0.35)).offset(x: 6, y: 6))
+            .animation(reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.55), value: state.sources.officialOn)
+            .sensoryFeedback(.success, trigger: state.sources.officialOn)
             Card {
                 Text(state.moreTitle).font(.brandDisplay(18)).foregroundStyle(Color.brandPaper)
                 Text(state.moreBody).font(.brandBody(13)).foregroundStyle(Color.brandMuted)
@@ -259,14 +281,14 @@ struct OnboardingView: View {
                     Text(state.creditsShared).font(.brandBody(14)).foregroundStyle(Color.brandPaper)
                 }
             }
-            if let status = state.creditsStatus {
-                Text(status)
-                    .font(.brandDisplay(20))
-                    .foregroundStyle(Color.brandInk)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 8)
-                    .background(Color.brandYellow, in: RoundedRectangle(cornerRadius: 8))
-                    .rotationEffect(.degrees(-1.5))
+            if state.creditsStatus != nil {
+                WalletCard(
+                    kicker: state.walletKicker,
+                    balance: state.credits.ownKeys ? nil : state.credits.balance?.int64Value,
+                    ownKeysLine: state.credits.ownKeys ? state.creditsStatus : nil,
+                    label: { state.balanceLabel(count: $0) }
+                )
+                .padding(.top, 4)
             }
         }
     }
@@ -276,8 +298,11 @@ struct OnboardingView: View {
             Onomatopoeia(text: "ドン!", size: 56, color: .brandYellow)
             Text(state.doneTitle).font(.brandDisplay(40)).foregroundStyle(Color.brandPaper).lineSpacing(-4)
             Text(state.doneLead).font(.brandBody(17)).foregroundStyle(Color.brandPaper.opacity(0.86))
+            if let featured = state.featured {
+                FeaturedCover(kicker: state.featuredKicker, title: featured).padding(.top, 12)
+            }
         }
-        .padding(.top, 40)
+        .padding(.top, 24)
     }
 }
 

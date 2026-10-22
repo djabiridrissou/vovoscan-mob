@@ -25,6 +25,14 @@ data class OnboardingCredits(
     val ownKeys: Boolean,
 )
 
+/** A real title of the official source the tutorial ends on ("Start with…"). */
+data class OnboardingTitle(
+    val sourceKey: String,
+    val id: String,
+    val name: String,
+    val coverUrl: String?,
+)
+
 /**
  * Port: what the tutorial reads and writes in other features (reading settings, sources, wallet and keys), wired by
  * the app; the auth slice never sees them.
@@ -45,4 +53,10 @@ interface OnboardingServices {
     fun credits(): Flow<OnboardingCredits>
 
     suspend fun refreshCredits()
+
+    /** The first title of the official source's catalog as saved on the device; null while it has none. */
+    fun featured(): Flow<OnboardingTitle?>
+
+    /** Reloads it (only while the official source is on). */
+    suspend fun refreshFeatured()
 }

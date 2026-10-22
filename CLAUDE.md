@@ -520,6 +520,18 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   finishing or skipping sends `onboardingCompleted`. The sources step offers the official "vovoscan" source first
   (off by default, ADR-0055; one tap puts it first and visible, `AppOnboardingServices.turnOnOfficial`), then "Add a
   source"; the credits step explains own keys vs credits and opens the keys screen.
+- Tutorial scenes (iOS `OnboardingScenes.swift`, Android `ui/onboarding/OnboardingScenes.kt`, the same on both):
+  welcome opens cold on a manga page whose three panels slam in (a haptic each, ~1.6 s, the mark stamped last); the
+  reading step has a live translated page (`DemoLines.balloon`: one balloon, "行くぞ！" wiped and lettered again in the
+  reading language in its reading direction, on a loop; a line written by hand for 30 languages, any other shows
+  the app's language and says so, never a guessed translation); credits count the wallet up (`balanceLabel`); done
+  ends on the official source's first title (`OnboardingServices.featured`, loaded when the source is turned on) with
+  "Read …" opening it in the catalog. Reduce Motion / animations off: every scene at its final state.
+- Brand files: iOS `iosApp/Assets.xcassets` (`AppIcon` 1024 px any/dark/tinted, `BrandLogo` = every `LogoMark`,
+  `LaunchMark` on `LaunchBackground` = the launch screen), Android `res/mipmap-anydpi-v26/ic_launcher.xml` (adaptive:
+  `drawable/ic_launcher_foreground`, `ic_launcher_monochrome`), `mipmap-*/ic_launcher.png`, `drawable-nodpi/brand_logo.png`
+  (`LogoMark`), Android 12+ splash in `values-v31/themes.xml`. Today a placeholder of the current mark; replacing the
+  files is enough.
 - Profile changes (`AuthRepository.updateProfile`, `PATCH api/v1/me`): applied on the device at once; offline they are
   merged into one pending patch (`pending_profile` in the secure store) sent before the next `GET /auth/me`; a refusal
   restores the server's profile.

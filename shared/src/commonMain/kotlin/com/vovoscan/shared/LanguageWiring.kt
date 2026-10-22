@@ -10,6 +10,8 @@ import com.vovoscan.feature.auth.domain.AuthRepository
 import com.vovoscan.feature.auth.domain.OnboardingCredits
 import com.vovoscan.feature.auth.domain.OnboardingServices
 import com.vovoscan.feature.auth.domain.OnboardingSources
+import com.vovoscan.feature.auth.domain.OnboardingTitle
+import com.vovoscan.feature.catalog.domain.CatalogRepository
 import com.vovoscan.feature.sources.domain.SourcesRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.Flow
@@ -49,6 +51,7 @@ internal class AppOnboardingServices(
     private val sourcesRepository: SourcesRepository,
     private val wallet: WalletRepository,
     private val keys: ProviderKeysRepository,
+    private val catalog: CatalogRepository,
 ) : OnboardingServices {
     override fun readingLanguage(): Flow<String?> = reading.observeTargetLanguage()
 
@@ -84,5 +87,16 @@ internal class AppOnboardingServices(
     override suspend fun refreshCredits() {
         keys.refreshKeys()
         wallet.refreshWallet()
+    }
+
+    override fun featured(): Flow<OnboardingTitle?> =
+        catalog
+            .observeListing(OFFICIAL_SOURCE)
+            .map { listing -> listing.firstOrNull()?.title?.let { OnboardingTitle(it.sourceKey, it.id, it.name, it.coverUrl) } }
+            .distinctUntilChanged()
+
+    override suspend fun refreshFeatured() {
+        val on = sourcesRepository.observe().first().any { it.key == OFFICIAL_SOURCE && !it.thirdParty && it.enabled }
+        if (on) catalog.refreshListing(OFFICIAL_SOURCE)
     }
 }

@@ -23,6 +23,7 @@ import com.vovoscan.feature.auth.domain.OnboardingCredits
 import com.vovoscan.feature.auth.domain.OnboardingServices
 import com.vovoscan.feature.auth.domain.OnboardingSources
 import com.vovoscan.feature.auth.domain.OnboardingStep
+import com.vovoscan.feature.auth.domain.OnboardingTitle
 import com.vovoscan.feature.auth.domain.ProfileChange
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -52,6 +53,8 @@ data class OnboardingUiState(
     val turningOn: Boolean = false,
     // credits
     val credits: OnboardingCredits = OnboardingCredits(balance = null, ownKeys = false),
+    /** Done: a real title of the official source to start with; null without one (the library opens instead). */
+    val featured: OnboardingTitle? = null,
     val error: String? = null,
     /** Finished or skipped: the native side closes the tutorial (`SessionViewModel.tutorialClosed`). */
     val finished: Boolean = false,
@@ -71,6 +74,7 @@ data class OnboardingUiState(
     val welcomeList: String get() = t("onboarding.welcome.list")
     val welcomeSteps: List<String> get() = (1..4).map { t("onboarding.welcome.step$it") }
     val startLabel: String get() = t("onboarding.welcome.start")
+    val welcomeCold: String get() = t("onboarding.welcome.cold")
 
     // language
     val languageTitle: String get() = t("onboarding.language.title")
@@ -82,6 +86,10 @@ data class OnboardingUiState(
     val readingLabel: String get() = t("onboarding.reading.label")
     val readingChoice: String get() = LanguagePicker.label(readingLanguage) ?: t("prefs.reading.none")
     val readingRows: List<LanguageRow> get() = LanguagePicker.rows(readingQuery, readingLanguage)
+
+    /** The live demo: a balloon of a sample page, in the reading language as it is chosen. */
+    val demo: DemoBalloon get() = DemoLines.balloon(readingLanguage ?: I18n.locale.value, I18n.locale.value)
+    val demoKicker: String get() = t("onboarding.demo.kicker")
 
     // sources
     val sourcesTitle: String get() = t("onboarding.sources.title")
@@ -115,11 +123,19 @@ data class OnboardingUiState(
             }
     val addKeysLabel: String get() = t("onboarding.credits.addKeys")
     val notNowLabel: String get() = t("onboarding.credits.notNow")
+    val walletKicker: String get() = t("onboarding.credits.walletKicker")
 
     // done
     val doneTitle: String get() = t("onboarding.done.title")
     val doneLead: String get() = t("onboarding.done.lead")
     val doneAction: String get() = t("onboarding.done.action")
+    val featuredKicker: String get() = t("onboarding.done.featured")
+
+    /** "Read Le Griot de Guerre", the primary action when there is a title to start with. */
+    val featuredAction: String? get() = featured?.let { t("onboarding.done.read", "title" to it.name) }
+
+    /** The balance as the credits card counts up to it ("Balance: 120 credits"). */
+    fun balanceLabel(count: Long): String = t("onboarding.credits.balance", "count" to count)
 }
 
 sealed interface OnboardingIntent {
@@ -195,6 +211,7 @@ class OnboardingViewModel(
             .launchIn(viewModelScope)
         services.sources().onEach { sources -> mutableState.update { it.copy(sources = sources) } }.launchIn(viewModelScope)
         services.credits().onEach { credits -> mutableState.update { it.copy(credits = credits) } }.launchIn(viewModelScope)
+        services.featured().onEach { title -> mutableState.update { it.copy(featured = title) } }.launchIn(viewModelScope)
         viewModelScope.launch {
             // The account's time zone comes from the device the first time, when it has none.
             val session = auth.session.value
@@ -205,6 +222,7 @@ class OnboardingViewModel(
         }
         viewModelScope.launch { services.refreshSources() }
         viewModelScope.launch { services.refreshCredits() }
+        viewModelScope.launch { services.refreshFeatured() }
     }
 
     fun onIntent(intent: OnboardingIntent) {
@@ -301,6 +319,8 @@ class OnboardingViewModel(
                         it.copy(turningOn = false, error = if (result.error == AppError.Network) null else result.error.userMessage())
                 }
             }
+            // Its first title is what the tour ends on.
+            if (result is AppResult.Ok) services.refreshFeatured()
         }
     }
 

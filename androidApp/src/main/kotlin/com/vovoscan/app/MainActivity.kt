@@ -199,6 +199,11 @@ private fun Root(session: SessionViewModel = koinViewModel()) {
                     tab = Tab.Library
                     openSettings = null
                 },
+                onOpenTitle = { source, id ->
+                    tab = Tab.Catalog
+                    openSettings = null
+                    openTitle = "$source|$id"
+                },
             )
         }
         return

@@ -47,13 +47,11 @@ import com.vovoscan.app.ui.account.PickerRow
 import com.vovoscan.app.ui.account.rich
 import com.vovoscan.app.ui.common.ErrorText
 import com.vovoscan.app.ui.common.GhostButton
-import com.vovoscan.app.ui.common.Kicker
 import com.vovoscan.app.ui.common.LogoMark
 import com.vovoscan.app.ui.common.PrimaryButton
 import com.vovoscan.app.ui.settings.KeysScreen
 import com.vovoscan.app.ui.sources.AddSourceScreen
 import com.vovoscan.app.ui.theme.Brand
-import com.vovoscan.core.common.i18n.I18n
 import com.vovoscan.feature.auth.domain.OnboardingStep
 import com.vovoscan.feature.auth.presentation.OnboardingDestination
 import com.vovoscan.feature.auth.presentation.OnboardingIntent
@@ -70,6 +68,7 @@ import org.koin.compose.viewmodel.koinViewModel
 fun OnboardingScreen(
     onClose: () -> Unit,
     onOpenLibrary: () -> Unit,
+    onOpenTitle: (sourceKey: String, titleId: String) -> Unit,
     viewModel: OnboardingViewModel = koinViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -114,7 +113,7 @@ fun OnboardingScreen(
                 }
             }
         }
-        BottomBar(state, send, onOpenLibrary)
+        BottomBar(state, send, onOpenLibrary, onOpenTitle)
     }
 }
 
@@ -173,6 +172,7 @@ private fun BottomBar(
     state: OnboardingUiState,
     send: (OnboardingIntent) -> Unit,
     onOpenLibrary: () -> Unit,
+    onOpenTitle: (String, String) -> Unit,
 ) {
     Column(
         Modifier.fillMaxWidth().background(Brand.Ink).padding(horizontal = 24.dp, vertical = 16.dp),
@@ -185,11 +185,25 @@ private fun BottomBar(
                 PrimaryButton(state.addKeysLabel, { send(OnboardingIntent.Open(OnboardingDestination.Keys)) })
                 GhostButton(state.notNowLabel, { send(OnboardingIntent.Next) })
             }
-            OnboardingStep.Done ->
-                PrimaryButton(state.doneAction, {
-                    onOpenLibrary()
-                    send(OnboardingIntent.Next)
-                })
+            OnboardingStep.Done -> {
+                val featured = state.featured
+                val read = state.featuredAction
+                if (featured != null && read != null) {
+                    PrimaryButton(read, {
+                        onOpenTitle(featured.sourceKey, featured.id)
+                        send(OnboardingIntent.Next)
+                    })
+                    GhostButton(state.doneAction, {
+                        onOpenLibrary()
+                        send(OnboardingIntent.Next)
+                    })
+                } else {
+                    PrimaryButton(state.doneAction, {
+                        onOpenLibrary()
+                        send(OnboardingIntent.Next)
+                    })
+                }
+            }
             else -> PrimaryButton(state.nextLabel, { send(OnboardingIntent.Next) }, enabled = !state.readingSaving)
         }
     }
@@ -208,7 +222,7 @@ private fun StepTitle(
 
 @Composable
 private fun Welcome(state: OnboardingUiState) {
-    Kicker(I18n.text("auth.inviteOnly"))
+    ColdOpen(state.welcomeCold, state.demo.original, state.demo.translated)
     Text(state.welcomeTitle, style = MaterialTheme.typography.displaySmall)
     Text(state.welcomeLead, style = MaterialTheme.typography.bodyLarge.copy(color = Brand.TextSoft))
     Text(state.welcomeList, style = MaterialTheme.typography.labelLarge.copy(color = Brand.Muted))
@@ -248,6 +262,8 @@ private fun Reading(
     var open by rememberSaveable { mutableStateOf(false) }
     StepTitle(state.readingTitle, state.readingLead)
     Card { PickerRow(state.readingLabel, state.readingChoice) { open = true } }
+    // The choice at work: the same balloon, lettered again in it.
+    TranslatedPageDemo(state.demoKicker, state.demo)
     if (open) {
         ContentLanguageSheet(
             title = state.readingLabel,
@@ -317,15 +333,12 @@ private fun Credits(state: OnboardingUiState) {
         CreditLine("¤", Brand.Red) { Text(rich(state.creditsWallet), style = MaterialTheme.typography.bodyMedium) }
         CreditLine("⇄", Brand.Cyan) { Text(state.creditsShared, style = MaterialTheme.typography.bodyMedium) }
     }
-    state.creditsStatus?.let {
-        Text(
-            it,
-            style = MaterialTheme.typography.titleLarge.copy(color = Brand.Ink),
-            modifier =
-                Modifier
-                    .rotate(-1.5f)
-                    .background(Brand.Yellow, RoundedCornerShape(8.dp))
-                    .padding(horizontal = 14.dp, vertical = 8.dp),
+    if (state.creditsStatus != null) {
+        WalletCard(
+            kicker = state.walletKicker,
+            balance = if (state.credits.ownKeys) null else state.credits.balance,
+            ownKeysLine = if (state.credits.ownKeys) state.creditsStatus else null,
+            label = state::balanceLabel,
         )
     }
 }
@@ -347,8 +360,9 @@ private fun Done(state: OnboardingUiState) {
     Text(
         "ドン!",
         style = MaterialTheme.typography.displayMedium.copy(color = Brand.Yellow, fontSize = 56.sp),
-        modifier = Modifier.padding(top = 40.dp).rotate(-6f),
+        modifier = Modifier.padding(top = 24.dp).rotate(-6f),
     )
     Text(state.doneTitle, style = MaterialTheme.typography.displaySmall)
     Text(state.doneLead, style = MaterialTheme.typography.bodyLarge.copy(color = Brand.TextSoft))
+    state.featured?.let { FeaturedCover(state.featuredKicker, it) }
 }

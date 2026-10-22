@@ -2,6 +2,7 @@ package com.vovoscan.app.ui.common
 
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -32,10 +33,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
+import com.vovoscan.app.R
 import com.vovoscan.app.ui.theme.Brand
 import com.vovoscan.core.common.i18n.I18n
 
@@ -189,15 +192,12 @@ fun Kicker(text: String) {
 /** Logo: red square tilted -6°, paper border, hard paper shadow, "ヴ" in ink. */
 @Composable
 fun LogoMark(size: Int = 32) {
-    Box(Modifier.size(size.dp).rotate(-6f)) {
-        Box(Modifier.matchParentSize().offset(3.dp, 3.dp).background(Brand.Paper))
-        Box(
-            Modifier.matchParentSize().background(Brand.Red).border(2.dp, Brand.Paper),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text("ヴ", style = MaterialTheme.typography.titleMedium.copy(color = Brand.Ink))
-        }
-    }
+    // The brand files (res/drawable-nodpi/brand_logo.png): replacing the image changes the mark everywhere.
+    Image(
+        painter = painterResource(R.drawable.brand_logo),
+        contentDescription = "vovoscan",
+        modifier = Modifier.size(size.dp),
+    )
 }
 
 /** An empty screen that leads somewhere: a title, one sentence, one action (iOS `EmptyStateCard`). */

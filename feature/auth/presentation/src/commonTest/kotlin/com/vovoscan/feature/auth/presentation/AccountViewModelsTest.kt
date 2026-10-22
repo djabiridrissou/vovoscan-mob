@@ -7,6 +7,7 @@ import com.vovoscan.core.common.i18n.I18n
 import com.vovoscan.core.common.i18n.UiLanguage
 import com.vovoscan.feature.auth.domain.Change
 import com.vovoscan.feature.auth.domain.OnboardingStep
+import com.vovoscan.feature.auth.domain.OnboardingTitle
 import com.vovoscan.feature.auth.domain.ProfileChange
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -324,5 +325,45 @@ class AccountViewModelsTest {
             val vm = OnboardingViewModel(auth, services, language, prefs, clock)
             assertFalse(vm.state.value.canTurnOnOfficial)
             assertEquals("The vovoscan source isn’t available on this server yet.", vm.state.value.officialUnavailable)
+        }
+
+    @Test
+    fun theDemoBalloonFollowsTheReadingLanguageAndNeverGuesses() =
+        runTest {
+            val auth = FakeAuth(signedIn = testSession())
+            val vm = OnboardingViewModel(auth, FakeOnboarding(), language, prefs, clock)
+            repeat(2) { vm.onIntent(OnboardingIntent.Next) }
+            // Pre-filled with the app's language.
+            assertEquals("行くぞ！", vm.state.value.demo.original)
+            assertEquals("Here we go!", vm.state.value.demo.translated)
+            vm.onIntent(OnboardingIntent.ChooseReading("ar"))
+            assertEquals("هيا بنا!", vm.state.value.demo.translated)
+            assertTrue(vm.state.value.demo.rtl)
+            assertTrue(vm.state.value.demo.exact)
+            assertEquals("Same page, in العربية. The art stays; only the lettering changes.", vm.state.value.demo.caption)
+            // A language without a line written by hand: the app's language, and it says so.
+            vm.onIntent(OnboardingIntent.ChooseReading("ee"))
+            val demo = vm.state.value.demo
+            assertFalse(demo.exact)
+            assertFalse(demo.rtl)
+            assertEquals("Here we go!", demo.translated)
+            assertEquals("en", demo.languageCode)
+            assertEquals("Sample shown in the app’s language. Your chapters come in Eʋegbe.", demo.caption)
+        }
+
+    @Test
+    fun theTourEndsOnARealTitleOfTheOfficialSource() =
+        runTest {
+            val auth = FakeAuth(signedIn = testSession())
+            val services = FakeOnboarding()
+            val vm = OnboardingViewModel(auth, services, language, prefs, clock)
+            assertNull(vm.state.value.featuredAction)
+            val refreshes = services.featuredRefreshes
+            vm.onIntent(OnboardingIntent.TurnOnOfficial)
+            // Turning the source on loads its catalog, whose first title closes the tour.
+            assertEquals(refreshes + 1, services.featuredRefreshes)
+            services.featuredFlow.value = OnboardingTitle("vovoscan", "t1", "Le Griot de Guerre", null)
+            assertEquals("Read Le Griot de Guerre", vm.state.value.featuredAction)
+            assertEquals("Balance: 1,200 credits", vm.state.value.balanceLabel(1200))
         }
 }

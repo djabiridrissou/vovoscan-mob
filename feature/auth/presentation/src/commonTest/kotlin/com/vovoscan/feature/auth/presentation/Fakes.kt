@@ -9,6 +9,7 @@ import com.vovoscan.feature.auth.domain.DeviceSession
 import com.vovoscan.feature.auth.domain.OnboardingCredits
 import com.vovoscan.feature.auth.domain.OnboardingServices
 import com.vovoscan.feature.auth.domain.OnboardingSources
+import com.vovoscan.feature.auth.domain.OnboardingTitle
 import com.vovoscan.feature.auth.domain.ProfileChange
 import com.vovoscan.feature.auth.domain.Session
 import kotlinx.coroutines.flow.Flow
@@ -157,4 +158,13 @@ internal class FakeOnboarding : OnboardingServices {
     override fun credits(): Flow<OnboardingCredits> = creditsFlow
 
     override suspend fun refreshCredits() = Unit
+
+    val featuredFlow = MutableStateFlow<OnboardingTitle?>(null)
+    var featuredRefreshes = 0
+
+    override fun featured(): Flow<OnboardingTitle?> = featuredFlow
+
+    override suspend fun refreshFeatured() {
+        featuredRefreshes++
+    }
 }

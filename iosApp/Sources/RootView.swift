@@ -46,6 +46,8 @@ struct LocaleRoot: View {
 struct RootView: View {
     @StateObject private var session = SessionModel()
     @State private var tab: AppTab = .catalog
+    /// The catalog's navigation: the tutorial ends by opening a title there.
+    @State private var catalogPath = NavigationPath()
 
     init() { Self.styleBars() }
 
@@ -54,7 +56,7 @@ struct RootView: View {
             Color.brandInk.ignoresSafeArea()
             if let current = session.session {
                 TabView(selection: $tab) {
-                    NavigationStack { CatalogView() }
+                    NavigationStack(path: $catalogPath) { CatalogView() }
                         .tabItem { Label(L("nav.catalog"), systemImage: "square.grid.2x2") }
                         .tag(AppTab.catalog)
                     NavigationStack { LibraryView(onSignOut: session.signOut) }
@@ -73,9 +75,10 @@ struct RootView: View {
                     if let banner = session.deletionBanner { DeletionBanner(banner: banner, keep: session.keepAccount) }
                 }
                 .fullScreenCover(isPresented: Binding(get: { session.showTutorial }, set: { if !$0 { session.tutorialClosed() } })) {
-                    OnboardingView(onClose: session.tutorialClosed) { done in
-                        tab = done
-                    }
+                    OnboardingView(onClose: session.tutorialClosed, openTab: { tab = $0 }, openTitle: { route in
+                        tab = .catalog
+                        catalogPath = NavigationPath([route])
+                    })
                 }
                 .transition(.opacity)
             } else {
