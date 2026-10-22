@@ -70,3 +70,7 @@ fun interface ManifestProvider {
 }
 
 internal fun hostOf(url: String): String? = HostPolicy.hostOf(url)
+
+/** The catalog names each title's format (`catalog.item.format`); without it a comic reads as a manga by default. */
+val SourceManifest.declaresFormat: Boolean
+    get() = (json["catalog"] as? JsonObject)?.get("item")?.let { it as? JsonObject }?.containsKey("format") == true

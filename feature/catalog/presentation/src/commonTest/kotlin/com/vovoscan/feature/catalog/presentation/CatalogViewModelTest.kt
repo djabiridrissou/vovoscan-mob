@@ -225,6 +225,54 @@ class CatalogViewModelTest {
         }
 
     @Test
+    fun ourFormatCategoriesFileASourcesTitlesByTheirFormat() =
+        runTest(dispatcher) {
+            val inkwell = CatalogSource("inkwell", "Inkwell")
+            val repository =
+                FakeCatalog().apply {
+                    remote["vovoscan" to null] = listOf(listOf(title("vovoscan", "v1", ReadingFormat.Webtoon)))
+                    remote["vovoscan" to "manga"] = listOf(listOf(title("vovoscan", "v2", ReadingFormat.Manga)))
+                    remote["vovoscan" to "webtoon"] = listOf(listOf(title("vovoscan", "v1", ReadingFormat.Webtoon)))
+                    // A source with no categories: a manga (its catalog's default) and a strip the server learned.
+                    remote["inkwell" to null] =
+                        listOf(listOf(title("inkwell", "i1", ReadingFormat.Manga), title("inkwell", "i2", ReadingFormat.Webtoon)))
+                    categories["vovoscan"] =
+                        listOf(
+                            SourceCategory("manga", "Manga", ReadingFormat.Manga),
+                            SourceCategory("webtoon", "Webtoon", ReadingFormat.Webtoon),
+                            SourceCategory("staff", "Staff picks"),
+                        )
+                }
+            val vm = CatalogViewModel(repository)
+            vm.onIntent(CatalogIntent.SourcesChanged(listOf(vovoscan, inkwell)))
+            advanceUntilIdle()
+
+            vm.onIntent(CatalogIntent.SelectCategory("Manga"))
+            advanceUntilIdle()
+            assertEquals(setOf("v2", "i1"), ids(vm).toSet())
+            assertNull(vm.state.value.categoryNote)
+            assertEquals(2, vm.state.value.sourcesRead)
+
+            vm.onIntent(CatalogIntent.SelectCategory("Webtoon"))
+            advanceUntilIdle()
+            assertEquals(setOf("v1", "i2"), ids(vm).toSet())
+
+            // A curated category stands for no format: a source without it is left out, as before.
+            vm.onIntent(CatalogIntent.SelectCategory("Staff picks"))
+            advanceUntilIdle()
+            assertEquals("Inkwell has no “Staff picks” category, so it's left out.", vm.state.value.categoryNote)
+
+            vm.onIntent(CatalogIntent.SelectCategory("Manga"))
+            vm.onIntent(CatalogIntent.Query("inkwell"))
+            advanceUntilIdle()
+            assertEquals(
+                listOf("i1"),
+                vm.state.value.results
+                    ?.map { it.id },
+            )
+        }
+
+    @Test
     fun anEmptyCatalogSettlesInsteadOfLoadingForever() =
         runTest(dispatcher) {
             val repository = FakeCatalog().apply { remote["vovoscan" to null] = listOf(emptyList()) }

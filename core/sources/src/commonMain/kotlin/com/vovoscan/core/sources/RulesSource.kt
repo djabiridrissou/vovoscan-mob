@@ -77,6 +77,12 @@ class RulesSource(
                 ?.toString()
                 ?.let { SEARCH_PLACEHOLDER.containsMatchIn(it) } == true
 
+    /**
+     * The catalog names each title's format (`catalog.item.format`). Without it every comic reads as a manga until the
+     * server learns its real format from imported pages (`GET source-reader/{key}/formats`).
+     */
+    val declaresFormat: Boolean get() = manifest.declaresFormat
+
     private fun vars(vararg extra: Pair<String, Any?>): Map<String, Any?> =
         mapOf("settings" to manifest.settings, "page" to 1, "search" to "", "lang" to deviceLanguage()) + extra
 

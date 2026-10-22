@@ -662,6 +662,7 @@
   "translation.endCard": "Le lire dans une autre langue",
   "translation.failed": "La traduction n’a pas pu être faite. Réessayez.",
   "translation.failedShort": "Échec",
+  "translation.importing": "Récupération des pages depuis la source…",
   "translation.languageA11y": "Langue : {language}",
   "translation.languageTitle": "Langue",
   "translation.noCredits": "Crédits insuffisants pour traduire. Ajoutez vos propres clés dans Réglages, ou demandez une recharge.",

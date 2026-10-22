@@ -6,10 +6,14 @@ import com.vovoscan.core.common.map
 import com.vovoscan.feature.catalog.domain.CatalogFilter
 import com.vovoscan.feature.catalog.domain.CatalogRepository
 import com.vovoscan.feature.catalog.domain.ListedTitle
+import com.vovoscan.feature.catalog.domain.ReadingFormat
 import com.vovoscan.feature.catalog.domain.SearchResult
 import com.vovoscan.feature.catalog.domain.SourceCategory
 import com.vovoscan.feature.catalog.domain.TitleDetail
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.update
 
 /** Stale-while-revalidate: the local source shows at once, the remote source replaces it. */
 class CatalogRepositoryImpl(
@@ -46,8 +50,9 @@ class CatalogRepositoryImpl(
     ): SearchResult =
         when (val result = remote.search(sourceKey, query.trim(), categoryId)) {
             is AppResult.Ok -> {
-                local.saveSummaries(sourceKey, result.value.items)
-                SearchResult(result.value.items.map { it.toDomain(sourceKey) }, offline = false)
+                val items = withLearnedFormats(sourceKey, result.value.items)
+                local.saveSummaries(sourceKey, items)
+                SearchResult(items.map { it.toDomain(sourceKey) }, offline = false)
             }
             is AppResult.Err ->
                 when (val error = result.error) {
@@ -62,10 +67,25 @@ class CatalogRepositoryImpl(
                 }
         }
 
-    override fun observeCategories(sourceKey: String): Flow<List<SourceCategory>> = local.observeCategories(sourceKey)
+    /** The format each category stands for, as last read (kept for the app's run: the table has no column for it). */
+    private val categoryFormats = MutableStateFlow<Map<String, Map<String, ReadingFormat>>>(emptyMap())
+
+    override fun observeCategories(sourceKey: String): Flow<List<SourceCategory>> =
+        local.observeCategories(sourceKey).combine(categoryFormats) { list, formats ->
+            val known = formats[sourceKey].orEmpty()
+            list.map { category -> known[category.id]?.let { category.copy(format = it) } ?: category }
+        }
 
     override suspend fun refreshCategories(sourceKey: String): AppResult<Unit> =
-        remote.categories(sourceKey).also { if (it is AppResult.Ok) local.saveCategories(sourceKey, it.value) }.map { }
+        remote
+            .categories(sourceKey)
+            .also {
+                if (it is AppResult.Ok) {
+                    val formats = it.value.mapNotNull { c -> c.format?.let { f -> c.id to f } }.toMap()
+                    categoryFormats.update { all -> all + (sourceKey to formats) }
+                    local.saveCategories(sourceKey, it.value)
+                }
+            }.map { }
 
     override fun observeFilter(): Flow<CatalogFilter> = local.observeFilter()
 
@@ -96,7 +116,17 @@ class CatalogRepositoryImpl(
     ): AppResult<Boolean> =
         remote
             .titles(sourceKey, page, categoryId)
+            .map { it.copy(items = withLearnedFormats(sourceKey, it.items)) }
             .also {
                 if (it is AppResult.Ok) local.saveCatalogPage(sourceKey, it.value, categoryId)
             }.map { it.hasNext }
+
+    /** A source whose catalog names no format: the formats the server learned from imports replace the default (manga). */
+    private suspend fun withLearnedFormats(
+        sourceKey: String,
+        items: List<TitleSummaryDto>,
+    ): List<TitleSummaryDto> {
+        val learned = remote.learnedFormats(sourceKey, items.map { it.id })
+        return if (learned.isEmpty()) items else items.map { item -> learned[item.id]?.let { item.copy(format = it) } ?: item }
+    }
 }

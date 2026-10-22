@@ -662,6 +662,7 @@
   "translation.endCard": "Read it in another language",
   "translation.failed": "The translation couldn't be made. Try again.",
   "translation.failedShort": "Failed",
+  "translation.importing": "Getting the pages from the source…",
   "translation.languageA11y": "Language: {language}",
   "translation.languageTitle": "Language",
   "translation.noCredits": "Not enough credits to translate. Add your own keys in Settings, or ask for a top-up.",

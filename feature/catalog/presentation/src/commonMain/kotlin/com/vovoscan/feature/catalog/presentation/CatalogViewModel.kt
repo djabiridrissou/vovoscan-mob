@@ -15,6 +15,7 @@ import com.vovoscan.feature.catalog.domain.CategoryOption
 import com.vovoscan.feature.catalog.domain.CategoryUnion
 import com.vovoscan.feature.catalog.domain.ContentKind
 import com.vovoscan.feature.catalog.domain.ContentPolicy
+import com.vovoscan.feature.catalog.domain.INTERNAL_SOURCE
 import com.vovoscan.feature.catalog.domain.ReadingFormat
 import com.vovoscan.feature.catalog.domain.ReadingResume
 import com.vovoscan.feature.catalog.domain.ResumePoint
@@ -205,11 +206,17 @@ class CatalogViewModel(
     private val mutableState = MutableStateFlow(CatalogUiState())
     val state: StateFlow<CatalogUiState> = mutableState.asStateFlow()
 
-    /** What is read: a source, and its own category id when the category filter is on. */
+    /**
+     * What is read: a source, and its own category id when the category filter is on. A source without that category
+     * whose titles carry the format the category stands for reads everything, keeping that [format].
+     */
     private data class Reading(
         val source: CatalogSource,
         val categoryId: String?,
-    )
+        val format: ReadingFormat? = null,
+    ) {
+        fun keeps(title: TitleSummary): Boolean = format == null || title.format == format
+    }
 
     private data class Plan(
         val visible: List<CatalogSource>,
@@ -223,7 +230,11 @@ class CatalogViewModel(
                 if (category == null) {
                     selected.map { Reading(it, null) }
                 } else {
-                    selected.mapNotNull { source -> category.ids[source.key]?.let { Reading(source, it) } }
+                    selected.mapNotNull { source ->
+                        category.ids[source.key]?.let { Reading(source, it) }
+                            // Our catalog's Manga / Webtoon / Book: a source read on the device files its titles by format.
+                            ?: category.format?.takeIf { source.key != INTERNAL_SOURCE }?.let { Reading(source, null, it) }
+                    }
                 }
     }
 
@@ -329,8 +340,8 @@ class CatalogViewModel(
     private fun apply(next: Plan) {
         plan = next
         val names = next.visible.associate { it.key to it.name }
-        val missing =
-            next.category?.let { category -> next.selected.filter { it.key !in category.ids }.map { it.name } }.orEmpty()
+        val read = next.readings.mapTo(HashSet()) { it.source.key }
+        val missing = next.category?.let { next.selected.filter { it.key !in read }.map { it.name } }.orEmpty()
         mutableState.update {
             it.copy(
                 sources =
@@ -380,7 +391,11 @@ class CatalogViewModel(
             flowOf(emptyList())
         } else {
             combine(
-                list.map { repository.observeListing(it.source.key, it.categoryId) },
+                list.map { reading ->
+                    repository.observeListing(reading.source.key, reading.categoryId).map { titles ->
+                        titles.filter { reading.keeps(it.title) }
+                    }
+                },
             ) { listings -> listings.toList() }.combine(seed) { listings, s -> CatalogMerge.merge(listings, s) }
         }
 
@@ -440,7 +455,11 @@ class CatalogViewModel(
                 val found =
                     current
                         .map { reading ->
-                            async { repository.search(reading.source.key, query.trim(), reading.categoryId) }
+                            async {
+                                repository.search(reading.source.key, query.trim(), reading.categoryId).let { found ->
+                                    found.copy(titles = found.titles.filter(reading::keeps))
+                                }
+                            }
                         }.awaitAll()
                 val all = CatalogMerge.mix(found.map { it.titles }, Random(seed.value))
                 val titles = all.filter { t -> ContentRating.shown(t.contentRating, showAdult) }

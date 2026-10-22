@@ -109,6 +109,19 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
 - Regexes in shared code: escape `{` and `}` (`\{\{…\}\}`). Android's ICU engine rejects a bare `}` that the JVM
   tests and iOS accept: `Template`'s placeholder regex made every rule-based source crash the Android app.
 - Catalog, title pages and chapters are keyed by `(sourceKey, id)`: two sources never mix.
+- Chapters of a source on the server (translation and episodes of any comic): `ChapterImports` (`core/common`, port;
+  `ApiChapterImports` in `core/network`): `find` (the title's units, `GET api/v1/source-reader/{key}/title?ref=&lang=`,
+  a unit already brought in carries its `chapterId`), `import` (`POST …/{key}/import?lang=` `{titleRef, unitRef}`), polled
+  every 2 s (`GET …/source-reader/chapters/{id}`, 10 minutes at most, a network blip keeps waiting) through `bringIn`.
+  `{{lang}}` is the device's (`sourceLanguage()`). Nothing is paid by an import: the quote comes after, and runs only
+  on the user's explicit confirm. Errors `SOURCE_UNAVAILABLE`, `HOST_NOT_ALLOWED`, `NO_PAGES`, `INVALID_IMAGE`… have
+  their calm lines (`errors.*`). `EpisodeViewModel(sourceKey, titleId, imports)` looks the chapter up on opening
+  ("Watch" plays `EpisodeUiState.chapterId`, our id); from a source's reader "Watch from here" opens the card (Android
+  over the title page, iOS a sheet, `SourceEpisodeSheet`).
+- Format filter for sources: our categories carry `format` (`manga`, `webtoon`, `text`); a rule-based source without
+  the chosen category is read unfiltered and its titles kept by format (`CatalogViewModel` readings); a manifest
+  without `catalog.item.format` (`RulesSource.declaresFormat`) asks `GET api/v1/source-reader/{key}/formats?ref=…`
+  (`learnedFormats`, 100 refs a call), else manga. Category formats are kept in memory (no schema change).
 - Tests: `core/sources/src/commonTest/.../Fixtures.kt` copies the manifests (change them with `vovo-plugin`).
 - Third-party sources (user plugins, spec v1): added from a link (single manifest or `repo.json`, GitHub pages
   resolved to raw files) or a `.vovo` file, private to the user, not reviewed by vovoscan. `core/sources` has the
@@ -556,8 +569,12 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
 
 ## Translated reader (`TranslationViewModel`, iOS `TranslationViews.swift`, Android `ui/reader/{Lettering,TranslationSheet}.kt`)
 
-- Chapters of our catalog only (`sourceKey == "vovoscan"`): a language button in the reader's top bar opens a
-  searchable picker (own name, English name or code), languages already made first ("Ready": shared, free).
+- Any comic chapter: a language button in the reader's top bar opens a searchable picker (own name, English name or
+  code), languages already made first ("Ready": shared, free). A chapter of a source read on the device is brought to
+  the server first (see "Chapters of a source on the server"); once translated, its server copy (a strip may be re-cut
+  there, so the lettering never lands on the device's pages) replaces the reader in that language at the same share of
+  the chapter (`TranslationUiState.openCopy`, `TranslatedCopy.startPage`, `CopyOpened`; Android `onOpenCopy`, iOS
+  `ReaderView.onOpenCopy` / `ReaderRoute.language`).
 - `TranslationsRepository` (reader slice, online only): `GET api/v1/translations/chapters/{id}` (`{translations:
   [{language, status, progress…}]}`), `POST …/{id} {language}` (200 exists or runs: shared, free; 202 queued; 402 / 429
   / 503 from credits), `GET …/{id}/read?lang=` (pages `width`/`height` + `texts` `{id, bbox, text, fill, ink, round,

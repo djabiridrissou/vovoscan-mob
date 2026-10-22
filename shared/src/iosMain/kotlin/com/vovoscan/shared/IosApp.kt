@@ -2,6 +2,7 @@ package com.vovoscan.shared
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelStore
+import com.vovoscan.core.common.INTERNAL_SOURCE_KEY
 import com.vovoscan.core.common.NetworkMonitor
 import com.vovoscan.core.common.NetworkState
 import com.vovoscan.core.common.i18n.DevicePreferences
@@ -169,6 +170,20 @@ class ViewModels : KoinComponent {
     ): TranslationViewModel =
         remember("translation:$sourceKey/$chapterId") { get<TranslationViewModel> { parametersOf(sourceKey, chapterId) } }
 
+    /**
+     * The language button of a chapter of any source: [titleId] lets a source's chapter be brought to the server first;
+     * [language] (a translated copy opened in it) is chosen at once when it is ready.
+     */
+    fun translation(
+        sourceKey: String,
+        chapterId: String,
+        titleId: String,
+        language: String?,
+    ): TranslationViewModel =
+        remember("translation:$sourceKey/$chapterId~${language.orEmpty()}") {
+            get<TranslationViewModel> { parametersOf(sourceKey, chapterId, titleId, language) }
+        }
+
     fun providerKeys(): ProviderKeysViewModel = remember("providerKeys") { get<ProviderKeysViewModel>() }
 
     fun readingSettings(): ReadingSettingsViewModel = remember("readingSettings") { get<ReadingSettingsViewModel>() }
@@ -188,6 +203,21 @@ class ViewModels : KoinComponent {
             episode(chapterId)
         } else {
             remember("episode:$chapterId~$language") { get<EpisodeViewModel> { parametersOf(chapterId, language) } }
+        }
+
+    /** The card of a chapter of a source read on the device: its pages are brought to the server before anything runs. */
+    fun episode(
+        chapterId: String,
+        language: String,
+        sourceKey: String,
+        titleId: String,
+    ): EpisodeViewModel =
+        if (sourceKey == INTERNAL_SOURCE_KEY) {
+            episode(chapterId, language)
+        } else {
+            remember("episode:$sourceKey/$chapterId~$language") {
+                get<EpisodeViewModel> { parametersOf(chapterId, language, sourceKey, titleId) }
+            }
         }
 
     /** `nextChapterId`: the chapter after this one when the opening screen knows it ("Next chapter →" at the end). */

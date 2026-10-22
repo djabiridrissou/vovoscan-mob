@@ -74,10 +74,15 @@ data class TitleDetail(
     val chapters: List<Chapter>,
 )
 
-/** A category of a source: its own id (sent to the source) and the name the reader sees. */
+/**
+ * A category of a source: its own id (sent to the source) and the name the reader sees. [format]: the title format it
+ * stands for (our catalog's default categories: Manga, Webtoon, Book), so the titles of sources without that category
+ * are filed under it by their own format.
+ */
 data class SourceCategory(
     val id: String,
     val name: String,
+    val format: ReadingFormat? = null,
 )
 
 /** A title of a source's listing, with the page it came in on (the merged catalog goes page by page). */

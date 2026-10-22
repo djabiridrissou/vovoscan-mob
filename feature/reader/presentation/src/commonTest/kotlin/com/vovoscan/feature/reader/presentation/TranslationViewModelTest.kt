@@ -2,6 +2,10 @@ package com.vovoscan.feature.reader.presentation
 
 import com.vovoscan.core.common.AppError
 import com.vovoscan.core.common.AppResult
+import com.vovoscan.core.common.ChapterImports
+import com.vovoscan.core.common.ImportStatus
+import com.vovoscan.core.common.ImportedChapter
+import com.vovoscan.core.common.SourceUnit
 import com.vovoscan.feature.reader.domain.ChapterTranslation
 import com.vovoscan.feature.reader.domain.PixelBox
 import com.vovoscan.feature.reader.domain.TranslatedPage
@@ -45,12 +49,107 @@ class TranslationViewModelTest {
             listOf(TranslatedText("t1", PixelBox(100.0, 100.0, 200.0, 100.0), "Salut", "#ffffff", "#000000", true, null)),
         )
 
+    private class Imports(
+        val result: AppResult<ImportedChapter> = AppResult.Ok(ImportedChapter("title-1", "server-1", ImportStatus.Ready, 18)),
+    ) : ChapterImports {
+        val asked = mutableListOf<SourceUnit>()
+
+        override suspend fun find(unit: SourceUnit): ImportedChapter? = null
+
+        override suspend fun import(unit: SourceUnit): AppResult<ImportedChapter> {
+            asked += unit
+            return result
+        }
+
+        override suspend fun status(chapterId: String): AppResult<ImportedChapter> = result
+    }
+
     @Test
-    fun onlyOurCatalogOffersLanguages() =
+    fun aSourcesChapterIsBroughtInQuotedThenOpenedOnItsCopy() =
         runTest(dispatcher) {
-            val vm = TranslationViewModel("gutenberg", "c1", FakeTranslations())
+            val repo = FakeTranslations()
+            val imports = Imports()
+            val vm =
+                TranslationViewModel(
+                    "inkwell",
+                    "u3",
+                    repo,
+                    TranslationQuotes { id, _ -> if (id == "server-1") TranslationQuote(12, 15, false, false, true) else null },
+                    titleId = "t9",
+                    imports = imports,
+                )
             advanceUntilIdle()
-            assertFalse(vm.state.value.available)
+            assertTrue(vm.state.value.available)
+            // Nothing leaves the device before a language is asked.
+            assertTrue(imports.asked.isEmpty())
+            assertEquals(0, repo.languageCalls)
+
+            vm.onIntent(TranslationIntent.Choose("fr"))
+            assertEquals(
+                "Getting the pages from the source…",
+                vm.state.value.dock
+                    ?.title,
+            )
+            advanceUntilIdle()
+            assertEquals(listOf(SourceUnit("inkwell", "t9", "u3")), imports.asked)
+            // Quoted on the copy, nothing paid yet.
+            assertEquals(
+                "Translate",
+                vm.state.value.dock
+                    ?.confirmLabel,
+            )
+            assertEquals(0, repo.requests)
+
+            vm.onIntent(TranslationIntent.ConfirmOffer)
+            advanceUntilIdle()
+            assertEquals(1, repo.requests)
+            assertEquals(TranslatedCopy("title-1", "server-1", "fr", 18), vm.state.value.openCopy)
+            // The lettering is the copy's: this reader keeps the original.
+            assertTrue(
+                vm.state.value.lettering
+                    .isEmpty(),
+            )
+            assertNull(vm.state.value.dock)
+            vm.onIntent(TranslationIntent.CopyOpened)
+            assertNull(vm.state.value.openCopy)
+        }
+
+    @Test
+    fun aCopyThatCannotBeMadeSaysWhy() =
+        runTest(dispatcher) {
+            val imports = Imports(AppResult.Ok(ImportedChapter("title-1", "server-1", ImportStatus.Failed, 0, "INVALID_IMAGE")))
+            val vm = TranslationViewModel("inkwell", "u3", FakeTranslations(), titleId = "t9", imports = imports)
+            advanceUntilIdle()
+            vm.onIntent(TranslationIntent.Choose("fr"))
+            advanceUntilIdle()
+            assertEquals(
+                "The source sent a page that can’t be read.",
+                vm.state.value.dock
+                    ?.line,
+            )
+            assertTrue(
+                vm.state.value.dock
+                    ?.failed == true,
+            )
+        }
+
+    @Test
+    fun theCopyOpensInTheLanguageAskedForAtTheSameShare() =
+        runTest(dispatcher) {
+            val repo = FakeTranslations(languages = listOf(ChapterTranslation("fr", TranslationStatus.Ready, null)))
+            val vm = TranslationViewModel("vovoscan", "server-1", repo, initialLanguage = "fr")
+            advanceUntilIdle()
+            assertEquals("Français", vm.state.value.buttonLabel)
+            assertEquals(
+                1,
+                vm.state.value
+                    .letteringFor(0)
+                    .size,
+            )
+            val copy = TranslatedCopy("title-1", "server-1", "fr", 18)
+            assertEquals(9, copy.startPage(page = 5, pages = 10))
+            assertEquals(17, copy.startPage(page = 9, pages = 9))
+            assertEquals(0, copy.startPage(page = 3, pages = 1))
         }
 
     @Test
@@ -252,7 +351,12 @@ class TranslationViewModelTest {
         var requests = 0
         var requestResult: AppResult<ChapterTranslation> = AppResult.Ok(ChapterTranslation("fr", TranslationStatus.Ready, null))
 
-        override suspend fun languages(chapterId: String): AppResult<List<ChapterTranslation>> = AppResult.Ok(languages)
+        var languageCalls = 0
+
+        override suspend fun languages(chapterId: String): AppResult<List<ChapterTranslation>> {
+            languageCalls += 1
+            return AppResult.Ok(languages)
+        }
 
         override suspend fun request(
             chapterId: String,

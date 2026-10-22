@@ -432,7 +432,7 @@ class ImmersiveReaderTest {
         }
 
     @Test
-    fun ourComicsHandOverToTheEpisodeAtThePageBeingRead() =
+    fun comicsHandOverToTheEpisodeAtThePageBeingRead() =
         runTest(dispatcher) {
             val vm = reader()
             assertTrue(vm.state.value.voiceAvailable)
@@ -440,7 +440,8 @@ class ImmersiveReaderTest {
             vm.onIntent(ReaderIntent.ReadWithVoice)
             val open = assertIs<ReaderCommand.OpenEpisode>(vm.state.value.command)
             assertEquals("c3" to 2, open.chapterId to open.page)
-            assertFalse(reader(sourceKey = "gutenberg").state.value.voiceAvailable)
+            // A source's comic too: its episode card brings its pages to the server first.
+            assertTrue(reader(sourceKey = "inkwell").state.value.voiceAvailable)
             assertNotNull(vm.state.value.pageAnnouncement)
         }
 }

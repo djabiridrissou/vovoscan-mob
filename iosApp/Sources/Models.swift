@@ -273,7 +273,12 @@ final class TranslationModel: ObservableObject {
     private let viewModel: TranslationViewModel
 
     init(route: ReaderRoute) {
-        viewModel = owner.translation(sourceKey: route.sourceKey, chapterId: route.chapterId)
+        viewModel = owner.translation(
+            sourceKey: route.sourceKey,
+            chapterId: route.chapterId,
+            titleId: route.titleId,
+            language: route.language
+        )
         state = viewModel.state.value
     }
 
@@ -436,8 +441,9 @@ final class EpisodeModel: ObservableObject {
     private let owner = ViewModels()
     private let viewModel: EpisodeViewModel
 
-    init(chapterId: String, language: String = "") {
-        viewModel = owner.episode(chapterId: chapterId, language: language)
+    /// A source read on the device (not "vovoscan") has its chapter's pages brought to the server first.
+    init(chapterId: String, language: String = "", sourceKey: String = "vovoscan", titleId: String = "") {
+        viewModel = owner.episode(chapterId: chapterId, language: language, sourceKey: sourceKey, titleId: titleId)
         state = viewModel.state.value
     }
 
