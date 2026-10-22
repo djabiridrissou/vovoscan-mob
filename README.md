@@ -360,8 +360,10 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   by `errorOf`), each with a calm line (`EpisodeText.creditError`). `WalletViewModel` = the credits card in Settings.
 - The creator studio is web only: Settings links to `WEB_BASE_URL` + `contribute` (`project.yml`), "Creator studio"
   for creators, "Publish your own series" otherwise. The apps never upload, translate or schedule releases.
-- A new account has no source: `SourcesUiState.empty` makes the catalog and the library show "Start with a source."
-  with "Add a source →" (switches to the Sources tab, `OpenTabAction` in the SwiftUI environment).
+- A new account has no source turned on (the official one starts hidden): `SourcesUiState.needsSource` (no source, or
+  every one switched off) makes the catalog and the library show "Start with a source." / "Turn on a source." with an
+  action to the Sources tab (`OpenTabAction` in the SwiftUI environment, the tab state on Android), never a skeleton;
+  a catalog with nothing to read settles `Fresh` and empty.
 
 ## iOS finish (`iosApp/Sources/Premium.swift`)
 

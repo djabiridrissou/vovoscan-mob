@@ -18,7 +18,7 @@ struct LibraryView: View {
                 if let notice = model.state.pendingNotice { OfflineNotice(text: notice) }
                 if let error = model.state.error { ErrorText(text: error) }
                 if model.state.empty {
-                    if sources.state.empty {
+                    if sources.state.needsSource {
                         EmptyStateCard(
                             sfx: "パラ",
                             title: sources.state.firstSourceTitle,

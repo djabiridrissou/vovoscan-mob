@@ -253,11 +253,17 @@ private fun Root(session: SessionViewModel = koinViewModel()) {
                 }
             } else {
                 when (tab) {
-                    Tab.Catalog -> CatalogScreen(onOpenTitle = { source, id -> openTitle = "$source|$id" })
+                    Tab.Catalog ->
+                        CatalogScreen(
+                            onOpenTitle = { source, id -> openTitle = "$source|$id" },
+                            onOpenSources = { tab = Tab.Sources },
+                        )
                     Tab.Library ->
                         LibraryScreen(
                             onOpenTitle = { source, id -> openTitle = "$source|$id" },
                             onOpenDownloads = { openDownloads = true },
+                            onOpenSources = { tab = Tab.Sources },
+                            onOpenCatalog = { tab = Tab.Catalog },
                             onSignOut = session::signOut,
                         )
                     Tab.Sources ->

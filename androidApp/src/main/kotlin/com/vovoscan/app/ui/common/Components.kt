@@ -196,3 +196,28 @@ fun LogoMark(size: Int = 32) {
         }
     }
 }
+
+/** An empty screen that leads somewhere: a title, one sentence, one action (iOS `EmptyStateCard`). */
+@Composable
+fun EmptyStateCard(
+    title: String,
+    message: String,
+    action: String? = null,
+    onAction: () -> Unit = {},
+) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .background(Brand.Ink2, RoundedCornerShape(12.dp))
+            .border(1.dp, Brand.Line, RoundedCornerShape(12.dp))
+            .padding(20.dp),
+    ) {
+        Text(title, style = MaterialTheme.typography.titleMedium.copy(color = Brand.Paper))
+        Spacer(Modifier.height(8.dp))
+        Text(message, style = MaterialTheme.typography.bodyMedium.copy(color = Brand.Muted))
+        if (action != null) {
+            Spacer(Modifier.height(16.dp))
+            PrimaryButton(action, onAction)
+        }
+    }
+}

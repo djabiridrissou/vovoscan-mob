@@ -26,7 +26,7 @@ struct CatalogView: View {
                     OfflineNotice(text: notice, onRetry: model.state.canRetry ? { model.send(CatalogIntentRefresh.shared) } : nil)
                 }
                 if let error = model.state.error { ErrorText(text: error) }
-                if sources.state.empty {
+                if sources.state.needsSource {
                     // A new account has no source yet: nothing to read until one is added.
                     EmptyStateCard(
                         sfx: "シーン",
@@ -47,7 +47,7 @@ struct CatalogView: View {
                             .riseIn(index)
                     }
                     // The shape of the grid while the first page of every source loads.
-                    if model.state.visible.isEmpty && model.state.freshness == .refreshing && !sources.state.empty {
+                    if model.state.visible.isEmpty && model.state.freshness == .refreshing && !sources.state.needsSource {
                         ForEach(0..<6, id: \.self) { _ in SkeletonTile() }
                     }
                 }

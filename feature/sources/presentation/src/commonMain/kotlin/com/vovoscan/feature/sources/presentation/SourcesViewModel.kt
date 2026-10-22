@@ -87,10 +87,15 @@ data class SourcesUiState(
 
     val empty: Boolean get() = rows.isEmpty() && freshness != Freshness.Refreshing
 
-    /** A new account starts with no source: the catalog and the library invite to add the first one. */
-    val firstSourceTitle: String get() = FIRST_SOURCE_TITLE
-    val firstSourceMessage: String get() = FIRST_SOURCE_MESSAGE
-    val firstSourceAction: String get() = FIRST_SOURCE_ACTION
+    /** Sources listed, every one hidden: the official source starts hidden for a new account. */
+    val noneVisible: Boolean get() = rows.isNotEmpty() && rows.none { it.enabled }
+
+    /** The catalog and the library invite to add a source, or turn one on, instead of waiting for titles. */
+    val needsSource: Boolean get() = empty || noneVisible
+
+    val firstSourceTitle: String get() = if (noneVisible) TURN_ON_TITLE else FIRST_SOURCE_TITLE
+    val firstSourceMessage: String get() = if (noneVisible) TURN_ON_MESSAGE else FIRST_SOURCE_MESSAGE
+    val firstSourceAction: String get() = if (noneVisible) TURN_ON_ACTION else FIRST_SOURCE_ACTION
 
     private companion object {
         const val FIRST_SOURCE_TITLE = "Start with a source."
@@ -98,6 +103,9 @@ data class SourcesUiState(
             "Your shelf is empty until you add one: a repository, a link to a source or a .vovo file. " +
                 "Its titles show here, read by your phone."
         const val FIRST_SOURCE_ACTION = "Add a source →"
+        const val TURN_ON_TITLE = "Turn on a source."
+        const val TURN_ON_MESSAGE = "Your sources are all switched off. Turn one on and its titles show here."
+        const val TURN_ON_ACTION = "Choose a source →"
     }
 }
 

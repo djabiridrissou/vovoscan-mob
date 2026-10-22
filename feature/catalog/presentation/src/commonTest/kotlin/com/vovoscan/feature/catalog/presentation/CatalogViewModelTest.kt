@@ -185,6 +185,18 @@ class CatalogViewModelTest {
         }
 
     @Test
+    fun anEmptyCatalogSettlesInsteadOfLoadingForever() =
+        runTest(dispatcher) {
+            val repository = FakeCatalog().apply { remote["vovoscan" to null] = listOf(emptyList()) }
+            val vm = CatalogViewModel(repository)
+            vm.onIntent(CatalogIntent.SourcesChanged(listOf(vovoscan)))
+            advanceUntilIdle()
+            assertEquals(Freshness.Fresh, vm.state.value.freshness)
+            assertTrue(vm.state.value.empty)
+            assertEquals("No titles yet. Check back soon.", vm.state.value.emptyMessage)
+        }
+
+    @Test
     fun searchGoesToEverySourceRead() =
         runTest(dispatcher) {
             val repository = twoSources()

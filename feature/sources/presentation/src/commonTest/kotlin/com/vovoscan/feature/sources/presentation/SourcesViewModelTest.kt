@@ -1,5 +1,6 @@
 package com.vovoscan.feature.sources.presentation
 
+import com.vovoscan.core.common.Freshness
 import com.vovoscan.feature.sources.domain.SourceUpdate
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -11,6 +12,7 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -55,6 +57,22 @@ class SourcesViewModelTest {
             )
             assertEquals(listOf("gutenberg", "vovoscan"), vm.state.value.sourceKeys)
         }
+
+    @Test
+    fun everySourceSwitchedOffInvitesToTurnOneOn() {
+        fun row(
+            key: String,
+            enabled: Boolean,
+        ) = SourceRow(key, key, "Manga", "vovoscan", enabled, canMoveUp = false, canMoveDown = false)
+        val hidden = SourcesUiState(rows = listOf(row("vovoscan", false)), freshness = Freshness.Fresh)
+        assertTrue(hidden.needsSource)
+        assertFalse(hidden.empty)
+        assertEquals("Turn on a source.", hidden.firstSourceTitle)
+        val none = SourcesUiState(rows = emptyList(), freshness = Freshness.Fresh)
+        assertTrue(none.needsSource)
+        assertEquals("Start with a source.", none.firstSourceTitle)
+        assertFalse(SourcesUiState(rows = listOf(row("vovoscan", true)), freshness = Freshness.Fresh).needsSource)
+    }
 
     @Test
     fun rowsShowOriginVersionUpdatesAndRepositories() =
