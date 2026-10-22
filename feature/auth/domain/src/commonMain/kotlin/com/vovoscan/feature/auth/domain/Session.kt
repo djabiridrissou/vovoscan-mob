@@ -17,6 +17,17 @@ data class Session(
     val permissions: Set<String>,
     val isSuperAdmin: Boolean = false,
     val features: Set<String> = emptySet(),
+    val emailVerified: Boolean = true,
+    /** UI locale ("en", "fr"), region (ISO, formatting only) and IANA time zone; null when not set. */
+    val locale: String? = null,
+    val region: String? = null,
+    val timeZone: String? = null,
+    /** Show the first-launch tutorial once (never done, or an older version). */
+    val onboardingDue: Boolean = false,
+    /** The account is erased at this moment unless the deletion is cancelled. */
+    val deletionScheduledAtMillis: Long? = null,
+    /** False for an account that only signs in by link: password change asks for none. */
+    val hasPassword: Boolean = true,
 ) {
     fun can(permission: String): Boolean = permission in permissions || "*" in permissions
 
@@ -43,13 +54,26 @@ interface AuthRepository {
         password: String,
     ): AppResult<Session>
 
-    /** Sign-up with a single-use invite (brand: "invite-only"). */
+    /**
+     * Sign-up with a single-use invite (brand: "invite-only"). [locale], [region] and [timeZone] come from the device;
+     * [ageConfirmed] is the "I am {age} or older." box (`422 AGE_NOT_CONFIRMED` without it).
+     */
     suspend fun redeemInvite(
         code: String,
         email: String,
         password: String,
         displayName: String,
+        locale: String? = null,
+        region: String? = null,
+        timeZone: String? = null,
+        ageConfirmed: Boolean = true,
     ): AppResult<Session>
+
+    /**
+     * `PATCH /me`: applied to the session on the device at once; without network it is kept and sent at the next
+     * launch (idempotent, last write wins). Other refusals come back as errors and the server's profile stays.
+     */
+    suspend fun updateProfile(change: ProfileChange): AppResult<Session>
 
     /** Revokes the session on the server if possible, and erases everything on the device. */
     suspend fun signOut()
