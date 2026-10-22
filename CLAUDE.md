@@ -752,9 +752,14 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   invisible layer over the app, no tap and no Back. The reader's ← and Escape pop the tab's path (`\.pop`); ← is a
   44 pt target and the bars sit over the dock and the bubble (`zIndex` 0.9): a tap just off the glyph reached the
   page's tap zones and turned chapters.
-- Grids and lists are keyed by the title (`TitleCard.key`, the library's `rowKey`), never by the whole card (`TitleCard.key`), never by the whole card: a title page saving its format or
+- Grids and lists are keyed by the title (`TitleCard.key`, the library's `rowKey`), never by the whole card: a title page saving its format or
   status replaced the catalog tile that was its zoom transition's source while the page opened, and the page then took
   no tap (only Back worked).
+- Checks on the simulator tap elements by accessibility identifier, never by screen position (a tap placed from a
+  screenshot of another scale lands rows below): `chapter.<id>.read|translate|episode`, `library.row.<source>/<title>`,
+  `reader.back`, `reader.chapter` (the chapter the reader shows).
+- A view body the type checker gives up on ("unable to type-check this expression in reasonable time"): split it into
+  typed parts, as `ReaderView` (layers, `@ViewBuilder` groups, `withObservers`, `withSheets`).
 - No Kotlin property named `description` in an exported state: on iOS it is `toString()` (NSObject).
 - Simulator: build signed (`CODE_SIGN_IDENTITY="-"`, which Xcode does by default), otherwise the Keychain
   refuses to write and the session does not persist.

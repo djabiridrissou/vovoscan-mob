@@ -58,6 +58,8 @@ struct LibraryView: View {
                     }
                     .buttonStyle(PressableCardStyle())
                     .disabled(row.sourceRemoved)
+                    // UI tests and checks tap rows by their title, never by a screen position.
+                    .accessibilityIdentifier("library.row.\(row.rowKey)")
                     .riseIn(index)
                 }
                 Button(L("library.syncNow")) { model.send(LibraryIntentSync.shared) }.buttonStyle(GhostButtonStyle())

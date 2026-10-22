@@ -114,13 +114,16 @@ struct TitleView: View {
                                 .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
+                            .accessibilityIdentifier("chapter.\(chapter.id).read")
                             // Any comic: the chapter in another language (the reader opens on its picker).
                             if model.state.offersTranslation {
                                 ChapterPill(text: model.state.translateChip) { model.translate(chapter.id) }
+                                    .accessibilityIdentifier("chapter.\(chapter.id).translate")
                             }
                             // Any comic: the chapter's voiced episode, next to reading it.
                             if model.state.offersEpisodes {
                                 ChapterPill(text: L("episode.kickerChip")) { model.episode(chapter.id) }
+                                    .accessibilityIdentifier("chapter.\(chapter.id).episode")
                             }
                             DownloadControl(row: download) {
                                 if download.action == .delete {
