@@ -758,6 +758,9 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
 - Grids and lists are keyed by the title (`TitleCard.key`, the library's `rowKey`), never by the whole card: a title page saving its format or
   status replaced the catalog tile that was its zoom transition's source while the page opened, and the page then took
   no tap (only Back worked).
+- AsyncImage cancelled mid-load (the grid redrawing a tile, e.g. a search result turning WEBTOON when `/formats` answers,
+  `NSURLErrorCancelled` -999) stays failed for good: catalog covers go through `CoverImage`, which loads a cancelled
+  cover again (3 times at most) and logs any other failure (`CoverLog`).
 - Checks on the simulator tap elements by accessibility identifier, never by screen position (a tap placed from a
   screenshot of another scale lands rows below): `chapter.<id>.read|translate|episode`, `library.row.<source>/<title>`,
   `reader.back`, `reader.chapter` (the chapter the reader shows).

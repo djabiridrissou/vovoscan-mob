@@ -427,14 +427,7 @@ private struct TitleTile: View {
         VStack(alignment: .leading, spacing: 0) {
             ZStack(alignment: .topLeading) {
                 Color.brandLine
-                AsyncImage(url: card.coverUrl.flatMap(URL.init(string:))) { phase in
-                    switch phase {
-                    case let .success(image): image.resizable().scaledToFill()
-                    case let .failure(error): Color.brandLine.onAppear { CoverLog.failed(card: card, error: error) }
-                    default: Color.brandLine
-                    }
-                }
-                .onAppear { if card.coverUrl == nil { CoverLog.missing(card: card) } }
+                CoverImage(card: card)
                 VStack(alignment: .leading, spacing: 4) {
                     Text(card.formatLabel)
                         .font(.brandBody(12, weight: .bold))
@@ -483,6 +476,45 @@ private struct TitleTile: View {
         .contentShape(RoundedRectangle(cornerRadius: 12))
         .accessibilityElement(children: .combine)
     }
+}
+
+/// A tile's cover. A load cancelled while the grid redraws (a result that changes its badges, the format the server
+/// learned) left AsyncImage failed for good, a grey tile: a cancelled load starts again (a few times, then it stays
+/// grey); another failure is logged once. A new link loads afresh.
+private struct CoverImage: View {
+    let card: TitleCard
+    @State private var attempt = 0
+
+    private static let maxAttempts = 3
+
+    var body: some View {
+        AsyncImage(url: card.coverUrl.flatMap(URL.init(string:))) { phase in
+            switch phase {
+            case let .success(image): image.resizable().scaledToFill()
+            case let .failure(error): Color.brandLine.onAppear { failed(error) }
+            default: Color.brandLine
+            }
+        }
+        .id(CoverLoad(url: card.coverUrl, attempt: attempt))
+        .onAppear { if card.coverUrl == nil { CoverLog.missing(card: card) } }
+        .onChange(of: card.coverUrl) { attempt = 0 }
+    }
+
+    private func failed(_ error: Error) {
+        if (error as? URLError)?.code == .cancelled || error is CancellationError, attempt < Self.maxAttempts {
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(150))
+                attempt += 1
+            }
+        } else {
+            CoverLog.failed(card: card, error: error)
+        }
+    }
+}
+
+private struct CoverLoad: Hashable {
+    let url: String?
+    let attempt: Int
 }
 
 /// Why a tile shows no cover, for checks on the simulator (`log stream --predicate 'category == "covers"'`): the host
