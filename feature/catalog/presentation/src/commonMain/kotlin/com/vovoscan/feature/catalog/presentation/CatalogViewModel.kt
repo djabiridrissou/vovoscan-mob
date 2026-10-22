@@ -27,6 +27,9 @@ import com.vovoscan.feature.catalog.domain.ResumePoint
 import com.vovoscan.feature.catalog.domain.SearchPick
 import com.vovoscan.feature.catalog.domain.SearchRepository
 import com.vovoscan.feature.catalog.domain.SearchRules
+import com.vovoscan.feature.catalog.domain.Series
+import com.vovoscan.feature.catalog.domain.SeriesMerge
+import com.vovoscan.feature.catalog.domain.SeriesRepository
 import com.vovoscan.feature.catalog.domain.SourceCategory
 import com.vovoscan.feature.catalog.domain.SuggestReason
 import com.vovoscan.feature.catalog.domain.SuggestedTitle
@@ -78,6 +81,8 @@ data class TitleCard(
     val ratingLine: String? = null,
     /** "♥ 30" under the name, when 3 accounts or more gave it the heart. */
     val favoriteLine: String? = null,
+    /** "+ 2 sources": the series is also at other sources turned on (one card per series). */
+    val moreSources: String? = null,
 ) {
     /** What the heart does, for screen readers: "Add to favourites" / "Remove from favourites". */
     val favoriteAction: String get() = t(if (favorite) "marks.favoriteRemove" else "marks.favoriteAdd")
@@ -206,6 +211,8 @@ data class CatalogUiState(
     val stats: Map<String, TitleStats> = emptyMap(),
     /** "Could not update your favourites.": the heart was put back. */
     val favoriteError: String? = null,
+    /** The series of titles on screen, by "<sourceKey>/<id>": one card per series. */
+    val series: Map<String, Series> = emptyMap(),
 ) {
     /** "▶ Episodes". */
     val episodesLabel: String get() = t("catalog.episodesFilter")
@@ -217,15 +224,21 @@ data class CatalogUiState(
 
     val visible: List<TitleCard>
         get() =
-            (results ?: cards).distinctBy { it.key }.map {
-                val numbers = stats[it.key]
-                it.copy(
-                    started = it.started || it.key in startedKeys,
-                    favorite = it.key in favoriteKeys,
-                    ratingLine = MarkText.ratingLine(numbers),
-                    favoriteLine = MarkText.favoriteLine(numbers),
-                )
-            }
+            SeriesMerge
+                .fold((results ?: cards).distinctBy { it.key }, { it.key }, series, sources.mapTo(HashSet()) { it.key })
+                .map { folded ->
+                    val it = folded.item
+                    val numbers = stats[it.key]
+                    // A series is one card: started or favourite at any of its sources.
+                    val keys = series[it.key]?.members?.map { m -> m.key } ?: listOf(it.key)
+                    it.copy(
+                        started = it.started || keys.any { k -> k in startedKeys },
+                        favorite = keys.any { k -> k in favoriteKeys },
+                        ratingLine = MarkText.ratingLine(numbers),
+                        favoriteLine = MarkText.favoriteLine(numbers),
+                        moreSources = folded.otherSources.takeIf { n -> n > 0 }?.let { n -> t("catalog.moreSources", "count" to n) },
+                    )
+                }
 
     /** "Reading": the mark on a started title's card. */
     val startedLabel: String get() = t("catalog.started")
@@ -337,6 +350,7 @@ class CatalogViewModel(
     private val video: EpisodeFeature = EpisodeFeature.Off,
     private val favorites: Favorites = Favorites.None,
     private val ratings: RatingsRepository = RatingsRepository.None,
+    private val seriesRepository: SeriesRepository = SeriesRepository.None,
 ) : ViewModel() {
     /** The account has the `video` feature: episode badges and the Episodes filter. */
     private var videoOn = false
@@ -425,8 +439,9 @@ class CatalogViewModel(
     private var marks = LibraryMarks()
     private var rated: Set<String> = emptySet()
 
-    /** Titles whose numbers were asked while the screen lives (once each). */
+    /** Titles whose numbers, and whose series, were asked while the screen lives (once each). */
     private val statsAsked = mutableSetOf<String>()
+    private val seriesAsked = mutableSetOf<String>()
 
     /** The mix of the grid (`CatalogMerge`): kept while the screen lives, drawn again on pull to refresh. */
     private val seed = MutableStateFlow(Random.nextLong())
@@ -466,6 +481,10 @@ class CatalogViewModel(
         ratings
             .observeStats()
             .onEach { numbers -> mutableState.update { it.copy(stats = numbers) } }
+            .launchIn(viewModelScope)
+        seriesRepository
+            .observe()
+            .onEach { known -> mutableState.update { it.copy(series = known) } }
             .launchIn(viewModelScope)
         viewModelScope.launch { filter.value = repository.observeFilter().first() }
         // Picks made offline go out as soon as the catalog opens online.
@@ -546,9 +565,20 @@ class CatalogViewModel(
     ) {
         val card = state.value.visible.firstOrNull { it.sourceKey == sourceKey && it.id == titleId } ?: return
         mutableState.update { it.copy(favoriteError = null) }
+        // The card's heart is the series': off takes it from every source that has it, on gives it to the card's title.
+        val hearted =
+            state.value.series[card.key]
+                ?.members
+                ?.filter { it.key in state.value.favoriteKeys }
+                ?.map { MarkedTitle(it.sourceKey, it.titleRef) to it.name }
+        val targets =
+            if (card.favorite && !hearted.isNullOrEmpty()) hearted else listOf(MarkedTitle(sourceKey, titleId) to card.name)
         viewModelScope.launch {
-            val result = favorites.set(MarkedTitle(sourceKey, titleId), card.name, card.coverUrl, !card.favorite)
-            if (result is AppResult.Err) mutableState.update { it.copy(favoriteError = t("marks.favoriteError")) }
+            val failed =
+                targets
+                    .map { (title, name) -> favorites.set(title, name, card.coverUrl.takeIf { title.key == card.key }, !card.favorite) }
+                    .any { it is AppResult.Err }
+            if (failed) mutableState.update { it.copy(favoriteError = t("marks.favoriteError")) }
         }
     }
 
@@ -561,6 +591,7 @@ class CatalogViewModel(
         cards: List<TitleCard>,
         typed: Boolean,
     ) {
+        askSeries(cards, typed)
         val wanted =
             cards.filter {
                 it.sourceKey != INTERNAL_SOURCE && (typed || it.key in marks.followed || it.key in rated) && it.key !in statsAsked
@@ -571,6 +602,24 @@ class CatalogViewModel(
             // Not answered (offline): asked again with the next cards.
             if (ratings.refreshStats(wanted.map { MarkedTitle(it.sourceKey, it.id) }) is AppResult.Err) {
                 statsAsked -= wanted.map { it.key }.toSet()
+            }
+        }
+    }
+
+    /** The series of cards on screen: ours, and a source read on the device's only as [askStats] says. */
+    private fun askSeries(
+        cards: List<TitleCard>,
+        typed: Boolean,
+    ) {
+        val wanted =
+            cards.filter {
+                (it.sourceKey == INTERNAL_SOURCE || typed || it.key in marks.followed || it.key in rated) && it.key !in seriesAsked
+            }
+        if (wanted.isEmpty()) return
+        seriesAsked += wanted.map { it.key }
+        viewModelScope.launch {
+            if (seriesRepository.resolve(wanted.map { MarkedTitle(it.sourceKey, it.id) }) is AppResult.Err) {
+                seriesAsked -= wanted.map { it.key }.toSet()
             }
         }
     }

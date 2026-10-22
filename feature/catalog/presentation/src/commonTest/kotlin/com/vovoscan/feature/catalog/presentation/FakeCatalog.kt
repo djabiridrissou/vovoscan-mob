@@ -187,12 +187,22 @@ class FakeCatalog : CatalogRepository {
     override fun observeTitle(
         sourceKey: String,
         id: String,
-    ): Flow<TitleDetail?> = detail.map { d -> d?.takeIf { it.summary.sourceKey == sourceKey && it.summary.id == id } }
+    ): Flow<TitleDetail?> =
+        combine(detail, otherDetails) { d, others ->
+            d?.takeIf { it.summary.sourceKey == sourceKey && it.summary.id == id } ?: others["$sourceKey/$id"]
+        }
+
+    /** Other title pages saved on the device, by "<sourceKey>/<id>". */
+    val otherDetails = MutableStateFlow<Map<String, TitleDetail>>(emptyMap())
+    val titlesRefreshed = mutableListOf<String>()
 
     override suspend fun refreshTitle(
         sourceKey: String,
         id: String,
-    ) = titleResult
+    ): AppResult<Unit> {
+        titlesRefreshed += "$sourceKey/$id"
+        return titleResult
+    }
 
     override suspend fun clearLocal() = Unit
 

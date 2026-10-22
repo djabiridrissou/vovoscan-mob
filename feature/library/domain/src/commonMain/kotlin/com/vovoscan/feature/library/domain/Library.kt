@@ -2,6 +2,7 @@ package com.vovoscan.feature.library.domain
 
 import com.vovoscan.core.common.AppResult
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
 
 /** A library title, identified by its source and its id at that source. */
 data class LibraryEntry(
@@ -93,5 +94,27 @@ fun interface NewChapters {
 
     companion object {
         val Unknown = NewChapters { _, _, _ -> null }
+    }
+}
+
+/**
+ * Port: the series the library's titles belong to (one series across sources, proven by page content; wired by the
+ * app to the catalog). The library shows one entry per series. The server already knows these titles (they are
+ * followed), so asking tells it nothing new.
+ */
+interface LibrarySeries {
+    /** Series id by `"<sourceKey>/<titleRef>"`, for the titles in a series. */
+    fun observe(): Flow<Map<String, String>>
+
+    /** Asks the server about these titles (`"<sourceKey>/<titleRef>"`); offline, what was known stays. */
+    suspend fun resolve(keys: List<Pair<String, String>>)
+
+    companion object {
+        val None: LibrarySeries =
+            object : LibrarySeries {
+                override fun observe(): Flow<Map<String, String>> = flowOf(emptyMap())
+
+                override suspend fun resolve(keys: List<Pair<String, String>>) = Unit
+            }
     }
 }

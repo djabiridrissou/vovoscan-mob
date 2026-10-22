@@ -9,11 +9,13 @@ import com.vovoscan.core.common.i18n.t
 import com.vovoscan.core.common.userMessage
 import com.vovoscan.feature.library.domain.LibraryEntry
 import com.vovoscan.feature.library.domain.LibraryRepository
+import com.vovoscan.feature.library.domain.LibrarySeries
 import com.vovoscan.feature.library.domain.NewChapters
 import com.vovoscan.feature.library.domain.TitleRef
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
@@ -107,10 +109,17 @@ sealed interface LibraryIntent {
 class LibraryViewModel(
     private val repository: LibraryRepository,
     private val newChapters: NewChapters = NewChapters.Unknown,
+    private val series: LibrarySeries = LibrarySeries.None,
 ) : ViewModel() {
     private val mutableState = MutableStateFlow(LibraryUiState())
     val state: StateFlow<LibraryUiState> = mutableState.asStateFlow()
     private var entries: List<LibraryEntry> = emptyList()
+
+    /** Series id by title key: titles of one series are one row. */
+    private var seriesOf: Map<String, String> = emptyMap()
+
+    /** Titles already asked about (each once per screen; a sync asks again). */
+    private val asked = mutableSetOf<String>()
 
     /** Sources of the user's list; null until the app sends them (nothing is flagged before). */
     private var sourceKeys: Set<String>? = null
@@ -119,17 +128,47 @@ class LibraryViewModel(
     private val counted = mutableMapOf<Pair<String, String?>, Int?>()
 
     init {
-        repository
-            .observe()
-            .onEach { list ->
+        combine(repository.observe(), series.observe()) { list, known -> list to known }
+            .onEach { (list, known) ->
                 entries = list
+                seriesOf = known
                 render()
                 countNewChapters(list)
+                resolveSeries(list)
             }.launchIn(viewModelScope)
         sync()
     }
 
-    private fun render() = mutableState.update { it.copy(rows = entries.map(::row)) }
+    private fun render() = mutableState.update { it.copy(rows = shown().map(::row)) }
+
+    private val LibraryEntry.key get() = "$sourceKey/$titleRef"
+
+    /** The entries of the same series as [entry] (itself only when in none). */
+    private fun group(entry: LibraryEntry): List<LibraryEntry> {
+        val id = seriesOf[entry.key] ?: return listOf(entry)
+        return entries.filter { seriesOf[it.key] == id }
+    }
+
+    /**
+     * One entry per series, the most recent progress winning, at the place of the series' first entry; favourite when
+     * any of them is (the latest heart's time).
+     */
+    private fun shown(): List<LibraryEntry> {
+        val seen = mutableSetOf<String>()
+        return entries.mapNotNull { entry ->
+            val id = seriesOf[entry.key] ?: return@mapNotNull entry
+            if (!seen.add(id)) return@mapNotNull null
+            val members = group(entry)
+            val latest = members.maxBy { it.updatedAt }
+            val hearts = members.filter { it.favorite }
+            if (hearts.isEmpty()) latest else latest.copy(favorite = true, favoritedAt = hearts.mapNotNull { it.favoritedAt }.maxOrNull())
+        }
+    }
+
+    private fun resolveSeries(list: List<LibraryEntry>) {
+        val missing = list.filter { asked.add(it.key) }.map { it.sourceKey to it.titleRef }
+        if (missing.isNotEmpty()) viewModelScope.launch { series.resolve(missing) }
+    }
 
     // The server counts our own catalog's chapters; a source read on the device is counted from the device's copy.
     private fun countNewChapters(list: List<LibraryEntry>) {
@@ -147,7 +186,17 @@ class LibraryViewModel(
     fun onIntent(intent: LibraryIntent) {
         when (intent) {
             LibraryIntent.Sync -> sync()
-            is LibraryIntent.Unfollow -> viewModelScope.launch { repository.unfollow(intent.sourceKey, intent.titleId) }
+            // A series is one row: unfollowing it unfollows it at every source.
+            is LibraryIntent.Unfollow ->
+                viewModelScope.launch {
+                    val entry = entries.firstOrNull { it.sourceKey == intent.sourceKey && it.titleRef == intent.titleId }
+                    val members = entry?.let(::group) ?: emptyList()
+                    if (members.isEmpty()) {
+                        repository.unfollow(intent.sourceKey, intent.titleId)
+                    } else {
+                        members.forEach { repository.unfollow(it.sourceKey, it.titleRef) }
+                    }
+                }
             is LibraryIntent.ToggleFavorite -> toggleFavorite(intent.sourceKey, intent.titleId)
             is LibraryIntent.SourcesChanged -> {
                 // An empty list means the sources are not loaded yet, not that they were all removed.
@@ -159,6 +208,8 @@ class LibraryViewModel(
 
     private fun sync() {
         mutableState.update { it.copy(freshness = Freshness.Refreshing, error = null) }
+        asked.clear()
+        resolveSeries(entries)
         viewModelScope.launch {
             val result = repository.sync()
             mutableState.update {
@@ -179,9 +230,16 @@ class LibraryViewModel(
         titleId: String,
     ) {
         val entry = entries.firstOrNull { it.sourceKey == sourceKey && it.titleRef == titleId } ?: return
+        val members = group(entry)
+        // The row's heart is the series': off takes it from every source that has it, on gives it to the row's title.
+        val on = members.none { it.favorite }
+        val targets = if (on) listOf(entry) else members.filter { it.favorite }
         viewModelScope.launch {
-            val result = repository.setFavorite(TitleRef(sourceKey, titleId, entry.titleName, entry.coverUrl), !entry.favorite)
-            if (result is AppResult.Err) mutableState.update { it.copy(error = t("marks.favoriteError")) }
+            val failed =
+                targets
+                    .map { repository.setFavorite(TitleRef(it.sourceKey, it.titleRef, it.titleName, it.coverUrl), on) }
+                    .any { it is AppResult.Err }
+            if (failed) mutableState.update { it.copy(error = t("marks.favoriteError")) }
         }
     }
 

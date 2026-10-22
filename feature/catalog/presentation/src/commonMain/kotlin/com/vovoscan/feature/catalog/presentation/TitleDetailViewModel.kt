@@ -11,9 +11,11 @@ import com.vovoscan.core.common.i18n.I18n
 import com.vovoscan.core.common.i18n.t
 import com.vovoscan.core.common.userMessage
 import com.vovoscan.feature.catalog.domain.CatalogRepository
+import com.vovoscan.feature.catalog.domain.Chapter
 import com.vovoscan.feature.catalog.domain.ChapterTranslationBadge
 import com.vovoscan.feature.catalog.domain.ChapterTranslations
 import com.vovoscan.feature.catalog.domain.ContentKind
+import com.vovoscan.feature.catalog.domain.EnabledSources
 import com.vovoscan.feature.catalog.domain.EpisodeFeature
 import com.vovoscan.feature.catalog.domain.Favorites
 import com.vovoscan.feature.catalog.domain.INTERNAL_SOURCE
@@ -22,14 +24,20 @@ import com.vovoscan.feature.catalog.domain.RatingsRepository
 import com.vovoscan.feature.catalog.domain.ReadingFormat
 import com.vovoscan.feature.catalog.domain.ReadingResume
 import com.vovoscan.feature.catalog.domain.ResumePoint
+import com.vovoscan.feature.catalog.domain.SeriesMember
+import com.vovoscan.feature.catalog.domain.SeriesMerge
+import com.vovoscan.feature.catalog.domain.SeriesRepository
 import com.vovoscan.feature.catalog.domain.Stars
 import com.vovoscan.feature.catalog.domain.TitleDetail
 import com.vovoscan.feature.catalog.domain.TitleStats
 import com.vovoscan.feature.catalog.domain.TitleTranslationBadges
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.map
@@ -54,6 +62,22 @@ data class ChapterRow(
     val episodes: List<String> = emptyList(),
     /** "Watch as an episode in: Original, Français, English" for screen readers; null without one. */
     val episodesA11y: String? = null,
+    /** Where it is read: this page's title, or another source's title of the same series (its chapter numbered so). */
+    val sourceKey: String = "",
+    val titleId: String = "",
+    /** The other source's name on a chapter this page's source doesn't have; null for this page's own chapters. */
+    val sourceBadge: String? = null,
+) {
+    /** "Translate" and "Episode" are offered on this page's own chapters. */
+    val ownChapter: Boolean get() = sourceBadge == null
+}
+
+/** "Also on": another source's title of the same series, opened at its own title page. */
+data class AlsoOn(
+    val sourceKey: String,
+    val titleId: String,
+    /** "Inkwell ✦ 12 chapters". */
+    val label: String,
 )
 
 /** Where a chapter row's pill leads. */
@@ -84,6 +108,9 @@ data class ReadAction(
     val resumes: Boolean,
     /** Open it in this language (the chapter is translated into the one last read in); null: as it is. */
     val language: String? = null,
+    /** The title it is read at (another source's of the same series when this one doesn't have the chapter). */
+    val sourceKey: String = "",
+    val titleId: String = "",
 )
 
 data class TitleDetailUiState(
@@ -121,7 +148,11 @@ data class TitleDetailUiState(
     val stats: TitleStats? = null,
     /** "Could not save your rating.": the stars were put back. */
     val ratingError: String? = null,
+    /** The series' other sources (turned on), each opening its title page. */
+    val alsoOn: List<AlsoOn> = emptyList(),
 ) {
+    val alsoOnTitle: String get() = t("catalog.alsoOn")
+
     /** "★ 4.3 (12)" and "♥ 30" next to the title, only when known. */
     val ratingLine: String? get() = MarkText.ratingLine(stats)
     val favoriteLine: String? get() = MarkText.favoriteLine(stats)
@@ -217,6 +248,7 @@ sealed interface TitleDetailIntent {
 }
 
 /** Title page: name, description, chapters. Readable offline once it has been opened. */
+@OptIn(ExperimentalCoroutinesApi::class)
 class TitleDetailViewModel(
     private val sourceKey: String,
     private val titleId: String,
@@ -226,7 +258,14 @@ class TitleDetailViewModel(
     private val video: EpisodeFeature = EpisodeFeature.Off,
     private val ratings: RatingsRepository = RatingsRepository.None,
     private val favorites: Favorites = Favorites.None,
+    private val seriesRepository: SeriesRepository = SeriesRepository.None,
+    private val enabledSources: EnabledSources = EnabledSources.All,
 ) : ViewModel() {
+    /** The series' other titles (sources turned on) and their chapters, merged into this page's by number. */
+    private var others: List<Pair<SeriesMember, List<Chapter>>> = emptyList()
+    private var sourceNames: Map<String, String> = emptyMap()
+    private val membersRefreshed = mutableSetOf<String>()
+    private var seriesAsked = false
     private var videoOn = false
     private var statsAsked = false
     private val mutableState = MutableStateFlow(TitleDetailUiState())
@@ -270,6 +309,13 @@ class TitleDetailViewModel(
         // from this account (followed or rated); opening a title never tells it more.
         combine(favorites.observe(), ratings.observeRatings()) { marks, rated -> key in marks.followed || key in rated }
             .onEach { known ->
+                // The series: the same rule (the server already knows this title from this account).
+                if (!seriesAsked && (sourceKey == INTERNAL_SOURCE || known)) {
+                    seriesAsked = true
+                    viewModelScope.launch {
+                        if (seriesRepository.resolve(listOf(MarkedTitle(sourceKey, titleId))) is AppResult.Err) seriesAsked = false
+                    }
+                }
                 if (!statsAsked && (sourceKey == INTERNAL_SOURCE || known)) {
                     statsAsked = true
                     viewModelScope.launch {
@@ -277,7 +323,40 @@ class TitleDetailViewModel(
                     }
                 }
             }.launchIn(viewModelScope)
+        combine(seriesRepository.observe().map { it[key] }, enabledSources.observe()) { series, on -> series to on }
+            .distinctUntilChanged()
+            .flatMapLatest { (series, on) ->
+                sourceNames = on
+                val members = series?.members.orEmpty().filter { it.key != key && (on.isEmpty() || it.sourceKey in on) }
+                // Each other title's page is read once (a source read on the device: from the device, never through us).
+                members.filter { membersRefreshed.add(it.key) }.forEach { m ->
+                    viewModelScope.launch { repository.refreshTitle(m.sourceKey, m.titleRef) }
+                }
+                if (members.isEmpty()) {
+                    flowOf(emptyList())
+                } else {
+                    combine(members.map { m -> repository.observeTitle(m.sourceKey, m.titleRef).map { m to it?.chapters.orEmpty() } }) {
+                        it.toList()
+                    }
+                }
+            }.onEach { lists ->
+                others = lists
+                mutableState.update { now ->
+                    val also = lists.map { (m, chapters) -> AlsoOn(m.sourceKey, m.titleRef, alsoOnLabel(m, chapters.size)) }
+                    shown?.let { (detail, newestFirst, at) -> now.copy(alsoOn = also).show(detail, newestFirst, at) }
+                        ?: now.copy(alsoOn = also)
+                }
+            }.launchIn(viewModelScope)
         refresh()
+    }
+
+    private fun alsoOnLabel(
+        member: SeriesMember,
+        loaded: Int,
+    ): String {
+        val name = sourceNames[member.sourceKey] ?: member.sourceKey
+        val count = loaded.takeIf { it > 0 } ?: member.chapters
+        return if (count == null) name else t("catalog.alsoOnRow", "source" to name, "count" to count)
     }
 
     fun onIntent(intent: TitleDetailIntent) {
@@ -327,7 +406,7 @@ class TitleDetailViewModel(
         offered: (TitleDetailUiState) -> Boolean,
     ) {
         mutableState.update { now ->
-            if (!offered(now) || now.chapters.none { it.id == chapterId }) {
+            if (!offered(now) || now.chapters.none { it.id == chapterId && it.ownChapter }) {
                 now
             } else {
                 now.copy(open = ChapterOpen(++openSeq, chapterId, target))
@@ -370,19 +449,30 @@ class TitleDetailViewModel(
         at: ResumePoint?,
     ): TitleDetailUiState {
         val isBook = detail.summary.kind == ContentKind.Book
+        val own = SeriesMember(detail.summary.sourceKey, detail.summary.id, detail.summary.name, detail.chapters.size)
+        // A series at several sources: each chapter number once, from this page's source when it has it (comics).
+        val merged =
+            if (isBook || others.isEmpty()) {
+                detail.chapters.map { own to it }
+            } else {
+                SeriesMerge.chapters(own, listOf(own to detail.chapters) + others)
+            }
         // The source lists newest to oldest; reading goes the other way.
-        val inOrder = detail.chapters.asReversed()
+        val inOrder = merged.asReversed()
         val rows =
-            inOrder.map { chapter ->
+            inOrder.map { (member, chapter) ->
+                val elsewhere = member.key != own.key
                 if (isBook) {
                     ChapterRow(
                         id = chapter.id,
                         label = chapter.name ?: t("reader.part", "n" to chapter.label),
                         meta = t("reader.modeBook"),
                         current = chapter.id == at?.chapterId,
+                        sourceKey = member.sourceKey,
+                        titleId = member.titleRef,
                     )
                 } else {
-                    val badge = badges?.chapters?.get(chapter.id)
+                    val badge = badges?.chapters?.get(chapter.id)?.takeIf { !elsewhere }
                     val language = badges?.language
                     ChapterRow(
                         id = chapter.id,
@@ -394,6 +484,9 @@ class TitleDetailViewModel(
                         openLanguage = language.takeIf { badge?.ready == true },
                         episodes = if (videoOn) episodeBadges(chapter.episodeLanguages) else emptyList(),
                         episodesA11y = if (videoOn) episodesA11y(chapter.episodeLanguages) else null,
+                        sourceKey = member.sourceKey,
+                        titleId = member.titleRef,
+                        sourceBadge = if (elsewhere) sourceNames[member.sourceKey] ?: member.sourceKey else null,
                     )
                 }
             }
@@ -419,6 +512,8 @@ class TitleDetailViewModel(
                             },
                         resumes = true,
                         language = resumed.openLanguage,
+                        sourceKey = resumed.sourceKey,
+                        titleId = resumed.titleId,
                     )
                 rows.isNotEmpty() ->
                     ReadAction(
@@ -428,6 +523,8 @@ class TitleDetailViewModel(
                         rows.first().label,
                         resumes = false,
                         language = rows.first().openLanguage,
+                        sourceKey = rows.first().sourceKey,
+                        titleId = rows.first().titleId,
                     )
                 else -> null
             }

@@ -22,9 +22,16 @@ struct TitleView: View {
         _model = StateObject(wrappedValue: TitleModel(sourceKey: route.sourceKey, titleId: route.titleId))
     }
 
-    /// `language`: open it translated (the language last read in, when this chapter is ready in it).
-    private func read(_ chapterId: String, _ page: Int = 0, language: String? = nil) -> ReaderRoute {
-        ReaderRoute(sourceKey: route.sourceKey, titleId: route.titleId, chapterId: chapterId, startPage: page, language: language)
+    /// `language`: open it translated (the language last read in, when this chapter is ready in it). `sourceKey`,
+    /// `titleId`: where the chapter is read (another source's title of the same series); empty: this page's.
+    private func read(_ chapterId: String, _ page: Int = 0, language: String? = nil, sourceKey: String = "", titleId: String = "") -> ReaderRoute {
+        ReaderRoute(
+            sourceKey: sourceKey.isEmpty ? route.sourceKey : sourceKey,
+            titleId: titleId.isEmpty ? route.titleId : titleId,
+            chapterId: chapterId,
+            startPage: page,
+            language: language
+        )
     }
 
     var body: some View {
@@ -62,7 +69,7 @@ struct TitleView: View {
                     }
                     // Where this account left the title (this device or another), otherwise chapter 1.
                     if let action = model.state.readAction {
-                        NavigationLink(value: AppRoute.reader(read(action.chapterId, Int(action.page), language: action.language))) {
+                        NavigationLink(value: AppRoute.reader(read(action.chapterId, Int(action.page), language: action.language, sourceKey: action.sourceKey, titleId: action.titleId))) {
                             VStack(spacing: 2) {
                                 Text(action.label)
                                 Text(action.detail).font(.brandBody(12, weight: .bold)).opacity(0.75).lineLimit(1)
@@ -139,9 +146,17 @@ struct TitleView: View {
                     ForEach(model.state.chapters, id: \.id) { chapter in
                         let download = model.downloads.row(chapterId: chapter.id)
                         HStack(spacing: 10) {
-                            NavigationLink(value: AppRoute.reader(read(chapter.id, language: chapter.openLanguage))) {
+                            NavigationLink(value: AppRoute.reader(read(chapter.id, language: chapter.openLanguage, sourceKey: chapter.sourceKey, titleId: chapter.titleId))) {
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(chapter.label).font(.brandBody(15)).foregroundStyle(Color.brandPaper)
+                                    // A chapter this source doesn't have, read at another source of the same series.
+                                    if let badge = chapter.sourceBadge {
+                                        Text(badge).font(.brandBody(11, weight: .bold))
+                                            .foregroundStyle(Color.brandPaper)
+                                            .padding(.horizontal, 6)
+                                            .padding(.vertical, 2)
+                                            .overlay(Rectangle().stroke(Color.brandLine, lineWidth: 1))
+                                    }
                                     if !chapter.meta.isEmpty {
                                         Text(chapter.meta).font(.brandBody(13)).foregroundStyle(Color.brandMuted)
                                     }
@@ -170,30 +185,33 @@ struct TitleView: View {
                             .buttonStyle(.plain)
                             .accessibilityIdentifier("chapter.\(chapter.id).read")
                             // Any comic: the chapter in another language (the reader opens on its picker).
-                            if model.state.offersTranslation {
+                            if model.state.offersTranslation && chapter.ownChapter {
                                 ChapterPill(text: model.state.translateChip) { model.translate(chapter.id) }
                                     .accessibilityIdentifier("chapter.\(chapter.id).translate")
                             }
                             // Any comic: the chapter's voiced episode, next to reading it.
-                            if model.state.offersEpisodes {
+                            if model.state.offersEpisodes && chapter.ownChapter {
                                 ChapterPill(text: L("episode.kickerChip")) { model.episode(chapter.id) }
                                     .accessibilityIdentifier("chapter.\(chapter.id).episode")
                             }
-                            DownloadControl(row: download) {
-                                if download.action == .delete {
-                                    confirmDelete = chapter.id
-                                } else {
-                                    model.send(TitleDownloadsIntentAct(chapterId: chapter.id))
+                            if chapter.ownChapter {
+                                DownloadControl(row: download) {
+                                    if download.action == .delete {
+                                        confirmDelete = chapter.id
+                                    } else {
+                                        model.send(TitleDownloadsIntentAct(chapterId: chapter.id))
+                                    }
                                 }
                             }
                         }
                         .padding(.vertical, 16)
                         .padding(.leading, 16)
-                        .padding(.trailing, download.action == .unavailable ? 16 : 6)
+                        .padding(.trailing, chapter.ownChapter && download.action != .unavailable ? 6 : 16)
                         .background(Color.brandInk2, in: RoundedRectangle(cornerRadius: 12))
                         // The chapter being read: a red edge, so the eye finds it in a long list.
                         .overlay(RoundedRectangle(cornerRadius: 12).stroke(chapter.current ? Color.brandRed : Color.brandLine, lineWidth: chapter.current ? 2 : 1))
                     }
+                    alsoOnBlock
                 }
                 .padding(.horizontal, 20)
             }
@@ -230,6 +248,28 @@ struct TitleView: View {
                     ? model.downloads.deleteAllMessage
                     : L("downloads.chapterNeedsNetwork", ["chapter": model.state.chapterLabel(chapterId: target)])
             )
+        }
+    }
+
+    /// The same series at other sources (proven by its pages): open it there.
+    @ViewBuilder private var alsoOnBlock: some View {
+        if !model.state.alsoOn.isEmpty {
+            Text(model.state.alsoOnTitle).font(.brandDisplay(18)).foregroundStyle(Color.brandPaper).padding(.top, 8)
+            ForEach(model.state.alsoOn, id: \.self) { other in
+                NavigationLink(value: AppRoute.title(TitleRoute(sourceKey: other.sourceKey, titleId: other.titleId))) {
+                    HStack {
+                        Text(other.label).font(.brandBody(15)).foregroundStyle(Color.brandPaper)
+                        Spacer()
+                        Image(systemName: "chevron.right").foregroundStyle(Color.brandMuted)
+                    }
+                    .padding(16)
+                    .background(Color.brandInk2, in: RoundedRectangle(cornerRadius: 12))
+                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.brandLine, lineWidth: 1))
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("title.alsoOn.\(other.sourceKey)")
+            }
         }
     }
 

@@ -67,11 +67,16 @@ fun TitleScreen(
     sourceKey: String,
     titleId: String,
     onBack: () -> Unit,
-    /** [language]: open it translated (the language last read in, when this chapter is ready in it); null: as it is. */
-    onRead: (chapterId: String, startPage: Int, language: String?) -> Unit,
+    /**
+     * [readSource], [readTitle]: where the chapter is read (this title, or another source's title of the same series);
+     * [language]: open it translated (the language last read in, when this chapter is ready in it); null: as it is.
+     */
+    onRead: (readSource: String, readTitle: String, chapterId: String, startPage: Int, language: String?) -> Unit,
     onEpisode: (chapterId: String) -> Unit,
     /** "Translate": the chapter opens in the reader on its language picker. */
     onTranslate: (chapterId: String) -> Unit = {},
+    /** "Also on": the same series' title page at another source. */
+    onOpenTitle: (sourceKey: String, titleId: String) -> Unit = { _, _ -> },
     detail: TitleDetailViewModel = koinViewModel(key = "title:$sourceKey/$titleId") { parametersOf(sourceKey, titleId) },
     follow: FollowViewModel = koinViewModel(key = "follow:$sourceKey/$titleId") { parametersOf(sourceKey, titleId) },
     downloads: TitleDownloadsViewModel = koinViewModel(key = "titleDownloads:$sourceKey/$titleId") { parametersOf(sourceKey, titleId) },
@@ -123,7 +128,15 @@ fun TitleScreen(
                 )
                 // Where this account left the title (this device or another), otherwise chapter 1.
                 state.readAction?.let { action ->
-                    PrimaryButton(action.label, { onRead(action.chapterId, action.page, action.language) })
+                    PrimaryButton(action.label, {
+                        onRead(
+                            action.sourceKey.ifEmpty { sourceKey },
+                            action.titleId.ifEmpty { titleId },
+                            action.chapterId,
+                            action.page,
+                            action.language,
+                        )
+                    })
                     Text(action.detail, style = MaterialTheme.typography.bodySmall, color = Brand.Muted)
                 }
                 if (state.name.isNotEmpty()) {
@@ -198,12 +211,27 @@ fun TitleScreen(
                     .background(Brand.Ink2, RoundedCornerShape(12.dp))
                     // The chapter being read: a red edge, so the eye finds it in a long list.
                     .border(if (chapter.current) 2.dp else 1.dp, if (chapter.current) Brand.Red else Brand.Line, RoundedCornerShape(12.dp))
-                    .clickable { onRead(chapter.id, 0, chapter.openLanguage) }
-                    .padding(16.dp),
+                    .clickable {
+                        onRead(
+                            chapter.sourceKey.ifEmpty { sourceKey },
+                            chapter.titleId.ifEmpty { titleId },
+                            chapter.id,
+                            0,
+                            chapter.openLanguage,
+                        )
+                    }.padding(16.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column(Modifier.weight(1f)) {
                     Text(chapter.label, style = MaterialTheme.typography.bodyMedium)
+                    // A chapter this source doesn't have, read at another source of the same series.
+                    chapter.sourceBadge?.let {
+                        Text(
+                            it,
+                            style = MaterialTheme.typography.labelSmall.copy(color = Brand.Paper),
+                            modifier = Modifier.border(1.dp, Brand.Line).padding(horizontal = 6.dp, vertical = 2.dp),
+                        )
+                    }
                     if (chapter.meta.isNotEmpty()) Text(chapter.meta, style = MaterialTheme.typography.bodySmall)
                     // Its translation in the language last read in: ready (yellow), or on its way (cyan).
                     chapter.translation?.let {
@@ -227,7 +255,7 @@ fun TitleScreen(
                     }
                 }
                 // Any comic: the chapter in another language (the reader opens on its picker).
-                if (state.offersTranslation) {
+                if (state.offersTranslation && chapter.ownChapter) {
                     Text(
                         state.translateChip,
                         style = MaterialTheme.typography.labelSmall.copy(color = Brand.Paper),
@@ -239,7 +267,7 @@ fun TitleScreen(
                     )
                 }
                 // Any comic: the chapter's voiced episode, next to reading it.
-                if (state.offersEpisodes) {
+                if (state.offersEpisodes && chapter.ownChapter) {
                     Text(
                         I18n.text("episode.kicker"),
                         style = MaterialTheme.typography.labelSmall.copy(color = Brand.Paper),
@@ -250,12 +278,39 @@ fun TitleScreen(
                                 .padding(horizontal = 12.dp, vertical = 8.dp),
                     )
                 }
-                DownloadControl(download) {
-                    if (download.action == DownloadAction.Delete) {
-                        confirmDelete = chapter.id
-                    } else {
-                        downloads.onIntent(TitleDownloadsIntent.Act(chapter.id))
+                if (chapter.ownChapter) {
+                    DownloadControl(download) {
+                        if (download.action == DownloadAction.Delete) {
+                            confirmDelete = chapter.id
+                        } else {
+                            downloads.onIntent(TitleDownloadsIntent.Act(chapter.id))
+                        }
                     }
+                }
+            }
+        }
+        // The same series at other sources (proven by its pages): open it there.
+        if (state.alsoOn.isNotEmpty()) {
+            item(key = "alsoOn") {
+                Text(
+                    state.alsoOnTitle,
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+                )
+            }
+            items(state.alsoOn, key = { "alsoOn/${it.sourceKey}/${it.titleId}" }) { other ->
+                Row(
+                    Modifier
+                        .padding(horizontal = 20.dp)
+                        .fillMaxWidth()
+                        .background(Brand.Ink2, RoundedCornerShape(12.dp))
+                        .border(1.dp, Brand.Line, RoundedCornerShape(12.dp))
+                        .clickable { onOpenTitle(other.sourceKey, other.titleId) }
+                        .padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(other.label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                    Text("›", style = MaterialTheme.typography.titleMedium, color = Brand.Muted)
                 }
             }
         }

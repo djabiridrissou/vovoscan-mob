@@ -523,6 +523,10 @@ private struct TitleTile: View {
             .clipped()
             VStack(alignment: .leading, spacing: 2) {
                 Text(card.name).font(.brandBody(15)).foregroundStyle(Color.brandPaper).lineLimit(2)
+                if let more = card.moreSources {
+                    // One card per series: the other sources that carry it.
+                    Text(more).font(.brandBody(12, weight: .bold)).foregroundStyle(Color.brandMuted).lineLimit(1)
+                }
                 if card.ratingLine != nil || card.favoriteLine != nil {
                     MarkLines(rating: card.ratingLine, favorite: card.favoriteLine, size: 12)
                 }

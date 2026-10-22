@@ -322,11 +322,12 @@ private fun Root(session: SessionViewModel = koinViewModel()) {
                         sourceKey = title[0],
                         titleId = title[1],
                         onBack = { openTitle = null },
-                        onRead = { chapter, page, language ->
-                            openReader = "${title[0]}|${title[1]}|$chapter|$page" + language?.let { "|$it" }.orEmpty()
+                        onRead = { readSource, readTitle, chapter, page, language ->
+                            openReader = "$readSource|$readTitle|$chapter|$page" + language?.let { "|$it" }.orEmpty()
                         },
                         onEpisode = { openEpisode = it },
                         onTranslate = { chapter -> openReader = "${title[0]}|${title[1]}|$chapter|0||pick" },
+                        onOpenTitle = { source, id -> openTitle = "$source|$id" },
                     )
                 } else if (tab == Tab.Library && openDownloads) {
                     BackHandler { openDownloads = false }

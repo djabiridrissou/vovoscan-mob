@@ -368,6 +368,7 @@ class SqlCatalogLocalDataSource(
                 queries.clearSettings()
                 queries.clearStats()
                 queries.clearRatings()
+                queries.clearSeries()
             }
         }
 

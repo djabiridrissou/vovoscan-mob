@@ -554,6 +554,10 @@ private fun TitleTile(
         }
         Column(Modifier.padding(12.dp)) {
             Text(card.name, style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            // One card per series: the other sources that carry it.
+            card.moreSources?.let {
+                Text(it, style = MaterialTheme.typography.labelSmall.copy(color = Brand.Muted), maxLines = 1)
+            }
             MarkLines(card.ratingLine, card.favoriteLine)
             Text(card.status, style = MaterialTheme.typography.bodySmall)
         }

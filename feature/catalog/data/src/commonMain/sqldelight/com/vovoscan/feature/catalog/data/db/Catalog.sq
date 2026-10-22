@@ -86,6 +86,16 @@ CREATE TABLE my_rating (
     PRIMARY KEY (source_key, title_ref)
 );
 
+-- The series a title belongs to, as the server last said (`series/resolve`): one row per title asked about that is in a
+-- series, with every member of it (JSON `[{sourceKey, titleRef, name, chapters}]`, the primary first).
+CREATE TABLE series_link (
+    source_key TEXT NOT NULL,
+    title_ref TEXT NOT NULL,
+    series_id TEXT NOT NULL,
+    members TEXT NOT NULL,
+    PRIMARY KEY (source_key, title_ref)
+);
+
 -- The catalog's filter, remembered on the device (keys `sources`, `category`).
 CREATE TABLE catalog_setting (
     key TEXT NOT NULL PRIMARY KEY,
@@ -245,3 +255,15 @@ UPDATE my_rating SET score = previous_score, pending = 0, previous_score = NULL 
 
 clearRatings:
 DELETE FROM my_rating;
+
+allSeries:
+SELECT * FROM series_link;
+
+forgetSeries:
+DELETE FROM series_link WHERE source_key = ? AND title_ref = ?;
+
+putSeries:
+INSERT OR REPLACE INTO series_link (source_key, title_ref, series_id, members) VALUES (?, ?, ?, ?);
+
+clearSeries:
+DELETE FROM series_link;

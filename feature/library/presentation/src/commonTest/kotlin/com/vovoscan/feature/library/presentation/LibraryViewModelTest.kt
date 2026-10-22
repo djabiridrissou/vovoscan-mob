@@ -5,6 +5,7 @@ import com.vovoscan.core.common.AppResult
 import com.vovoscan.core.common.Freshness
 import com.vovoscan.feature.library.domain.LibraryEntry
 import com.vovoscan.feature.library.domain.LibraryRepository
+import com.vovoscan.feature.library.domain.LibrarySeries
 import com.vovoscan.feature.library.domain.NewChapters
 import com.vovoscan.feature.library.domain.TitleRef
 import kotlinx.coroutines.Dispatchers
@@ -193,10 +194,13 @@ class LibraryViewModelTest {
             library.entries.value = listOf(LibraryEntry("gutenberg", "1342", "Pride and Prejudice", null, "c2", 0, 1L, false))
             val asked = mutableListOf<String?>()
             val vm =
-                LibraryViewModel(library) { _, _, last ->
-                    asked += last
-                    4
-                }
+                LibraryViewModel(
+                    library,
+                    NewChapters { _, _, last ->
+                        asked += last
+                        4
+                    },
+                )
             assertEquals(
                 "+4 new",
                 vm.state.value.rows
@@ -213,6 +217,47 @@ class LibraryViewModelTest {
                 none.state.value.rows
                     .single()
                     .newBadge,
+            )
+        }
+
+    @Test
+    fun aSeriesIsOneRowWhereTheLatestProgressWins() =
+        runTest {
+            val library = FakeLibrary()
+            library.entries.value =
+                listOf(
+                    LibraryEntry("vovoscan", "v1", "Ink Road", null, "c1", 2, 100L, pendingSync = false, favorite = true, favoritedAt = 5L),
+                    LibraryEntry("gutenberg", "1342", "Pride and Prejudice", null, null, 0, 50L, pendingSync = false),
+                    LibraryEntry("inkwell", "i1", "Ink Road", null, "c3", 7, 200L, pendingSync = false),
+                )
+            val asked = mutableListOf<Pair<String, String>>()
+            val series =
+                object : LibrarySeries {
+                    override fun observe() = MutableStateFlow(mapOf("vovoscan/v1" to "s1", "inkwell/i1" to "s1"))
+
+                    override suspend fun resolve(keys: List<Pair<String, String>>) {
+                        asked += keys
+                    }
+                }
+            val vm = LibraryViewModel(library, series = series)
+            // The library's titles are asked about (the server knows them: they are followed).
+            assertEquals(setOf("vovoscan" to "v1", "gutenberg" to "1342", "inkwell" to "i1"), asked.toSet())
+            val rows = vm.state.value.rows
+            assertEquals(listOf("inkwell/i1", "gutenberg/1342"), rows.map { it.key })
+            assertEquals("Page 8", rows.first().progress)
+            // The heart given at one source is the series'.
+            assertTrue(rows.first().favorite)
+
+            // Off: taken from every source of the series.
+            vm.onIntent(LibraryIntent.ToggleFavorite("inkwell", "i1"))
+            assertTrue(library.entries.value.none { it.favorite })
+
+            // Unfollowing the row unfollows the series everywhere.
+            vm.onIntent(LibraryIntent.Unfollow("inkwell", "i1"))
+            assertEquals(
+                listOf("gutenberg/1342"),
+                vm.state.value.rows
+                    .map { it.key },
             )
         }
 }

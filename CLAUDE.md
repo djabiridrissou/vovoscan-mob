@@ -703,6 +703,27 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
 - Title page stars: a tap rates the half under the finger, a drag previews (`previewFills`) and rates where it is let go,
   "Clear" takes it back; VoiceOver an adjustable element, TalkBack a slider, both "4.5 out of 5 stars".
 
+## One series across sources (dedup by page content)
+
+- Only page content makes two titles one series (the server compares the pages of imported chapters); a name never
+  does. `GET api/v1/series/resolve?ref=<key>:<ref>&ref=…` (100 refs a call; `SeriesRepository`, catalog slice) answers
+  the series of the titles asked about, kept in `series_link` (catalog migration `6.sqm`; a title asked and left out is
+  forgotten), so everything stays folded offline. `members[0]` is the primary (most chapters, ours on a tie).
+- Asked under the ratings' rule: our own titles, and for a source read on the device only titles the server already
+  knows from this account (followed, rated, a typed search's results). Browsing never tells the server what it lists.
+- Catalog: one card per series (`SeriesMerge.fold`): the first member in the series' order that is on screen and at a
+  source turned on stands for it, at its own place, with "+ N sources" (`TitleCard.moreSources`, members at sources
+  turned on); started and the heart count at any member; turning the heart off takes it from every member.
+- Title page (comics): chapters merged by number (`SeriesMerge.chapters`): each number once, this page's source first,
+  else the first member that has it; such a row carries its source's name (`ChapterRow.sourceBadge`) and opens the
+  reader at that title (`ChapterRow.sourceKey`/`titleId`, also `ReadAction`); Translate, Episode and downloads only on
+  this page's own chapters (`ownChapter`). Each other member's page is read once, from where it lives (a source read on
+  the device: from the device). "Also on" (`alsoOn`) opens the series at another source. Members at a source the account
+  turned off are left out (`EnabledSources` port, wired in `shared` to the sources slice).
+- Library: one row per series (`LibrarySeries` port, wired in `shared` to `SeriesRepository`; the library's titles are
+  asked about, the server knows them): the most recent progress wins, the heart is the series', unfollowing a row
+  unfollows every member.
+
 ## Screens (account and episodes)
 
 - Settings (4th tab, gear on both): Keys (two provider slots, add / replace / remove with a confirmation, privacy note;

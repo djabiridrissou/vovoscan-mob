@@ -39,6 +39,7 @@ import com.vovoscan.feature.catalog.domain.ChapterTranslationBadge
 import com.vovoscan.feature.catalog.domain.ChapterTranslations
 import com.vovoscan.feature.catalog.domain.ContentKind
 import com.vovoscan.feature.catalog.domain.ContentPolicy
+import com.vovoscan.feature.catalog.domain.EnabledSources
 import com.vovoscan.feature.catalog.domain.EpisodeFeature
 import com.vovoscan.feature.catalog.domain.Favorites
 import com.vovoscan.feature.catalog.domain.LibraryMarks
@@ -46,6 +47,7 @@ import com.vovoscan.feature.catalog.domain.MarkedTitle
 import com.vovoscan.feature.catalog.domain.ReadingResume
 import com.vovoscan.feature.catalog.domain.ResumePoint
 import com.vovoscan.feature.catalog.domain.ResumePoints
+import com.vovoscan.feature.catalog.domain.SeriesRepository
 import com.vovoscan.feature.catalog.domain.TitleTranslationBadges
 import com.vovoscan.feature.episodes.di.episodesModule
 import com.vovoscan.feature.episodes.domain.EpisodeAccess
@@ -56,6 +58,7 @@ import com.vovoscan.feature.episodes.domain.RunCost
 import com.vovoscan.feature.episodes.domain.RunQuotes
 import com.vovoscan.feature.library.di.libraryModule
 import com.vovoscan.feature.library.domain.LibraryRepository
+import com.vovoscan.feature.library.domain.LibrarySeries
 import com.vovoscan.feature.library.domain.NewChapters
 import com.vovoscan.feature.library.domain.TitleRef
 import com.vovoscan.feature.reader.di.readerModule
@@ -305,6 +308,27 @@ fun appModules(
                         coverUrl: String?,
                         favorite: Boolean,
                     ) = library.setFavorite(TitleRef(title.sourceKey, title.id, name, coverUrl), favorite)
+                }
+            }
+            // Series members at a source this account turned off are left out of the title page (the sources slice).
+            single<EnabledSources> {
+                val sources = get<SourcesRepository>()
+                EnabledSources {
+                    sources
+                        .observe()
+                        .map { items -> items.filter { it.enabled }.sortedBy { it.position }.associate { it.key to it.name } }
+                        .distinctUntilChanged()
+                }
+            }
+            // One library row per series: the catalog's series, asked about the library's titles (the server knows them).
+            single<LibrarySeries> {
+                val series = get<SeriesRepository>()
+                object : LibrarySeries {
+                    override fun observe() = series.observe().map { known -> known.mapValues { it.value.id } }.distinctUntilChanged()
+
+                    override suspend fun resolve(keys: List<Pair<String, String>>) {
+                        series.resolve(keys.map { (sourceKey, titleRef) -> MarkedTitle(sourceKey, titleRef) })
+                    }
                 }
             }
             // "+3 new" in the library for a source read on the device: chapters numbered after the last one read, from
