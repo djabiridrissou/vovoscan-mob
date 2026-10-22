@@ -1,6 +1,9 @@
 package com.vovoscan.core.sources
 
-/** Manifest copies: vovo-plugin/sources/gutenberg/source.json and the fake HTML site from the backend tests. */
+/**
+ * Test manifests: Gutenberg 1.0.0 (Gutendex JSON API with required settings, the backend's `gutendex.json`) and the
+ * fake HTML site from the backend tests (`inkwell.json`).
+ */
 internal object Fixtures {
     val gutenberg =
         """
