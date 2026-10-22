@@ -64,6 +64,10 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
 
 ## Sources
 
+- The official "vovoscan" source is off for a new account (backend ADR-0055): "Add a source" offers it first
+  (`AddSourceUiState.officialOffers`, one tap = `EnableOfficial`: turned on and moved first, `PUT
+  api/v1/catalog/sources`); it is never hidden from the list. iOS draws the on/off control as `BrandSwitch` (a plain
+  button: one tap, one intent).
 - `feature/sources`: the user's active sources (`GET api/v1/catalog/sources`), visible or not, in their order;
   choices applied locally then sent (`PUT`, replayed if they could not go out). At least one stays visible.
   "Sources" screen; its visible sources (in order) feed the catalog's source filter (`CatalogIntent.SourcesChanged`,

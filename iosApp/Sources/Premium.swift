@@ -250,3 +250,36 @@ struct ScreenHeader: View {
         .accessibilityAddTraits(.isHeader)
     }
 }
+
+/// The brand's on/off switch: a plain button (one tap = one intent; the state shown is the ViewModel's), red when on,
+/// with a selection haptic and the switch trait for VoiceOver.
+struct BrandSwitch: View {
+    let isOn: Bool
+    let label: String
+    let action: () -> Void
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        Button {
+            Haptics.select()
+            action()
+        } label: {
+            ZStack(alignment: isOn ? .trailing : .leading) {
+                Capsule().fill(isOn ? Color.brandRed : Color.brandLine)
+                Circle()
+                    .fill(Color.brandPaper)
+                    .overlay(Circle().stroke(Color.brandInk, lineWidth: 1.5))
+                    .padding(3)
+            }
+            .frame(width: 52, height: 32)
+            .overlay(Capsule().stroke(Color.brandInk, lineWidth: 1.5))
+            .animation(reduceMotion ? nil : .spring(response: 0.25, dampingFraction: 0.8), value: isOn)
+            .frame(minWidth: 44, minHeight: 44)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(label)
+        .accessibilityValue(isOn ? "On" : "Off")
+        .accessibilityAddTraits(.isToggle)
+    }
+}

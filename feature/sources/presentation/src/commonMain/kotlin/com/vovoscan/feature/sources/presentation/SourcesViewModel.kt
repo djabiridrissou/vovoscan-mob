@@ -254,7 +254,7 @@ class SourcesViewModel(
         key = source.key,
         name = source.name,
         kindsLabel = SourceLabels.kinds(source.kinds),
-        engineLabel = if (source.engine == SourceEngine.Internal) "vovoscan" else "Read on your device",
+        engineLabel = if (source.engine == SourceEngine.Internal) SourceLabels.INTERNAL_ENGINE else SourceLabels.ON_DEVICE_ENGINE,
         enabled = source.enabled,
         canMoveUp = index > 0,
         canMoveDown = index < count - 1,

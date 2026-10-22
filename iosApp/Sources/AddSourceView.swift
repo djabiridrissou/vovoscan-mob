@@ -16,6 +16,7 @@ struct AddSourceView: View {
             VStack(alignment: .leading, spacing: 12) {
                 Kicker(text: "Sources")
                 Text("Add a source.").font(.brandDisplay(26)).foregroundStyle(Color.brandPaper)
+                ForEach(model.state.officialOffers, id: \.key) { offer in officialCard(offer) }
                 Text(model.state.warning)
                     .font(.brandBody(13))
                     .foregroundStyle(Color.brandPaper.opacity(0.76))
@@ -72,6 +73,31 @@ struct AddSourceView: View {
             if let id = route.repositoryId { model.send(AddSourceIntentBrowse(repositoryId: id)) }
         }
         .task { await model.observe() }
+    }
+
+    /// vovoscan's own catalog (and any official source left off), first: one tap turns it on.
+    private func officialCard(_ offer: OfficialOfferUi) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 12) {
+                SourceIcon(iconUrl: offer.iconUrl, initial: offer.initial)
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 6) {
+                        Text(offer.name).font(.brandBody(17, weight: .bold)).foregroundStyle(Color.brandPaper)
+                        Sticker(text: "Official")
+                    }
+                    Text(offer.kindsLabel).font(.brandBody(13)).foregroundStyle(Color.brandMuted)
+                }
+            }
+            if !offer.summary.isEmpty {
+                Text(offer.summary).font(.brandBody(15)).foregroundStyle(Color.brandPaper.opacity(0.86))
+            }
+            Button(offer.actionLabel) { model.send(AddSourceIntentEnableOfficial(key: offer.key)) }
+                .buttonStyle(PrimaryButtonStyle())
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.brandInk2, in: RoundedRectangle(cornerRadius: 14))
+        .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.brandRed, lineWidth: 1.5))
     }
 
     private var linkInput: some View {

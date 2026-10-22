@@ -86,9 +86,7 @@ struct SourcesView: View {
             .buttonStyle(.plain)
             arrow("arrow.up", enabled: row.canMoveUp) { model.send(SourcesIntentMoveUp(key: row.key)) }
             arrow("arrow.down", enabled: row.canMoveDown) { model.send(SourcesIntentMoveDown(key: row.key)) }
-            Toggle("", isOn: Binding(get: { row.enabled }, set: { _ in model.send(SourcesIntentToggle(key: row.key)) }))
-                .labelsHidden()
-                .tint(Color.brandRed)
+            BrandSwitch(isOn: row.enabled, label: row.name) { model.send(SourcesIntentToggle(key: row.key)) }
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 12)

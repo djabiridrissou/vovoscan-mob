@@ -2,6 +2,7 @@ package com.vovoscan.feature.sources.presentation
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.vovoscan.core.common.AppError
 import com.vovoscan.core.common.AppResult
 import com.vovoscan.core.common.userMessage
 import com.vovoscan.feature.sources.domain.EntryStatus
@@ -74,7 +75,21 @@ data class RepositoryListingUi(
     val entries: List<RepositoryEntryRow>,
 )
 
+/** An official source the account has not turned on (vovoscan's own catalog first): one tap turns it on. */
+data class OfficialOfferUi(
+    val key: String,
+    val name: String,
+    val initial: String,
+    val iconUrl: String?,
+    /** "Manga · Books". */
+    val kindsLabel: String,
+    val summary: String,
+    val actionLabel: String,
+)
+
 data class AddSourceUiState(
+    /** Shown above the link field, before any third-party source. */
+    val officialOffers: List<OfficialOfferUi> = emptyList(),
     val step: AddSourceStep = AddSourceStep.Input,
     val link: String = "",
     val error: String? = null,
@@ -120,6 +135,11 @@ sealed interface AddSourceIntent {
         val repositoryId: String,
     ) : AddSourceIntent
 
+    /** Turns on an official source of the list (first in the reading order). */
+    data class EnableOfficial(
+        val key: String,
+    ) : AddSourceIntent
+
     /** Install or update the previewed source. */
     data object Install : AddSourceIntent
 
@@ -159,6 +179,7 @@ class AddSourceViewModel(
     val state: StateFlow<AddSourceUiState> = mutableState.asStateFlow()
 
     private var installed: Map<String, SourceItem> = emptyMap()
+    private var order: List<SourceItem> = emptyList()
     private var repositoryNames: Map<String, String> = emptyMap()
     private var previewed: PluginCandidate? = null
     private var listing: RepositoryListing? = null
@@ -173,6 +194,8 @@ class AddSourceViewModel(
             .observe()
             .onEach { list ->
                 installed = list.associateBy { it.key }
+                order = list
+                mutableState.update { it.copy(officialOffers = offers(list)) }
                 refreshListing()
             }.launchIn(viewModelScope)
         plugins
@@ -192,6 +215,7 @@ class AddSourceViewModel(
                     ::start,
                 )
             is AddSourceIntent.InstallEntry -> installEntry(intent.key)
+            is AddSourceIntent.EnableOfficial -> enableOfficial(intent.key)
             AddSourceIntent.ConfirmHosts -> {
                 val candidate = pending ?: return
                 mutableState.update { it.copy(hostsConfirmation = null) }
@@ -211,6 +235,37 @@ class AddSourceViewModel(
                 mutableState.value = AddSourceUiState(link = state.value.link)
             }
             AddSourceIntent.DismissMessage -> mutableState.update { it.copy(error = null, notice = null) }
+        }
+    }
+
+    private fun offers(list: List<SourceItem>): List<OfficialOfferUi> =
+        list
+            .filter { !it.enabled && !it.thirdParty }
+            .sortedBy { if (it.key == INTERNAL_KEY) 0 else 1 }
+            .map {
+                OfficialOfferUi(
+                    key = it.key,
+                    name = it.name,
+                    initial = SourceLabels.initial(it.name),
+                    iconUrl = it.iconUrl,
+                    kindsLabel = SourceLabels.kinds(it.kinds),
+                    summary = it.summary.ifBlank { if (it.key == INTERNAL_KEY) SourceLabels.INTERNAL_SUMMARY else "" },
+                    actionLabel = SourceLabels.TURN_ON,
+                )
+            }
+
+    private fun enableOfficial(key: String) {
+        val target = order.firstOrNull { it.key == key && !it.thirdParty } ?: return
+        if (target.enabled) return
+        // Turned on and read first: the catalog opens on it.
+        val choices = listOf(key to true) + order.filter { it.key != key }.map { it.key to it.enabled }
+        viewModelScope.launch {
+            when (val result = sources.save(choices)) {
+                is AppResult.Ok -> mutableState.update { it.copy(notice = SourceLabels.turnedOn(target.name)) }
+                is AppResult.Err ->
+                    // Offline: the choice is kept and sent later (Sources screen says so); anything else is shown.
+                    if (result.error != AppError.Network) mutableState.update { it.copy(error = result.error.userMessage()) }
+            }
         }
     }
 
@@ -458,4 +513,9 @@ class AddSourceViewModel(
             is AppResult.Ok -> AppResult.Ok(PluginLookup.Repository(value))
             is AppResult.Err -> this
         }
+
+    private companion object {
+        /** vovoscan's own catalog (`SourceEngine.Internal`): offered first. */
+        const val INTERNAL_KEY = "vovoscan"
+    }
 }
