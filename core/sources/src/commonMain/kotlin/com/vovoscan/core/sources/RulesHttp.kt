@@ -10,11 +10,13 @@ import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.timeout
 import io.ktor.client.request.header
 import io.ktor.client.request.parameter
-import io.ktor.client.request.prepareGet
+import io.ktor.client.request.prepareRequest
+import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsChannel
 import io.ktor.client.statement.request
 import io.ktor.http.HttpHeaders
+import io.ktor.http.HttpMethod
 import io.ktor.http.isSuccess
 import io.ktor.utils.io.readRemaining
 import kotlinx.coroutines.CancellationException
@@ -81,15 +83,22 @@ class RulesHttp(
         transfer: Transfer = Transfer.Page,
         // The source's page images only (`content.comic.referer`): sent to its allowed hosts, redirects included.
         referer: String? = null,
+        // POST requests (`request.method: "post"`): the body is a rendered template, sent as-is.
+        method: String = "GET",
+        body: String? = null,
+        contentType: String? = null,
     ): AppResult<Fetched> {
         val hosts = manifest.allowedHosts
         var current = url
         var params = query
+        var currentMethod = method.uppercase()
+        var currentBody = body
         repeat(4) {
             val host = hostOf(current)
             val scheme = current.startsWith("https://", ignoreCase = true) || current.startsWith("http://", ignoreCase = true)
-            // Checked again on every hop: a redirect can't lead to a host the source didn't declare, nor off the internet.
-            if (host == null || host !in hosts || !HostPolicy.isPublic(host) || !scheme) {
+            // Checked again on every hop: a redirect can't lead off the source's declared hosts — an exact
+            // host, or a subdomain of one (download CDNs live on *.host) — nor off the internet.
+            if (host == null || hosts.none { host == it || host.endsWith(".$it") } || !HostPolicy.isPublic(host) || !scheme) {
                 return AppResult.Err(AppError.Rejected("HOST_NOT_ALLOWED", "This source can't reach $host."))
             }
             wait(manifest)
@@ -97,11 +106,16 @@ class RulesHttp(
             val step =
                 try {
                     client
-                        .prepareGet(current) {
+                        .prepareRequest(current) {
+                            this.method = HttpMethod.parse(currentMethod)
                             timeout { requestTimeoutMillis = transfer.totalMillis }
                             header(HttpHeaders.UserAgent, RULES_USER_AGENT)
                             if (referer != null) header(HttpHeaders.Referrer, referer)
                             params.forEach { (k, v) -> parameter(k, v) }
+                            if (currentBody != null) {
+                                header(HttpHeaders.ContentType, contentType ?: "application/x-www-form-urlencoded")
+                                setBody(currentBody)
+                            }
                         }.execute { read(it, manifest, transfer) }
                 } catch (e: CancellationException) {
                     throw e
@@ -113,6 +127,9 @@ class RulesHttp(
                 is Step.Redirect -> {
                     current = step.url
                     params = emptyMap()
+                    // A redirect is followed with GET, as browsers do for 301/302/303.
+                    currentMethod = "GET"
+                    currentBody = null
                 }
             }
         }

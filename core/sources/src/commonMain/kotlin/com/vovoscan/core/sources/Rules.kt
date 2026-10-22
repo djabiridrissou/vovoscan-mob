@@ -11,6 +11,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.doubleOrNull
+import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonPrimitive
 
 /** A rule or a response the engine cannot read. */
@@ -50,15 +51,25 @@ object Rules {
             else -> throw RuleException("Unknown response type: $type")
         }
 
-    /** Nodes of a list: a JSONPath (string) or a CSS selector (`{"css": …}`). */
+    /** Nodes of a list: a JSONPath (string), a CSS selector (`{"css": …}`), or JSON embedded in an element
+     *  (`{"css": "script#data", "path": "$.items[*]"}` — e.g. a `application/json` script tag). */
     fun nodes(
         ctx: RuleContext,
         selector: JsonElement,
     ): List<Any> {
         if (selector is JsonPrimitive) return JsonPath.select(ctx.node as? JsonElement ?: return emptyList(), selector.content)
-        val css = (selector as JsonObject)["css"]?.jsonPrimitive?.content ?: throw RuleException("Unknown list selector")
+        val obj = selector as JsonObject
+        val css = obj["css"]?.jsonPrimitive?.content ?: throw RuleException("Unknown list selector")
         val element = ctx.node as? Element ?: throw RuleException("A CSS selector needs an HTML or XML response.")
-        return element.select(css).toList()
+        val elements = if (css == "" || css == ":self") listOf(element) else element.select(css).toList()
+        val path = obj["path"]?.jsonPrimitive?.contentOrNull ?: return elements
+        val first = elements.firstOrNull() ?: return emptyList()
+        // A script tag's content is a data node: text() is empty there, html() carries the raw JSON.
+        val raw = first.text().ifEmpty { first.html() }
+        val parsed =
+            runCatching { json.parseToJsonElement(raw) }
+                .getOrElse { throw RuleException("The element matched by '$css' does not contain valid JSON.") }
+        return JsonPath.select(parsed, path)
     }
 
     /** Value of a rule: a JSONPath string, or a path / css / const / template object, then `then`, then `default`. */
@@ -82,8 +93,11 @@ object Rules {
                     val element = ctx.node as? Element ?: throw RuleException("A CSS rule needs an HTML or XML response.")
                     val css = spec.getValue("css").jsonPrimitive.content
                     val elements = if (css == "" || css == ":self") listOf(element) else element.select(css).toList()
+                    // `attrs` is a fallback list (first non-empty wins) for lazy-loaded markup where the
+                    // first node holds its URL in `src` and the rest in `data-src`.
+                    val attrs = spec["attrs"]?.jsonArray?.map { it.jsonPrimitive.content }
                     val attr = spec["attr"]?.jsonPrimitive?.contentOrNull
-                    val values = elements.map { htmlValue(it, attr) }
+                    val values = elements.map { htmlValue(it, attr, attrs) }
                     if (all) values else values.firstOrNull()
                 }
                 else -> throw RuleException("Unknown rule: ${spec.keys}")
@@ -98,12 +112,18 @@ object Rules {
     private fun htmlValue(
         element: Element,
         attr: String?,
-    ): String? =
-        when (attr) {
-            null, "text" -> element.text()
-            "html" -> element.html()
-            else -> element.attr(attr).ifEmpty { null }
+        attrs: List<String>?,
+    ): String? {
+        val names = attrs ?: listOf(attr ?: "text")
+        for (name in names) {
+            when (name) {
+                "text" -> return element.text()
+                "html" -> return element.html()
+                else -> element.attr(name).ifEmpty { null }?.let { return it }
+            }
         }
+        return null
+    }
 
     /** JSON element → Kotlin value (string, number, boolean); objects and arrays stay JSON (for `pluck`). */
     fun plain(element: JsonElement): Any? =
@@ -151,6 +171,7 @@ object Rules {
                 "number" -> each(value, ::number)
                 "integer" -> each(value) { number(it)?.toLong() }
                 "absUrl" -> each(value) { (it as? String)?.takeIf { s -> s.isNotEmpty() }?.let { s -> absoluteUrl(ctx.baseUrl, s) } ?: it }
+                "md5" -> each(value) { (it as? String)?.let(::md5Hex) ?: it }
                 "first" -> if (value is List<*>) value.firstOrNull() else value
                 "notNull" -> value != null && value != ""
                 else -> throw RuleException("Unknown transform: ${step.content}")

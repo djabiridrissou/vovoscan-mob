@@ -83,12 +83,21 @@ class RulesSource(
         variables: Map<String, Any?>,
     ): AppResult<RuleContext> {
         val url = Template.render(request.getValue("url").jsonPrimitive.content, variables)
-        val query =
-            (request["query"] as? JsonObject)
-                .orEmpty()
-                .mapValues { (_, v) -> Template.render(v.jsonPrimitive.content, variables) }
-                .filterValues { it.isNotEmpty() }
-                .toMutableMap()
+        val method = request["method"]?.jsonPrimitive?.contentOrNull?.uppercase() ?: "GET"
+        val body = request["body"]?.jsonPrimitive?.contentOrNull?.let { Template.render(it, variables) }
+        val contentType = request["contentType"]?.jsonPrimitive?.contentOrNull
+        // Query values are usually plain templates; an object is a rule evaluated before the request is
+        // sent (no response yet), e.g. a signed token: {"_t": {"template": "{{unix}}…", "then": ["md5"]}}.
+        val query = linkedMapOf<String, String>()
+        (request["query"] as? JsonObject).orEmpty().forEach { (key, value) ->
+            val rendered =
+                when (value) {
+                    is JsonObject ->
+                        str(Rules.evaluate(RuleContext(JsonObject(emptyMap()), url, variables), value))
+                    else -> Template.render(value.jsonPrimitive.content, variables)
+                }
+            if (!rendered.isNullOrEmpty()) query[key] = rendered
+        }
         (request["pagination"] as? JsonObject)
             ?.takeIf { it["type"]?.jsonPrimitive?.contentOrNull == "startIndex" }
             ?.let { pagination ->
@@ -98,7 +107,7 @@ class RulesSource(
                 val start = base + (page - 1) * pageSize
                 if (start != base) query[pagination.getValue("param").jsonPrimitive.content] = start.toString()
             }
-        return when (val fetched = http.get(manifest, url, query, Transfer.Page)) {
+        return when (val fetched = http.get(manifest, url, query, Transfer.Page, method = method, body = body, contentType = contentType)) {
             is AppResult.Err -> fetched
             is AppResult.Ok -> {
                 val type = request.getValue("type").jsonPrimitive.content
@@ -278,7 +287,16 @@ class RulesSource(
     suspend fun title(id: String): AppResult<RulesTitle> {
         val section = json.getValue("title").jsonObject
         val loaded = load(section.getValue("request").jsonObject, vars("id" to id))
-        val ctx = (loaded as? AppResult.Ok)?.value ?: return loaded as AppResult.Err
+        val rawCtx = (loaded as? AppResult.Ok)?.value ?: return loaded as AppResult.Err
+        // `title.let` names values read from the title's own response and makes them template variables
+        // for the units request and the content rules (e.g. the site's numeric id of the series).
+        val named = (section["let"] as? JsonObject).orEmpty().mapValues { (_, rule) -> str(Rules.evaluate(rawCtx, rule)) }
+        val ctx =
+            if (named.isEmpty()) {
+                rawCtx
+            } else {
+                RuleContext(rawCtx.node, rawCtx.baseUrl, rawCtx.variables + named)
+            }
         return when (val titleUnits = units(ctx, section.getValue("units").jsonObject, id)) {
             is AppResult.Err -> titleUnits
             is AppResult.Ok ->
