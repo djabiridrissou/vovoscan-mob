@@ -123,7 +123,7 @@ fun CatalogScreen(
                         }
                     }
                     state.categoryNote?.let { Text(it, style = MaterialTheme.typography.bodySmall.copy(color = Brand.Muted)) }
-                state.safeNote?.let { Text(it, style = MaterialTheme.typography.bodySmall.copy(color = Brand.Muted)) }
+                    state.safeNote?.let { Text(it, style = MaterialTheme.typography.bodySmall.copy(color = Brand.Muted)) }
                     BrandField(I18n.text("common.search"), state.query, { viewModel.onIntent(CatalogIntent.Query(it)) })
                     state.offlineNotice?.let {
                         OfflineNotice(

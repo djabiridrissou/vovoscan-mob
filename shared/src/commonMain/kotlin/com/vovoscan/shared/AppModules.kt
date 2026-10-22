@@ -28,10 +28,10 @@ import com.vovoscan.feature.auth.domain.OnboardingServices
 import com.vovoscan.feature.catalog.di.catalogModule
 import com.vovoscan.feature.catalog.domain.CatalogRepository
 import com.vovoscan.feature.catalog.domain.ContentKind
+import com.vovoscan.feature.catalog.domain.ContentPolicy
 import com.vovoscan.feature.catalog.domain.ReadingResume
 import com.vovoscan.feature.catalog.domain.ResumePoint
 import com.vovoscan.feature.catalog.domain.ResumePoints
-import com.vovoscan.feature.catalog.domain.ContentPolicy
 import com.vovoscan.feature.episodes.di.episodesModule
 import com.vovoscan.feature.episodes.domain.EpisodeAccess
 import com.vovoscan.feature.episodes.domain.EpisodesRepository
