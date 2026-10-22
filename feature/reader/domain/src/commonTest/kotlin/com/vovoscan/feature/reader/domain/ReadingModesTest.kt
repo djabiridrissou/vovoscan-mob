@@ -9,8 +9,8 @@ class ReadingModesTest {
     @Test
     fun formatRule() {
         assertEquals(ReadingMode.LongStrip, ReadingMode.from("comic", "webtoon"))
-        assertEquals(ReadingMode.PagedRightToLeft, ReadingMode.from("comic", "manga"))
-        assertEquals(ReadingMode.PagedRightToLeft, ReadingMode.from("comic", "anything"))
+        assertEquals(ReadingMode.LongStrip, ReadingMode.from("comic", "manga"))
+        assertEquals(ReadingMode.LongStrip, ReadingMode.from("comic", "anything"))
         assertEquals(ReadingMode.Book, ReadingMode.from("book", "text"))
         assertEquals(ComicFormat.Webtoon, ComicFormat.from("webtoon"))
     }
@@ -23,7 +23,7 @@ class ReadingModesTest {
         assertEquals(ReadingMode.LongStripGaps, ReadingModes.resolve(webtoon, ComicFormat.Webtoon, null, prefs))
         assertEquals(ReadingMode.PagedVertical, ReadingModes.resolve(webtoon, ComicFormat.Webtoon, ReadingMode.PagedVertical, prefs))
         assertEquals(ReadingMode.PagedLeftToRight, ReadingModes.resolve(ReadingMode.PagedRightToLeft, ComicFormat.Manga, null, prefs))
-        assertEquals(ReadingMode.PagedRightToLeft, ReadingModes.resolve(ReadingMode.PagedRightToLeft, ComicFormat.Manga, null, none))
+        assertEquals(ReadingMode.LongStrip, ReadingModes.resolve(ReadingMode.LongStrip, ComicFormat.Manga, null, none))
     }
 
     @Test
@@ -31,8 +31,8 @@ class ReadingModesTest {
         val prefs = none.copy(mangaMode = ReadingMode.LongStrip)
         assertEquals(ReadingMode.Book, ReadingModes.resolve(ReadingMode.Book, ComicFormat.Manga, ReadingMode.PagedVertical, prefs))
         assertEquals(
-            ReadingMode.PagedRightToLeft,
-            ReadingModes.resolve(ReadingMode.PagedRightToLeft, ComicFormat.Manga, ReadingMode.Book, none),
+            ReadingMode.LongStrip,
+            ReadingModes.resolve(ReadingMode.LongStrip, ComicFormat.Manga, ReadingMode.Book, none),
         )
     }
 
