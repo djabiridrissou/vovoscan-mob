@@ -6,6 +6,7 @@ import com.vovoscan.core.common.AppResult
 import com.vovoscan.core.common.Freshness
 import com.vovoscan.core.common.Language
 import com.vovoscan.core.common.StaleReason
+import com.vovoscan.core.common.StripGenres
 import com.vovoscan.core.common.i18n.I18n
 import com.vovoscan.core.common.i18n.t
 import com.vovoscan.core.common.userMessage
@@ -13,6 +14,7 @@ import com.vovoscan.feature.catalog.domain.CatalogRepository
 import com.vovoscan.feature.catalog.domain.ChapterTranslationBadge
 import com.vovoscan.feature.catalog.domain.ChapterTranslations
 import com.vovoscan.feature.catalog.domain.ContentKind
+import com.vovoscan.feature.catalog.domain.INTERNAL_SOURCE
 import com.vovoscan.feature.catalog.domain.ReadingFormat
 import com.vovoscan.feature.catalog.domain.ReadingResume
 import com.vovoscan.feature.catalog.domain.ResumePoint
@@ -255,6 +257,8 @@ class TitleDetailViewModel(
                     when {
                         detail.summary.kind == ContentKind.Book -> t("catalog.badgeBook")
                         detail.summary.format == ReadingFormat.Webtoon -> t("catalog.badgeWebtoon")
+                        // Saved before its genres were read for the format: they still say it is a strip.
+                        detail.summary.sourceKey != INTERNAL_SOURCE && StripGenres.named(detail.genres) -> t("catalog.badgeWebtoon")
                         else -> t("catalog.badgeManga")
                     },
                     statusLabel(detail.summary.status),

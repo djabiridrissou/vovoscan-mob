@@ -234,7 +234,16 @@ class SqlCatalogLocalDataSource(
         queries.transaction {
             upsertSummary(
                 sourceKey,
-                TitleSummaryDto(detail.id, detail.name, detail.coverUrl, detail.kind, detail.format, detail.status, detail.contentRating),
+                TitleSummaryDto(
+                    detail.id,
+                    detail.name,
+                    detail.coverUrl,
+                    detail.kind,
+                    detail.format,
+                    detail.status,
+                    detail.contentRating,
+                    formatKnown = detail.formatKnown,
+                ),
             )
             queries.updateDetail(detail.description, detail.authors.joinList(), detail.genres.joinList(), sourceKey, detail.id)
             queries.deleteChaptersOf(sourceKey, detail.id)
@@ -272,7 +281,9 @@ class SqlCatalogLocalDataSource(
         it: TitleSummaryDto,
     ) {
         queries.insertSummary(sourceKey, it.id, it.name, it.coverUrl, it.kind, it.format, it.status, it.contentRating)
-        queries.updateSummary(it.name, it.coverUrl, it.kind, it.format, it.status, it.contentRating, sourceKey, it.id)
+        // A source that names no format sends the default: the format read from the title page (its genres) stays.
+        val format = if (it.formatKnown) it.format else queries.titleById(sourceKey, it.id).executeAsOneOrNull()?.format ?: it.format
+        queries.updateSummary(it.name, it.coverUrl, it.kind, format, it.status, it.contentRating, sourceKey, it.id)
     }
 
     private companion object {

@@ -58,7 +58,7 @@ struct RootView: View {
                 // iPhone: the tab bar. iPad: the floating tab bar, which turns into a sidebar (same tabs, same state).
                 TabView(selection: $tab) {
                     Tab(L("nav.catalog"), systemImage: "square.grid.2x2", value: AppTab.catalog) {
-                        NavigationStack(path: $catalogPath) { CatalogView() }
+                        NavigationStack(path: $catalogPath) { CatalogView(path: $catalogPath) }
                     }
                     Tab(L("nav.library"), systemImage: "books.vertical", value: AppTab.library) {
                         NavigationStack { LibraryView(onSignOut: session.signOut) }

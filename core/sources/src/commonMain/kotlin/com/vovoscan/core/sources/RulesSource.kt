@@ -3,6 +3,7 @@ package com.vovoscan.core.sources
 import com.vovoscan.core.common.AppError
 import com.vovoscan.core.common.AppResult
 import com.vovoscan.core.common.SOURCE_RULES
+import com.vovoscan.core.common.StripGenres
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.contentOrNull
@@ -462,11 +463,8 @@ class RulesSource(
         AppResult.Err(AppError.Rejected(SOURCE_RULES, "${manifest.name} has no $kind content."))
 }
 
-/** Genres or tags that say a comic is one vertical strip (manhwa, most manhua): read top to bottom, as a webtoon. */
-private val STRIP_TAGS = setOf("long strip", "longstrip", "webtoon", "webtoons", "manhwa", "manhua", "vertical", "vertical scroll")
-
 /** `webtoon` when a title's genres or tags name a vertical strip (the server's `format_hint`), else null. */
-fun formatHint(genres: List<String>): String? = "webtoon".takeIf { genres.any { it.trim().lowercase() in STRIP_TAGS } }
+fun formatHint(genres: List<String>): String? = "webtoon".takeIf { StripGenres.named(genres) }
 
 /** `{{search}}` in a request (braces escaped: Android's ICU engine rejects a bare `}`). */
 private val SEARCH_PLACEHOLDER = Regex("\\{\\{\\s*search\\s*\\}\\}")

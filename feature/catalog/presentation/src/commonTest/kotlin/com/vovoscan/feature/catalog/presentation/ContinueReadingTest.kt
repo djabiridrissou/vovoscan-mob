@@ -66,6 +66,37 @@ class ContinueReadingTest {
     private fun repository() = FakeCatalog().apply { this.detail.value = this@ContinueReadingTest.detail }
 
     @Test
+    fun aTitleSavedAsMangaWhoseGenresNameAStripShowsAsAWebtoon() =
+        runTest(dispatcher) {
+            val manga = summary.copy(format = ReadingFormat.Manga)
+            val saved = detail
+            val repository =
+                FakeCatalog().apply {
+                    this.detail.value =
+                        saved.copy(
+                            summary = manga,
+                            genres = listOf("Action", " Webtoons "),
+                        )
+                }
+            val vm = TitleDetailViewModel("inkwell", "dle", repository, resume)
+            advanceUntilIdle()
+            assertTrue(
+                vm.state.value.meta
+                    .startsWith("WEBTOON"),
+                vm.state.value.meta,
+            )
+
+            // Our own source's format is the server's word.
+            repository.detail.value = saved.copy(summary = manga.copy(sourceKey = "vovoscan"), genres = listOf("Webtoons"))
+            advanceUntilIdle()
+            assertTrue(
+                vm.state.value.meta
+                    .startsWith("MANGA"),
+                vm.state.value.meta,
+            )
+        }
+
+    @Test
     fun chapterOneIsOnTopAndTheOrderIsRemembered() =
         runTest(dispatcher) {
             val repository = repository()

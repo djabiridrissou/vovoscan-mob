@@ -114,7 +114,9 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
 - Chapters of a source on the server (translation and episodes of any comic): `ChapterImports` (`core/common`, port;
   `ApiChapterImports` in `core/network`): `find` (the title's units, `GET api/v1/source-reader/{key}/title?ref=&lang=`,
   a unit already brought in carries its `chapterId`), `import` (`POST …/{key}/import?lang=` `{titleRef, unitRef}`), polled
-  every 2 s (`GET …/source-reader/chapters/{id}`, 10 minutes at most, a network blip keeps waiting) through `bringIn`.
+  every 2 s (`GET …/source-reader/chapters/{id}`, 10 minutes at most, a network blip keeps waiting) through `bringIn`;
+  a copy followed from before (remembered, or found) that failed since is asked for again once (the server re-arms it),
+  never shown as the old failure.
   `{{lang}}` is the device's (`sourceLanguage()`). Nothing is paid by an import: the quote comes after, and runs only
   on the user's explicit confirm. Errors `SOURCE_UNAVAILABLE`, `HOST_NOT_ALLOWED`, `NO_PAGES`, `INVALID_IMAGE`… have
   their calm lines (`errors.*`). `EpisodeViewModel(sourceKey, titleId, imports)` looks the chapter up on opening
@@ -175,7 +177,9 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   field is a combobox. With the focus (`CatalogIntent.SearchFocused`) it shows `suggestions` (150 ms debounce, `GET
   api/v1/search/suggest?q=&lang=&limit=8&format=`): "Your searches" (↺), "Others searched", "Titles" ("Popular" / "You
   opened it" ✦ source; only sources read now, safe mode applied). A search there fills the field and runs at once
-  (`UseSearch`); a title opens. Results ask the same with `limit=50` alongside the sources: learned titles first, in
+  (`UseSearch`); a title opens (`TitleOpened` closes the list at once). The list outlives the field's focus by
+  `BLUR_GRACE_MS` (300 ms): a tap on a row takes the focus first and must still land on the row. iOS draws it over the
+  catalog (an overlay that takes every tap on it, never in the grid's flow) and pushes the title itself, once. Results ask the same with `limit=50` alongside the sources: learned titles first, in
   their order and once each, then the sources' mix (`SearchRules.order`; a title no source returned for this spelling
   shows too, except under a curated category), with the "Popular" badge (`TitleCard.popular`). `format` is the category
   filter's format, so suggestions and results follow it. Opening a title from results or a suggestion with 2+ characters
@@ -245,6 +249,8 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   forgets what is not on the device yet. Each chapter is fetched again first (`remote.chapter`, saved for
   the reader), then its pages through `ReaderRemoteDataSource.downloadPage`: signed API links (internal source) or the
   source's hosts through `RulesHttp` (allowed hosts only, never the session; with the source's page-image Referer).
+  A page whose bytes are no known image (an empty body, an HTML error page) fails the chapter at once (`INVALID_IMAGE`,
+  not retried) and is never saved.
   Every change to a chapter's rows and files happens under one lock: a chapter removed while it downloads leaves nothing
   behind.
 - Network: no connection, or "Wi-Fi only" on a metered network (`NetworkState.unmetered`: Android `NOT_METERED`, iOS not
@@ -338,8 +344,10 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   `LongStrip` ("Continuous"), a manga `PagedRightToLeft`, a comic `PagedLeftToRight`.
   Switching keeps the page.
 - A rule-based title page that names no format is a webtoon when its genres say so (`formatHint`: "long strip",
-  "longstrip", "webtoon(s)", "manhwa", "manhua", "vertical", "vertical scroll", trimmed, any case; the server's
-  `STRIP_TAGS`).
+  "longstrip", "webtoon(s)", "manhwa", "manhua", "vertical", "vertical scroll", trimmed, any case; `StripGenres` in
+  `core/common`, the server's `STRIP_TAGS`). A listing of a source that names no format (`TitleSummaryDto.formatKnown`
+  false) never overwrites the format the title page read, nor does the server's learned format; a title saved before
+  shows as a webtoon on its page when its genres say so.
 - Format recognition (`ComicFormat`: `Manga` right to left, `Webtoon`, `Comic` left to right when paged): the source's
   word first (our API's `format`; a plugin's own labels "Long Strip", "Web Comic", manhwa, manhua, BD; an original
   language `ko` / `zh` = webtoon), then the pages' shape: most sized pages taller than 2.5 × their width

@@ -70,6 +70,29 @@ class ChapterImportsTest {
         }
 
     @Test
+    fun aCopyFollowedFromBeforeThatFailedSinceIsFetchedAgainNotShownAsFailed() =
+        runTest {
+            // Remembered as fetching; the server's job failed meanwhile: asking again re-arms it.
+            val fake =
+                Fake(
+                    found = chapter(ImportStatus.Fetching),
+                    states =
+                        ArrayDeque(
+                            listOf(
+                                AppResult.Ok(chapter(ImportStatus.Failed, error = "SOURCE_UNAVAILABLE")),
+                                AppResult.Ok(chapter(ImportStatus.Ready, pages = 9)),
+                            ),
+                        ),
+                )
+            val seen = mutableListOf<ImportStatus>()
+            val result = fake.bringIn(unit) { seen += it.status }
+            assertEquals(AppResult.Ok(chapter(ImportStatus.Ready, pages = 9)), result)
+            assertEquals(1, fake.imports)
+            // The old failure never reaches the screen.
+            assertEquals(listOf(ImportStatus.Fetching, ImportStatus.Fetching, ImportStatus.Ready), seen)
+        }
+
+    @Test
     fun aRefusedImportIsReturned() =
         runTest {
             val refused = AppResult.Err(AppError.Rejected("SOURCE_NOT_FOUND", "Source not found."))

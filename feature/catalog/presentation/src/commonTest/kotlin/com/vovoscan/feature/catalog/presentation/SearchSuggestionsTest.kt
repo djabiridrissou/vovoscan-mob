@@ -126,7 +126,42 @@ class SearchSuggestionsTest {
             assertEquals("You opened it ✦ vovoscan", titles[2].detail)
 
             vm.onIntent(CatalogIntent.SearchFocused(false))
+            // The tap that took the focus still reaches the list.
+            assertTrue(vm.state.value.showSuggestions)
+            advanceUntilIdle()
             assertFalse(vm.state.value.showSuggestions)
+        }
+
+    @Test
+    fun aRowTappedAfterTheFieldLostItsFocusIsTheOneOpenedAndTheListCloses() =
+        runTest(dispatcher) {
+            val search = FakeSearch().apply { answer = { _, _ -> learned } }
+            val vm = CatalogViewModel(catalog(), search = search)
+            vm.onIntent(CatalogIntent.SourcesChanged(listOf(vovoscan, inkwell)))
+            advanceUntilIdle()
+            vm.onIntent(CatalogIntent.SearchFocused(true))
+            vm.onIntent(CatalogIntent.Query("kin"))
+            advanceUntilIdle()
+
+            // Touch down on "Kingz": the field loses the focus first, the row's tap lands a few frames later.
+            vm.onIntent(CatalogIntent.SearchFocused(false))
+            advanceTimeBy(100)
+            assertTrue(vm.state.value.showSuggestions)
+            vm.onIntent(CatalogIntent.TitleOpened("inkwell", "typo"))
+            // Closed at once, so nothing is left over the title page.
+            assertFalse(vm.state.value.showSuggestions)
+            advanceUntilIdle()
+            assertEquals(listOf("typo"), search.picks.map { it.titleRef })
+            assertFalse(vm.state.value.showSuggestions)
+
+            // Focus back within the grace: the list stays.
+            vm.onIntent(CatalogIntent.SearchFocused(true))
+            advanceUntilIdle()
+            vm.onIntent(CatalogIntent.SearchFocused(false))
+            advanceTimeBy(100)
+            vm.onIntent(CatalogIntent.SearchFocused(true))
+            advanceUntilIdle()
+            assertTrue(vm.state.value.showSuggestions)
         }
 
     @Test

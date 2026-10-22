@@ -318,6 +318,7 @@ class CatalogViewModel(
     private var generation = 0
     private var searchJob: Job? = null
     private var suggestJob: Job? = null
+    private var blurJob: Job? = null
 
     /** What a pick would say of each title on screen as a search result or a suggestion (title, format known). */
     private var resultPicks: Map<Pair<String, String>, Pair<TitleSummary, ReadingFormat?>> = emptyMap()
@@ -391,16 +392,35 @@ class CatalogViewModel(
                 }
             is CatalogIntent.SelectCategory -> changeFilter { it.copy(categoryName = intent.name?.trim()?.takeIf { n -> n.isNotEmpty() }) }
             is CatalogIntent.SearchFocused -> {
-                mutableState.update { it.copy(searchFocused = intent.focused) }
-                if (intent.focused) suggest(state.value.query) else suggestJob?.cancel()
+                blurJob?.cancel()
+                if (intent.focused) {
+                    mutableState.update { it.copy(searchFocused = true) }
+                    suggest(state.value.query)
+                } else {
+                    // A tap on a suggestion takes the focus from the field before the tap lands: the list stays a
+                    // moment, so the tap reaches the row, never what lies under it.
+                    blurJob =
+                        viewModelScope.launch {
+                            delay(BLUR_GRACE_MS)
+                            closeSuggestions()
+                        }
+                }
             }
             is CatalogIntent.UseSearch -> {
-                mutableState.update { it.copy(searchFocused = false) }
-                suggestJob?.cancel()
+                closeSuggestions()
                 search(intent.text, debounce = false)
             }
-            is CatalogIntent.TitleOpened -> picked(intent.sourceKey, intent.titleId)
+            is CatalogIntent.TitleOpened -> {
+                closeSuggestions()
+                picked(intent.sourceKey, intent.titleId)
+            }
         }
+    }
+
+    private fun closeSuggestions() {
+        blurJob?.cancel()
+        suggestJob?.cancel()
+        mutableState.update { it.copy(searchFocused = false) }
     }
 
     /** A pick: what was typed, and the title opened from the results or a suggestion. */
@@ -787,6 +807,9 @@ class CatalogViewModel(
     private companion object {
         const val SEARCH_DEBOUNCE_MS = 300L
         const val SUGGEST_DEBOUNCE_MS = 150L
+
+        /** How long suggestions outlive the field's focus: enough for the tap that took it to land on a row. */
+        const val BLUR_GRACE_MS = 300L
         const val RESUME_CANDIDATES = 5
     }
 }

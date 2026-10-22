@@ -88,19 +88,33 @@ suspend fun ChapterImports.bringIn(
     unit: SourceUnit,
     onUpdate: (ImportedChapter) -> Unit = {},
 ): AppResult<ImportedChapter> {
+    var asked = false
     var current =
         find(unit)?.takeIf { it.status != ImportStatus.Failed }
-            ?: when (val asked = import(unit)) {
-                is AppResult.Err -> return asked
-                is AppResult.Ok -> asked.value
+            ?: when (val answer = import(unit)) {
+                is AppResult.Err -> return answer
+                is AppResult.Ok -> answer.value.also { asked = true }
             }
     var waited = 0L
     while (true) {
-        onUpdate(current)
         when (current.status) {
-            ImportStatus.Ready -> return AppResult.Ok(current)
-            ImportStatus.Failed -> return AppResult.Err(failed(current.error ?: IMPORT_FAILED))
-            ImportStatus.Fetching -> Unit
+            ImportStatus.Ready -> return AppResult.Ok(current).also { onUpdate(current) }
+            ImportStatus.Failed ->
+                if (asked) {
+                    onUpdate(current)
+                    return AppResult.Err(failed(current.error ?: IMPORT_FAILED))
+                } else {
+                    // A copy followed from before (remembered, or found on the server) that failed since: asking
+                    // again fetches it again, never the old failure.
+                    asked = true
+                    current =
+                        when (val answer = import(unit)) {
+                            is AppResult.Err -> return answer
+                            is AppResult.Ok -> answer.value
+                        }
+                    continue
+                }
+            ImportStatus.Fetching -> onUpdate(current)
         }
         if (waited >= ChapterImports.MAX_WAIT_MS) return AppResult.Err(AppError.Rejected(IMPORT_SLOW, ""))
         delay(ChapterImports.POLL_MS)

@@ -10,6 +10,7 @@ import com.vovoscan.core.sources.RulesHttp
 import com.vovoscan.core.sources.RulesSource
 import com.vovoscan.core.sources.RulesTitleSummary
 import com.vovoscan.core.sources.declaresFormat
+import com.vovoscan.core.sources.formatHint
 import com.vovoscan.feature.catalog.domain.ReadingFormat
 import com.vovoscan.feature.catalog.domain.SourceCategory
 import io.ktor.client.HttpClient
@@ -17,6 +18,7 @@ import io.ktor.client.request.get
 import io.ktor.client.request.parameter
 import io.ktor.http.encodeURLPathPart
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.Transient
 
 @Serializable
 data class TitleSummaryDto(
@@ -27,6 +29,8 @@ data class TitleSummaryDto(
     val format: String,
     val status: String,
     val contentRating: String? = null,
+    /** false: the source names no format, [format] is the default (it never replaces one the device knows). */
+    @Transient val formatKnown: Boolean = true,
 )
 
 @Serializable
@@ -51,6 +55,8 @@ data class TitleDetailDto(
     val authors: List<String> = emptyList(),
     val genres: List<String> = emptyList(),
     val chapters: List<ChapterDto> = emptyList(),
+    /** As in [TitleSummaryDto]: false when neither the source nor the title's genres say how it reads. */
+    @Transient val formatKnown: Boolean = true,
 )
 
 @Serializable
@@ -178,7 +184,9 @@ class OnDeviceCatalogRemoteDataSource(
         page: Int,
         categoryId: String?,
     ): AppResult<TitlesPage> =
-        source(sourceKey)?.catalog(page, category = categoryId.orEmpty())?.map { TitlesPage(page, it.items.map(::dto), it.hasNext) }
+        source(sourceKey)?.let { s ->
+            s.catalog(page, category = categoryId.orEmpty()).map { TitlesPage(page, it.items.map { i -> dto(s, i) }, it.hasNext) }
+        }
             ?: unknown()
 
     override suspend fun search(
@@ -186,7 +194,10 @@ class OnDeviceCatalogRemoteDataSource(
         query: String,
         categoryId: String?,
     ): AppResult<TitlesPage> =
-        source(sourceKey)?.catalog(1, query, categoryId.orEmpty())?.map { TitlesPage(1, it.items.map(::dto), it.hasNext) } ?: unknown()
+        source(sourceKey)?.let { s ->
+            s.catalog(1, query, categoryId.orEmpty()).map { TitlesPage(1, it.items.map { i -> dto(s, i) }, it.hasNext) }
+        }
+            ?: unknown()
 
     override suspend fun categories(sourceKey: String): AppResult<List<SourceCategory>> =
         source(sourceKey)?.categories()?.map { list -> list.map { SourceCategory(it.id, it.name) } } ?: unknown()
@@ -195,25 +206,43 @@ class OnDeviceCatalogRemoteDataSource(
         sourceKey: String,
         id: String,
     ): AppResult<TitleDetailDto> =
-        source(sourceKey)?.title(id)?.map { title ->
-            TitleDetailDto(
-                id = title.summary.id,
-                name = title.summary.name,
-                coverUrl = title.summary.coverUrl,
-                kind = title.summary.kind,
-                format = title.summary.format,
-                status = title.summary.status,
-                contentRating = title.summary.contentRating,
-                description = title.description,
-                authors = title.authors,
-                genres = title.genres,
-                // Newest to oldest, like the API.
-                chapters = title.units.reversed().map { ChapterDto(it.id, it.number, it.name) },
-            )
+        source(sourceKey)?.let { s ->
+            s.title(id).map { title ->
+                TitleDetailDto(
+                    id = title.summary.id,
+                    name = title.summary.name,
+                    coverUrl = title.summary.coverUrl,
+                    kind = title.summary.kind,
+                    format = title.summary.format,
+                    status = title.summary.status,
+                    contentRating = title.summary.contentRating,
+                    description = title.description,
+                    authors = title.authors,
+                    genres = title.genres,
+                    // Newest to oldest, like the API.
+                    chapters = title.units.reversed().map { ChapterDto(it.id, it.number, it.name) },
+                    formatKnown =
+                        s.declaresFormat ||
+                            title.summary.kind == "book" ||
+                            title.summary.format != "manga" ||
+                            formatHint(title.genres) != null,
+                )
+            }
         } ?: unknown()
 
-    private fun dto(item: RulesTitleSummary) =
-        TitleSummaryDto(item.id, item.name, item.coverUrl, item.kind, item.format, item.status, item.contentRating)
+    private fun dto(
+        source: RulesSource,
+        item: RulesTitleSummary,
+    ) = TitleSummaryDto(
+        item.id,
+        item.name,
+        item.coverUrl,
+        item.kind,
+        item.format,
+        item.status,
+        item.contentRating,
+        formatKnown = source.declaresFormat || item.kind == "book",
+    )
 
     private fun <T> unknown(): AppResult<T> =
         AppResult.Err(

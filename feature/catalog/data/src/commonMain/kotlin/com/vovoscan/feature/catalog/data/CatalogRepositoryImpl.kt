@@ -28,7 +28,15 @@ class CatalogRepositoryImpl(
     ): Flow<List<ListedTitle>> =
         local.observeListing(sourceKey, categoryId).combine(learned) { titles, all ->
             val known = all[sourceKey].orEmpty()
-            if (known.isEmpty()) titles else titles.map { t -> known[t.title.id]?.let { t.copy(title = t.title.copy(format = it)) } ?: t }
+            // Only over the default: a strip the device read from the title's genres stays one.
+            if (known.isEmpty()) {
+                titles
+            } else {
+                titles.map { t ->
+                    known[t.title.id]?.takeIf { t.title.format == ReadingFormat.Manga }?.let { t.copy(title = t.title.copy(format = it)) }
+                        ?: t
+                }
+            }
         }
 
     /** Formats learned from the server this run, per source (kept in memory: they only serve a filter). */

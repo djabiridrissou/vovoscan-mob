@@ -2,6 +2,8 @@ import Shared
 import SwiftUI
 
 struct CatalogView: View {
+    /// The catalog tab's navigation: a suggested title is pushed once its list is closed (see `openSuggested`).
+    @Binding var path: NavigationPath
     @StateObject private var model = CatalogModel()
     @StateObject private var sources = SourcesModel()
     @State private var query = ""
@@ -37,9 +39,15 @@ struct CatalogView: View {
                     IntentField(label: L("common.search"), text: $query, value: model.state.query) { model.send(CatalogIntentQuery(value: $0)) }
                         .focused($fieldFocus)
                         .submitLabel(.search)
-                    if model.state.showSuggestions && !searchFloating {
-                        SuggestionList(sections: model.state.suggestions, onSearch: useSearch, onTitle: opened)
-                    }
+                        // Over the catalog, never in its flow: closing it moves nothing, and it takes every tap on it
+                        // (an inline list closed on the focus loss and let the tap through to the card under it).
+                        .overlay(alignment: .bottom) {
+                            if model.state.showSuggestions && !searchFloating {
+                                SuggestionList(sections: model.state.suggestions, onSearch: useSearch, onTitle: openSuggested)
+                                    .alignmentGuide(.bottom) { $0[.top] - 6 }
+                            }
+                        }
+                        .zIndex(1)
                     if let notice = model.state.offlineNotice {
                         OfflineNotice(text: notice, onRetry: model.state.canRetry ? { model.send(CatalogIntentRefresh.shared) } : nil)
                     }
@@ -98,7 +106,7 @@ struct CatalogView: View {
                     VStack(spacing: 0) {
                         floatingSearch
                         if model.state.showSuggestions {
-                            SuggestionList(sections: model.state.suggestions, onSearch: useSearch, onTitle: opened)
+                            SuggestionList(sections: model.state.suggestions, onSearch: useSearch, onTitle: openSuggested)
                                 .padding(.horizontal, 16)
                                 .padding(.bottom, 8)
                                 .background(Color.brandInk.opacity(0.92))
@@ -164,6 +172,15 @@ struct CatalogView: View {
 
     private func opened(_ sourceKey: String, _ titleId: String) {
         model.send(CatalogIntentTitleOpened(sourceKey: sourceKey, titleId: titleId))
+    }
+
+    /// A suggested title: the list and the keyboard go first, then one push (never a second one from the grid).
+    private func openSuggested(_ sourceKey: String, _ titleId: String) {
+        fieldFocus = false
+        floatingFocus = false
+        opened(sourceKey, titleId)
+        searchFloating = false
+        path.append(TitleRoute(sourceKey: sourceKey, titleId: titleId))
     }
 
     private static let top = "catalog-top"
@@ -350,9 +367,8 @@ private struct SuggestionList: View {
                     .padding(.bottom, 4)
                 ForEach(section.rows, id: \.key) { row in
                     if row.kind == .title, let sourceKey = row.sourceKey, let titleId = row.titleId {
-                        NavigationLink(value: TitleRoute(sourceKey: sourceKey, titleId: titleId)) { line(row) }
+                        Button { onTitle(sourceKey, titleId) } label: { line(row) }
                             .buttonStyle(.plain)
-                            .simultaneousGesture(TapGesture().onEnded { onTitle(sourceKey, titleId) })
                     } else {
                         Button { onSearch(row.text) } label: { line(row) }
                             .buttonStyle(.plain)
@@ -364,6 +380,10 @@ private struct SuggestionList: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.brandInk2, in: RoundedRectangle(cornerRadius: 12))
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.brandLine, lineWidth: 1))
+        // Opaque to touches, gaps between rows included.
+        .contentShape(RoundedRectangle(cornerRadius: 12))
+        .shadow(color: .black.opacity(0.5), radius: 12, y: 6)
+        .accessibilityIdentifier("search-suggestions")
     }
 
     private func line(_ row: SuggestionRow) -> some View {
