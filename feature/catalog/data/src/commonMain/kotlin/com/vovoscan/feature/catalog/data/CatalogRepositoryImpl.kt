@@ -71,6 +71,10 @@ class CatalogRepositoryImpl(
 
     override suspend fun saveFilter(filter: CatalogFilter) = local.saveFilter(filter)
 
+    override fun observeNewestFirst(): Flow<Boolean> = local.observeNewestFirst()
+
+    override suspend fun saveNewestFirst(newestFirst: Boolean) = local.saveNewestFirst(newestFirst)
+
     override fun observeTitle(
         sourceKey: String,
         id: String,

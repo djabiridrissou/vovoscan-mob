@@ -47,6 +47,7 @@ class FakeCatalog : CatalogRepository {
     val saved = MutableStateFlow<Map<Pair<String, String?>, List<ListedTitle>>>(emptyMap())
     private val savedCategories = MutableStateFlow<Map<String, List<SourceCategory>>>(emptyMap())
     val filter = MutableStateFlow(CatalogFilter())
+    val newestFirst = MutableStateFlow(false)
     val refreshed = mutableListOf<Pair<String, String?>>()
     val searched = mutableListOf<Triple<String, String, String?>>()
     var detail = MutableStateFlow<TitleDetail?>(null)
@@ -130,6 +131,12 @@ class FakeCatalog : CatalogRepository {
 
     override suspend fun saveFilter(filter: CatalogFilter) {
         this.filter.value = filter
+    }
+
+    override fun observeNewestFirst(): Flow<Boolean> = newestFirst
+
+    override suspend fun saveNewestFirst(newestFirst: Boolean) {
+        this.newestFirst.value = newestFirst
     }
 
     override fun observeTitle(

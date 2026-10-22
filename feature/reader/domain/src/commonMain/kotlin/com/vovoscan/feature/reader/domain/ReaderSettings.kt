@@ -1,6 +1,7 @@
 package com.vovoscan.feature.reader.domain
 
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
 
 /** How far one tap scrolls a long strip, as a fraction of the screen height. */
 enum class ScrollAmount(
@@ -93,6 +94,40 @@ interface ReaderSettingsRepository {
         chapterId: String,
         position: ReadingPosition,
     ) {}
+
+    /** The chapter each title was left at on this device, newest first (any title, followed or not). */
+    fun observeHistory(): Flow<List<LastRead>> = flowOf(emptyList())
+
+    suspend fun recordRead(read: LastRead) {}
+}
+
+/** Where a title was left on this device: the chapter, the page, and when (ms). */
+data class LastRead(
+    val sourceKey: String,
+    val titleId: String,
+    val chapterId: String,
+    val page: Int,
+    val readAt: Long,
+) {
+    /** "<source>/<title>": a source key never holds a "/" (`^[a-z0-9][a-z0-9-]{1,62}$`). */
+    val key: String get() = "$sourceKey/$titleId"
+
+    fun encode(): String = "$readAt:$page:$chapterId"
+
+    companion object {
+        fun decode(
+            key: String,
+            value: String,
+        ): LastRead? {
+            val sourceKey = key.substringBefore('/', "").ifEmpty { return null }
+            val titleId = key.substringAfter('/', "").ifEmpty { return null }
+            val parts = value.split(':', limit = 3)
+            if (parts.size < 3) return null
+            val readAt = parts[0].toLongOrNull() ?: return null
+            val page = parts[1].toIntOrNull()?.takeIf { it >= 0 } ?: return null
+            return parts[2].ifEmpty { null }?.let { LastRead(sourceKey, titleId, it, page, readAt) }
+        }
+    }
 }
 
 /**

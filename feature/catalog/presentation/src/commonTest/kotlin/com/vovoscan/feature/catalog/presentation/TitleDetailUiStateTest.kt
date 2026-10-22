@@ -20,7 +20,9 @@ class TitleDetailUiStateTest {
 
     @Test
     fun theNextChapterIsTheOneAfterInReadingOrder() {
-        val state = TitleDetailUiState(sourceKey = "vovoscan", chapters = chapters)
+        // Whatever order the list shows, the next chapter follows the reading order.
+        val state =
+            TitleDetailUiState(sourceKey = "vovoscan", chapters = chapters, newestFirst = true, readingOrder = listOf("c1", "c2", "c3"))
         assertEquals("c2", state.nextChapterId("c1"))
         assertEquals("c3", state.nextChapterId("c2"))
         assertNull(state.nextChapterId("c3"))

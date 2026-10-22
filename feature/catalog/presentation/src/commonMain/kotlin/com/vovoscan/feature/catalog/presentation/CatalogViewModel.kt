@@ -14,7 +14,10 @@ import com.vovoscan.feature.catalog.domain.CategoryOption
 import com.vovoscan.feature.catalog.domain.CategoryUnion
 import com.vovoscan.feature.catalog.domain.ContentKind
 import com.vovoscan.feature.catalog.domain.ReadingFormat
+import com.vovoscan.feature.catalog.domain.ReadingResume
+import com.vovoscan.feature.catalog.domain.ResumePoint
 import com.vovoscan.feature.catalog.domain.SourceCategory
+import com.vovoscan.feature.catalog.domain.TitleDetail
 import com.vovoscan.feature.catalog.domain.TitleSummary
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
@@ -49,6 +52,22 @@ data class TitleCard(
     /** "WEBTOON", "MANGA" or "BOOK": badge on the cover. */
     val formatLabel: String,
     val status: String,
+    /** This account has started it: the card says so ("Reading"). */
+    val started: Boolean = false,
+)
+
+/** "Continue: Title, Chapter 4": the last title read, opened where it was left. */
+data class ResumeCard(
+    val sourceKey: String,
+    val titleId: String,
+    val chapterId: String,
+    val page: Int,
+    val titleName: String,
+    val coverUrl: String?,
+    /** "Continue reading". */
+    val label: String,
+    /** "Chapter 4 · The Well ✦ page 12". */
+    val detail: String,
 )
 
 /** A row of the source filter's sheet. */
@@ -90,8 +109,16 @@ data class CatalogUiState(
     val loadingMore: Boolean = false,
     val canLoadMore: Boolean = false,
     val error: String? = null,
+    /** The titles started ("<sourceKey>/<id>"), for the cards' "Reading" mark. */
+    val startedKeys: Set<String> = emptySet(),
+    /** The last title read, on top of the catalog (not while searching). */
+    val resume: ResumeCard? = null,
 ) {
-    val visible: List<TitleCard> get() = results ?: cards
+    val visible: List<TitleCard>
+        get() = (results ?: cards).map { if ("${it.sourceKey}/${it.id}" in startedKeys) it.copy(started = true) else it }
+
+    /** "Reading": the mark on a started title's card. */
+    val startedLabel: String get() = t("catalog.started")
 
     /** The source filter shows once there is a choice to make. */
     val showSourceFilter: Boolean get() = sources.size > 1
@@ -165,6 +192,7 @@ sealed interface CatalogIntent {
 @OptIn(ExperimentalCoroutinesApi::class)
 class CatalogViewModel(
     private val repository: CatalogRepository,
+    private val resume: ReadingResume = ReadingResume { flowOf(emptyList()) },
 ) : ViewModel() {
     private val mutableState = MutableStateFlow(CatalogUiState())
     val state: StateFlow<CatalogUiState> = mutableState.asStateFlow()
@@ -208,6 +236,21 @@ class CatalogViewModel(
     private val seed = MutableStateFlow(Random.nextLong())
 
     init {
+        resume
+            .observe()
+            .flatMapLatest { points ->
+                // The newest title whose page is on the device (its name, cover and chapters are known).
+                val recent = points.take(RESUME_CANDIDATES)
+                if (recent.isEmpty()) {
+                    flowOf(points to null)
+                } else {
+                    combine(recent.map { point -> repository.observeTitle(point.sourceKey, point.titleId).map { point to it } }) { known ->
+                        points to known.firstNotNullOfOrNull { (point, detail) -> detail?.let { resumeCard(point, it) } }
+                    }
+                }
+            }.onEach { (points, card) ->
+                mutableState.update { it.copy(startedKeys = points.mapTo(HashSet()) { p -> "${p.sourceKey}/${p.titleId}" }, resume = card) }
+            }.launchIn(viewModelScope)
         viewModelScope.launch { filter.value = repository.observeFilter().first() }
         val selection =
             combine(visible.filterNotNull(), filter.filterNotNull()) { v, f -> Triple(v, f, CatalogSelection.selected(v, f)) }
@@ -418,6 +461,29 @@ class CatalogViewModel(
         )
     }
 
+    private fun resumeCard(
+        point: ResumePoint,
+        detail: TitleDetail,
+    ): ResumeCard? {
+        val chapter = detail.chapters.firstOrNull { it.id == point.chapterId } ?: return null
+        val label =
+            if (detail.summary.kind == ContentKind.Book) {
+                chapter.name ?: t("reader.part", "n" to chapter.label)
+            } else {
+                chapterLabel(chapter.label, chapter.name)
+            }
+        return ResumeCard(
+            sourceKey = point.sourceKey,
+            titleId = point.titleId,
+            chapterId = point.chapterId,
+            page = point.page,
+            titleName = detail.summary.name,
+            coverUrl = detail.summary.coverUrl,
+            label = t("catalog.continueReading"),
+            detail = if (point.page > 0) t("catalog.resumeAt", "chapter" to label, "page" to point.page + 1) else label,
+        )
+    }
+
     private fun card(
         title: TitleSummary,
         names: Map<String, String>,
@@ -438,5 +504,6 @@ class CatalogViewModel(
 
     private companion object {
         const val SEARCH_DEBOUNCE_MS = 300L
+        const val RESUME_CANDIDATES = 5
     }
 }

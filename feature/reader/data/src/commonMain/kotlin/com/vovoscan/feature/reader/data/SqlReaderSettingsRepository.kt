@@ -4,6 +4,7 @@ import app.cash.sqldelight.coroutines.asFlow
 import app.cash.sqldelight.coroutines.mapToList
 import app.cash.sqldelight.coroutines.mapToOneOrNull
 import com.vovoscan.feature.reader.data.db.ReaderDatabase
+import com.vovoscan.feature.reader.domain.LastRead
 import com.vovoscan.feature.reader.domain.ReaderPreferences
 import com.vovoscan.feature.reader.domain.ReaderSettingsRepository
 import com.vovoscan.feature.reader.domain.ReadingMode
@@ -83,7 +84,22 @@ class SqlReaderSettingsRepository(
         withContext(io) { queries.putSetting(positionKey(sourceKey, chapterId), position.encode()) }
     }
 
+    override fun observeHistory(): Flow<List<LastRead>> =
+        queries
+            .history()
+            .asFlow()
+            .mapToList(io)
+            .map { rows ->
+                rows.mapNotNull { LastRead.decode(it.name.removePrefix(HISTORY_PREFIX), it.setting_value) }.sortedByDescending { it.readAt }
+            }.distinctUntilChanged()
+
+    override suspend fun recordRead(read: LastRead) {
+        withContext(io) { queries.putSetting(HISTORY_PREFIX + read.key, read.encode()) }
+    }
+
     internal companion object {
+        const val HISTORY_PREFIX = "last/"
+
         private const val NONE = "-"
 
         fun decode(values: Map<String, String>): ReaderPreferences {

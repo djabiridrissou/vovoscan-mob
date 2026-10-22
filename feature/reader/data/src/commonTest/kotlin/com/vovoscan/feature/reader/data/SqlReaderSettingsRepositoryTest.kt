@@ -2,6 +2,7 @@ package com.vovoscan.feature.reader.data
 
 import com.vovoscan.core.testing.inMemoryDriver
 import com.vovoscan.feature.reader.data.db.ReaderDatabase
+import com.vovoscan.feature.reader.domain.LastRead
 import com.vovoscan.feature.reader.domain.ReaderPreferences
 import com.vovoscan.feature.reader.domain.ReadingMode
 import com.vovoscan.feature.reader.domain.ScrollAmount
@@ -82,5 +83,37 @@ class SqlReaderSettingsRepositoryTest {
             )
         assertEquals(ReaderPreferences(), decoded)
         assertEquals(ReaderPreferences(), SqlReaderSettingsRepository.decode(SqlReaderSettingsRepository.encode(ReaderPreferences())))
+    }
+
+    @Test
+    fun theLastChapterOfEachTitleIsKeptNewestFirstAndGoesWithTheSource() =
+        runTest {
+            val database = ReaderDatabase(inMemoryDriver(ReaderDatabase.Schema))
+            val io = StandardTestDispatcher(testScheduler)
+            val settings = SqlReaderSettingsRepository(database, io)
+            val local = SqlReaderLocalDataSource(database, io)
+            settings.recordRead(LastRead("mangadex", "a/b:c", "ch:1", 3, readAt = 100))
+            settings.recordRead(LastRead("vovoscan", "t1", "c1", 0, readAt = 200))
+            settings.recordRead(LastRead("vovoscan", "t1", "c2", 7, readAt = 300))
+            // Ids with "/" and ":" come back whole; one row per title, the latest.
+            assertEquals(
+                listOf(LastRead("vovoscan", "t1", "c2", 7, 300), LastRead("mangadex", "a/b:c", "ch:1", 3, 100)),
+                settings.observeHistory().first(),
+            )
+            // History rows are not preferences.
+            assertEquals(ReaderPreferences(), settings.observePreferences().first())
+            local.clearSource("mangadex")
+            assertEquals(listOf("t1"), settings.observeHistory().first().map { it.titleId })
+            local.clear()
+            assertEquals(emptyList(), settings.observeHistory().first())
+        }
+
+    @Test
+    fun aDamagedHistoryRowIsIgnored() {
+        assertNull(LastRead.decode("vovoscan/t1", "x:1:c"))
+        assertNull(LastRead.decode("vovoscan/t1", "1:-2:c"))
+        assertNull(LastRead.decode("vovoscan/t1", "1:2:"))
+        assertNull(LastRead.decode("vovoscan", "1:2:c"))
+        assertEquals(LastRead("s", "t", "c", 2, 1), LastRead.decode("s/t", "1:2:c"))
     }
 }

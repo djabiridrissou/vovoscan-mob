@@ -12,11 +12,16 @@ import com.vovoscan.feature.catalog.domain.CatalogRepository
 import com.vovoscan.feature.catalog.domain.ContentKind
 import com.vovoscan.feature.catalog.domain.INTERNAL_SOURCE
 import com.vovoscan.feature.catalog.domain.ReadingFormat
+import com.vovoscan.feature.catalog.domain.ReadingResume
+import com.vovoscan.feature.catalog.domain.ResumePoint
 import com.vovoscan.feature.catalog.domain.TitleDetail
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -27,6 +32,20 @@ data class ChapterRow(
     val label: String,
     /** "19 pages". */
     val meta: String,
+    /** The chapter this account was reading last. */
+    val current: Boolean = false,
+)
+
+/** The title page's main action: where reading picks up ("Continue reading") or starts ("Start reading"). */
+data class ReadAction(
+    val chapterId: String,
+    /** The page to open at (0 = the first). */
+    val page: Int,
+    /** "Continue reading" or "Start reading". */
+    val label: String,
+    /** "Chapter 4 · The Well ✦ page 12" or "Chapter 1". */
+    val detail: String,
+    val resumes: Boolean,
 )
 
 data class TitleDetailUiState(
@@ -39,7 +58,12 @@ data class TitleDetailUiState(
     /** "WEBTOON ✦ Ongoing ✦ A. Author". */
     val meta: String = "",
     val genres: List<String> = emptyList(),
+    /** In the order chosen: oldest first (chapter 1 on top) by default. */
     val chapters: List<ChapterRow> = emptyList(),
+    val newestFirst: Boolean = false,
+    /** The chapter ids in reading order (oldest first), whatever the list's order. */
+    val readingOrder: List<String> = emptyList(),
+    val readAction: ReadAction? = null,
     val freshness: Freshness = Freshness.Refreshing,
     /** Title never opened and no network: nothing to show. */
     val unavailable: Boolean = false,
@@ -59,11 +83,19 @@ data class TitleDetailUiState(
     /** "Chapter 98 · The last gate" for a chapter of this title; "" when unknown. */
     fun chapterLabel(chapterId: String): String = chapters.firstOrNull { it.id == chapterId }?.label.orEmpty()
 
-    /** The chapter after [chapterId] in reading order (the list runs newest to oldest); null for the latest. */
+    /** The chapter after [chapterId] in reading order, whatever the list's order; null for the latest. */
     fun nextChapterId(chapterId: String): String? {
-        val index = chapters.indexOfFirst { it.id == chapterId }
-        return if (index > 0) chapters[index - 1].id else null
+        val index = readingOrder.indexOf(chapterId)
+        return if (index >= 0) readingOrder.getOrNull(index + 1) else null
     }
+
+    /** The order toggle: "Oldest first" / "Newest first", the order shown now. */
+    val orderLabel: String get() = if (newestFirst) t("catalog.newestFirst") else t("catalog.oldestFirst")
+}
+
+sealed interface TitleDetailIntent {
+    /** Chapter 1 on top, or the latest on top; remembered on this device for every title. */
+    data object ToggleOrder : TitleDetailIntent
 }
 
 /** Title page: name, description, chapters. Readable offline once it has been opened. */
@@ -71,21 +103,34 @@ class TitleDetailViewModel(
     private val sourceKey: String,
     private val titleId: String,
     private val repository: CatalogRepository,
+    private val resume: ReadingResume = ReadingResume { flowOf(emptyList()) },
 ) : ViewModel() {
     private val mutableState = MutableStateFlow(TitleDetailUiState())
     val state: StateFlow<TitleDetailUiState> = mutableState.asStateFlow()
     private var known = false
 
     init {
-        repository
-            .observeTitle(sourceKey, titleId)
-            .onEach { detail ->
-                if (detail != null) {
-                    known = true
-                    mutableState.update { it.show(detail) }
-                }
-            }.launchIn(viewModelScope)
+        val point = resume.observe().map { points -> points.firstOrNull { it.sourceKey == sourceKey && it.titleId == titleId } }
+        combine(repository.observeTitle(sourceKey, titleId), repository.observeNewestFirst(), point) { detail, newestFirst, at ->
+            Triple(detail, newestFirst, at)
+        }.onEach { (detail, newestFirst, at) ->
+            if (detail != null) {
+                known = true
+                mutableState.update { it.show(detail, newestFirst, at) }
+            } else {
+                mutableState.update { it.copy(newestFirst = newestFirst) }
+            }
+        }.launchIn(viewModelScope)
         refresh()
+    }
+
+    fun onIntent(intent: TitleDetailIntent) {
+        when (intent) {
+            TitleDetailIntent.ToggleOrder -> {
+                val next = !state.value.newestFirst
+                viewModelScope.launch { repository.saveNewestFirst(next) }
+            }
+        }
     }
 
     fun refresh() {
@@ -111,8 +156,54 @@ class TitleDetailViewModel(
 
     // The saved copy can arrive after a refresh already failed (offline answers at once): it is no longer
     // "not saved", and the banner says why it isn't fresh.
-    private fun TitleDetailUiState.show(detail: TitleDetail) =
-        copy(
+    private fun TitleDetailUiState.show(
+        detail: TitleDetail,
+        newestFirst: Boolean,
+        at: ResumePoint?,
+    ): TitleDetailUiState {
+        val isBook = detail.summary.kind == ContentKind.Book
+        // The source lists newest to oldest; reading goes the other way.
+        val inOrder = detail.chapters.asReversed()
+        val rows =
+            inOrder.map { chapter ->
+                if (isBook) {
+                    ChapterRow(
+                        id = chapter.id,
+                        label = chapter.name ?: t("reader.part", "n" to chapter.label),
+                        meta = t("reader.modeBook"),
+                        current = chapter.id == at?.chapterId,
+                    )
+                } else {
+                    ChapterRow(
+                        id = chapter.id,
+                        label = chapterLabel(chapter.label, chapter.name),
+                        meta = if (chapter.pageCount == 0) "" else t("catalog.pages", "count" to chapter.pageCount),
+                        current = chapter.id == at?.chapterId,
+                    )
+                }
+            }
+        val resumed = at?.let { point -> rows.firstOrNull { it.id == point.chapterId } }
+        val readAction =
+            when {
+                resumed != null && at != null ->
+                    ReadAction(
+                        chapterId = resumed.id,
+                        page = at.page,
+                        label = t("catalog.continueReading"),
+                        detail =
+                            if (at.page >
+                                0
+                            ) {
+                                t("catalog.resumeAt", "chapter" to resumed.label, "page" to at.page + 1)
+                            } else {
+                                resumed.label
+                            },
+                        resumes = true,
+                    )
+                rows.isNotEmpty() -> ReadAction(rows.first().id, 0, t("catalog.startReading"), rows.first().label, resumes = false)
+                else -> null
+            }
+        return copy(
             unavailable = false,
             error = if (stale != null) null else error,
             sourceKey = detail.summary.sourceKey,
@@ -131,23 +222,12 @@ class TitleDetailViewModel(
                     detail.authors.joinToString(", ").ifBlank { null },
                 ).joinToString(" ✦ "),
             genres = detail.genres,
-            chapters =
-                detail.chapters.map { chapter ->
-                    if (detail.summary.kind == ContentKind.Book) {
-                        ChapterRow(
-                            id = chapter.id,
-                            label = chapter.name ?: t("reader.part", "n" to chapter.label),
-                            meta = t("reader.modeBook"),
-                        )
-                    } else {
-                        ChapterRow(
-                            id = chapter.id,
-                            label = chapterLabel(chapter.label, chapter.name),
-                            meta = if (chapter.pageCount == 0) "" else t("catalog.pages", "count" to chapter.pageCount),
-                        )
-                    }
-                },
+            chapters = if (newestFirst) rows.asReversed() else rows,
+            newestFirst = newestFirst,
+            readingOrder = rows.map { it.id },
+            readAction = readAction,
         )
+    }
 }
 
 /**

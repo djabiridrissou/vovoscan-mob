@@ -193,6 +193,7 @@ class SqlReaderLocalDataSource(
                 queries.clearChaptersOf(sourceKey)
                 queries.clearSeriesModesOf(sourceKey)
                 queries.clearPositionsOf("pos/$sourceKey/%")
+                queries.clearPositionsOf("last/$sourceKey/%")
             }
         }
 }

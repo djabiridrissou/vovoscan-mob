@@ -148,7 +148,24 @@ class ReaderViewModelTest {
             advanceTimeBy(200)
             vm.onIntent(ReaderIntent.PageVisible(2))
             advanceUntilIdle()
-            assertEquals(listOf("gutenberg" to 2), saved)
+            // Opening the chapter counts (for "Continue reading"), then the page the reader settled on.
+            assertEquals(listOf("gutenberg" to 0, "gutenberg" to 2), saved)
+        }
+
+    @Test
+    fun openingAChapterRecordsItOnceEvenWhenTheModeChanges() =
+        runTest(dispatcher) {
+            val saved = mutableListOf<Int>()
+            val settings = FakeSettings()
+            val vm =
+                ReaderViewModel("vovoscan", "t1", "c1", 3, FakeReader(comic, AppResult.Ok(Unit)), settings, noHeadings) { _, _, _, page ->
+                    saved +=
+                        page
+                }
+            advanceUntilIdle()
+            vm.onIntent(ReaderIntent.SetMode(ReadingMode.PagedVertical))
+            advanceUntilIdle()
+            assertEquals(listOf(3), saved)
         }
 
     @Test

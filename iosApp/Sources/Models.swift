@@ -190,6 +190,8 @@ final class TitleModel: ObservableObject {
 
     func toggleFollow() { following.toggle(name: state.name, coverUrl: state.coverUrl) }
 
+    func toggleOrder() { detail.onIntent(intent: TitleDetailIntentToggleOrder.shared) }
+
     deinit { owner.clear() }
 }
 

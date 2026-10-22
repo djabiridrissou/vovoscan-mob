@@ -795,6 +795,8 @@ class ReaderViewModel(
         (current.items[item] as? ReaderItem.Page)?.let { moveTo(it.page.index) }
     }
 
+    private var opened = false
+
     private fun show(
         chapter: ReaderChapter?,
         preferences: ReaderPreferences,
@@ -805,6 +807,11 @@ class ReaderViewModel(
         if (chapter == null) {
             mutableState.update { it.copy(preferences = preferences) }
             return
+        }
+        if (!opened) {
+            // Opening a chapter is reading it: "Continue reading" brings the reader back here even before a page turns.
+            opened = true
+            progress.save(sourceKey, titleId, chapterId, state.value.currentIndex)
         }
         val pages = sized(chapter.pages)
         // The format as recognised: what the source says, unless the pages themselves are a vertical strip.

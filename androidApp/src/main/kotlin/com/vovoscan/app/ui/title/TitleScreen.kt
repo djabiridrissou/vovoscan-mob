@@ -37,6 +37,7 @@ import com.vovoscan.app.ui.downloads.DownloadControl
 import com.vovoscan.app.ui.sources.BrandAlert
 import com.vovoscan.app.ui.theme.Brand
 import com.vovoscan.core.common.i18n.I18n
+import com.vovoscan.feature.catalog.presentation.TitleDetailIntent
 import com.vovoscan.feature.catalog.presentation.TitleDetailViewModel
 import com.vovoscan.feature.library.presentation.FollowViewModel
 import com.vovoscan.feature.reader.presentation.DownloadAction
@@ -91,28 +92,33 @@ fun TitleScreen(
                 if (state.unavailable && state.canRetry) GhostButton(I18n.text("common.tryAgain"), detail::refresh)
                 Text(state.name, style = MaterialTheme.typography.headlineSmall)
                 Text(state.meta, style = MaterialTheme.typography.bodySmall)
-                // Resume where the reader left off, otherwise start at the first chapter (the list runs newest to oldest).
-                val resume = followState.resumeChapterId
-                when {
-                    resume != null ->
-                        PrimaryButton(
-                            followState.resumeLabel(state.isBook) ?: I18n.text("library.continueArrow"),
-                            { onRead(resume, followState.resumePage) },
-                        )
-                    state.chapters.isNotEmpty() ->
-                        PrimaryButton(if (state.isBook) I18n.text("catalog.readArrow") else I18n.text("catalog.startReading"), {
-                            onRead(state.chapters.last().id, 0)
-                        })
+                // Where this account left the title (this device or another), otherwise chapter 1.
+                state.readAction?.let { action ->
+                    PrimaryButton(action.label, { onRead(action.chapterId, action.page) })
+                    Text(action.detail, style = MaterialTheme.typography.bodySmall, color = Brand.Muted)
                 }
                 if (state.name.isNotEmpty()) GhostButton(followState.label, { follow.toggle(state.name, state.coverUrl) })
                 Text(state.synopsis, style = MaterialTheme.typography.bodyMedium)
                 if (state.genres.isNotEmpty()) Text(state.genres.joinToString(" ✦ "), style = MaterialTheme.typography.bodySmall)
                 DownloadsBlock(downloadState, downloads::onIntent) { confirmDelete = "*" }
                 if (state.chapters.isNotEmpty()) {
-                    Text(
-                        if (state.isBook) I18n.text("catalog.contents") else I18n.text("catalog.chapters"),
-                        style = MaterialTheme.typography.titleMedium,
-                    )
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            if (state.isBook) I18n.text("catalog.contents") else I18n.text("catalog.chapters"),
+                            style = MaterialTheme.typography.titleMedium,
+                            modifier = Modifier.weight(1f),
+                        )
+                        // Chapter 1 on top by default; one tap flips the list, remembered for every title.
+                        Text(
+                            "⇅ " + state.orderLabel,
+                            style = MaterialTheme.typography.labelLarge,
+                            color = Brand.Muted,
+                            modifier =
+                                Modifier
+                                    .clickable { detail.onIntent(TitleDetailIntent.ToggleOrder) }
+                                    .padding(8.dp),
+                        )
+                    }
                 }
             }
         }
@@ -123,7 +129,8 @@ fun TitleScreen(
                     .padding(horizontal = 20.dp)
                     .fillMaxWidth()
                     .background(Brand.Ink2, RoundedCornerShape(12.dp))
-                    .border(1.dp, Brand.Line, RoundedCornerShape(12.dp))
+                    // The chapter being read: a red edge, so the eye finds it in a long list.
+                    .border(if (chapter.current) 2.dp else 1.dp, if (chapter.current) Brand.Red else Brand.Line, RoundedCornerShape(12.dp))
                     .clickable { onRead(chapter.id, 0) }
                     .padding(16.dp),
                 verticalAlignment = Alignment.CenterVertically,

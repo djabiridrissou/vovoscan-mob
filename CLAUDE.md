@@ -137,6 +137,15 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   notice line (`CatalogNotices`): no network → the offline line; one source read → its own line as before; several →
   "Project Gutenberg isn't answering right now." / "X couldn't be read. It may need an update." (Retry when one is
   down). The others' titles show; offline, every saved listing shows.
+- Continue reading (`ReadingResume` port, wired in `shared`): every chapter opened is kept on the device for any title,
+  followed or not (`ReaderSettingsRepository.recordRead`, `reader_setting` rows `last/<source>/<title>` = `<ms>:<page>:<chapter>`,
+  erased with the account or the source), merged with the library's synced progress (`ResumePoints.merge`: the most
+  recent per title). The title page's main button is `readAction` ("Continue reading →" at the chapter and page, else
+  "Start reading →" at chapter 1), the chapter being read has a red edge; chapters are listed oldest first (chapter 1 on
+  top) with a toggle remembered on the device (`catalog_setting` `chapters_newest_first`); `nextChapterId` follows the
+  reading order whatever the list's order. The catalog shows the last title read on top (`resume`) and marks started
+  cards ("Reading"). Scrolled past the search field, it folds into a floating magnifier (bottom right) that floats the
+  field over the top of the catalog (iOS `onScrollGeometryChange`, Android the grid's first visible item).
 - Cards carry the source's name (small badge under the format badge). Screens: a "All sources ▾" / "2 sources ▾" /
   name button and a category button (red when they narrow the catalog) open a sheet (Android `ModalBottomSheet`, iOS
   `.sheet`): "All" + the sources with checkmarks, or "All categories" + the categories.

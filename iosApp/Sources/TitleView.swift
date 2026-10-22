@@ -52,15 +52,17 @@ struct TitleView: View {
                     }
                     Text(model.state.name).font(.brandDisplay(26)).foregroundStyle(Color.brandPaper)
                     Text(model.state.meta).font(.brandBody(13)).foregroundStyle(Color.brandMuted)
-                    // Resume where the reader left off, otherwise start at the first chapter (list runs newest to oldest).
-                    if let resume = model.follow.resumeChapterId {
-                        NavigationLink(value: read(resume, Int(model.follow.resumePage))) {
-                            Text(model.follow.resumeLabel(book: model.state.isBook) ?? L("library.continueArrow"))
+                    // Where this account left the title (this device or another), otherwise chapter 1.
+                    if let action = model.state.readAction {
+                        NavigationLink(value: read(action.chapterId, Int(action.page))) {
+                            VStack(spacing: 2) {
+                                Text(action.label)
+                                Text(action.detail).font(.brandBody(12, weight: .bold)).opacity(0.75).lineLimit(1)
+                            }
+                            .frame(maxWidth: .infinity)
                         }
                         .buttonStyle(PrimaryButtonStyle())
-                    } else if let first = model.state.chapters.last {
-                        NavigationLink(value: read(first.id)) { Text(model.state.isBook ? L("catalog.readArrow") : L("catalog.startReading")) }
-                            .buttonStyle(PrimaryButtonStyle())
+                        .accessibilityLabel("\(action.label) \(action.detail)")
                     }
                     if !model.state.name.isEmpty {
                         Button(model.follow.label) { model.toggleFollow() }.buttonStyle(GhostButtonStyle())
@@ -71,7 +73,20 @@ struct TitleView: View {
                     }
                     downloadsBlock
                     if !model.state.chapters.isEmpty {
-                        Text(model.state.isBook ? L("catalog.contents") : L("catalog.chapters")).font(.brandDisplay(18)).foregroundStyle(Color.brandPaper)
+                        HStack(alignment: .firstTextBaseline) {
+                            Text(model.state.isBook ? L("catalog.contents") : L("catalog.chapters")).font(.brandDisplay(18)).foregroundStyle(Color.brandPaper)
+                            Spacer()
+                            // Chapter 1 on top by default; one tap flips the list, remembered for every title.
+                            Button {
+                                Haptics.select()
+                                withAnimation(.snappy) { model.toggleOrder() }
+                            } label: {
+                                Label(model.state.orderLabel, systemImage: "arrow.up.arrow.down")
+                                    .font(.brandBody(13, weight: .bold))
+                                    .foregroundStyle(Color.brandMuted)
+                            }
+                            .buttonStyle(.plain)
+                        }
                     }
                     ForEach(model.state.chapters, id: \.id) { chapter in
                         let download = model.downloads.row(chapterId: chapter.id)
@@ -116,7 +131,8 @@ struct TitleView: View {
                         .padding(.leading, 16)
                         .padding(.trailing, download.action == .unavailable ? 16 : 6)
                         .background(Color.brandInk2, in: RoundedRectangle(cornerRadius: 12))
-                        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.brandLine, lineWidth: 1))
+                        // The chapter being read: a red edge, so the eye finds it in a long list.
+                        .overlay(RoundedRectangle(cornerRadius: 12).stroke(chapter.current ? Color.brandRed : Color.brandLine, lineWidth: chapter.current ? 2 : 1))
                     }
                 }
                 .padding(.horizontal, 20)
