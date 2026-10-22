@@ -5,12 +5,16 @@ struct LibraryView: View {
     let onSignOut: () -> Void
     @StateObject private var model = LibraryModel()
     @StateObject private var sources = SourcesModel()
+    // Three features side by side: the library, sources ("Source removed") and downloads (reader).
+    @StateObject private var downloads = DownloadsModel()
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
                 Kicker(text: "Library")
                 Text("Keep reading.").font(.brandDisplay(26)).foregroundStyle(Color.brandPaper)
+                NavigationLink(value: DownloadsRoute()) { Text(downloads.state.entryLabel + " →") }
+                    .buttonStyle(GhostButtonStyle())
                 if let notice = model.state.pendingNotice { OfflineNotice(text: notice) }
                 if let error = model.state.error { ErrorText(text: error) }
                 if model.state.empty {
@@ -53,10 +57,12 @@ struct LibraryView: View {
         .refreshable { model.send(LibraryIntentSync.shared) }
         .navigationDestination(for: TitleRoute.self) { TitleView(route: $0) }
         .navigationDestination(for: ReaderRoute.self) { ReaderContainer(route: $0) }
+        .navigationDestination(for: DownloadsRoute.self) { _ in DownloadsView() }
         // Two features side by side, unaware of each other: titles of a source no longer listed show "Source removed".
         .onAppear { model.send(LibraryIntentSourcesChanged(keys: sources.state.sourceKeys)) }
         .onChange(of: sources.state.sourceKeys) { _, keys in model.send(LibraryIntentSourcesChanged(keys: keys)) }
         .task { await model.observe() }
         .task { await sources.observe() }
+        .task { await downloads.observe() }
     }
 }

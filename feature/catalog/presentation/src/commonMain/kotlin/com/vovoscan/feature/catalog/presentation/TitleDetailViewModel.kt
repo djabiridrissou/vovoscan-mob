@@ -2,9 +2,9 @@ package com.vovoscan.feature.catalog.presentation
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.vovoscan.core.common.AppError
 import com.vovoscan.core.common.AppResult
 import com.vovoscan.core.common.Freshness
+import com.vovoscan.core.common.StaleReason
 import com.vovoscan.core.common.userMessage
 import com.vovoscan.feature.catalog.domain.CatalogRepository
 import com.vovoscan.feature.catalog.domain.ContentKind
@@ -42,7 +42,15 @@ data class TitleDetailUiState(
     /** Title never opened and no network: nothing to show. */
     val unavailable: Boolean = false,
     val error: String? = null,
+    /** Why the last reload failed while the saved page stays on screen. */
+    val stale: StaleReason? = null,
 ) {
+    /** "Offline: …", "Project Gutenberg isn't answering right now. Showing what's saved.", or rules that can't read it. */
+    val notice: String? get() = if (unavailable) null else stale?.notice(hasSaved = true)
+
+    /** A source that didn't answer may answer now: "Retry" (or "Try again" when nothing is saved). */
+    val canRetry: Boolean get() = stale?.canRetry == true
+
     /** A comic of our own catalog: each chapter can become a voiced episode (not books, not rule-based sources). */
     val offersEpisodes: Boolean get() = !isBook && sourceKey == INTERNAL_SOURCE && chapters.isNotEmpty()
 
@@ -79,25 +87,32 @@ class TitleDetailViewModel(
     }
 
     fun refresh() {
-        mutableState.update { it.copy(freshness = Freshness.Refreshing, error = null) }
+        mutableState.update { it.copy(freshness = Freshness.Refreshing, error = null, stale = null) }
         viewModelScope.launch {
             val result = repository.refreshTitle(sourceKey, titleId)
             mutableState.update {
                 when (result) {
                     is AppResult.Ok -> it.copy(freshness = Freshness.Fresh, unavailable = false)
-                    is AppResult.Err ->
+                    is AppResult.Err -> {
+                        val reason = StaleReason.of(result.error)
                         it.copy(
                             freshness = Freshness.Offline,
                             unavailable = !known,
-                            error = if (result.error == AppError.Network && known) null else result.error.userMessage(),
+                            stale = reason,
+                            error = if (reason != null && known) null else reason?.notice(hasSaved = false) ?: result.error.userMessage(),
                         )
+                    }
                 }
             }
         }
     }
 
+    // The saved copy can arrive after a refresh already failed (offline answers at once): it is no longer
+    // "not saved", and the banner says why it isn't fresh.
     private fun TitleDetailUiState.show(detail: TitleDetail) =
         copy(
+            unavailable = false,
+            error = if (stale != null) null else error,
             sourceKey = detail.summary.sourceKey,
             isBook = detail.summary.kind == ContentKind.Book,
             name = detail.summary.name,

@@ -1,9 +1,11 @@
 package com.vovoscan.shared
 
 import com.vovoscan.core.common.AppDispatchers
+import com.vovoscan.core.common.NetworkMonitor
 import com.vovoscan.core.network.ApiConfig
 import com.vovoscan.core.network.createHttpClient
 import com.vovoscan.core.network.platformHttpEngine
+import com.vovoscan.core.network.simulatingOffline
 import com.vovoscan.core.security.SecureKeys
 import com.vovoscan.core.security.SecureStore
 import com.vovoscan.core.sources.PluginLinkPolicy
@@ -16,6 +18,7 @@ import com.vovoscan.feature.auth.di.SignOutCleanup
 import com.vovoscan.feature.auth.di.authModule
 import com.vovoscan.feature.catalog.di.catalogModule
 import com.vovoscan.feature.catalog.domain.CatalogRepository
+import com.vovoscan.feature.catalog.domain.ContentKind
 import com.vovoscan.feature.episodes.di.episodesModule
 import com.vovoscan.feature.episodes.domain.EpisodesRepository
 import com.vovoscan.feature.episodes.domain.KeyStatus
@@ -25,8 +28,13 @@ import com.vovoscan.feature.library.domain.LibraryRepository
 import com.vovoscan.feature.reader.di.readerModule
 import com.vovoscan.feature.reader.domain.ChapterHeading
 import com.vovoscan.feature.reader.domain.ChapterHeadings
+import com.vovoscan.feature.reader.domain.DownloadableChapter
+import com.vovoscan.feature.reader.domain.DownloadableTitle
+import com.vovoscan.feature.reader.domain.DownloadsRepository
 import com.vovoscan.feature.reader.domain.ReaderRepository
 import com.vovoscan.feature.reader.domain.ReadingProgressSink
+import com.vovoscan.feature.reader.domain.TitleChapters
+import com.vovoscan.feature.reader.domain.chapterLabel
 import com.vovoscan.feature.sources.di.sourcesModule
 import com.vovoscan.feature.sources.domain.SourceRemovedListener
 import com.vovoscan.feature.sources.domain.SourcesRepository
@@ -34,6 +42,7 @@ import io.ktor.client.HttpClient
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
@@ -42,15 +51,18 @@ import org.koin.dsl.module
 
 /**
  * `apiBaseUrl` ends with "/" ("https://api.vovoscan.app/"). `allowLocalPlugins`: debug builds may add sources from a
- * local server (`http://localhost`, `http://127.0.0.1`, `http://10.0.2.2`).
+ * local server (`http://localhost`, `http://127.0.0.1`, `http://10.0.2.2`). `simulateOffline`: debug builds only,
+ * every request fails as with no network (the iOS simulator has no network switch of its own).
  */
 data class AppConfig(
     val apiBaseUrl: String,
     val allowLocalPlugins: Boolean = false,
+    val simulateOffline: Boolean = false,
 )
 
 /**
- * All Koin modules of the app; `platform` provides `DatabaseDriverFactory` and `SecureStore`.
+ * All Koin modules of the app; `platform` provides `DatabaseDriverFactory`, `SecureStore`, `NetworkMonitor` and
+ * `AppFolders`.
  * Each feature gets its local and remote sources from its own module (`di`).
  */
 fun appModules(
@@ -64,15 +76,24 @@ fun appModules(
             // Application scope: writes that must outlive the screen that starts them.
             single { CoroutineScope(SupervisorJob() + get<AppDispatchers>().io) }
             // Sources read on the device: a separate client, without the vovoscan session or automatic redirects.
-            single { RulesHttp(createRulesHttpClient(platformHttpEngine())) }
+            single {
+                val client = createRulesHttpClient(platformHttpEngine())
+                RulesHttp(
+                    if (config.simulateOffline) client.simulatingOffline() else client,
+                    getOrNull<NetworkMonitor>() ?: NetworkMonitor.AssumeOnline,
+                )
+            }
             single { PluginLinkPolicy(config.allowLocalPlugins) }
             single<HttpClient> {
                 val store = get<SecureStore>()
-                createHttpClient(platformHttpEngine(), ApiConfig(config.apiBaseUrl)) { store.get(SecureKeys.SESSION_TOKEN) }
+                val client = createHttpClient(platformHttpEngine(), ApiConfig(config.apiBaseUrl)) { store.get(SecureKeys.SESSION_TOKEN) }
+                if (config.simulateOffline) client.simulatingOffline() else client
             }
             // On sign-out, each feature erases its local copy (nothing stays on the device).
             single {
                 SignOutCleanup {
+                    // Downloaded pages first: their files go with the rows.
+                    get<DownloadsRepository>().clearLocal()
                     get<CatalogRepository>().clearLocal()
                     get<LibraryRepository>().clearLocal()
                     get<ReaderRepository>().clearLocal()
@@ -85,6 +106,7 @@ fun appModules(
             // reader caches go; library entries stay ("Source removed").
             single {
                 SourceRemovedListener { key ->
+                    get<DownloadsRepository>().clearSource(key)
                     get<CatalogRepository>().clearSource(key)
                     get<ReaderRepository>().clearSource(key)
                 }
@@ -107,6 +129,44 @@ fun appModules(
                         ?.chapters
                         ?.firstOrNull { it.id == chapterId }
                         ?.let { ChapterHeading(it.number, it.name) }
+                }
+            }
+            // Downloads on the title page: its chapters (catalog) and the chapter being read (library), for "Download next 5".
+            single<TitleChapters> {
+                val catalog = get<CatalogRepository>()
+                val library = get<LibraryRepository>()
+                TitleChapters { sourceKey, titleId ->
+                    combine(catalog.observeTitle(sourceKey, titleId), library.observe()) { detail, entries ->
+                        detail?.let {
+                            DownloadableTitle(
+                                sourceKey = sourceKey,
+                                titleId = titleId,
+                                titleName = it.summary.name,
+                                isBook = it.summary.kind == ContentKind.Book,
+                                // The title page runs newest to oldest; downloads go in reading order.
+                                chapters =
+                                    it.chapters.reversed().map { chapter ->
+                                        val label = listOfNotNull(chapterLabel(chapter.number), chapter.name).joinToString(" · ")
+                                        DownloadableChapter(
+                                            chapter.id,
+                                            chapter.number,
+                                            if (it.summary.kind ==
+                                                ContentKind.Book
+                                            ) {
+                                                chapter.name ?: label
+                                            } else {
+                                                label
+                                            },
+                                        )
+                                    },
+                                resumeChapterId =
+                                    entries
+                                        .firstOrNull { e ->
+                                            e.sourceKey == sourceKey && e.titleRef == titleId
+                                        }?.lastChapterRef,
+                            )
+                        }
+                    }
                 }
             }
             // Episodes show which of the user's keys a run would use, without knowing the account slice.

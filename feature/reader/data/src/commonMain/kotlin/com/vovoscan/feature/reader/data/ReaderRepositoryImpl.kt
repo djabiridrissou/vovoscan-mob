@@ -8,20 +8,60 @@ import com.vovoscan.feature.reader.domain.ReaderChapter
 import com.vovoscan.feature.reader.domain.ReaderRepository
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 
-/** Stale-while-revalidate for units; a book is downloaded once, opened here, then kept as sections. */
+/** Downloaded pages of a chapter on this device: page index → `file://` URL. */
+fun interface LocalPages {
+    fun observe(
+        sourceKey: String,
+        chapterId: String,
+    ): Flow<Map<Int, String>>
+
+    companion object {
+        val None = LocalPages { _, _ -> flowOf(emptyMap()) }
+    }
+}
+
+/** The download queue's pages, as files that are really on disk (a missing file falls back to the network). */
+class DownloadedPages(
+    private val downloads: DownloadsLocalDataSource,
+    private val files: PageFiles,
+) : LocalPages {
+    override fun observe(
+        sourceKey: String,
+        chapterId: String,
+    ): Flow<Map<Int, String>> =
+        downloads
+            .observePages(chapterKey(sourceKey, chapterId))
+            .map { found -> found.filterValues(files::exists).mapValues { (_, file) -> files.url(file) } }
+}
+
+/**
+ * Stale-while-revalidate for units; a book is downloaded once, opened here, then kept as sections. A downloaded
+ * comic chapter's pages are files on the device, shown before the network's.
+ */
 class ReaderRepositoryImpl(
     private val remote: ReaderRemoteDataSource,
     private val local: ReaderLocalDataSource,
     private val epub: EpubParser,
     private val io: CoroutineDispatcher,
+    private val localPages: LocalPages = LocalPages.None,
 ) : ReaderRepository {
     override fun observe(
         sourceKey: String,
         chapterId: String,
-    ): Flow<ReaderChapter?> = local.observe(sourceKey, chapterId)
+    ): Flow<ReaderChapter?> =
+        combine(local.observe(sourceKey, chapterId), localPages.observe(sourceKey, chapterId)) { chapter, files ->
+            if (chapter == null || files.isEmpty()) {
+                chapter
+            } else {
+                chapter.copy(pages = chapter.pages.map { page -> files[page.index]?.let { page.copy(url = it) } ?: page })
+            }
+        }
 
     override suspend fun refresh(
         sourceKey: String,

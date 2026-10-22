@@ -37,17 +37,22 @@ import com.vovoscan.app.ui.common.OfflineNotice
 import com.vovoscan.app.ui.theme.Brand
 import com.vovoscan.feature.library.presentation.LibraryIntent
 import com.vovoscan.feature.library.presentation.LibraryViewModel
+import com.vovoscan.feature.reader.presentation.DownloadsViewModel
 import com.vovoscan.feature.sources.presentation.SourcesViewModel
 import org.koin.compose.viewmodel.koinViewModel
 
 @Composable
 fun LibraryScreen(
     onOpenTitle: (sourceKey: String, titleId: String) -> Unit,
+    onOpenDownloads: () -> Unit,
     onSignOut: () -> Unit,
     viewModel: LibraryViewModel = koinViewModel(),
     sources: SourcesViewModel = koinViewModel(),
+    downloads: DownloadsViewModel = koinViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    // Three features side by side: the library, sources (for "Source removed") and downloads (reader).
+    val downloadsState by downloads.state.collectAsStateWithLifecycle()
     // Two features side by side, unaware of each other: titles of a source no longer listed show "Source removed".
     val sourcesState by sources.state.collectAsStateWithLifecycle()
     val sourceKeys = sourcesState.sourceKeys
@@ -61,6 +66,7 @@ fun LibraryScreen(
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Kicker("Library")
                 Text("Keep reading.", style = MaterialTheme.typography.headlineSmall)
+                GhostButton(downloadsState.entryLabel + " →", onOpenDownloads)
                 state.pendingNotice?.let { OfflineNotice(it) }
                 state.error?.let { ErrorText(it) }
                 if (state.empty) Text(state.emptyMessage, style = MaterialTheme.typography.bodyMedium)

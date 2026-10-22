@@ -2,9 +2,9 @@ package com.vovoscan.feature.reader.presentation
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.vovoscan.core.common.AppError
 import com.vovoscan.core.common.AppResult
 import com.vovoscan.core.common.Freshness
+import com.vovoscan.core.common.StaleReason
 import com.vovoscan.core.common.userMessage
 import com.vovoscan.feature.reader.domain.BookSection
 import com.vovoscan.feature.reader.domain.ChapterHeading
@@ -655,7 +655,12 @@ class ReaderViewModel(
                         it.copy(
                             freshness = Freshness.Offline,
                             unavailable = nothing && it.titleName.isEmpty(),
-                            error = if (result.error == AppError.Network && !nothing) null else result.error.userMessage(),
+                            // Saved pages on screen: offline or a source that didn't answer is no error; with nothing
+                            // saved, it says which ("You're offline.", "Project Gutenberg isn't answering right now.").
+                            error =
+                                StaleReason.of(result.error).let { reason ->
+                                    if (reason != null && !nothing) null else reason?.notice(hasSaved = false) ?: result.error.userMessage()
+                                },
                         )
                     }
                 }

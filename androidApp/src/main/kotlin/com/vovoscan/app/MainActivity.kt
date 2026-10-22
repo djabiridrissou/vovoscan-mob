@@ -7,13 +7,16 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -21,11 +24,15 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.vovoscan.app.ui.catalog.CatalogScreen
+import com.vovoscan.app.ui.common.AppIcons
+import com.vovoscan.app.ui.downloads.DownloadsScreen
 import com.vovoscan.app.ui.episode.EpisodeScreen
 import com.vovoscan.app.ui.library.LibraryScreen
 import com.vovoscan.app.ui.player.PlayerScreen
@@ -85,13 +92,15 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+/** The four tabs, an icon over each label (the iOS tab bar's symbols, drawn in `AppIcons`). */
 private enum class Tab(
     val label: String,
+    val icon: () -> ImageVector,
 ) {
-    Catalog("Catalog"),
-    Library("Library"),
-    Sources("Sources"),
-    Settings("Settings"),
+    Catalog("Catalog", { AppIcons.Catalog }),
+    Library("Library", { AppIcons.Library }),
+    Sources("Sources", { AppIcons.Sources }),
+    Settings("Settings", { AppIcons.Settings }),
 }
 
 /**
@@ -104,6 +113,8 @@ private fun Root(session: SessionViewModel = koinViewModel()) {
     var tab by rememberSaveable { mutableStateOf(Tab.Catalog) }
     // Open title page: "source|title".
     var openTitle by rememberSaveable { mutableStateOf<String?>(null) }
+    // Downloads screen open (Library tab).
+    var openDownloads by rememberSaveable { mutableStateOf(false) }
     // Open sources screen (Sources tab): "add-source", "add-source|repository id" or "source-detail|source key".
     var openSource by rememberSaveable { mutableStateOf<String?>(null) }
     // Open reader: "source|title|chapter|start page" (`ReaderViewModel.START_AT_END`: from its last page).
@@ -177,6 +188,9 @@ private fun Root(session: SessionViewModel = koinViewModel()) {
                     onRead = { chapter, page -> openReader = "${title[0]}|${title[1]}|$chapter|$page" },
                     onEpisode = { openEpisode = it },
                 )
+            } else if (tab == Tab.Library && openDownloads) {
+                BackHandler { openDownloads = false }
+                DownloadsScreen(onBack = { openDownloads = false }, onOpenTitle = { source, id -> openTitle = "$source|$id" })
             } else if (tab == Tab.Sources && source != null) {
                 BackHandler { openSource = null }
                 when (source[0]) {
@@ -191,7 +205,12 @@ private fun Root(session: SessionViewModel = koinViewModel()) {
             } else {
                 when (tab) {
                     Tab.Catalog -> CatalogScreen(onOpenTitle = { source, id -> openTitle = "$source|$id" })
-                    Tab.Library -> LibraryScreen(onOpenTitle = { source, id -> openTitle = "$source|$id" }, onSignOut = session::signOut)
+                    Tab.Library ->
+                        LibraryScreen(
+                            onOpenTitle = { source, id -> openTitle = "$source|$id" },
+                            onOpenDownloads = { openDownloads = true },
+                            onSignOut = session::signOut,
+                        )
                     Tab.Sources ->
                         SourcesScreen(
                             onAdd = { repository -> openSource = if (repository == null) "add-source" else "add-source|$repository" },
@@ -204,20 +223,26 @@ private fun Root(session: SessionViewModel = koinViewModel()) {
         Row(Modifier.fillMaxWidth().background(Brand.Ink2)) {
             Tab.entries.forEach { entry ->
                 val selected = entry == tab && openTitle == null && (entry != Tab.Sources || openSource == null)
-                Text(
-                    entry.label,
-                    style = MaterialTheme.typography.labelLarge.copy(color = if (selected) Brand.Red else Brand.Muted),
-                    textAlign = TextAlign.Center,
-                    modifier =
-                        Modifier
-                            .weight(1f)
-                            .clickable {
-                                tab = entry
-                                openTitle = null
-                                openEpisode = null
-                                openSource = null
-                            }.padding(vertical = 16.dp),
-                )
+                val color = if (selected) Brand.Red else Brand.Muted
+                Column(
+                    Modifier
+                        .weight(1f)
+                        .clickable {
+                            tab = entry
+                            openTitle = null
+                            openEpisode = null
+                            openSource = null
+                            openDownloads = false
+                        }.padding(top = 10.dp, bottom = 8.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(3.dp),
+                ) {
+                    Icon(entry.icon(), contentDescription = null, tint = color, modifier = Modifier.size(24.dp))
+                    Text(
+                        entry.label,
+                        style = MaterialTheme.typography.labelSmall.copy(color = color, fontSize = 11.sp, letterSpacing = 0.4.sp),
+                    )
+                }
             }
         }
     }

@@ -7,9 +7,11 @@ struct TitleRoute: Hashable {
     let titleId: String
 }
 
-/// Title page. Details (catalog) and following (library) share it, unaware of each other.
+/// Title page. Details (catalog), following (library) and downloads (reader) share it, unaware of each other.
 struct TitleView: View {
     @StateObject private var model: TitleModel
+    /// A delete waiting for its confirmation: a chapter id, or "*" for every download of the title.
+    @State private var confirmDelete: String?
 
     private let route: TitleRoute
 
@@ -35,7 +37,13 @@ struct TitleView: View {
                     if model.state.unavailable {
                         Text("This title isn't saved on this device yet.").font(.brandBody(15)).foregroundStyle(Color.brandPaper)
                     }
+                    if let notice = model.state.notice {
+                        OfflineNotice(text: notice, onRetry: model.state.canRetry ? { model.refresh() } : nil)
+                    }
                     if let error = model.state.error { ErrorText(text: error) }
+                    if model.state.unavailable && model.state.canRetry {
+                        Button("Try again") { model.refresh() }.buttonStyle(GhostButtonStyle())
+                    }
                     Text(model.state.name).font(.brandDisplay(26)).foregroundStyle(Color.brandPaper)
                     Text(model.state.meta).font(.brandBody(13)).foregroundStyle(Color.brandMuted)
                     // Resume where the reader left off, otherwise start at the first chapter (list runs newest to oldest).
@@ -55,15 +63,23 @@ struct TitleView: View {
                     if !model.state.genres.isEmpty {
                         Text(model.state.genres.joined(separator: " ✦ ")).font(.brandBody(13)).foregroundStyle(Color.brandMuted)
                     }
+                    downloadsBlock
                     if !model.state.chapters.isEmpty {
                         Text(model.state.isBook ? "Contents" : "Chapters").font(.brandDisplay(18)).foregroundStyle(Color.brandPaper)
                     }
                     ForEach(model.state.chapters, id: \.id) { chapter in
+                        let download = model.downloads.row(chapterId: chapter.id)
                         HStack(spacing: 10) {
                             NavigationLink(value: read(chapter.id)) {
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(chapter.label).font(.brandBody(15)).foregroundStyle(Color.brandPaper)
-                                    Text(chapter.meta).font(.brandBody(13)).foregroundStyle(Color.brandMuted)
+                                    if !chapter.meta.isEmpty {
+                                        Text(chapter.meta).font(.brandBody(13)).foregroundStyle(Color.brandMuted)
+                                    }
+                                    if let text = download.text {
+                                        Text(text).font(.brandBody(13))
+                                            .foregroundStyle(download.status == .failed ? Color.brandDanger : Color.brandMuted)
+                                    }
                                 }
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .contentShape(Rectangle())
@@ -82,8 +98,17 @@ struct TitleView: View {
                                 }
                                 .buttonStyle(.plain)
                             }
+                            DownloadControl(row: download) {
+                                if download.action == .delete {
+                                    confirmDelete = chapter.id
+                                } else {
+                                    model.send(TitleDownloadsIntentAct(chapterId: chapter.id))
+                                }
+                            }
                         }
-                        .padding(16)
+                        .padding(.vertical, 16)
+                        .padding(.leading, 16)
+                        .padding(.trailing, download.action == .unavailable ? 16 : 6)
                         .background(Color.brandInk2, in: RoundedRectangle(cornerRadius: 12))
                         .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.brandLine, lineWidth: 1))
                     }
@@ -96,5 +121,47 @@ struct TitleView: View {
         .navigationDestination(for: EpisodeRoute.self) { EpisodeContainer(route: $0) }
         .task { await model.observe() }
         .task { await model.observeFollow() }
+        .task { await model.observeDownloads() }
+        .alert(
+            confirmDelete == "*" ? "Delete the downloads?" : "Delete this download?",
+            isPresented: Binding(get: { confirmDelete != nil }, set: { if !$0 { confirmDelete = nil } }),
+            presenting: confirmDelete
+        ) { target in
+            Button("Delete", role: .destructive) {
+                model.send(target == "*" ? TitleDownloadsIntentDeleteAll.shared : TitleDownloadsIntentAct(chapterId: target))
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: { target in
+            Text(
+                target == "*"
+                    ? "Every chapter of \(model.state.name) saved on this device goes. Reading them will need the network again."
+                    : "\(model.state.chapterLabel(chapterId: target)) will need the network again."
+            )
+        }
+    }
+
+    /// Downloads of the title: what is on the device, why the queue waits, "Download next 5", "Download all", delete.
+    @ViewBuilder private var downloadsBlock: some View {
+        let downloads = model.downloads
+        if let summary = downloads.summary {
+            Text(summary).font(.brandBody(13)).foregroundStyle(Color.brandMuted)
+        }
+        if let notice = downloads.notice { OfflineNotice(text: notice) }
+        if downloads.offersDownloads {
+            if downloads.downloadNextLabel != nil || downloads.downloadAllLabel != nil {
+                HStack(spacing: 10) {
+                    if let next = downloads.downloadNextLabel {
+                        Button(next) { model.send(TitleDownloadsIntentDownloadNext.shared) }.buttonStyle(GhostButtonStyle())
+                    }
+                    if let all = downloads.downloadAllLabel {
+                        Button(all) { model.send(TitleDownloadsIntentDownloadAll.shared) }.buttonStyle(GhostButtonStyle())
+                    }
+                }
+            }
+            if downloads.canDeleteAll {
+                Button("Delete downloads") { confirmDelete = "*" }
+                    .font(.brandBody(13, weight: .bold)).foregroundStyle(Color.brandMuted)
+            }
+        }
     }
 }

@@ -1,6 +1,7 @@
 package com.vovoscan.feature.catalog.data
 
 import app.cash.turbine.test
+import com.vovoscan.core.common.AppError
 import com.vovoscan.core.common.AppResult
 import com.vovoscan.core.sources.ManifestProvider
 import com.vovoscan.core.sources.RulesHttp
@@ -58,6 +59,9 @@ class CatalogRepositoryImplTest {
             }
         }
 
+    /** The on-device source's site answers 503. */
+    private var deviceDown = false
+
     private fun TestScope.repository(
         apiHandler:
             suspend io.ktor.client.engine.mock.MockRequestHandleScope.(
@@ -68,6 +72,7 @@ class CatalogRepositoryImplTest {
             SqlCatalogLocalDataSource(CatalogDatabase(inMemoryDriver(CatalogDatabase.Schema)), StandardTestDispatcher(testScheduler))
         val device =
             MockEngine { request ->
+                if (deviceDown) return@MockEngine respond("", HttpStatusCode.ServiceUnavailable)
                 val body =
                     when (request.url.encodedPath) {
                         "/list" -> """{"items":[{"id":7,"title":"Old Tales"}],"next":null}"""
@@ -136,6 +141,18 @@ class CatalogRepositoryImplTest {
             assertEquals("t1", result.titles.single().id)
             // Searching "books" never sees the vovoscan titles.
             assertTrue(repo.search("books", "ink").titles.all { it.sourceKey == "books" && it.id != "t1" })
+        }
+
+    @Test
+    fun aSourceThatIsDownIsNamedAndSearchUsesWhatIsSaved() =
+        runTest {
+            val repo = repository { error("unused") }
+            repo.refreshTitles("books")
+            deviceDown = true
+            assertEquals(AppResult.Err(AppError.SourceUnavailable("Books")), repo.refreshTitles("books"))
+            val found = repo.search("books", "old")
+            assertTrue(found.offline)
+            assertEquals("Books" to "7", found.unavailableSource to found.titles.single().id)
         }
 
     @Test

@@ -19,6 +19,10 @@ The iOS deployment target is **iOS 18.4** (`iosApp/project.yml`): the first iOS 
 (see "iOS audio" below).
 
 Local API: `http://10.0.2.2:8000/` (Android emulator), `http://localhost:8000/` (iOS simulator).
+No network on the iOS simulator (it shares the Mac's network and has no switch): a debug build launched with
+`SIMCTL_CHILD_VOVOSCAN_OFFLINE=1 xcrun simctl launch <device> com.vovoscan.app.dev` behaves as offline
+(`AppConfig.simulateOffline`: both Ktor clients fail every request, `NetworkMonitor` says offline, a `URLProtocol` fails
+http(s) for AsyncImage; `file://` pages still load). The Android emulator has airplane mode.
 Another address: `./gradlew :androidApp:assembleDebug -Pvovoscan.apiBaseUrl=https://…/`.
 On the Android 17 (API 37) emulator the app's requests to `10.0.2.2` never reached the local API (the emulator itself
 could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://localhost:8000/` works.
@@ -31,9 +35,9 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
     both behind an interface, injected into `…RepositoryImpl`.
   - `presentation`: shared ViewModels (state + intents). All screen logic lives here.
   - `di`: the feature's Koin module (sources, repository, ViewModels).
-- `core/`: `common` (AppResult, AppError, Freshness, Clock), `network` (Ktor client, API envelopes),
-  `database` (SQLDelight driver), `security` (Keystore / Keychain), `sources` (engine for sources read on the
-  device), `testing` (fakes).
+- `core/`: `common` (AppResult, AppError, Freshness, StaleReason, Clock, NetworkMonitor), `network` (Ktor client, API
+  envelopes, `AndroidNetworkMonitor` / `IosNetworkMonitor`), `database` (SQLDelight driver, `AppFolders`), `security`
+  (Keystore / Keychain), `sources` (engine for sources read on the device), `testing` (fakes).
 - `shared/` wires everything for both apps and exports the iOS "Shared" framework (SKIE).
 - Rules checked at Gradle configuration time (`build-logic/.../ModuleGraph.kt`): a feature never depends on
   another; `domain` sees only `:core:common`; `presentation` sees only its `domain`; `data` does not see its
@@ -44,6 +48,14 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
 
 - Screens read the local database (`Flow`), never the network directly. `refresh…` replaces the local copy with
   the server's response; without network, the copy stays on screen with a discreet banner (`Freshness.Offline`).
+- Why a refresh failed (`StaleReason.of(error)`, `core/common`), so the banner says the truth: no network at all →
+  "Offline: showing what's saved on this device."; a source read on the device that doesn't answer while the device is
+  online (`AppError.SourceUnavailable(name)`: site down, error status, timeout) → "Project Gutenberg isn't answering
+  right now. Showing what's saved." with Retry; rules that can't read the site (`SOURCE_RULES`) → "This source couldn't
+  be read. It may need an update." With nothing saved, the same line without "Showing what's saved" ("You're
+  offline."). Catalog (`offlineNotice`, `canRetry`; search falls back to saved titles too), title page (`notice`,
+  `canRetry`), reader (the "not saved yet" line). Online or not comes from `NetworkMonitor` (Android
+  `ConnectivityManager`, `ACCESS_NETWORK_STATE`; iOS `NWPathMonitor`). The internal source keeps the offline banner.
 - Writes (library): applied locally right away, queued (`outbox`, one operation per title), sent by `sync()` with
   the time of the action. The server settles conflicts (last-write-wins) and returns the winning state;
   `updatedSince` fetches changes from other devices, deletions included.
@@ -65,7 +77,11 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   page, pages, book URL). Catalog pagination: plain `{{page}}`, `startIndex` (`base + (page-1)*pageSize`) and
   `cursor` (next-page value extracted from each response, sent as a query parameter).
 - `RulesHttp`: a separate client, **without the vovoscan session or cookies**, redirects followed by hand and
-  limited to declared hosts (manifest + URL-type settings), rate capped by the manifest.
+  limited to declared hosts (manifest + URL-type settings), rate capped by the manifest. A failure is `Network` only
+  when `NetworkMonitor` says the device is offline; otherwise (exception, timeout, any error status)
+  `SourceUnavailable(manifest name)`. The API client sends the session only to the API's own host.
+- Regexes in shared code: escape `{` and `}` (`\{\{…\}\}`). Android's ICU engine rejects a bare `}` that the JVM
+  tests and iOS accept: `Template`'s placeholder regex made every rule-based source crash the Android app.
 - Catalog, title pages and chapters are keyed by `(sourceKey, id)`: two sources never mix.
   The catalog follows the first visible source until the reader picks another one (`SourcesChanged`).
 - Tests: `core/sources/src/commonTest/.../Fixtures.kt` copies the manifests (change them with `vovo-plugin`).
@@ -89,7 +105,41 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
 - Progress goes through the `ReadingProgressSink` port, wired to the library in `shared`: the reader does not
   know about `library`. It is kept only for a followed title.
 - Images are signed URLs, unchanged for a day: the image cache serves pages already seen.
-  Downloading chapters for full offline reading is still to do.
+
+## Downloads (offline reading)
+
+- In the reader slice (it knows how to get a chapter's pages from both engines): `DownloadsRepository` (domain),
+  `DownloadsRepositoryImpl` + `SqlDownloadsLocalDataSource` + `PageFiles` (data), `TitleDownloadsViewModel` and
+  `DownloadsViewModel` (presentation). Tables `download` (queue: state `queued | waiting | downloading | done | failed`,
+  page count, error, time asked) and `download_page` (page index → file path relative to the folder, bytes); migration
+  `3.sqm`. Wi-Fi only is `download_wifi_only` in `reader_setting` (on by default).
+- Storage: the app's own storage, never the photo library. Android `files/downloads`, iOS
+  `Library/Application Support/Downloads` (excluded from iCloud backup), from `AppFolders` (`core/database`). Layout
+  `<sha256(sourceKey)[0..24]>/<sha256(sourceKey/chapterId)[0..24]>/0007.webp` (extension from the image's signature):
+  third-party ids never become paths, a source or a chapter is one folder. Paths are kept relative (the iOS container
+  moves with app updates). Each page is written to `.part` then moved into place.
+- Queue: in the app's `CoroutineScope`, one chapter at a time, page by page; resumed at launch (`resume()`, from
+  `VovoscanApplication` / `initKoin`), interrupted chapters start again at their first missing page. It runs while the
+  app runs (no WorkManager / background URLSession). Each chapter is fetched again first (`remote.chapter`, saved for
+  the reader), then its pages through `ReaderRemoteDataSource.download`: signed API links (internal source) or the
+  source's hosts through `RulesHttp` (allowed hosts only, never the session). Every change to a chapter's rows and files
+  happens under one lock: a chapter removed while it downloads leaves nothing behind.
+- Network: no connection, or "Wi-Fi only" on a metered network (`NetworkState.unmetered`: Android `NOT_METERED`, iOS not
+  expensive and not constrained; a personal hotspot counts as mobile data) → `waiting`, and it carries on by itself.
+  A failure while online → `failed` with the reason ("The download stopped. Try again.", or the source's refusal);
+  "Retry" queues it again.
+- Reader: local files first. `ReaderRepositoryImpl` maps a downloaded page to its `file://` URL (percent-encoded) when
+  the file is on disk, else keeps the network URL. Coil and AsyncImage read `file://` URLs.
+- Books need no download: opened once, their sections are in the database; the title page and Downloads show them as
+  "Saved on this device" (size of the sections), and deleting removes the sections.
+- Title page (catalog + reader, wired by the app; `TitleChapters` port in `shared`: chapters from the catalog, the
+  chapter being read from the library): a control per chapter (download arrow; cyan progress ring with a stop square;
+  check = downloaded, tap to delete after a confirmation; failed = retry), "Download next 5" (from the chapter being
+  read, else from the first, skipping what is on the device), "Download all (n)" (when more than the next ones),
+  "Delete downloads" (confirmed), a summary ("3 of 12 downloaded ✦ 1 in the queue ✦ 42 MB") and why the queue waits.
+- Downloads screen (Library → "Downloads ✦ 42 MB"): by title (tap opens the title page), size per chapter and in
+  total, cancel / retry / remove / delete, delete a title's downloads, the Wi-Fi only switch.
+- Sign-out (`SignOutCleanup`) and a removed source (`SourceRemovedListener`) erase the rows and the files.
 
 ## Reader: modes, tap zones, settings (comics, modelled on Mihon)
 
@@ -196,7 +246,7 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
 
 ## Screens (account and episodes)
 
-- Settings (4th tab, gear on iOS): Keys (two provider slots, add / replace / remove with a confirmation, privacy note;
+- Settings (4th tab, gear on both): Keys (two provider slots, add / replace / remove with a confirmation, privacy note;
   the form's secret field is a password-type field with no autocorrection and no password AutoFill, emptied whenever
   `secretFieldResets` changes), Reading model (three options), Costs (period chips, totals, entries), Sign out (also
   still in Library).
@@ -286,7 +336,10 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
 ## UI
 
 - Colors: `Brand` (Android) and `BrandColors.swift` (iOS), copied from `brand/tokens.json`. Red = action,
-  cyan = work in progress (sync, voice), yellow = highlight. Text on red: ink, never white.
+  cyan = work in progress (sync, voice, downloads), yellow = highlight. Text on red: ink, never white.
+- Tab bar: an icon over each label on both platforms. iOS: SF Symbols (`square.grid.2x2`, `books.vertical`,
+  `square.stack.3d.up`, `gearshape`). Android: no icon library; `AppIcons` (androidApp `ui/common`) draws the same
+  shapes as `ImageVector` line icons (24 × 24, 1.8 stroke), plus the download controls.
 - Primary button: hard offset shadow with no blur, presses down 2 pt on tap (150 ms) with haptic feedback.
 - Copy in English, short sentences, calm tone ("Invite already used."), ✦ separator.
 

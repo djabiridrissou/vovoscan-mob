@@ -2,7 +2,12 @@ package com.vovoscan.shared
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelStore
+import com.vovoscan.core.common.NetworkMonitor
+import com.vovoscan.core.common.NetworkState
+import com.vovoscan.core.database.AppFolders
 import com.vovoscan.core.database.DatabaseDriverFactory
+import com.vovoscan.core.database.appFolders
+import com.vovoscan.core.network.IosNetworkMonitor
 import com.vovoscan.core.security.KeychainSecureStore
 import com.vovoscan.core.security.SecureStore
 import com.vovoscan.feature.account.presentation.ProviderKeysViewModel
@@ -17,7 +22,10 @@ import com.vovoscan.feature.episodes.presentation.EpisodeViewModel
 import com.vovoscan.feature.episodes.presentation.PlayerViewModel
 import com.vovoscan.feature.library.presentation.FollowViewModel
 import com.vovoscan.feature.library.presentation.LibraryViewModel
+import com.vovoscan.feature.reader.domain.DownloadsRepository
+import com.vovoscan.feature.reader.presentation.DownloadsViewModel
 import com.vovoscan.feature.reader.presentation.ReaderViewModel
+import com.vovoscan.feature.reader.presentation.TitleDownloadsViewModel
 import com.vovoscan.feature.sources.presentation.AddSourceViewModel
 import com.vovoscan.feature.sources.presentation.SourceDetailViewModel
 import com.vovoscan.feature.sources.presentation.SourcesViewModel
@@ -35,22 +43,36 @@ import platform.Foundation.NSData
 import platform.posix.memcpy
 import kotlin.experimental.ExperimentalNativeApi
 
-/** Called once when the iOS app launches (VovoscanApp.swift). Debug builds may add sources from a local server. */
+/**
+ * Called once when the iOS app launches (VovoscanApp.swift). Debug builds may add sources from a local server, and
+ * may simulate having no network (`simulateOffline`, from the `VOVOSCAN_OFFLINE=1` launch environment): the simulator
+ * shares the Mac's network and has no switch of its own.
+ */
 @OptIn(ExperimentalNativeApi::class)
-fun initKoin(apiBaseUrl: String) {
+fun initKoin(
+    apiBaseUrl: String,
+    simulateOffline: Boolean = false,
+) {
+    val offline = simulateOffline && Platform.isDebugBinary
     startKoin {
         modules(
             appModules(
-                AppConfig(apiBaseUrl, allowLocalPlugins = Platform.isDebugBinary),
+                AppConfig(apiBaseUrl, allowLocalPlugins = Platform.isDebugBinary, simulateOffline = offline),
                 module {
                     single { DatabaseDriverFactory() }
                     single<SecureStore> { KeychainSecureStore() }
+                    single<NetworkMonitor> {
+                        if (offline) NetworkMonitor.Fixed(NetworkState(online = false, unmetered = false)) else IosNetworkMonitor()
+                    }
+                    single<AppFolders> { appFolders() }
                 },
             ),
         )
     }
     // Session kept on the device, before the first screen (a short Keychain read; the network follows).
     runBlocking { KoinPlatform.getKoin().get<AuthRepository>().restore() }
+    // Chapters left downloading when the app stopped carry on.
+    KoinPlatform.getKoin().get<DownloadsRepository>().resume()
 }
 
 /**
@@ -91,6 +113,14 @@ class ViewModels : KoinComponent {
         startPage: Int,
     ): ReaderViewModel =
         remember("reader:$sourceKey/$chapterId") { get<ReaderViewModel> { parametersOf(sourceKey, titleId, chapterId, startPage) } }
+
+    fun titleDownloads(
+        sourceKey: String,
+        titleId: String,
+    ): TitleDownloadsViewModel =
+        remember("titleDownloads:$sourceKey/$titleId") { get<TitleDownloadsViewModel> { parametersOf(sourceKey, titleId) } }
+
+    fun downloads(): DownloadsViewModel = remember("downloads") { get<DownloadsViewModel>() }
 
     fun providerKeys(): ProviderKeysViewModel = remember("providerKeys") { get<ProviderKeysViewModel>() }
 

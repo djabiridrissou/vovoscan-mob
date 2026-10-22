@@ -2,9 +2,9 @@ package com.vovoscan.feature.catalog.presentation
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.vovoscan.core.common.AppError
 import com.vovoscan.core.common.AppResult
 import com.vovoscan.core.common.Freshness
+import com.vovoscan.core.common.StaleReason
 import com.vovoscan.core.common.userMessage
 import com.vovoscan.feature.catalog.domain.CatalogRepository
 import com.vovoscan.feature.catalog.domain.ContentKind
@@ -43,27 +43,40 @@ data class CatalogUiState(
     /** Search results; null when not searching (the catalog shows). */
     val results: List<TitleCard>? = null,
     val searchingOffline: Boolean = false,
+    /** Search fell back to the local copy because this source didn't answer. */
+    val searchUnavailableSource: String? = null,
     val freshness: Freshness = Freshness.Refreshing,
+    /** Why the last reload failed: offline, the source isn't answering, or its rules can't read it. */
+    val stale: StaleReason? = null,
     val loadingMore: Boolean = false,
     val canLoadMore: Boolean = false,
     val error: String? = null,
 ) {
     val visible: List<TitleCard> get() = results ?: cards
 
-    /** Nothing to show, once the server has been read again. */
-    val empty: Boolean get() = visible.isEmpty() && freshness != Freshness.Refreshing
+    /** Nothing to show, once the source has been read (offline or a source that failed: the banner says so instead). */
+    val empty: Boolean
+        get() = visible.isEmpty() && freshness != Freshness.Refreshing && (stale == null || results != null)
 
     val emptyMessage: String
         get() = if (results != null) "No title matches “$query”." else "No titles yet. Check back soon."
 
-    /** Discreet banner when the local copy is shown. */
+    /**
+     * Discreet banner when the local copy is shown: no network ("Offline: …"), a source that isn't answering
+     * ("Project Gutenberg isn't answering right now. Showing what's saved.") or rules that can't read it.
+     */
     val offlineNotice: String?
         get() =
             when {
+                searchingOffline && searchUnavailableSource != null ->
+                    "$searchUnavailableSource isn't answering right now. Searching what's saved."
                 searchingOffline -> "Offline: searching titles saved on this device."
-                freshness == Freshness.Offline -> "Offline: showing what's saved on this device."
+                stale != null -> stale.notice(hasSaved = cards.isNotEmpty())
                 else -> null
             }
+
+    /** A source that didn't answer: "Retry" next to the banner (sends `Refresh`). */
+    val canRetry: Boolean get() = !searchingOffline && stale?.canRetry == true
 }
 
 sealed interface CatalogIntent {
@@ -163,26 +176,31 @@ class CatalogViewModel(
         mutableState.update { it.copy(query = query) }
         searchJob?.cancel()
         if (query.isBlank()) {
-            mutableState.update { it.copy(results = null, searchingOffline = false) }
+            mutableState.update { it.copy(results = null, searchingOffline = false, searchUnavailableSource = null) }
             return
         }
         searchJob =
             viewModelScope.launch {
                 delay(SEARCH_DEBOUNCE_MS)
                 val found = repository.search(source.value, query)
-                mutableState.update { it.copy(results = found.titles.map(::card), searchingOffline = found.offline) }
+                mutableState.update {
+                    it.copy(
+                        results = found.titles.map(::card),
+                        searchingOffline = found.offline,
+                        searchUnavailableSource = found.unavailableSource,
+                    )
+                }
             }
     }
 
     private fun CatalogUiState.after(result: AppResult<Boolean>): CatalogUiState =
         when (result) {
-            is AppResult.Ok -> copy(freshness = Freshness.Fresh, canLoadMore = result.value, error = null)
-            is AppResult.Err ->
-                if (result.error == AppError.Network) {
-                    copy(freshness = Freshness.Offline)
-                } else {
-                    copy(freshness = Freshness.Offline, error = result.error.userMessage())
-                }
+            is AppResult.Ok -> copy(freshness = Freshness.Fresh, canLoadMore = result.value, error = null, stale = null)
+            is AppResult.Err -> {
+                // Offline, source down or unreadable: the banner says it; anything else is an error line.
+                val reason = StaleReason.of(result.error)
+                copy(freshness = Freshness.Offline, stale = reason, error = if (reason == null) result.error.userMessage() else null)
+            }
         }
 
     private fun card(title: TitleSummary) =
