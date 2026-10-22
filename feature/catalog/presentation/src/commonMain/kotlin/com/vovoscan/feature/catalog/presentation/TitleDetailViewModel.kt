@@ -14,6 +14,7 @@ import com.vovoscan.feature.catalog.domain.CatalogRepository
 import com.vovoscan.feature.catalog.domain.ChapterTranslationBadge
 import com.vovoscan.feature.catalog.domain.ChapterTranslations
 import com.vovoscan.feature.catalog.domain.ContentKind
+import com.vovoscan.feature.catalog.domain.EpisodeFeature
 import com.vovoscan.feature.catalog.domain.INTERNAL_SOURCE
 import com.vovoscan.feature.catalog.domain.ReadingFormat
 import com.vovoscan.feature.catalog.domain.ReadingResume
@@ -44,6 +45,10 @@ data class ChapterRow(
     val translationReady: Boolean = false,
     /** Open it in this language (translated and ready); null: as it is. */
     val openLanguage: String? = null,
+    /** Its episode's languages as badges: "▶ Original", "▶ Français", three then "+2"; empty without one (or `video`). */
+    val episodes: List<String> = emptyList(),
+    /** "Watch as an episode in: Original, Français, English" for screen readers; null without one. */
+    val episodesA11y: String? = null,
 )
 
 /** Where a chapter row's pill leads. */
@@ -101,7 +106,15 @@ data class TitleDetailUiState(
     val stale: StaleReason? = null,
     /** A pill tapped on a chapter row, waiting for the screen to open it. */
     val open: ChapterOpen? = null,
+    /** Chapters with an episode (only with the `video` feature; 0 otherwise). */
+    val episodeChapters: Int = 0,
+    /** Only the chapters with an episode are listed. */
+    val episodesOnly: Boolean = false,
 ) {
+    /** The "▶ Episodes (3)" chip, shown only when a chapter has one. */
+    val showEpisodesFilter: Boolean get() = episodeChapters > 0
+    val episodesChip: String get() = t("catalog.chapterEpisodes", "count" to episodeChapters)
+
     /** "Offline: …", "Project Gutenberg isn't answering right now. Showing what's saved.", or rules that can't read it. */
     val notice: String? get() = if (unavailable) null else stale?.notice(hasSaved = true)
 
@@ -149,6 +162,9 @@ sealed interface TitleDetailIntent {
     data class OpenHandled(
         val seq: Long,
     ) : TitleDetailIntent
+
+    /** "▶ Episodes": only the chapters with an episode, or every chapter again. */
+    data object ToggleEpisodes : TitleDetailIntent
 }
 
 /** Title page: name, description, chapters. Readable offline once it has been opened. */
@@ -158,7 +174,9 @@ class TitleDetailViewModel(
     private val repository: CatalogRepository,
     private val resume: ReadingResume = ReadingResume { flowOf(emptyList()) },
     private val translations: ChapterTranslations = ChapterTranslations.None,
+    private val video: EpisodeFeature = EpisodeFeature.Off,
 ) : ViewModel() {
+    private var videoOn = false
     private val mutableState = MutableStateFlow(TitleDetailUiState())
     val state: StateFlow<TitleDetailUiState> = mutableState.asStateFlow()
     private var known = false
@@ -168,7 +186,13 @@ class TitleDetailViewModel(
 
     init {
         val point = resume.observe().map { points -> points.firstOrNull { it.sourceKey == sourceKey && it.titleId == titleId } }
-        combine(repository.observeTitle(sourceKey, titleId), repository.observeNewestFirst(), point) { detail, newestFirst, at ->
+        combine(
+            repository.observeTitle(sourceKey, titleId),
+            repository.observeNewestFirst(),
+            point,
+            video.enabled(),
+        ) { detail, newestFirst, at, on ->
+            videoOn = on
             Triple(detail, newestFirst, at)
         }.onEach { (detail, newestFirst, at) ->
             if (detail != null) {
@@ -194,6 +218,18 @@ class TitleDetailViewModel(
                 open(intent.chapterId, ChapterTarget.Episode) { it.offersEpisodes }
             is TitleDetailIntent.OpenHandled ->
                 mutableState.update { if (it.open?.seq == intent.seq) it.copy(open = null) else it }
+            TitleDetailIntent.ToggleEpisodes -> {
+                val (detail, newestFirst, at) = shown ?: return
+                mutableState.update { now ->
+                    if (!now.showEpisodesFilter &&
+                        !now.episodesOnly
+                    ) {
+                        now
+                    } else {
+                        now.copy(episodesOnly = !now.episodesOnly).show(detail, newestFirst, at)
+                    }
+                }
+            }
         }
     }
 
@@ -269,9 +305,15 @@ class TitleDetailViewModel(
                         translation = if (badge != null && language != null) badgeLabel(badge, language) else null,
                         translationReady = badge?.ready == true,
                         openLanguage = language.takeIf { badge?.ready == true },
+                        episodes = if (videoOn) episodeBadges(chapter.episodeLanguages) else emptyList(),
+                        episodesA11y = if (videoOn) episodesA11y(chapter.episodeLanguages) else null,
                     )
                 }
             }
+        val watchable = rows.count { it.episodes.isNotEmpty() }
+        // The filter goes off by itself once no chapter has an episode (the chip is gone).
+        val onlyEpisodes = episodesOnly && watchable > 0
+        val listed = if (onlyEpisodes) rows.filter { it.episodes.isNotEmpty() } else rows
         val resumed = at?.let { point -> rows.firstOrNull { it.id == point.chapterId } }
         val readAction =
             when {
@@ -324,13 +366,40 @@ class TitleDetailViewModel(
                     detail.authors.joinToString(", ").ifBlank { null },
                 ).joinToString(" ✦ "),
             genres = detail.genres,
-            chapters = if (newestFirst) rows.asReversed() else rows,
+            chapters = if (newestFirst) listed.asReversed() else listed,
+            episodeChapters = watchable,
+            episodesOnly = onlyEpisodes,
             newestFirst = newestFirst,
             readingOrder = rows.map { it.id },
             readAction = readAction,
         )
     }
 }
+
+/** At most this many language badges on a chapter row, then "+n". */
+private const val EPISODE_BADGES = 3
+
+/** "▶ Original", "▶ Français", "▶ English", "+2": an episode's languages, the original first. */
+internal fun episodeBadges(languages: List<String>): List<String> {
+    val names = episodeLanguageNames(languages)
+    if (names.size <= EPISODE_BADGES) return names.map(::episodeBadgeLabel)
+    return names.take(EPISODE_BADGES).map(::episodeBadgeLabel) + t("catalog.episodeMore", "count" to names.size - EPISODE_BADGES)
+}
+
+internal fun episodesA11y(languages: List<String>): String? =
+    episodeLanguageNames(languages)
+        .takeIf { it.isNotEmpty() }
+        ?.let { names -> t("catalog.episodeA11y", "languages" to names.joinToString(", ") { it ?: t("episode.original") }) }
+
+/** null = the original; else the language's own name. */
+private fun episodeLanguageNames(languages: List<String>): List<String?> =
+    languages
+        .distinct()
+        .sortedBy { if (it.isEmpty()) 0 else 1 }
+        .map { code -> if (code.isEmpty()) null else Language.of(code)?.native ?: code }
+
+private fun episodeBadgeLabel(name: String?): String =
+    if (name == null) t("catalog.episodeOriginal") else t("catalog.episodeLanguage", "language" to name)
 
 /** "Français ✓" (ready), "Français ✦ 42%" (being made), "Français ✦ preparing" (in the queue). */
 internal fun badgeLabel(

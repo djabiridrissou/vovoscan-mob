@@ -15,6 +15,7 @@ import com.vovoscan.feature.catalog.domain.CategoryOption
 import com.vovoscan.feature.catalog.domain.CategoryUnion
 import com.vovoscan.feature.catalog.domain.ContentKind
 import com.vovoscan.feature.catalog.domain.ContentPolicy
+import com.vovoscan.feature.catalog.domain.EpisodeFeature
 import com.vovoscan.feature.catalog.domain.INTERNAL_SOURCE
 import com.vovoscan.feature.catalog.domain.ReadingFormat
 import com.vovoscan.feature.catalog.domain.ReadingResume
@@ -64,6 +65,8 @@ data class TitleCard(
     val started: Boolean = false,
     /** A search result readers who searched the same opened: the "Popular" badge. */
     val popular: Boolean = false,
+    /** "▶ 3": chapters with an episode (red badge, top right of the cover); null without one or without `video`. */
+    val episodeBadge: String? = null,
 ) {
     /**
      * The card's identity on screen, whatever its badges say: a card whose format, status or cover changes stays the
@@ -179,7 +182,14 @@ data class CatalogUiState(
     val searchFocused: Boolean = false,
     /** Under the search field: this account's searches, others' searches, titles (empty sections left out). */
     val suggestions: List<SuggestionSection> = emptyList(),
+    /** The account has the `video` feature: the "▶ Episodes" chip shows next to the format filters. */
+    val showEpisodesFilter: Boolean = false,
+    /** Only titles with an episode (the chip is red). */
+    val episodesOnly: Boolean = false,
 ) {
+    /** "▶ Episodes". */
+    val episodesLabel: String get() = t("catalog.episodesFilter")
+
     val showSuggestions: Boolean get() = searchFocused && suggestions.isNotEmpty()
 
     /** The badge of a result readers who searched the same opened. */
@@ -206,6 +216,7 @@ data class CatalogUiState(
         get() =
             when {
                 results != null -> t("catalog.noMatch", "query" to query.trim())
+                episodesOnly -> t("catalog.noEpisodes")
                 category != null -> t("catalog.noneInCategory", "category" to category)
                 else -> t("catalog.none")
             }
@@ -253,6 +264,9 @@ sealed interface CatalogIntent {
         val name: String?,
     ) : CatalogIntent
 
+    /** The "▶ Episodes" chip: only titles with an episode, or every title again. */
+    data object ToggleEpisodes : CatalogIntent
+
     /** The search field gained or lost the focus (its suggestions show while it has it). */
     data class SearchFocused(
         val focused: Boolean,
@@ -285,7 +299,11 @@ class CatalogViewModel(
     private val resume: ReadingResume = ReadingResume { flowOf(emptyList()) },
     private val content: ContentPolicy = ContentPolicy.ShowAll,
     private val search: SearchRepository = SearchRepository.None,
+    private val video: EpisodeFeature = EpisodeFeature.Off,
 ) : ViewModel() {
+    /** The account has the `video` feature: episode badges and the Episodes filter. */
+    private var videoOn = false
+
     /** Safe mode off: every title shows. Follows the account (`content`). */
     private var showAdult = true
     private var hiddenInListing = false
@@ -300,8 +318,10 @@ class CatalogViewModel(
         val source: CatalogSource,
         val categoryId: String?,
         val format: ReadingFormat? = null,
+        /** Only titles with an episode: the server's listing (`has=episode`). */
+        val episodes: Boolean = false,
     ) {
-        fun keeps(title: TitleSummary): Boolean = format == null || title.format == format
+        fun keeps(title: TitleSummary): Boolean = (format == null || title.format == format) && (!episodes || title.episodeCount > 0)
     }
 
     private data class Plan(
@@ -312,18 +332,33 @@ class CatalogViewModel(
         val category: CategoryOption?,
         /** Each selected source's own categories, as read (the sheet groups them under the source). */
         val sourceCategories: List<Pair<String, List<SourceCategory>>> = emptyList(),
+        /** The Episodes filter is on and the account has `video`. */
+        val episodes: Boolean = false,
+        /** The account has `video` (the chip and the badges show). */
+        val video: Boolean = false,
     ) {
         val readings: List<Reading>
-            get() =
-                if (category == null) {
-                    selected.map { Reading(it, null) }
-                } else {
-                    selected.mapNotNull { source ->
-                        category.ids[source.key]?.let { Reading(source, it) }
-                            // Our catalog's Manga / Webtoon / Book: a source read on the device files its titles by format.
-                            ?: category.format?.takeIf { source.key != INTERNAL_SOURCE }?.let { Reading(source, null, it) }
+            get() {
+                val all =
+                    if (category == null) {
+                        selected.map { Reading(it, null) }
+                    } else {
+                        selected.mapNotNull { source ->
+                            category.ids[source.key]?.let { Reading(source, it) }
+                                // Our catalog's Manga / Webtoon / Book: a source read on the device files its titles by format.
+                                ?: category.format?.takeIf { source.key != INTERNAL_SOURCE }?.let { Reading(source, null, it) }
+                        }
+                    }
+                if (!episodes) return all
+                return all.mapNotNull { reading ->
+                    when {
+                        reading.source.key == INTERNAL_SOURCE || reading.categoryId == null -> reading.copy(episodes = true)
+                        // A source read on the device: the server lists the titles imported from it, in no category; one
+                        // that stands for a format keeps that format, a curated one leaves the source out.
+                        else -> category?.format?.let { Reading(reading.source, null, it, episodes = true) }
                     }
                 }
+            }
     }
 
     private val visible = MutableStateFlow<List<CatalogSource>?>(null)
@@ -333,6 +368,9 @@ class CatalogViewModel(
 
     /** False until the first plan: an empty first plan must still settle the screen. */
     private var planned = false
+
+    /** The cards on screen carry episode badges. */
+    private var badges = false
     private var hasMore: Map<String, Boolean> = emptyMap()
     private var generation = 0
     private var searchJob: Job? = null
@@ -378,10 +416,16 @@ class CatalogViewModel(
         // Picks made offline go out as soon as the catalog opens online.
         viewModelScope.launch { search.sendPending() }
         val selection =
-            combine(visible.filterNotNull(), filter.filterNotNull()) { v, f -> Triple(v, f, CatalogSelection.selected(v, f)) }
+            combine(visible.filterNotNull(), filter.filterNotNull(), video.enabled().distinctUntilChanged()) { v, f, on ->
+                videoOn = on
+                Triple(v, f, CatalogSelection.selected(v, f))
+            }
         selection
-            .flatMapLatest { (v, f, selected) -> categoriesOf(selected).map { Plan(v, f, selected, emptyList(), null).resolve(it) } }
-            .distinctUntilChanged()
+            .flatMapLatest { (v, f, selected) ->
+                categoriesOf(
+                    selected,
+                ).map { Plan(v, f, selected, emptyList(), null, episodes = f.episodesOnly && videoOn, video = videoOn).resolve(it) }
+            }.distinctUntilChanged()
             .onEach(::apply)
             .launchIn(viewModelScope)
     }
@@ -411,6 +455,7 @@ class CatalogViewModel(
                     }
                 }
             is CatalogIntent.SelectCategory -> changeFilter { it.copy(categoryName = intent.name?.trim()?.takeIf { n -> n.isNotEmpty() }) }
+            CatalogIntent.ToggleEpisodes -> if (videoOn) changeFilter { it.copy(episodesOnly = !it.episodesOnly) }
             is CatalogIntent.SearchFocused -> {
                 blurJob?.cancel()
                 if (intent.focused) {
@@ -472,10 +517,11 @@ class CatalogViewModel(
         if (!state.value.searchFocused) return
         val names = plan?.visible.orEmpty().associate { it.key to it.name }
         val format = plan?.category?.format
+        val episodes = plan?.episodes == true
         suggestJob =
             viewModelScope.launch {
                 delay(SUGGEST_DEBOUNCE_MS)
-                val found = search.suggest(query.trim(), SearchRepository.SUGGEST_LIMIT, format)
+                val found = search.suggest(query.trim(), SearchRepository.SUGGEST_LIMIT, format, episodes)
                 val titles = found.titles.filter { it.sourceKey in names && ContentRating.shown(it.contentRating, showAdult) }
                 val covers = titles.associate { (it.sourceKey to it.titleRef) to (it.coverUrl ?: savedCover(it)) }
                 suggestionPicks = titles.associate { (it.sourceKey to it.titleRef) to (it.toSummary() to it.format) }
@@ -601,6 +647,8 @@ class CatalogViewModel(
                 categoryGroups = groups(next),
                 category = next.category?.name,
                 categoryNote = next.category?.let { c -> CatalogNotices.categoryLeftOut(c.name, missing) },
+                showEpisodesFilter = next.video,
+                episodesOnly = next.episodes,
             )
         }
         // Categories are asked once per source while the screen lives (and again on Refresh).
@@ -608,7 +656,9 @@ class CatalogViewModel(
             viewModelScope.launch { repository.refreshCategories(source.key) }
         }
         val nextReadings = next.readings
-        if (planned && nextReadings == readings) return
+        // `video` switched: the same listings, drawn again with or without their badges.
+        if (planned && nextReadings == readings && next.video == badges) return
+        badges = next.video
         planned = true
         readings = nextReadings
         hasMore = emptyMap()
@@ -637,12 +687,11 @@ class CatalogViewModel(
             combine(
                 list.map { reading ->
                     repository
-                        .observeListing(reading.source.key, reading.categoryId)
+                        .observeListing(reading.source.key, reading.categoryId, reading.episodes)
                         // Filed by format: what the server learned of these titles (asked once each) before keeping them.
+                        // The server's own listing of titles with an episode names their formats already.
                         .onEach { titles ->
-                            if (reading.format !=
-                                null
-                            ) {
+                            if (reading.format != null && !reading.episodes) {
                                 viewModelScope.launch { repository.learnFormats(reading.source.key, titles.map { it.title.id }) }
                             }
                         }.map { titles -> titles.filter { reading.keeps(it.title) } }
@@ -652,7 +701,7 @@ class CatalogViewModel(
 
     /** The formats the server knew nothing of, asked again for what the filtered sources list now. */
     private suspend fun askFormatsAgain(of: List<Reading>) {
-        of.filter { it.format != null }.forEach { reading ->
+        of.filter { it.format != null && !it.episodes }.forEach { reading ->
             repository.askFormatsAgain(reading.source.key)
             val ids = repository.observeListing(reading.source.key, reading.categoryId).first().map { it.title.id }
             if (ids.isNotEmpty()) repository.learnFormats(reading.source.key, ids)
@@ -677,8 +726,9 @@ class CatalogViewModel(
         viewModelScope.launch {
             val results =
                 current
-                    .map { reading -> async { reading to repository.refreshListing(reading.source.key, reading.categoryId) } }
-                    .awaitAll()
+                    .map { reading ->
+                        async { reading to repository.refreshListing(reading.source.key, reading.categoryId, reading.episodes) }
+                    }.awaitAll()
             if (run != generation) return@launch
             hasMore = results.associate { (reading, result) -> reading.source.key to ((result as? AppResult.Ok)?.value == true) }
             mutableState.update { it.after(results, replacing = current.map { r -> r.source.key }.toSet()) }
@@ -696,7 +746,10 @@ class CatalogViewModel(
         viewModelScope.launch {
             // Every source with pages left gives its next page: one more round of the merged grid.
             val results =
-                more.map { reading -> async { reading to repository.loadMoreListing(reading.source.key, reading.categoryId) } }.awaitAll()
+                more
+                    .map { reading ->
+                        async { reading to repository.loadMoreListing(reading.source.key, reading.categoryId, reading.episodes) }
+                    }.awaitAll()
             if (run != generation) return@launch
             hasMore = hasMore + results.associate { (reading, result) -> reading.source.key to ((result as? AppResult.Ok)?.value == true) }
             mutableState.update { it.after(results, replacing = more.map { r -> r.source.key }.toSet()).copy(loadingMore = false) }
@@ -721,24 +774,25 @@ class CatalogViewModel(
         val current = readings
         val names = plan?.visible.orEmpty().associate { it.key to it.name }
         val format = plan?.category?.format
+        val episodes = plan?.episodes == true
         // A curated category (no format) only keeps what its sources return; otherwise a title the server learned for
         // this spelling shows even when no source found it (the typo tolerance).
         val extras = plan?.category?.let { it.format != null } ?: true
         searchJob =
             viewModelScope.launch {
                 if (debounce) delay(SEARCH_DEBOUNCE_MS)
-                val learned = async { search.suggest(query.trim(), SearchRepository.RESULTS_LIMIT, format) }
+                val learned = async { search.suggest(query.trim(), SearchRepository.RESULTS_LIMIT, format, episodes) }
                 // The field keeps what was typed; sources get it without the spaces around (iOS autocorrect adds one).
                 val found =
                     current
                         .map { reading ->
                             async {
-                                repository.search(reading.source.key, query.trim(), reading.categoryId).let { found ->
+                                repository.search(reading.source.key, query.trim(), reading.categoryId, reading.episodes).let { found ->
                                     // A typed search already goes to the server (suggestions): its results' formats are
                                     // asked too (comic sources read on the device, once each), so a learned strip is a
                                     // webtoon here as in the grid. Browsing never asks.
                                     val learned =
-                                        if (found.offline) {
+                                        if (found.offline || reading.episodes) {
                                             emptyMap()
                                         } else {
                                             repository.learnFormats(
@@ -914,6 +968,7 @@ class CatalogViewModel(
                 else -> t("catalog.badgeManga")
             },
         status = statusLabel(title.status),
+        episodeBadge = episodeBadge(title.episodeCount, videoOn),
     )
 
     private companion object {
@@ -925,3 +980,9 @@ class CatalogViewModel(
         const val RESUME_CANDIDATES = 5
     }
 }
+
+/** "▶ 3" on a card whose title has episodes, only with the `video` feature. */
+internal fun episodeBadge(
+    count: Int,
+    video: Boolean,
+): String? = if (video && count > 0) t("catalog.episodeBadge", "count" to count) else null

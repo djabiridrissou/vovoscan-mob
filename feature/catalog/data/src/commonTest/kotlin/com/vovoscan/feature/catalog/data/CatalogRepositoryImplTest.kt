@@ -114,6 +114,7 @@ class CatalogRepositoryImplTest {
                                 """{"items":[{"id":7,"title":"Old Tales"}],"next":null}"""
                             }
                         "/book/7" -> """{"title":"Old Tales"}"""
+                        "/t/1" -> """{"title":"Ink Road"}"""
                         else -> return@MockEngine respond("", HttpStatusCode.NotFound)
                     }
                 respond(body, HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
@@ -249,6 +250,118 @@ class CatalogRepositoryImplTest {
                 relaunched.search("inkwell", "a").titles.mapTo(HashSet()) { it.id to it.format },
             )
             assertEquals(2, asked.size)
+        }
+
+    @Test
+    fun titlesWithAnEpisodeComeFromTheServerAndTheirCountsStayWhenTheDeviceListsThem() =
+        runTest {
+            val asked = mutableListOf<String>()
+            val local =
+                SqlCatalogLocalDataSource(CatalogDatabase(inMemoryDriver(CatalogDatabase.Schema)), StandardTestDispatcher(testScheduler))
+            val repo =
+                repository(local) { request ->
+                    val path = request.url.encodedPath
+                    val has = request.url.parameters["has"]
+                    asked += if (has == null) path else "$path?has=$has"
+                    when (path) {
+                        "/api/v1/catalog/sources/vovoscan/titles" ->
+                            if (has == "episode") {
+                                respondJson(
+                                    """{"data":[{"id":"t1","name":"Ink Road","kind":"comic","format":"webtoon","status":"ongoing",""" +
+                                        """"episodeCount":2}],"total":1,"page":1,"perPage":24,"pages":1}""",
+                                )
+                            } else {
+                                respondJson(page)
+                            }
+                        "/api/v1/catalog/titles/t1" ->
+                            respondJson(
+                                """{"data":{"id":"t1","name":"Ink Road","format":"webtoon","status":"ongoing","episodeCount":1,""" +
+                                    """"chapters":[{"id":"c2","number":2,"episodeLanguages":[]},""" +
+                                    """{"id":"c1","number":1,"episodeLanguages":["","en"]}]}}""",
+                            )
+                        "/api/v1/source-reader/inkwell/titles" ->
+                            respondJson(
+                                """{"data":{"items":[{"id":"1","name":"Ink Road","coverUrl":null,"kind":"comic","format":"webtoon",""" +
+                                    """"status":"ongoing","episodeCount":1}],"page":1,"hasNext":false,"total":1}}""",
+                            )
+                        "/api/v1/source-reader/inkwell/title" ->
+                            respondJson("""{"data":{"episodeCount":1,"units":[{"id":"1","episodeLanguages":["","fr"]}]}}""")
+                        else -> respond("", HttpStatusCode.NotFound)
+                    }
+                }
+
+            // Our catalog: its own listing of titles with an episode, apart from everything.
+            assertEquals(AppResult.Ok(false), repo.refreshListing("vovoscan", episodes = true))
+            assertEquals(
+                listOf("t1" to 2),
+                repo.observeListing("vovoscan", episodes = true).first().map {
+                    it.title.id to
+                        it.title.episodeCount
+                },
+            )
+            assertEquals(emptyList(), repo.observeListing("vovoscan").first())
+            assertEquals("/api/v1/catalog/sources/vovoscan/titles?has=episode", asked.last())
+
+            // A source read on the device: the server lists the titles imported from it that have one (not the site).
+            val sitesBefore = deviceRequests.size
+            assertEquals(AppResult.Ok(false), repo.refreshListing("inkwell", episodes = true))
+            assertEquals("/api/v1/source-reader/inkwell/titles?has=episode", asked.last())
+            assertEquals(sitesBefore, deviceRequests.size)
+            assertEquals(
+                listOf(Triple("1", 1, ReadingFormat.Webtoon)),
+                repo.observeListing("inkwell", episodes = true).first().map { Triple(it.title.id, it.title.episodeCount, it.title.format) },
+            )
+            // The device's own listing can't know: the server's count stays on the title, the others have none.
+            repo.refreshListing("inkwell")
+            assertEquals(
+                listOf("1" to 1, "2" to 0),
+                repo.observeListing("inkwell").first().map { it.title.id to it.title.episodeCount },
+            )
+            // Offline, a search under the filter keeps only those.
+            assertEquals(listOf("1"), local.searchLocal("inkwell", "", episodes = true).map { it.id })
+
+            // Its title page asks the server for the chapters' languages, because the server said it has an episode.
+            assertEquals(AppResult.Ok(Unit), repo.refreshTitle("inkwell", "1"))
+            assertEquals("/api/v1/source-reader/inkwell/title", asked.last())
+            val title = repo.observeTitle("inkwell", "1").first()!!
+            assertEquals(listOf(listOf("", "fr")), title.chapters.map { it.episodeLanguages })
+            assertEquals(1, title.summary.episodeCount)
+
+            // Our catalog's chapters come with theirs; "" (the original) is kept like any language.
+            repo.refreshTitle("vovoscan", "t1")
+            assertEquals(
+                listOf("c2" to emptyList(), "c1" to listOf("", "en")),
+                repo
+                    .observeTitle("vovoscan", "t1")
+                    .first()!!
+                    .chapters
+                    .map { it.id to it.episodeLanguages },
+            )
+
+            // The filter is remembered.
+            local.saveFilter(CatalogFilter(episodesOnly = true))
+            assertTrue(local.observeFilter().first().episodesOnly)
+        }
+
+    @Test
+    fun aTitleTheServerNeverSaidHasAnEpisodeTellsItNothing() =
+        runTest {
+            val asked = mutableListOf<String>()
+            val repo =
+                repository { request ->
+                    asked += request.url.encodedPath
+                    respond("", HttpStatusCode.NotFound)
+                }
+            assertEquals(AppResult.Ok(Unit), repo.refreshTitle("inkwell", "1"))
+            assertEquals(emptyList(), asked)
+            assertEquals(
+                listOf(emptyList()),
+                repo
+                    .observeTitle("inkwell", "1")
+                    .first()!!
+                    .chapters
+                    .map { it.episodeLanguages },
+            )
         }
 
     @Test

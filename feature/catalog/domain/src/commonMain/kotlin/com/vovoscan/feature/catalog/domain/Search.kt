@@ -30,6 +30,8 @@ data class SuggestedTitle(
     val coverUrl: String? = null,
     /** null: found on the device (offline), not learned. */
     val reason: SuggestReason? = null,
+    /** Chapters with an episode this account can watch (the server's word). */
+    val episodeCount: Int = 0,
 ) {
     /** A card for a title no source returned for this spelling (the server's typo tolerance). */
     fun toSummary(): TitleSummary =
@@ -42,6 +44,7 @@ data class SuggestedTitle(
             format = format ?: ReadingFormat.Manga,
             status = "",
             contentRating = contentRating,
+            episodeCount = episodeCount,
         )
 }
 
@@ -70,11 +73,15 @@ data class SearchPick(
  * account's choice to take part. Picks are fire and forget: offline they wait on the device (7 days at most).
  */
 interface SearchRepository {
-    /** [format]: the catalog's format filter, so suggestions follow it. Offline: what the device has. */
+    /**
+     * [format]: the catalog's format filter, so suggestions follow it; [episodes]: only titles with an episode.
+     * Offline: what the device has.
+     */
     suspend fun suggest(
         query: String,
         limit: Int = SUGGEST_LIMIT,
         format: ReadingFormat? = null,
+        episodes: Boolean = false,
     ): Suggestions
 
     suspend fun recordPick(pick: SearchPick)
@@ -104,6 +111,7 @@ interface SearchRepository {
                     query: String,
                     limit: Int,
                     format: ReadingFormat?,
+                    episodes: Boolean,
                 ) = Suggestions()
 
                 override suspend fun recordPick(pick: SearchPick) = Unit

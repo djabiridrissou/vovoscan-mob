@@ -46,6 +46,7 @@ data class SuggestedTitleDto(
     val format: String? = null,
     val coverUrl: String? = null,
     val reason: String? = null,
+    val episodeCount: Int = 0,
 )
 
 @Serializable
@@ -90,6 +91,7 @@ interface SearchRemoteDataSource {
         lang: String,
         limit: Int,
         format: String?,
+        episodes: Boolean = false,
     ): AppResult<SuggestionsDto>
 
     suspend fun pick(pick: PickDto): AppResult<Boolean>
@@ -109,6 +111,7 @@ class ApiSearchRemoteDataSource(
         lang: String,
         limit: Int,
         format: String?,
+        episodes: Boolean,
     ): AppResult<SuggestionsDto> =
         http
             .apiCall<ApiData<SuggestionsDto>> {
@@ -117,6 +120,7 @@ class ApiSearchRemoteDataSource(
                     parameter("lang", lang)
                     parameter("limit", limit)
                     format?.let { parameter("format", it) }
+                    if (episodes) parameter("has", "episode")
                 }
             }.map { it.data }
 
@@ -179,9 +183,10 @@ class SearchRepositoryImpl(
         query: String,
         limit: Int,
         format: ReadingFormat?,
+        episodes: Boolean,
     ): Suggestions {
         val trimmed = query.trim().take(MAX_QUERY)
-        return when (val result = remote.suggest(trimmed, language(), limit, format?.wire)) {
+        return when (val result = remote.suggest(trimmed, language(), limit, format?.wire, episodes)) {
             is AppResult.Ok -> {
                 if (pendingCount() > 0) sendPending()
                 Suggestions(
@@ -190,7 +195,7 @@ class SearchRepositoryImpl(
                     titles = result.value.titles.map { it.toDomain() },
                 )
             }
-            is AppResult.Err -> onDevice(trimmed, limit, format)
+            is AppResult.Err -> onDevice(trimmed, limit, format, episodes)
         }
     }
 
@@ -198,6 +203,7 @@ class SearchRepositoryImpl(
         query: String,
         limit: Int,
         format: ReadingFormat?,
+        episodes: Boolean,
     ): Suggestions =
         withContext(io) {
             val recent = SearchRules.matching(readList(RECENT), query).take(RECENT_SHOWN)
@@ -208,8 +214,18 @@ class SearchRepositoryImpl(
                     queries
                         .searchAllTitles(query, limit.toLong(), ::summary)
                         .executeAsList()
-                        .filter { format == null || it.format == format }
-                        .map { SuggestedTitle(it.sourceKey, it.id, it.name, it.contentRating, it.format, it.coverUrl) }
+                        .filter { (format == null || it.format == format) && (!episodes || it.episodeCount > 0) }
+                        .map {
+                            SuggestedTitle(
+                                it.sourceKey,
+                                it.id,
+                                it.name,
+                                it.contentRating,
+                                it.format,
+                                it.coverUrl,
+                                episodeCount = it.episodeCount,
+                            )
+                        }
                 }
             Suggestions(recent = recent, titles = titles, offline = true)
         }
@@ -351,4 +367,5 @@ private fun SuggestedTitleDto.toDomain() =
         // Only our own source's cover comes from here; any other one is resolved on the device.
         coverUrl = coverUrl.takeIf { sourceKey == INTERNAL_SOURCE },
         reason = SuggestReason.fromApi(reason),
+        episodeCount = episodeCount,
     )

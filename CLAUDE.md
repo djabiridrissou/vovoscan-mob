@@ -170,6 +170,20 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   category for it when a source has one by format or name, else one that files every source's titles by format, plugin
   comics included), then each source's own categories under its name (`categoryGroups`, the sheet's sections). With our
   source switched off the sheet used to show only the first source's genres, so no format filter was reachable.
+- Episodes filter (backend `has=episode`, only with the `video` feature: the `EpisodeFeature` port, wired in `shared` to
+  the session): a "▶ Episodes" chip next to the source and category filters (`CatalogIntent.ToggleEpisodes`,
+  `CatalogFilter.episodesOnly`, remembered as `episodes` in `catalog_setting`), the suggestions and results asked with
+  `has=episode` too. The server alone knows which titles have one: our source's listing gets `has=episode`, a source read
+  on the device is asked of the server (`GET api/v1/source-reader/{key}/titles?has=episode&page=&search=&lang=`, the
+  titles imported from it, any category; a curated category leaves it out, a format one keeps its format). Those
+  listings are their own `catalog_entry` rows (listing `\u0002episodes:<category>`). `episodeCount` is saved on the
+  title (`title.episode_count`, migration `4.sqm`) only from the server's answers: a listing read on the device never
+  resets it; cards show "▶ n" in red, top right of the cover (`TitleCard.episodeBadge`). Title page: each chapter row
+  carries its episode languages (`chapter.episode_languages`, JSON, `""` = the original) as badges, "▶ Original" first,
+  three then "+n" (`ChapterRow.episodes`), and "▶ Episodes (n)" (shown only when a chapter has one) lists only those
+  (`TitleDetailIntent.ToggleEpisodes`; reading order and "Start reading" still see every chapter). A title of a source
+  read on the device asks the server for its chapters' languages (`GET …/source-reader/{key}/title?ref=`) only when the
+  server already said it has an episode, so opening a title page tells it nothing new.
 - Errors per source never break the page: `problems` (one `SourceProblem` per failing source, `StaleReason`) make one
   notice line (`CatalogNotices`): no network → the offline line; one source read → its own line as before; several →
   "Project Gutenberg isn't answering right now." / "X couldn't be read. It may need an update." (Retry when one is

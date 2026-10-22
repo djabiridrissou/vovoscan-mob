@@ -20,15 +20,20 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.builtins.serializer
+import kotlinx.serialization.json.Json
 
 /**
  * Local source: the feature's SQLDelight database, read by the screens. One listing per source and category
  * (`categoryId` null: everything), the sources' categories, the catalog's filter.
  */
 interface CatalogLocalDataSource {
+    /** [episodes]: the listing of the titles with an episode (its own, as the server gave it). */
     fun observeListing(
         sourceKey: String,
         categoryId: String?,
+        episodes: Boolean = false,
     ): Flow<List<ListedTitle>>
 
     /** Stores a page of a listing; page 1 starts it over from scratch. */
@@ -36,20 +41,29 @@ interface CatalogLocalDataSource {
         sourceKey: String,
         page: TitlesPage,
         categoryId: String? = null,
+        episodes: Boolean = false,
     )
 
     /** Next page to request, null if everything is already here. */
     suspend fun nextPage(
         sourceKey: String,
         categoryId: String? = null,
+        episodes: Boolean = false,
     ): Int?
 
-    /** Titles saved for the source (in that category's listing when one is given). */
+    /** Titles saved for the source (in that category's listing when one is given; with an episode for [episodes]). */
     suspend fun searchLocal(
         sourceKey: String,
         query: String,
         categoryId: String? = null,
+        episodes: Boolean = false,
     ): List<TitleSummary>
+
+    /** The episode count saved for a title (the server's word last heard; 0 when none or unknown). */
+    suspend fun savedEpisodeCount(
+        sourceKey: String,
+        id: String,
+    ): Int
 
     /** Also keeps search results: the title page then opens offline. */
     suspend fun saveSummaries(
@@ -118,10 +132,11 @@ class SqlCatalogLocalDataSource(
     override fun observeListing(
         sourceKey: String,
         categoryId: String?,
+        episodes: Boolean,
     ): Flow<List<ListedTitle>> =
         queries
-            .listingTitles(sourceKey, listing(categoryId)) { key, id, name, cover, kind, format, status, rating, page ->
-                ListedTitle(summary(key, id, name, cover, kind, format, status, rating), page.toInt())
+            .listingTitles(sourceKey, listing(categoryId, episodes)) { key, id, name, cover, kind, format, status, rating, count, page ->
+                ListedTitle(summary(key, id, name, cover, kind, format, status, rating, count), page.toInt())
             }.asFlow()
             .mapToList(io)
 
@@ -129,8 +144,9 @@ class SqlCatalogLocalDataSource(
         sourceKey: String,
         page: TitlesPage,
         categoryId: String?,
+        episodes: Boolean,
     ) = withContext(io) {
-        val listing = listing(categoryId)
+        val listing = listing(categoryId, episodes)
         queries.transaction {
             val first = page.page <= 1
             if (first) queries.clearListing(sourceKey, listing)
@@ -147,10 +163,11 @@ class SqlCatalogLocalDataSource(
     override suspend fun nextPage(
         sourceKey: String,
         categoryId: String?,
+        episodes: Boolean,
     ): Int? =
         withContext(io) {
             queries
-                .cursor(sourceKey, listing(categoryId))
+                .cursor(sourceKey, listing(categoryId, episodes))
                 .executeAsOneOrNull()
                 ?.next_page
                 ?.toInt()
@@ -160,13 +177,28 @@ class SqlCatalogLocalDataSource(
         sourceKey: String,
         query: String,
         categoryId: String?,
+        episodes: Boolean,
     ): List<TitleSummary> =
         withContext(io) {
-            if (categoryId == null) {
-                queries.searchTitles(sourceKey, query, ::summary).executeAsList()
-            } else {
-                queries.searchListing(sourceKey, categoryId, query, ::summary).executeAsList()
-            }
+            val found =
+                if (categoryId == null) {
+                    queries.searchTitles(sourceKey, query, ::summary).executeAsList()
+                } else {
+                    queries.searchListing(sourceKey, categoryId, query, ::summary).executeAsList()
+                }
+            if (episodes) found.filter { it.episodeCount > 0 } else found
+        }
+
+    override suspend fun savedEpisodeCount(
+        sourceKey: String,
+        id: String,
+    ): Int =
+        withContext(io) {
+            queries
+                .titleById(sourceKey, id)
+                .executeAsOneOrNull()
+                ?.episode_count
+                ?.toInt() ?: 0
         }
 
     override suspend fun saveSummaries(
@@ -219,6 +251,7 @@ class SqlCatalogLocalDataSource(
             CatalogFilter(
                 sourceKeys = values[SOURCES].splitList(),
                 categoryName = values[CATEGORY]?.takeIf { it.isNotBlank() },
+                episodesOnly = values[EPISODES] == "1",
             )
         }
 
@@ -233,6 +266,7 @@ class SqlCatalogLocalDataSource(
                     queries.putSetting(SOURCES, filter.sourceKeys.joinList())
                 }
                 filter.categoryName?.takeIf { it.isNotBlank() }?.let { queries.putSetting(CATEGORY, it) } ?: queries.deleteSetting(CATEGORY)
+                if (filter.episodesOnly) queries.putSetting(EPISODES, "1") else queries.deleteSetting(EPISODES)
             }
         }
 
@@ -267,11 +301,22 @@ class SqlCatalogLocalDataSource(
                             title.format,
                             title.status,
                             title.content_rating,
+                            title.episode_count,
                         ),
                     synopsis = title.description.orEmpty(),
                     authors = title.authors.splitList(),
                     genres = title.genres.splitList(),
-                    chapters = chapters.map { Chapter(it.id, it.number, it.name, it.page_count.toInt(), it.published_at) },
+                    chapters =
+                        chapters.map {
+                            Chapter(
+                                it.id,
+                                it.number,
+                                it.name,
+                                it.page_count.toInt(),
+                                it.published_at,
+                                decodeLanguages(it.episode_languages),
+                            )
+                        },
                 )
             }
         }
@@ -292,12 +337,22 @@ class SqlCatalogLocalDataSource(
                     detail.status,
                     detail.contentRating,
                     formatKnown = detail.formatKnown || stripAware(sourceKey, detail) != detail.format,
+                    episodeCount = detail.episodeCount,
+                    episodesKnown = detail.episodesKnown,
                 ),
             )
             queries.updateDetail(detail.description, detail.authors.joinList(), detail.genres.joinList(), sourceKey, detail.id)
+            // Read on the device: the languages the server gave before stay with their chapters.
+            val saved =
+                if (detail.episodesKnown) {
+                    emptyMap()
+                } else {
+                    queries.chaptersOf(sourceKey, detail.id).executeAsList().associate { it.id to it.episode_languages }
+                }
             queries.deleteChaptersOf(sourceKey, detail.id)
             detail.chapters.forEach {
-                queries.insertChapter(sourceKey, detail.id, it.id, it.number, it.name, it.pageCount.toLong(), it.publishedAt)
+                val languages = if (detail.episodesKnown) encodeLanguages(it.episodeLanguages) else saved[it.id]
+                queries.insertChapter(sourceKey, detail.id, it.id, it.number, it.name, it.pageCount.toLong(), it.publishedAt, languages)
             }
         }
     }
@@ -343,11 +398,14 @@ class SqlCatalogLocalDataSource(
         // A search answer that sends no cover keeps the one the listing saved.
         val cover = it.coverUrl ?: row?.cover_url
         queries.updateSummary(it.name, cover, it.kind, format, it.status, it.contentRating, sourceKey, it.id)
+        // Listed by the device itself: the count the server gave stays.
+        if (it.episodesKnown) queries.setEpisodeCount(it.episodeCount.toLong(), sourceKey, it.id)
     }
 
     private companion object {
         const val SOURCES = "sources"
         const val CATEGORY = "category"
+        const val EPISODES = "episodes"
         const val NEWEST_FIRST = "chapters_newest_first"
     }
 }
@@ -366,8 +424,25 @@ private fun stripAware(
         detail.format
     }
 
-/** The listing of everything is '' (a category id is never empty). */
-private fun listing(categoryId: String?) = categoryId.orEmpty()
+/**
+ * The listing of everything is '' (a category id is never empty); the titles with an episode have their own listings,
+ * under a prefix no source's category id starts with (a control character).
+ */
+private fun listing(
+    categoryId: String?,
+    episodes: Boolean = false,
+) = if (episodes) EPISODES_LISTING + categoryId.orEmpty() else categoryId.orEmpty()
+
+private const val EPISODES_LISTING = "\u0002episodes:"
+
+private val languagesJson = Json { ignoreUnknownKeys = true }
+
+/** Stored as a JSON array: `""` (the original) is a language like the others. */
+private fun encodeLanguages(languages: List<String>): String? =
+    if (languages.isEmpty()) null else languagesJson.encodeToString(ListSerializer(String.serializer()), languages)
+
+private fun decodeLanguages(value: String?): List<String> =
+    value?.let { runCatching { languagesJson.decodeFromString(ListSerializer(String.serializer()), it) }.getOrNull() }.orEmpty()
 
 private const val SEPARATOR = "\u001F"
 
@@ -384,6 +459,7 @@ internal fun summary(
     format: String,
     status: String,
     contentRating: String?,
+    episodeCount: Long,
 ) = TitleSummary(
     sourceKey,
     id,
@@ -393,6 +469,7 @@ internal fun summary(
     ReadingFormat.fromApi(format),
     status,
     ContentRating.fromApi(contentRating),
+    episodeCount.toInt(),
 )
 
 internal fun TitleSummaryDto.toDomain(sourceKey: String) =
@@ -405,4 +482,5 @@ internal fun TitleSummaryDto.toDomain(sourceKey: String) =
         ReadingFormat.fromApi(format),
         status,
         ContentRating.fromApi(contentRating),
+        episodeCount,
     )

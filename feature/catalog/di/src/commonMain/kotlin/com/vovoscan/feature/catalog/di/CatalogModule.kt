@@ -14,6 +14,7 @@ import com.vovoscan.feature.catalog.data.SqlCatalogLocalDataSource
 import com.vovoscan.feature.catalog.data.db.CatalogDatabase
 import com.vovoscan.feature.catalog.domain.CatalogRepository
 import com.vovoscan.feature.catalog.domain.ChapterTranslations
+import com.vovoscan.feature.catalog.domain.EpisodeFeature
 import com.vovoscan.feature.catalog.domain.SearchRepository
 import com.vovoscan.feature.catalog.presentation.CatalogViewModel
 import com.vovoscan.feature.catalog.presentation.SearchPrivacyViewModel
@@ -46,6 +47,7 @@ val catalogModule =
                 get(),
                 get(),
                 getOrNull() ?: ChapterTranslations.None,
+                getOrNull() ?: EpisodeFeature.Off,
             )
         }
     }

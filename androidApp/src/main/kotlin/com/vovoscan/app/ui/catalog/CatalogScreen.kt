@@ -10,6 +10,7 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -62,11 +63,13 @@ import coil3.compose.AsyncImage
 import com.vovoscan.app.ui.common.AppIcons
 import com.vovoscan.app.ui.common.BrandField
 import com.vovoscan.app.ui.common.EmptyStateCard
+import com.vovoscan.app.ui.common.EpisodeBadge
 import com.vovoscan.app.ui.common.ErrorText
 import com.vovoscan.app.ui.common.GhostButton
 import com.vovoscan.app.ui.common.Kicker
 import com.vovoscan.app.ui.common.LocalAdaptive
 import com.vovoscan.app.ui.common.OfflineNotice
+import com.vovoscan.app.ui.common.ToggleChip
 import com.vovoscan.app.ui.theme.Brand
 import com.vovoscan.core.common.i18n.I18n
 import com.vovoscan.feature.catalog.presentation.CatalogIntent
@@ -131,14 +134,17 @@ fun CatalogScreen(
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Kicker(I18n.text("nav.catalog"))
                     Text(I18n.text("catalog.headline"), style = MaterialTheme.typography.headlineSmall)
-                    if (state.showSourceFilter || state.showCategoryFilter) {
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (state.showSourceFilter || state.showCategoryFilter || state.showEpisodesFilter) {
+                        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             if (state.showSourceFilter) FilterButton(state.sourceFilterLabel, !state.allSources) { sheet = Sheet.Sources }
                             if (state.showCategoryFilter) {
                                 FilterButton(state.categoryFilterLabel, state.category != null) {
                                     sheet =
                                         Sheet.Categories
                                 }
+                            }
+                            if (state.showEpisodesFilter) {
+                                ToggleChip(state.episodesLabel, state.episodesOnly) { viewModel.onIntent(CatalogIntent.ToggleEpisodes) }
                             }
                         }
                     }
@@ -502,6 +508,7 @@ private fun TitleTile(
     ) {
         Box(Modifier.fillMaxWidth().aspectRatio(3f / 4f).background(Brand.Line)) {
             AsyncImage(card.coverUrl, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+            card.episodeBadge?.let { EpisodeBadge(it, Modifier.align(Alignment.TopEnd).padding(8.dp)) }
             Column(Modifier.align(Alignment.TopStart).padding(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(
                     card.formatLabel,

@@ -218,6 +218,9 @@ final class TitleModel: ObservableObject {
 
     func toggleOrder() { detail.onIntent(intent: TitleDetailIntentToggleOrder.shared) }
 
+    /// "▶ Episodes": only the chapters with an episode, or every chapter again.
+    func toggleEpisodes() { detail.onIntent(intent: TitleDetailIntentToggleEpisodes.shared) }
+
     /// A chapter row's pill: the view model answers with `state.open`, which the page opens once.
     func translate(_ chapterId: String) { detail.onIntent(intent: TitleDetailIntentTranslate(chapterId: chapterId)) }
 

@@ -39,6 +39,7 @@ import com.vovoscan.feature.catalog.domain.ChapterTranslationBadge
 import com.vovoscan.feature.catalog.domain.ChapterTranslations
 import com.vovoscan.feature.catalog.domain.ContentKind
 import com.vovoscan.feature.catalog.domain.ContentPolicy
+import com.vovoscan.feature.catalog.domain.EpisodeFeature
 import com.vovoscan.feature.catalog.domain.ReadingResume
 import com.vovoscan.feature.catalog.domain.ResumePoint
 import com.vovoscan.feature.catalog.domain.ResumePoints
@@ -267,6 +268,11 @@ fun appModules(
             single<EpisodeAccess> {
                 val auth = get<AuthRepository>()
                 EpisodeAccess { auth.session.map { it?.has(VIDEO_FEATURE) == true }.distinctUntilChanged() }
+            }
+            // The same flag for the catalog: the Episodes filter and the episode badges on cards and chapter rows.
+            single<EpisodeFeature> {
+                val auth = get<AuthRepository>()
+                EpisodeFeature { auth.session.map { it?.has(VIDEO_FEATURE) == true }.distinctUntilChanged() }
             }
             // Safe mode (the account's `showAdult`, off by default): the catalog filters titles read on the device by the
             // same rule as the server, without knowing the auth slice. Signed out = safe.

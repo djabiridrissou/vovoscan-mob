@@ -14,6 +14,8 @@ CREATE TABLE title (
     genres TEXT,
     -- safe | suggestive | erotica | pornographic; null when the source doesn't say.
     content_rating TEXT,
+    -- Chapters with an episode this account can watch (the server's word; 0 when unknown).
+    episode_count INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (source_key, id)
 );
 
@@ -25,6 +27,8 @@ CREATE TABLE chapter (
     name TEXT,
     page_count INTEGER NOT NULL,
     published_at TEXT,
+    -- JSON array of the languages its episode can be watched in ("" = the original); null or [] = none.
+    episode_languages TEXT,
     PRIMARY KEY (source_key, title_id, id)
 );
 
@@ -74,11 +78,15 @@ UPDATE title SET name = ?, cover_url = ?, kind = ?, format = ?, status = ?, cont
 learnFormat:
 UPDATE title SET format = ? WHERE source_key = ? AND id = ? AND format = 'manga';
 
+-- Only from the server (a source read on the device can't know it).
+setEpisodeCount:
+UPDATE title SET episode_count = ? WHERE source_key = ? AND id = ?;
+
 updateDetail:
 UPDATE title SET description = ?, authors = ?, genres = ? WHERE source_key = ? AND id = ?;
 
 listingTitles:
-SELECT t.source_key, t.id, t.name, t.cover_url, t.kind, t.format, t.status, t.content_rating, e.page FROM catalog_entry e
+SELECT t.source_key, t.id, t.name, t.cover_url, t.kind, t.format, t.status, t.content_rating, t.episode_count, e.page FROM catalog_entry e
 JOIN title t ON t.source_key = e.source_key AND t.id = e.title_id
 WHERE e.source_key = ? AND e.listing = ? ORDER BY e.rank;
 
@@ -98,16 +106,16 @@ cursor:
 SELECT next_page FROM listing_cursor WHERE source_key = ? AND listing = ?;
 
 searchTitles:
-SELECT source_key, id, name, cover_url, kind, format, status, content_rating FROM title
+SELECT source_key, id, name, cover_url, kind, format, status, content_rating, episode_count FROM title
 WHERE source_key = :source_key AND name LIKE '%' || :query || '%' ORDER BY name LIMIT 50;
 
 searchListing:
-SELECT t.source_key, t.id, t.name, t.cover_url, t.kind, t.format, t.status, t.content_rating FROM catalog_entry e
+SELECT t.source_key, t.id, t.name, t.cover_url, t.kind, t.format, t.status, t.content_rating, t.episode_count FROM catalog_entry e
 JOIN title t ON t.source_key = e.source_key AND t.id = e.title_id
 WHERE e.source_key = :source_key AND e.listing = :listing AND t.name LIKE '%' || :query || '%' ORDER BY t.name LIMIT 50;
 
 searchAllTitles:
-SELECT source_key, id, name, cover_url, kind, format, status, content_rating FROM title
+SELECT source_key, id, name, cover_url, kind, format, status, content_rating, episode_count FROM title
 WHERE name LIKE '%' || :query || '%' ORDER BY name LIMIT :limit;
 
 titleById:
@@ -120,7 +128,7 @@ deleteChaptersOf:
 DELETE FROM chapter WHERE source_key = ? AND title_id = ?;
 
 insertChapter:
-INSERT OR REPLACE INTO chapter (source_key, title_id, id, number, name, page_count, published_at) VALUES (?, ?, ?, ?, ?, ?, ?);
+INSERT OR REPLACE INTO chapter (source_key, title_id, id, number, name, page_count, published_at, episode_languages) VALUES (?, ?, ?, ?, ?, ?, ?, ?);
 
 categoriesOf:
 SELECT id, name FROM source_category WHERE source_key = ? ORDER BY position;

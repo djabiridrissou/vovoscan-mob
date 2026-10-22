@@ -25,8 +25,9 @@ class CatalogRepositoryImpl(
     override fun observeListing(
         sourceKey: String,
         categoryId: String?,
+        episodes: Boolean,
     ): Flow<List<ListedTitle>> =
-        local.observeListing(sourceKey, categoryId).combine(learned) { titles, all ->
+        local.observeListing(sourceKey, categoryId, episodes).combine(learned) { titles, all ->
             val known = all[sourceKey].orEmpty()
             // Only over the default: a strip the device read from the title's genres stays one.
             if (known.isEmpty()) {
@@ -77,27 +78,31 @@ class CatalogRepositoryImpl(
     override suspend fun refreshListing(
         sourceKey: String,
         categoryId: String?,
-    ): AppResult<Boolean> = fetchPage(sourceKey, 1, categoryId)
+        episodes: Boolean,
+    ): AppResult<Boolean> = fetchPage(sourceKey, 1, categoryId, episodes)
 
     override suspend fun loadMoreListing(
         sourceKey: String,
         categoryId: String?,
+        episodes: Boolean,
     ): AppResult<Boolean> {
-        val next = local.nextPage(sourceKey, categoryId) ?: return AppResult.Ok(false)
-        return fetchPage(sourceKey, next, categoryId)
+        val next = local.nextPage(sourceKey, categoryId, episodes) ?: return AppResult.Ok(false)
+        return fetchPage(sourceKey, next, categoryId, episodes)
     }
 
     override suspend fun hasMore(
         sourceKey: String,
         categoryId: String?,
-    ): Boolean = local.nextPage(sourceKey, categoryId) != null
+        episodes: Boolean,
+    ): Boolean = local.nextPage(sourceKey, categoryId, episodes) != null
 
     override suspend fun search(
         sourceKey: String,
         query: String,
         categoryId: String?,
+        episodes: Boolean,
     ): SearchResult =
-        when (val result = remote.search(sourceKey, query.trim(), categoryId)) {
+        when (val result = remote.search(sourceKey, query.trim(), categoryId, episodes)) {
             is AppResult.Ok -> {
                 val items = result.value.items
                 local.saveSummaries(sourceKey, items)
@@ -125,10 +130,10 @@ class CatalogRepositoryImpl(
             }
             is AppResult.Err ->
                 when (val error = result.error) {
-                    AppError.Network -> SearchResult(local.searchLocal(sourceKey, query.trim(), categoryId), offline = true)
+                    AppError.Network -> SearchResult(local.searchLocal(sourceKey, query.trim(), categoryId, episodes), offline = true)
                     is AppError.SourceUnavailable ->
                         SearchResult(
-                            local.searchLocal(sourceKey, query.trim(), categoryId),
+                            local.searchLocal(sourceKey, query.trim(), categoryId, episodes),
                             offline = true,
                             unavailableSource = error.sourceName,
                         )
@@ -172,7 +177,29 @@ class CatalogRepositoryImpl(
     override suspend fun refreshTitle(
         sourceKey: String,
         id: String,
-    ): AppResult<Unit> = remote.title(sourceKey, id).also { if (it is AppResult.Ok) local.saveDetail(sourceKey, it.value) }.map { }
+    ): AppResult<Unit> =
+        remote
+            .title(sourceKey, id)
+            .map { detail -> if (detail.episodesKnown) detail else withServerEpisodes(sourceKey, detail) }
+            .also { if (it is AppResult.Ok) local.saveDetail(sourceKey, it.value) }
+            .map { }
+
+    /**
+     * A title read on the device that the server said has an episode (a listing or search of the Episodes filter): its
+     * chapters' languages come from the server. Any other title asks nothing, so opening it tells the server nothing.
+     */
+    private suspend fun withServerEpisodes(
+        sourceKey: String,
+        detail: TitleDetailDto,
+    ): TitleDetailDto {
+        if (local.savedEpisodeCount(sourceKey, detail.id) <= 0) return detail
+        val episodes = remote.titleEpisodes(sourceKey, detail.id) ?: return detail
+        return detail.copy(
+            episodeCount = episodes.count,
+            chapters = detail.chapters.map { it.copy(episodeLanguages = episodes.languages[it.id].orEmpty()) },
+            episodesKnown = true,
+        )
+    }
 
     override suspend fun clearLocal() = local.clear()
 
@@ -186,11 +213,12 @@ class CatalogRepositoryImpl(
         sourceKey: String,
         page: Int,
         categoryId: String?,
+        episodes: Boolean,
     ): AppResult<Boolean> =
         remote
-            .titles(sourceKey, page, categoryId)
+            .titles(sourceKey, page, categoryId, episodes)
             .also {
-                if (it is AppResult.Ok) local.saveCatalogPage(sourceKey, it.value, categoryId)
+                if (it is AppResult.Ok) local.saveCatalogPage(sourceKey, it.value, categoryId, episodes)
             }.map { it.hasNext }
 
     private companion object {

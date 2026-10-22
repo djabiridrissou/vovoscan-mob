@@ -32,6 +32,9 @@ class FakeSearch : SearchRepository {
     var answer: (String, Int) -> Suggestions = { _, _ -> Suggestions() }
     val asked = mutableListOf<Triple<String, Int, ReadingFormat?>>()
     val picks = mutableListOf<SearchPick>()
+
+    /** Suggestions asked with `has=episode`. */
+    val askedEpisodes = mutableListOf<String>()
     var sentPending = 0
     var learn: AppResult<Boolean> = AppResult.Ok(true)
     var cleared: AppResult<Int> = AppResult.Ok(3)
@@ -40,8 +43,10 @@ class FakeSearch : SearchRepository {
         query: String,
         limit: Int,
         format: ReadingFormat?,
+        episodes: Boolean,
     ): Suggestions {
         asked += Triple(query, limit, format)
+        if (episodes) askedEpisodes += query
         return answer(query, limit)
     }
 

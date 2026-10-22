@@ -90,6 +90,17 @@ struct TitleView: View {
                             }
                             .buttonStyle(.plain)
                         }
+                        // Only when a chapter has an episode (and the account has `video`): those chapters alone.
+                        if model.state.showEpisodesFilter {
+                            HStack {
+                                ToggleChip(label: model.state.episodesChip, on: model.state.episodesOnly) {
+                                    Haptics.select()
+                                    withAnimation(.snappy) { model.toggleEpisodes() }
+                                }
+                                .accessibilityIdentifier("title.episodes")
+                                Spacer()
+                            }
+                        }
                     }
                     ForEach(model.state.chapters, id: \.id) { chapter in
                         let download = model.downloads.row(chapterId: chapter.id)
@@ -104,6 +115,15 @@ struct TitleView: View {
                                     if let translation = chapter.translation {
                                         Text(translation).font(.brandBody(13, weight: .bold))
                                             .foregroundStyle(chapter.translationReady ? Color.brandYellow : Color.brandCyan)
+                                    }
+                                    // The languages its episode can be watched in: "▶ Original", "▶ Français", "+2".
+                                    if !chapter.episodes.isEmpty {
+                                        HStack(spacing: 4) {
+                                            ForEach(chapter.episodes, id: \.self) { badge in EpisodeBadge(label: badge) }
+                                        }
+                                        .accessibilityElement(children: .ignore)
+                                        .accessibilityLabel(chapter.episodesA11y ?? "")
+                                        .padding(.top, 2)
                                     }
                                     if let text = download.text {
                                         Text(text).font(.brandBody(13))

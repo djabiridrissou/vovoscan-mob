@@ -52,6 +52,8 @@ data class TitleSummary(
     val status: String,
     /** null: the source doesn't say (hidden in safe mode, like an adult title). */
     val contentRating: ContentRating? = null,
+    /** Chapters with an episode this account can watch, any language (the server's word; 0 when unknown). */
+    val episodeCount: Int = 0,
 )
 
 data class Chapter(
@@ -60,6 +62,8 @@ data class Chapter(
     val name: String?,
     val pageCount: Int,
     val publishedAt: String?,
+    /** Languages its episode can be watched in, sorted; `""` = the original; empty: none (or not known). */
+    val episodeLanguages: List<String> = emptyList(),
 ) {
     /** "98" or "98.5", never "98.0". */
     val label: String get() = if (number % 1.0 == 0.0) number.toLong().toString() else number.toString()
@@ -98,6 +102,8 @@ data class ListedTitle(
 data class CatalogFilter(
     val sourceKeys: List<String> = emptyList(),
     val categoryName: String? = null,
+    /** Only titles with an episode (`has=episode`; needs the `video` feature). */
+    val episodesOnly: Boolean = false,
 )
 
 /** Where a title was left: its chapter and page, and when (ms). */
@@ -132,30 +138,35 @@ object ResumePoints {
 /**
  * Each source's catalog, offline first: screens read the local database (`observe…`), `refresh…` replaces it
  * with what the source says (the vovoscan API for the internal source, the device itself for the others). A source
- * has one listing per category (`categoryId`), and one for everything (`null`).
+ * has one listing per category (`categoryId`), and one for everything (`null`); with [episodes], the titles that have an
+ * episode (the server's word: for a source read on the device, the titles imported from it that have one, any category).
  */
 interface CatalogRepository {
     fun observeListing(
         sourceKey: String,
         categoryId: String? = null,
+        episodes: Boolean = false,
     ): Flow<List<ListedTitle>>
 
     /** Reloads the first page; true if more pages remain. */
     suspend fun refreshListing(
         sourceKey: String,
         categoryId: String? = null,
+        episodes: Boolean = false,
     ): AppResult<Boolean>
 
     /** The next page, when there is one; true if more pages remain. */
     suspend fun loadMoreListing(
         sourceKey: String,
         categoryId: String? = null,
+        episodes: Boolean = false,
     ): AppResult<Boolean>
 
     /** True while the saved listing has pages left to load (known before any network answer). */
     suspend fun hasMore(
         sourceKey: String,
         categoryId: String? = null,
+        episodes: Boolean = false,
     ): Boolean
 
     /** Searches the source; offline (or the source isn't answering), searches the titles already saved on the device. */
@@ -163,6 +174,7 @@ interface CatalogRepository {
         sourceKey: String,
         query: String,
         categoryId: String? = null,
+        episodes: Boolean = false,
     ): SearchResult
 
     /** The source's categories as last read (none until then, or when it has none). */
@@ -258,5 +270,17 @@ fun interface ChapterTranslations {
 
     companion object {
         val None = ChapterTranslations { _, _ -> null }
+    }
+}
+
+/**
+ * Port: the account has the `video` feature (wired in `shared` to the session). Without it the catalog shows neither
+ * the Episodes filter nor episode badges.
+ */
+fun interface EpisodeFeature {
+    fun enabled(): Flow<Boolean>
+
+    companion object {
+        val Off = EpisodeFeature { flowOf(false) }
     }
 }

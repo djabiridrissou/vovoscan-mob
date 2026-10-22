@@ -225,13 +225,22 @@ struct CatalogView: View {
     }
 
     @ViewBuilder private var filters: some View {
-        if model.state.showSourceFilter || model.state.showCategoryFilter {
-            HStack(spacing: 8) {
-                if model.state.showSourceFilter {
-                    FilterButton(label: model.state.sourceFilterLabel, active: !model.state.allSources) { sheet = .sources }
-                }
-                if model.state.showCategoryFilter {
-                    FilterButton(label: model.state.categoryFilterLabel, active: model.state.category != nil) { sheet = .categories }
+        if model.state.showSourceFilter || model.state.showCategoryFilter || model.state.showEpisodesFilter {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    if model.state.showSourceFilter {
+                        FilterButton(label: model.state.sourceFilterLabel, active: !model.state.allSources) { sheet = .sources }
+                    }
+                    if model.state.showCategoryFilter {
+                        FilterButton(label: model.state.categoryFilterLabel, active: model.state.category != nil) { sheet = .categories }
+                    }
+                    if model.state.showEpisodesFilter {
+                        ToggleChip(label: model.state.episodesLabel, on: model.state.episodesOnly) {
+                            Haptics.select()
+                            model.send(CatalogIntentToggleEpisodes.shared)
+                        }
+                        .accessibilityIdentifier("catalog.episodes")
+                    }
                 }
             }
         }
@@ -264,6 +273,29 @@ private struct FilterButton: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(label)
+    }
+}
+
+/// A filter that is on or off ("▶ Episodes"): red when on.
+struct ToggleChip: View {
+    let label: String
+    let on: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Text(label)
+                .lineLimit(1)
+                .font(.brandBody(15, weight: .bold))
+                .foregroundStyle(on ? Color.brandInk : Color.brandPaper)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background(on ? Color.brandRed : Color.brandInk2, in: Capsule())
+                .overlay(Capsule().stroke(on ? Color.brandRed : Color.brandLine, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(label)
+        .accessibilityAddTraits(on ? .isSelected : [])
     }
 }
 
@@ -437,6 +469,11 @@ private struct TitleTile: View {
             ZStack(alignment: .topLeading) {
                 Color.brandLine
                 CoverImage(card: card)
+                if let badge = card.episodeBadge {
+                    EpisodeBadge(label: badge)
+                        .frame(maxWidth: .infinity, alignment: .topTrailing)
+                        .padding(8)
+                }
                 VStack(alignment: .leading, spacing: 4) {
                     Text(card.formatLabel)
                         .font(.brandBody(12, weight: .bold))
@@ -484,6 +521,20 @@ private struct TitleTile: View {
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.brandLine, lineWidth: 2))
         .contentShape(RoundedRectangle(cornerRadius: 12))
         .accessibilityElement(children: .combine)
+    }
+}
+
+/// "▶ 3": chapters with an episode, top right of a cover (text on red: ink).
+struct EpisodeBadge: View {
+    let label: String
+
+    var body: some View {
+        Text(label)
+            .font(.brandBody(12, weight: .bold))
+            .foregroundStyle(Color.brandInk)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(Color.brandRed)
     }
 }
 

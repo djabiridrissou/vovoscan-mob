@@ -26,14 +26,18 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
+import com.vovoscan.app.ui.common.EpisodeBadge
 import com.vovoscan.app.ui.common.ErrorText
 import com.vovoscan.app.ui.common.GhostButton
 import com.vovoscan.app.ui.common.OfflineNotice
 import com.vovoscan.app.ui.common.PrimaryButton
+import com.vovoscan.app.ui.common.ToggleChip
 import com.vovoscan.app.ui.downloads.DownloadControl
 import com.vovoscan.app.ui.sources.BrandAlert
 import com.vovoscan.app.ui.theme.Brand
@@ -133,6 +137,10 @@ fun TitleScreen(
                                     .padding(8.dp),
                         )
                     }
+                    // Only when a chapter has an episode (and the account has `video`): those chapters alone.
+                    if (state.showEpisodesFilter) {
+                        ToggleChip(state.episodesChip, state.episodesOnly) { detail.onIntent(TitleDetailIntent.ToggleEpisodes) }
+                    }
                 }
             }
         }
@@ -156,6 +164,17 @@ fun TitleScreen(
                     chapter.translation?.let {
                         val color = if (chapter.translationReady) Brand.Yellow else Brand.Cyan
                         Text(it, style = MaterialTheme.typography.bodySmall.copy(color = color))
+                    }
+                    // The languages its episode can be watched in: "▶ Original", "▶ Français", "+2".
+                    if (chapter.episodes.isNotEmpty()) {
+                        Row(
+                            Modifier
+                                .padding(top = 2.dp)
+                                .clearAndSetSemantics { contentDescription = chapter.episodesA11y.orEmpty() },
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            chapter.episodes.forEach { EpisodeBadge(it) }
+                        }
                     }
                     download.text?.let {
                         val color = if (download.status == DownloadStatus.Failed) Brand.Danger else Brand.Muted
