@@ -46,6 +46,7 @@ object Rules {
                     )
                 }.getOrElse { throw RuleException("The source answered with invalid JSON.") }
             "html" -> Ksoup.parse(body, baseUrl)
+            "xml" -> Ksoup.parseXml(body, baseUrl)
             else -> throw RuleException("Unknown response type: $type")
         }
 
@@ -56,7 +57,7 @@ object Rules {
     ): List<Any> {
         if (selector is JsonPrimitive) return JsonPath.select(ctx.node as? JsonElement ?: return emptyList(), selector.content)
         val css = (selector as JsonObject)["css"]?.jsonPrimitive?.content ?: throw RuleException("Unknown list selector")
-        val element = ctx.node as? Element ?: throw RuleException("A CSS selector needs an HTML response.")
+        val element = ctx.node as? Element ?: throw RuleException("A CSS selector needs an HTML or XML response.")
         return element.select(css).toList()
     }
 
@@ -78,7 +79,7 @@ object Rules {
                     if (all) found else found.firstOrNull()
                 }
                 "css" in spec -> {
-                    val element = ctx.node as? Element ?: throw RuleException("A CSS rule needs an HTML response.")
+                    val element = ctx.node as? Element ?: throw RuleException("A CSS rule needs an HTML or XML response.")
                     val css = spec.getValue("css").jsonPrimitive.content
                     val elements = if (css == "" || css == ":self") listOf(element) else element.select(css).toList()
                     val attr = spec["attr"]?.jsonPrimitive?.contentOrNull

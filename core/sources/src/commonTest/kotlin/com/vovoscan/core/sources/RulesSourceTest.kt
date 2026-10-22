@@ -117,6 +117,81 @@ class RulesSourceTest {
         }
 
     @Test
+    fun startIndexPaginationOverOpds() =
+        runTest {
+            val feed =
+                """<?xml version="1.0"?><feed>""" +
+                    """<link rel="next" href="/ebooks/search.opds/?start_index=26"/>""" +
+                    """<entry><id>http://www.gut.example/ebooks/103.opds</id><title>Around the World</title></entry>""" +
+                    """</feed>"""
+            val opds =
+                source(
+                    """{"contractVersion":1,"key":"gut","name":"Gut","version":"1.0.0","kinds":["book"],"langs":["en"],"rights":{"basis":"public-domain","notes":"notes here"},"hosts":["www.gut.example"],"catalog":{"request":{"url":"https://www.gut.example/ebooks/search.opds/","type":"xml","query":{"query":"{{search}}","sort_order":"downloads"},"pagination":{"type":"startIndex","param":"start_index","pageSize":25}},"list":{"css":"entry"},"item":{"id":{"css":"id","then":[{"regex":"/ebooks/([0-9]+)\\.opds"}]},"name":{"css":"title","then":["trim"]}},"hasNext":{"css":"link[rel=next]","attr":"href","then":["notNull"]}},"title":{"request":{"url":"https://www.gut.example/ebooks/{{id}}","type":"html"},"fields":{"name":{"css":"h1"}},"units":{"single":{"id":"{{id}}"}}},"content":{"book":{"document":{"url":{"template":"https://www.gut.example/cache/epub/{{id}}/pg{{id}}-images.epub"},"mediaType":"application/epub+zip"}}}}""",
+                    "gut",
+                    emptyMap(),
+                    mapOf("https://www.gut.example/ebooks/search.opds/" to (feed to "application/atom+xml")),
+                )
+            val page1 = (opds.catalog(1) as AppResult.Ok).value
+            assertEquals("103", page1.items.single().id)
+            assertEquals(true, page1.hasNext)
+            // Page 1 sends no start_index (it equals the base); page 3 computes base + 2 * pageSize.
+            assertEquals("https://www.gut.example/ebooks/search.opds/?sort_order=downloads", sent[0])
+            opds.catalog(3)
+            assertEquals(
+                "https://www.gut.example/ebooks/search.opds/?sort_order=downloads&start_index=51",
+                sent[1],
+            )
+        }
+
+    @Test
+    fun cursorPagination() =
+        runTest {
+            val explore =
+                """{"items":[{"slug":"alpha","title":"Alpha","coverUrl":"https://cdn.example/a.jpg"}],"nextCursor":"CURSOR-2"}"""
+            val explore2 =
+                """{"items":[{"slug":"beta","title":"Beta","coverUrl":"https://cdn.example/b.jpg"}],"nextCursor":"CURSOR-3"}"""
+            val explore3 =
+                """{"items":[{"slug":"gamma","title":"Gamma","coverUrl":"https://cdn.example/c.jpg"}]}"""
+            val engine =
+                MockEngine { request ->
+                    sent += request.url.toString()
+                    when (request.url.parameters["cursor"]) {
+                        "CURSOR-2" -> respond(explore2, HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
+                        "CURSOR-3" -> respond(explore3, HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
+                        else -> respond(explore, HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
+                    }
+                }
+            val manifest =
+                SourceManifest(
+                    "toonspace",
+                    Json
+                        .parseToJsonElement(
+                            """{"contractVersion":1,"key":"toonspace","name":"ToonSpace","version":"1.0.0","kinds":["comic"],"langs":["en"],"rights":{"basis":"public-domain","notes":"notes here"},"hosts":["api.example"],"catalog":{"request":{"url":"https://api.example/api/explore","type":"json","query":{"cursor":"{{cursor}}"},"pagination":{"type":"cursor","param":"cursor","from":{"path":"$.nextCursor"}}},"list":"$.items[*]","item":{"id":{"path":"$.slug"},"name":{"path":"$.title"},"cover":{"path":"$.coverUrl"}}},"title":{"request":{"url":"https://api.example/title/{{id}}","type":"html"},"fields":{"name":{"css":"h1"}},"units":{"single":{"id":"{{id}}"}}},"content":{"comic":{"request":{"url":"https://api.example/read/{{unitId}}","type":"html"},"list":{"css":"img"},"item":{"url":{"css":":self","attr":"src","then":["absUrl"]}}}}}""",
+                        ).jsonObject,
+                    emptyMap(),
+                )
+            val toonspace = RulesSource(manifest, RulesHttp(createRulesHttpClient(engine)))
+
+            // The engine follows the cursor chain: page 3 issues three requests, each with the previous cursor.
+            val page3 = (toonspace.catalog(3) as AppResult.Ok).value
+            assertEquals("gamma", page3.items.single().id)
+            assertEquals(false, page3.hasNext)
+            assertEquals(3, sent.count { it.startsWith("https://api.example/api/explore") })
+            assertTrue(sent.any { it == "https://api.example/api/explore?cursor=CURSOR-3" })
+            sent.clear()
+
+            // Page 1 reports a next page while a cursor is present; an exhausted chain stops early.
+            val page1 = (toonspace.catalog(1) as AppResult.Ok).value
+            assertEquals("alpha", page1.items.single().id)
+            assertEquals(true, page1.hasNext)
+            sent.clear()
+            val page10 = (toonspace.catalog(10) as AppResult.Ok).value
+            assertEquals("gamma", page10.items.single().id)
+            assertEquals(false, page10.hasNext)
+            assertEquals(3, sent.count { it.startsWith("https://api.example/api/explore") })
+        }
+
+    @Test
     fun undeclaredHostIsRejected() =
         runTest {
             val gutenberg =

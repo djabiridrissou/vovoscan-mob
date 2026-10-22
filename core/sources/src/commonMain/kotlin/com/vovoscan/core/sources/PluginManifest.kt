@@ -25,7 +25,7 @@ object PluginLimits {
     /** Kinds this app can read today. */
     val SUPPORTED_KINDS = setOf("comic", "book")
     val KEY_PATTERN = Regex("^[a-z0-9][a-z0-9-]{1,62}$")
-    val REQUIRED_FIELDS = listOf("contractVersion", "key", "name", "version", "kinds", "langs", "rights", "catalog", "title", "content")
+    val REQUIRED_FIELDS = listOf("contractVersion", "key", "name", "version", "kinds", "langs", "catalog", "title", "content")
 }
 
 /** Messages shown when a plugin cannot be added (codes are stable, messages are for people). */
