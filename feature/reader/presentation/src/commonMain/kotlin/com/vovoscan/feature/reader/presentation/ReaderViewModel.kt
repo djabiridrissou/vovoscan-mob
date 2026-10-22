@@ -31,6 +31,7 @@ import com.vovoscan.feature.reader.domain.ReadingModes
 import com.vovoscan.feature.reader.domain.ReadingPosition
 import com.vovoscan.feature.reader.domain.ReadingProgressSink
 import com.vovoscan.feature.reader.domain.ReadingStops
+import com.vovoscan.feature.reader.domain.Resume
 import com.vovoscan.feature.reader.domain.ScrollAmount
 import com.vovoscan.feature.reader.domain.SpreadSlot
 import com.vovoscan.feature.reader.domain.Spreads
@@ -670,7 +671,8 @@ class ReaderViewModel(
             rebuildStops()
         }
         viewModelScope.launch {
-            restore = settings.position(sourceKey, chapterId)?.takeIf { it.page == startPage }
+            // The place saved here, when it is the one asked for (the page shown at its top, or its reading line's).
+            restore = settings.position(sourceKey, chapterId)?.takeIf { it.page - startPage in 0..1 }
             restoreIfReady()
         }
     }
@@ -796,6 +798,7 @@ class ReaderViewModel(
     }
 
     private fun forward() {
+        holdPosition = false
         val current = state.value
         if (current.items.isEmpty()) return
         mutableState.update { it.copy(chromeVisible = false) }
@@ -814,6 +817,7 @@ class ReaderViewModel(
     }
 
     private fun backward() {
+        holdPosition = false
         val current = state.value
         if (current.items.isEmpty()) return
         mutableState.update { it.copy(chromeVisible = false) }
@@ -963,9 +967,25 @@ class ReaderViewModel(
         val strip = layout ?: return
         if (restored || position.page !in strip.tops.indices) return
         restored = true
-        val target = strip.tops[position.page] + position.offset * strip.heights[position.page]
-        command { ReaderCommand.GlideTo(it, target, animated = false) }
+        // The reading line saved, on this screen: a panel before it, that panel marked for a moment; not saved back
+        // until the reader moves.
+        val line = strip.tops[position.page] + position.offset * strip.heights[position.page]
+        val target = Resume.target(stops, strip, line, viewport)
+        holdPosition = true
+        command { ReaderCommand.GlideTo(it, target.offset, animated = false) }
+        val mark = target.mark ?: return
+        mutableState.update { it.copy(focus = mark) }
+        markJob?.cancel()
+        markJob =
+            viewModelScope.launch {
+                delay(Resume.MARK_MS)
+                mutableState.update { it.copy(focus = if (it.focusOn) stops.getOrNull(stopIndex)?.panel else null) }
+            }
     }
+
+    /** A resume placed the strip: its position is not saved until the reader moves (no drift backwards). */
+    private var holdPosition = false
+    private var markJob: Job? = null
 
     private fun scrolled(
         at: Float,
@@ -978,6 +998,7 @@ class ReaderViewModel(
         if (byUser) {
             userScrolled = true
             gliding = false
+            holdPosition = false
         }
         if (settled) {
             gliding = false
@@ -1000,12 +1021,16 @@ class ReaderViewModel(
         if (abs(read - state.value.progress) >= PROGRESS_STEP || read == 1f) mutableState.update { it.copy(progress = read) }
         val page = strip.pageAt(at.coerceAtLeast(0f))
         moveTo(page)
+        if (holdPosition) return
         positionJob?.cancel()
         positionJob =
             viewModelScope.launch {
                 delay(POSITION_MS)
-                val share = ((at - strip.tops[page]) / strip.heights[page]).coerceIn(0f, 1f)
-                settings.savePosition(sourceKey, chapterId, ReadingPosition(page, share))
+                // The anchor is the reading line, as a share of its page: it holds on another screen or device.
+                val line = (at + Resume.READING_LINE * viewport).coerceIn(0f, strip.total)
+                val anchor = strip.pageAt(line)
+                val share = ((line - strip.tops[anchor]) / strip.heights[anchor]).coerceIn(0f, 1f)
+                settings.savePosition(sourceKey, chapterId, ReadingPosition(anchor, share))
             }
     }
 

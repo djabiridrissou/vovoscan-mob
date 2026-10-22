@@ -323,8 +323,11 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   2.5 s after a Next or a scroll down, come back on a scroll up of 0.25 × the screen; a 2 pt red progress line while
   hidden; immersive system bars (Android), hidden status bar (iOS). Title card for 1.6 s on opening. Focus (off by
   default, `ReaderPreferences.focus`): the panel at full light, the rest at 0.72, gliding 380 ms. Position
-  `{page, offset}` (share of the page) in `reader_setting` (`pos/<source>/<chapter>`, at most every 500 ms),
-  restored when the chapter opens at its saved page. The next 3 pages are prefetched. Our catalogue's comics have
+  `{page, offset}` in `reader_setting` (`pos/<source>/<chapter>`, at most every 500 ms): the reading line (a third of
+  the screen down) as a share of its page. "Continue reading" (`Resume`, reader SPEC §9): the stop whose panel holds
+  that line is the anchor; the strip opens one stop before it (a third of a screen back without stops, or when that
+  stop is more than a screen up), the anchor panel lit for 1.2 s; the placement is not saved back until the reader
+  moves (no drift). The next 3 pages are prefetched. Our catalogue's comics have
   "Watch from here" (`ReadWithVoice` → `OpenEpisode(chapterId, page)` → `PlayerViewModel(…, startPage)`, the first
   beat of that page). Reduce Motion / Remove animations: jumps, no glide, no fades.
 - Tall pages in the paged modes (`TallPages`, as Mihon's paged viewer): a page whose height / width is more than
