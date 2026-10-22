@@ -190,7 +190,12 @@ class RulesSource(
         val value = read?.trim()?.takeIf { it.isNotEmpty() }
         val mapped =
             value?.let { v ->
-                (ratings?.get("map") as? JsonObject)?.get(v)?.jsonPrimitive?.contentOrNull
+                (ratings?.get("map") as? JsonObject)
+                    ?.entries
+                    ?.firstOrNull { it.key.lowercase() == v.lowercase() }
+                    ?.value
+                    ?.jsonPrimitive
+                    ?.contentOrNull
                     ?: v.lowercase().takeIf { it in scale }
             }
         // A value the manifest doesn't map stays unknown: the default is only for titles the site doesn't rate.
