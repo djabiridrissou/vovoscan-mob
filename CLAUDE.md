@@ -499,6 +499,38 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   crash): `CueMixer` starts the engine first and never plays a node in a stopped engine. Do not run audio work in a
   SwiftUI view's body other than through `PlayerAudio.sync` (cheap: volume, pan, a drift check every 300 ms).
 
+## Languages, tutorial, account (i18n/SPEC.md, shared with the web)
+
+- UI languages: English and French (`UiLocales`), catalogues `core/common/i18n/{en,fr}.json` (ICU messages, keys shared
+  with the web's `apps/web/messages`; generated into Kotlin). `t(key, pairs)` / `I18n.text` / `I18n.textWith`;
+  `LocalFormat` and `PlatformFormats` (region name, dates, times) follow the region. French: vous, typographic ’, a
+  narrow no-break space (U+202F) before `: ; ? !` (`CataloguesTest` checks every string). Never a literal on screen.
+- The UI language is not a content language: chapters are translated into the **reading language**
+  (`GET/PUT api/v1/settings/reading` `targetLanguage`, `ReadingSettingsViewModel`, `LanguagePicker` over `Language.ALL`).
+- `UiLanguage` (`core/common`): the account's `locale`/`region` win, else the choice saved on the device
+  (`DevicePreferences`: SharedPreferences `vovoscan_device` / NSUserDefaults `vovoscan.*`), else the device's languages.
+  `LocaleSync` (`shared`) applies the account's on every session change. The API client sends `Accept-Language` (the UI
+  language) to the API host only. A change rebuilds the screens: iOS `LocaleRoot` (`.id(locale)`), Android
+  `recreate()` (ViewModels survive; labels are getters read on draw).
+- Sign-up (`SignInViewModel`): the UI language chips, and in invite mode the age box (`auth.ageConfirm`, the region's
+  minimum age; `422 AGE_NOT_CONFIRMED`); the redeem sends locale, region, time zone and `ageConfirmed`.
+- Tutorial (`OnboardingViewModel`, `ONBOARDING_VERSION` 1): welcome, language, reading, sources, credits, done; Skip on
+  every step, Back from the second, the step kept in `DevicePreferences` (a language change rebuilds the screen). Shown
+  when `/auth/me` says `onboarding.due` (or replayed from Settings › Preferences: `SessionViewModel.replayTutorial`);
+  finishing or skipping sends `onboardingCompleted`. The sources step offers the official "vovoscan" source first
+  (off by default, ADR-0055; one tap puts it first and visible, `AppOnboardingServices.turnOnOfficial`), then "Add a
+  source"; the credits step explains own keys vs credits and opens the keys screen.
+- Profile changes (`AuthRepository.updateProfile`, `PATCH api/v1/me`): applied on the device at once; offline they are
+  merged into one pending patch (`pending_profile` in the secure store) sent before the next `GET /auth/me`; a refusal
+  restores the server's profile.
+- Account (`AccountViewModel`, `AccountRepository`): name, email change (password, link sent to the new address),
+  password, devices (`GET/DELETE api/v1/me/sessions`, revoke others), deletion with a 30-day grace period
+  (`POST/DELETE api/v1/me/deletion`; a yellow banner with "Keep my account" on every screen meanwhile; the owner can't).
+  Passwords stay in the native fields and travel only in the intent that sends them (`secretFieldResets` empties the
+  fields). `401 WRONG_PASSWORD` is a refusal, never a sign-out: `errorOf` checks `data.error` first.
+- Screens: iOS `OnboardingView.swift`, `AccountView.swift` (Account, Preferences); Android `ui/onboarding`,
+  `ui/account`; Settings opens both (Account, Preferences rows).
+
 ## UI
 
 - Colors: `Brand` (Android) and `BrandColors.swift` (iOS), copied from `brand/tokens.json`. Red = action,
@@ -507,7 +539,7 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   `square.stack.3d.up`, `gearshape`). Android: no icon library; `AppIcons` (androidApp `ui/common`) draws the same
   shapes as `ImageVector` line icons (24 × 24, 1.8 stroke), plus the download controls.
 - Primary button: hard offset shadow with no blur, presses down 2 pt on tap (150 ms) with haptic feedback.
-- Copy in English, short sentences, calm tone ("Invite already used."), ✦ separator.
+- Copy in the UI language (catalogues above), short sentences, calm tone ("Invite already used."), ✦ separator.
 
 ## Branches and commits
 
