@@ -92,17 +92,17 @@ class SqlReaderSettingsRepositoryTest {
             val io = StandardTestDispatcher(testScheduler)
             val settings = SqlReaderSettingsRepository(database, io)
             val local = SqlReaderLocalDataSource(database, io)
-            settings.recordRead(LastRead("mangadex", "a/b:c", "ch:1", 3, readAt = 100))
+            settings.recordRead(LastRead("inkwell", "a/b:c", "ch:1", 3, readAt = 100))
             settings.recordRead(LastRead("vovoscan", "t1", "c1", 0, readAt = 200))
             settings.recordRead(LastRead("vovoscan", "t1", "c2", 7, readAt = 300))
             // Ids with "/" and ":" come back whole; one row per title, the latest.
             assertEquals(
-                listOf(LastRead("vovoscan", "t1", "c2", 7, 300), LastRead("mangadex", "a/b:c", "ch:1", 3, 100)),
+                listOf(LastRead("vovoscan", "t1", "c2", 7, 300), LastRead("inkwell", "a/b:c", "ch:1", 3, 100)),
                 settings.observeHistory().first(),
             )
             // History rows are not preferences.
             assertEquals(ReaderPreferences(), settings.observePreferences().first())
-            local.clearSource("mangadex")
+            local.clearSource("inkwell")
             assertEquals(listOf("t1"), settings.observeHistory().first().map { it.titleId })
             local.clear()
             assertEquals(emptyList(), settings.observeHistory().first())

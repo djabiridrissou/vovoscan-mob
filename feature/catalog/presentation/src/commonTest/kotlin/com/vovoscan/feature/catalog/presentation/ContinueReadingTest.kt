@@ -29,7 +29,7 @@ class ContinueReadingTest {
     private val dispatcher = StandardTestDispatcher()
     private val summary =
         TitleSummary(
-            "mangadex",
+            "inkwell",
             "dle",
             "Dark and Light Martial Emperor",
             "https://img/c.jpg",
@@ -66,7 +66,7 @@ class ContinueReadingTest {
     fun chapterOneIsOnTopAndTheOrderIsRemembered() =
         runTest(dispatcher) {
             val repository = repository()
-            val vm = TitleDetailViewModel("mangadex", "dle", repository, resume)
+            val vm = TitleDetailViewModel("inkwell", "dle", repository, resume)
             advanceUntilIdle()
             assertEquals(
                 listOf("k1", "k2", "k3"),
@@ -90,7 +90,7 @@ class ContinueReadingTest {
             assertNull(vm.state.value.nextChapterId("k3"))
 
             // Another title page opened later keeps the choice.
-            val again = TitleDetailViewModel("mangadex", "dle", repository, resume)
+            val again = TitleDetailViewModel("inkwell", "dle", repository, resume)
             advanceUntilIdle()
             assertEquals(
                 listOf("k3", "k2", "k1"),
@@ -102,7 +102,7 @@ class ContinueReadingTest {
     @Test
     fun aTitleNeverReadStartsAtChapterOne() =
         runTest(dispatcher) {
-            val vm = TitleDetailViewModel("mangadex", "dle", repository(), resume)
+            val vm = TitleDetailViewModel("inkwell", "dle", repository(), resume)
             advanceUntilIdle()
             val action = vm.state.value.readAction!!
             assertEquals("k1", action.chapterId)
@@ -119,8 +119,8 @@ class ContinueReadingTest {
     @Test
     fun aTitleLeftMidChapterContinuesThereAndFollowsNewReading() =
         runTest(dispatcher) {
-            points.value = listOf(ResumePoint("mangadex", "other", "z9", 4, 900), ResumePoint("mangadex", "dle", "k2", 11, 500))
-            val vm = TitleDetailViewModel("mangadex", "dle", repository(), resume)
+            points.value = listOf(ResumePoint("inkwell", "other", "z9", 4, 900), ResumePoint("inkwell", "dle", "k2", 11, 500))
+            val vm = TitleDetailViewModel("inkwell", "dle", repository(), resume)
             advanceUntilIdle()
             val action = vm.state.value.readAction!!
             assertTrue(action.resumes)
@@ -136,7 +136,7 @@ class ContinueReadingTest {
             )
 
             // Reading goes on (here or on another device): the button follows.
-            points.value = listOf(ResumePoint("mangadex", "dle", "k3", 0, 1_000))
+            points.value = listOf(ResumePoint("inkwell", "dle", "k3", 0, 1_000))
             advanceUntilIdle()
             assertEquals(
                 "k3",
@@ -153,8 +153,8 @@ class ContinueReadingTest {
     @Test
     fun aChapterTheSourceNoLongerListsFallsBackToStartReading() =
         runTest(dispatcher) {
-            points.value = listOf(ResumePoint("mangadex", "dle", "gone", 3, 500))
-            val vm = TitleDetailViewModel("mangadex", "dle", repository(), resume)
+            points.value = listOf(ResumePoint("inkwell", "dle", "gone", 3, 500))
+            val vm = TitleDetailViewModel("inkwell", "dle", repository(), resume)
             advanceUntilIdle()
             assertEquals(
                 "k1",
@@ -172,10 +172,10 @@ class ContinueReadingTest {
         runTest(dispatcher) {
             val repository =
                 repository().apply {
-                    remote["mangadex" to null] = listOf(listOf(summary, summary.copy(id = "fresh", name = "Fresh")))
+                    remote["inkwell" to null] = listOf(listOf(summary, summary.copy(id = "fresh", name = "Fresh")))
                 }
             val vm = CatalogViewModel(repository, resume)
-            vm.onIntent(CatalogIntent.SourcesChanged(listOf(CatalogSource("mangadex", "MangaDex"))))
+            vm.onIntent(CatalogIntent.SourcesChanged(listOf(CatalogSource("inkwell", "Inkwell"))))
             advanceUntilIdle()
             assertNull(vm.state.value.resume)
             assertTrue(
@@ -183,7 +183,7 @@ class ContinueReadingTest {
                     .none { it.started },
             )
 
-            points.value = listOf(ResumePoint("mangadex", "dle", "k2", 0, 500))
+            points.value = listOf(ResumePoint("inkwell", "dle", "k2", 0, 500))
             advanceUntilIdle()
             val card = vm.state.value.resume!!
             assertEquals("Dark and Light Martial Emperor", card.titleName)

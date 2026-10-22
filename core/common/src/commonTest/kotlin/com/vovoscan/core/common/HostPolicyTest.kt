@@ -10,7 +10,7 @@ import kotlin.test.assertTrue
 class HostPolicyTest {
     @Test
     fun publicNamesAndAddressesPass() {
-        for (host in listOf("api.mangadex.org", "www.gutenberg.org", "comics.inkwell.example", "8.8.8.8", "1.1.1.1", "Example.COM.")) {
+        for (host in listOf("pages.inkwell.example", "www.gutenberg.org", "comics.inkwell.example", "8.8.8.8", "1.1.1.1", "Example.COM.")) {
             assertTrue(HostPolicy.isPublic(host), host)
         }
     }

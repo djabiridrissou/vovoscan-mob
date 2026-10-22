@@ -9,18 +9,18 @@ class ResumePointsTest {
         val device =
             listOf(
                 ResumePoint("vovoscan", "t1", "c4", 12, readAt = 300),
-                ResumePoint("mangadex", "x", "k1", 0, readAt = 100),
+                ResumePoint("inkwell", "x", "k1", 0, readAt = 100),
             )
         // The library synced another device's reading: newer for t1? No, older; newer for x.
         val library =
             listOf(
                 ResumePoint("vovoscan", "t1", "c2", 3, readAt = 200),
-                ResumePoint("mangadex", "x", "k7", 5, readAt = 400),
+                ResumePoint("inkwell", "x", "k7", 5, readAt = 400),
                 ResumePoint("gutenberg", "84", "84", 2, readAt = 50),
             )
         assertEquals(
             listOf(
-                ResumePoint("mangadex", "x", "k7", 5, readAt = 400),
+                ResumePoint("inkwell", "x", "k7", 5, readAt = 400),
                 ResumePoint("vovoscan", "t1", "c4", 12, readAt = 300),
                 ResumePoint("gutenberg", "84", "84", 2, readAt = 50),
             ),
