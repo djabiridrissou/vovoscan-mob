@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.vovoscan.core.common.AppError
 import com.vovoscan.core.common.AppResult
 import com.vovoscan.core.common.Language
+import com.vovoscan.core.common.i18n.t
 import com.vovoscan.core.common.userMessage
 import com.vovoscan.feature.reader.domain.ChapterTranslation
 import com.vovoscan.feature.reader.domain.Lettering
@@ -218,23 +219,24 @@ private fun Language.matches(needle: String): Boolean =
     needle.isEmpty() || needle in name.lowercase() || needle in native.lowercase() || code.lowercase() == needle
 
 object TranslationText {
-    const val ORIGINAL = "Original"
-    const val READY = "Ready"
-    const val QUEUED = "Queued"
-    const val FAILED = "The translation couldn't be made. Try again."
-    const val STARTED = "Translating. It's made once and shared with every reader."
-    const val OFFLINE = "You're offline. Translations need the network."
-    const val NO_CREDITS = "Not enough credits to translate. Add your own keys in Settings, or ask for a top-up."
-    const val PAUSED = "Translations on the platform's keys are paused right now. Your own keys still work."
-    const val DAILY_CAP = "Today's limit is reached. Try again tomorrow, or use your own keys."
-    const val NOT_READABLE = "This chapter's bubbles haven't been read yet, so there's nothing to translate."
+    val ORIGINAL: String get() = t("translation.original")
+    val READY: String get() = t("translation.ready")
+    val QUEUED: String get() = t("translation.queued")
+    val FAILED: String get() = t("translation.failed")
+    val STARTED: String get() = t("translation.started")
+    val OFFLINE: String get() = t("translation.offline")
+    val NO_CREDITS: String get() = t("translation.noCredits")
+    val PAUSED: String get() = t("translation.paused")
+    val DAILY_CAP: String get() = t("translation.dailyCap")
+    val NOT_READABLE: String get() = t("translation.notReadable")
 
-    fun status(t: ChapterTranslation): String? =
-        when (t.status) {
+    fun status(translation: ChapterTranslation): String? =
+        when (translation.status) {
             TranslationStatus.Ready -> READY
             TranslationStatus.Queued -> QUEUED
-            TranslationStatus.Running -> t.progress?.let { "Translating ✦ ${it.coerceIn(0, 100)}%" } ?: "Translating…"
-            TranslationStatus.Failed -> "Failed"
+            TranslationStatus.Running ->
+                translation.progress?.let { t("translation.progress", "percent" to it.coerceIn(0, 100)) } ?: t("translation.running")
+            TranslationStatus.Failed -> t("translation.failedShort")
             TranslationStatus.None -> null
         }
 

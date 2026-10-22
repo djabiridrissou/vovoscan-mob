@@ -1,6 +1,7 @@
 package com.vovoscan.feature.reader.domain
 
 import com.vovoscan.core.common.AppResult
+import com.vovoscan.core.common.i18n.t
 import kotlinx.coroutines.flow.Flow
 
 /**
@@ -89,7 +90,7 @@ data class ReaderChapter(
     val label: String
         get() =
             if (mode == ReadingMode.Book) {
-                name ?: "Part ${numberLabel()}"
+                name ?: t("reader.part", "n" to numberLabel())
             } else {
                 chapterLabel(number)
             }
@@ -101,7 +102,7 @@ data class ReaderChapter(
 fun numberLabel(number: Double): String = if (number % 1.0 == 0.0) number.toLong().toString() else number.toString()
 
 /** "Chapter 12". */
-fun chapterLabel(number: Double): String = "Chapter " + numberLabel(number)
+fun chapterLabel(number: Double): String = t("reader.chapter", "n" to numberLabel(number))
 
 /** A book section (in reading order): table-of-contents title and sanitized HTML. */
 data class BookSection(

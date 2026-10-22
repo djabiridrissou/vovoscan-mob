@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.vovoscan.core.common.AppResult
 import com.vovoscan.core.common.Freshness
 import com.vovoscan.core.common.StaleReason
+import com.vovoscan.core.common.i18n.t
 import com.vovoscan.core.common.userMessage
 import com.vovoscan.feature.reader.domain.BookSection
 import com.vovoscan.feature.reader.domain.ChapterHeading
@@ -175,7 +176,7 @@ data class ReaderUiState(
         get() =
             when {
                 count == 0 -> ""
-                isBook -> "Section ${currentIndex + 1} / $count"
+                isBook -> t("reader.section", "n" to currentIndex + 1, "total" to count)
                 else -> "${currentIndex + 1} / $count"
             }
 
@@ -188,7 +189,7 @@ data class ReaderUiState(
     val atEnd: Boolean get() = count > 0 && currentIndex >= count - 1
 
     /** End-of-unit button. */
-    val nextLabel: String? get() = nextChapterId?.let { if (isBook) "Next part →" else "Next chapter →" }
+    val nextLabel: String? get() = nextChapterId?.let { t(if (isBook) "reader.nextPart" else "reader.nextChapter") }
 
     val rightToLeft: Boolean get() = mode == ReadingMode.PagedRightToLeft
 
@@ -536,21 +537,23 @@ class ReaderViewModel(
         val previous =
             TransitionCard(
                 forward = false,
-                heading = "Current: $here",
+                heading = t("reader.current", "chapter" to here),
                 target =
-                    chapter.previousChapterId?.let { "Previous: ${previousHeading?.label ?: "the chapter before"}" }
-                        ?: "This is the first chapter.",
-                actionLabel = chapter.previousChapterId?.let { "← Previous chapter" },
+                    chapter.previousChapterId?.let {
+                        previousHeading?.label?.let { label -> t("reader.previous", "chapter" to label) } ?: t("reader.previousUnknown")
+                    } ?: t("reader.firstChapter"),
+                actionLabel = chapter.previousChapterId?.let { t("reader.previousChapter") },
                 chapterId = chapter.previousChapterId,
             )
         val next =
             TransitionCard(
                 forward = true,
-                heading = "Finished: $here",
+                heading = t("reader.finished", "chapter" to here),
                 target =
-                    chapter.nextChapterId?.let { "Next: ${nextHeading?.label ?: "the next chapter"}" }
-                        ?: "This is the last chapter for now.",
-                actionLabel = chapter.nextChapterId?.let { "Next chapter →" },
+                    chapter.nextChapterId?.let {
+                        nextHeading?.label?.let { label -> t("reader.next", "chapter" to label) } ?: t("reader.nextUnknown")
+                    } ?: t("reader.lastChapter"),
+                actionLabel = chapter.nextChapterId?.let { t("reader.nextChapter") },
                 chapterId = chapter.nextChapterId,
             )
         return listOf(ReaderItem.Transition(previous)) + chapter.pages.map { ReaderItem.Page(it) } + ReaderItem.Transition(next)
