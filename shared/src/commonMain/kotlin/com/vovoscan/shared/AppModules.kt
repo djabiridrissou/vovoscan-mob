@@ -8,6 +8,7 @@ import com.vovoscan.core.common.INTERNAL_SOURCE_KEY
 import com.vovoscan.core.common.Language
 import com.vovoscan.core.common.NetworkMonitor
 import com.vovoscan.core.common.SystemClock
+import com.vovoscan.core.common.i18n.I18n
 import com.vovoscan.core.common.i18n.UiLanguage
 import com.vovoscan.core.network.ApiChapterImports
 import com.vovoscan.core.network.ApiConfig
@@ -56,6 +57,10 @@ import com.vovoscan.feature.episodes.domain.KeyStatus
 import com.vovoscan.feature.episodes.domain.KeyStatusProvider
 import com.vovoscan.feature.episodes.domain.RunCost
 import com.vovoscan.feature.episodes.domain.RunQuotes
+import com.vovoscan.feature.forum.di.forumModule
+import com.vovoscan.feature.forum.domain.ForumAccess
+import com.vovoscan.feature.forum.domain.ForumRepository
+import com.vovoscan.feature.forum.domain.WritingLanguage
 import com.vovoscan.feature.library.di.libraryModule
 import com.vovoscan.feature.library.domain.LibraryRepository
 import com.vovoscan.feature.library.domain.LibrarySeries
@@ -154,6 +159,7 @@ fun appModules(
                     get<ProviderKeysRepository>().clearLocal()
                     get<WalletRepository>().clear()
                     get<EpisodesRepository>().clearLocal()
+                    get<ForumRepository>().clearLocal()
                 }
             }
             // A source left the list (third-party source removed, here or on another device): its catalog and
@@ -276,6 +282,16 @@ fun appModules(
             single<EpisodeAccess> {
                 val auth = get<AuthRepository>()
                 EpisodeAccess { auth.session.map { it?.has(VIDEO_FEATURE) == true }.distinctUntilChanged() }
+            }
+            // The margin (余白) shows only with the `forum` flag (gated by default; every feature for a super-admin).
+            single<ForumAccess> {
+                val auth = get<AuthRepository>()
+                ForumAccess { auth.session.map { it?.has(FORUM_FEATURE) == true }.distinctUntilChanged() }
+            }
+            // Readers write in their reading language when they chose one, else in the app's language.
+            single<WritingLanguage> {
+                val reading = get<ReadingSettingsRepository>()
+                WritingLanguage { reading.observeTargetLanguage().first() ?: I18n.locale.value.substringBefore('-') }
             }
             // The same flag for the catalog: the Episodes filter and the episode badges on cards and chapter rows.
             single<EpisodeFeature> {
@@ -421,6 +437,7 @@ fun appModules(
         authModule,
         catalogModule,
         episodesModule,
+        forumModule,
         libraryModule,
         readerModule,
         sourcesModule,
@@ -450,6 +467,7 @@ class ImageRefererSync(
 
 /** The feature flag that opens episodes and their MP4 (the server's name for it). */
 private const val VIDEO_FEATURE = "video"
+private const val FORUM_FEATURE = "forum"
 
 /** The episodes' `KeyStatusProvider` port, served by the account slice's key list (hints only, never a secret). */
 private class AccountKeyStatus(

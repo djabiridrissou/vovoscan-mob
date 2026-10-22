@@ -115,8 +115,16 @@ import com.vovoscan.app.ui.common.LanguageDock
 import com.vovoscan.app.ui.common.LocalAdaptive
 import com.vovoscan.app.ui.common.PrimaryButton
 import com.vovoscan.app.ui.common.content
+import com.vovoscan.app.ui.forum.LocalPageMargin
+import com.vovoscan.app.ui.forum.MarginButton
+import com.vovoscan.app.ui.forum.MarginEndCard
+import com.vovoscan.app.ui.forum.MarginPanel
+import com.vovoscan.app.ui.forum.MarginPinsOverlay
+import com.vovoscan.app.ui.forum.PageMargin
 import com.vovoscan.app.ui.theme.Brand
 import com.vovoscan.core.common.i18n.I18n
+import com.vovoscan.feature.forum.presentation.ForumViewModel
+import com.vovoscan.feature.forum.presentation.MarginIntent
 import com.vovoscan.feature.library.presentation.FollowViewModel
 import com.vovoscan.feature.reader.domain.ReaderKey
 import com.vovoscan.feature.reader.domain.ReaderPage
@@ -195,6 +203,11 @@ fun ReaderScreen(
     // What comes after this chapter in the language on the page (our catalog): end card, balloon, toast, series setting.
     val next: NextChapterViewModel = koinViewModel(key = "next:$sourceKey/$chapterId") { parametersOf(sourceKey, chapterId) }
     val nextState by next.state.collectAsStateWithLifecycle()
+    // The chapter's margin (余白): a chapter of the server only (a source's chapter read on the device has none).
+    val forum: ForumViewModel? =
+        if (sourceKey == OUR_SOURCE) koinViewModel(key = "forum:$chapterId") { parametersOf(chapterId) } else null
+    val marginState = forum?.state?.collectAsStateWithLifecycle()?.value
+    val pageMargin = forum?.let { vm -> marginState?.takeIf { it.visible }?.let { PageMargin(it, vm::onIntent) } }
     LaunchedEffect(translationState.shown) { next.onIntent(NextChapterIntent.LanguageShown(translationState.shown)) }
     LaunchedEffect(state.readShare) { next.onIntent(NextChapterIntent.Reached(state.readShare)) }
     LaunchedEffect(state.onEndCard) { next.onIntent(NextChapterIntent.AtEnd(state.onEndCard)) }
@@ -304,6 +317,7 @@ fun ReaderScreen(
                     LocalReaderLanguageAction provides languageAction,
                     LocalNextChapter provides nextUi,
                     LocalEndCardHeart provides heart,
+                    LocalPageMargin provides pageMargin,
                 ) {
                     ComicReader(state, onIntent)
                 }
@@ -361,6 +375,9 @@ fun ReaderScreen(
                 onWatch = { onIntent(ReaderIntent.ReadWithVoice) },
                 onHelp = { onIntent(ReaderIntent.ShowCoach) },
                 language = {
+                    if (!state.isBook && pageMargin != null) {
+                        MarginButton(pageMargin.state) { pageMargin.send(MarginIntent.Toggle) }
+                    }
                     if (!state.isBook && translationState.available) LanguageButton(translationState) { languagesOpen = true }
                 },
             )
@@ -429,6 +446,10 @@ fun ReaderScreen(
             shown?.let {
                 NextToastView(it, nextAction(NextChapterIntent.PrepareNext), onDismiss = { next.onIntent(NextChapterIntent.DismissToast) })
             }
+        }
+        // The margin, docked at the bottom and not modal: the pages above stay readable and take a mark.
+        if (pageMargin != null && pageMargin.state.open && !state.isBook) {
+            MarginPanel(pageMargin.state, pageMargin.send, Modifier.align(Alignment.BottomCenter))
         }
         // How to read, the first time a chapter of its kind opens: any tap closes it.
         AnimatedVisibility(
@@ -798,6 +819,8 @@ internal fun TransitionCardView(
             // Reader SPEC §11: the language is one tap away here too.
             val language = LocalReaderLanguageAction.current
             if (card.forward && language != null) GhostButton("文A  ${language.label}", language.open)
+            // The chapter's margin: how many read this far, its best notes, a way into it.
+            LocalPageMargin.current?.takeIf { card.forward }?.let { MarginEndCard(it) }
         }
     }
 }
@@ -950,6 +973,9 @@ private const val MAX_HARDWARE_SIDE = 4096
 private val LABEL_WIDTH = 140.dp
 private const val ZOOM = 2f
 
+/** The internal source: its chapters are the server's, so they have a margin. */
+private const val OUR_SOURCE = "vovoscan"
+
 private fun zoneColor(action: TapAction): Color =
     when (action) {
         TapAction.Next -> Brand.Red
@@ -1035,6 +1061,12 @@ internal fun PageImage(
         if (lettering.isNotEmpty()) {
             Box(Modifier.matchParentSize(), contentAlignment = Alignment.Center) {
                 LetteringOverlay(lettering, Modifier.aspectRatio(ratio))
+            }
+        }
+        // Over the lettering: the margin's pins and, with a tool chosen, the surface that takes the mark.
+        LocalPageMargin.current?.let { margin ->
+            Box(Modifier.matchParentSize(), contentAlignment = Alignment.Center) {
+                MarginPinsOverlay(page.index, margin, Modifier.aspectRatio(ratio))
             }
         }
     }

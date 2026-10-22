@@ -28,6 +28,7 @@ import com.vovoscan.feature.catalog.presentation.SearchPrivacyViewModel
 import com.vovoscan.feature.catalog.presentation.TitleDetailViewModel
 import com.vovoscan.feature.episodes.presentation.EpisodeViewModel
 import com.vovoscan.feature.episodes.presentation.PlayerViewModel
+import com.vovoscan.feature.forum.presentation.ForumViewModel
 import com.vovoscan.feature.library.presentation.FollowViewModel
 import com.vovoscan.feature.library.presentation.LibraryViewModel
 import com.vovoscan.feature.reader.domain.DownloadActivity
@@ -193,6 +194,9 @@ class ViewModels : KoinComponent {
         sourceKey: String,
         chapterId: String,
     ): NextChapterViewModel = remember("next:$sourceKey/$chapterId") { get<NextChapterViewModel> { parametersOf(sourceKey, chapterId) } }
+
+    /** The margin (余白) of a chapter of ours (or a server copy), next to the reader. */
+    fun forum(chapterId: String): ForumViewModel = remember("forum:$chapterId") { get<ForumViewModel> { parametersOf(chapterId) } }
 
     fun providerKeys(): ProviderKeysViewModel = remember("providerKeys") { get<ProviderKeysViewModel>() }
 

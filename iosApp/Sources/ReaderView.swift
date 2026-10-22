@@ -37,6 +37,8 @@ struct ReaderView: View {
     @StateObject private var model: ReaderModel
     @StateObject private var translation: TranslationModel
     @StateObject private var next: NextChapterModel
+    /// The chapter's margin (余白): pins over the pages, the sheet, the end of chapter (a chapter of the server only).
+    @StateObject private var margin: MarginModel
     @Environment(\.openURL) private var openURL
     @Environment(\.dismiss) private var dismiss
     /// The tab's path: ← and Escape pop it (the reader is always pushed on one; `dismiss` only as a fallback).
@@ -65,6 +67,7 @@ struct ReaderView: View {
         _model = StateObject(wrappedValue: ReaderModel(route: route))
         _translation = StateObject(wrappedValue: TranslationModel(route: route))
         _next = StateObject(wrappedValue: NextChapterModel(route: route))
+        _margin = StateObject(wrappedValue: MarginModel(route: route))
         self.onOpenChapter = onOpenChapter
         self.onOpenCopy = onOpenCopy
     }
@@ -113,6 +116,22 @@ struct ReaderView: View {
             .environment(\.pageLettering, pageLettering)
             .environment(\.readerLanguageAction, languageAction)
             .environment(\.readerNextChapter, nextChapter)
+            .environment(\.pageMargin, pageMargin)
+            .environment(\.readerMargin, margin.state.visible ? margin : nil)
+    }
+
+    /// The margin over each page while it is open: its pins, the mark being placed, and the surface that takes one.
+    private var pageMargin: PageMargin? {
+        let state: MarginUiState = margin.state
+        guard state.visible, state.open else { return nil }
+        let model: MarginModel = margin
+        return PageMargin(
+            pins: { index in state.pinsOn(pageIndex: Int32(index)) },
+            draft: { index in state.draftOn(pageIndex: Int32(index)) },
+            placing: state.placing,
+            tool: state.composer.tool,
+            send: { (intent: MarginIntent) in model.send(intent) }
+        )
     }
 
     private var pageLettering: (Int) -> [Lettering] {
@@ -232,6 +251,7 @@ struct ReaderView: View {
             .task { await model.observeFollow() }
             .task { await translation.observe() }
             .task { await next.observe() }
+            .task { await margin.observe() }
             .onChange(of: translation.state.shown, initial: true) { _, shown in next.send(NextChapterIntentLanguageShown(code: shown)) }
             .onChange(of: model.state.readShare, initial: true) { _, share in next.send(NextChapterIntentReached(share: share)) }
             .onChange(of: model.state.onEndCard, initial: true) { _, end in next.send(NextChapterIntentAtEnd(atEnd: end)) }
@@ -272,6 +292,13 @@ struct ReaderView: View {
         base
             .fullScreenCover(item: $player) { (route: PlayerRoute) in PlayerView(route: route) { _, _ in player = nil } }
             .sheet(item: $sourceEpisode) { (episode: SourceEpisode) in SourceEpisodeSheet(episode: episode) }
+            // The margin: the pages stay readable and markable under its lower detent.
+            .sheet(isPresented: marginOpen) {
+                MarginSheet(margin: margin)
+                    .presentationDetents([.fraction(0.4), .large])
+                    .presentationBackgroundInteraction(.enabled(upThrough: .fraction(0.4)))
+                    .presentationBackground(Color.brandInk2)
+            }
             .sheet(isPresented: $languagesOpen) {
                 LanguageSheet(translation: translation)
                     .presentationDetents([.medium, .large])
@@ -287,6 +314,15 @@ struct ReaderView: View {
                     .presentationDetents([.medium, .large])
                     .presentationBackground(Color.brandInk2)
             }
+    }
+
+    /// Open while the shared state says so; a swipe down closes it through the view model.
+    private var marginOpen: Binding<Bool> {
+        let model: MarginModel = margin
+        return Binding(
+            get: { model.state.visible && model.state.open },
+            set: { open in if !open && model.state.open { model.send(MarginIntentClose.shared) } }
+        )
     }
 
     /// A command of the shared reader that leaves this screen: another chapter, back, or the episode.
@@ -396,6 +432,9 @@ struct ReaderView: View {
                             .background(Color.brandRed, in: Circle())
                     }
                     .accessibilityLabel(model.state.voiceLabel)
+                }
+                if !model.state.isBook && margin.state.visible {
+                    MarginButton(margin: margin)
                 }
                 if !model.state.isBook && translation.state.available {
                     LanguageButton(translation: translation) { languagesOpen = true }
@@ -1307,6 +1346,7 @@ private struct TransitionCardView: View {
     @ObservedObject var model: ReaderModel
     @Environment(\.readerLanguageAction) private var language
     @Environment(\.readerNextChapter) private var nextChapter
+    @Environment(\.readerMargin) private var margin
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -1339,6 +1379,10 @@ private struct TransitionCardView: View {
                     Label(language.label, systemImage: "character.bubble")
                 }
                 .buttonStyle(GhostButtonStyle())
+            }
+            // The chapter's margin: how many read this far, its best notes, a way into it.
+            if card.forward, let margin {
+                MarginEndCard(margin: margin).padding(.top, 6)
             }
         }
         .padding(20)
@@ -1469,6 +1513,7 @@ private struct PageImage: View {
     /// A page the source gave no size for: the image's own size once loaded (the strip lays out from it).
     var onSize: ((CGSize) -> Void)? = nil
     @Environment(\.pageLettering) private var lettering
+    @Environment(\.pageMargin) private var margin
     /// Holds its image (false: a page far from the one read lets its image go).
     var active = true
     /// The image's width / height once loaded (a page whose size the source didn't give may turn out tall).
@@ -1493,6 +1538,10 @@ private struct PageImage: View {
         .overlay {
             let items = lettering(Int(page.index))
             if !items.isEmpty { LetteringOverlay(items: items) }
+        }
+        // Over the lettering: the margin's pins and, with a tool chosen, the surface that takes the mark.
+        .overlay {
+            if let margin { MarginPinsOverlay(pageIndex: Int(page.index), margin: margin) }
         }
         .frame(maxWidth: .infinity, maxHeight: fit ? .infinity : nil, alignment: alignment)
         .onAppear { if active { loader.show(page.url) } }
