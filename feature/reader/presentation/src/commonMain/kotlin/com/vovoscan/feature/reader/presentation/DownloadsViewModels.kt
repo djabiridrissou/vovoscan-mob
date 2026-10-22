@@ -344,7 +344,8 @@ class TitleDownloadsViewModel(
                     left.size < parts -> "Download the rest (${left.size})"
                     else -> "Download the book"
                 },
-            canDeleteAll = downloads.isNotEmpty(),
+            // Only once something is saved: a part still in the queue is cancelled from its own control.
+            canDeleteAll = saved > 0,
             deleteAllLabel = "Remove from this device",
             deleteAllTitle = "Remove the book from this device?",
             deleteAllMessage = "The copy of ${title.titleName} saved on this device goes. Reading it will need the network again.",
