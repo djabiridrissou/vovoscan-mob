@@ -27,12 +27,15 @@ struct ReaderContainer: View {
 /// decides. `onOpenChapter(chapterId, startPage)` replaces this reader.
 struct ReaderView: View {
     @StateObject private var model: ReaderModel
+    @StateObject private var translation: TranslationModel
     @Environment(\.dismiss) private var dismiss
     @State private var settingsOpen = false
+    @State private var languagesOpen = false
     let onOpenChapter: (String, Int) -> Void
 
     init(route: ReaderRoute, onOpenChapter: @escaping (String, Int) -> Void) {
         _model = StateObject(wrappedValue: ReaderModel(route: route))
+        _translation = StateObject(wrappedValue: TranslationModel(route: route))
         self.onOpenChapter = onOpenChapter
     }
 
@@ -49,7 +52,9 @@ struct ReaderView: View {
             } else if model.state.isBook {
                 BookReader(model: model) { onOpenChapter($0, 0) }
             } else if !model.state.items.isEmpty {
+                // The reader's language: each page draws its translated lettering, if any.
                 ComicReader(model: model)
+                    .environment(\.pageLettering, { [state = translation.state] index in state.letteringFor(index: Int32(index)) })
             }
             if let overlay = model.state.tapOverlay {
                 TapZonesOverlay(overlay: overlay).transition(.opacity)
@@ -62,6 +67,8 @@ struct ReaderView: View {
         .toolbar(.hidden, for: .tabBar)
         .statusBarHidden(!model.state.chromeVisible)
         .task { await model.observe() }
+        .task { await translation.observe() }
+        .animation(.easeInOut(duration: 0.25), value: translation.state.translated)
         // Opening another chapter (a chapter card, or a tap past the end), whatever the mode.
         .onChange(of: model.state.command?.seq) { _, _ in
             if let open = model.state.command as? ReaderCommandOpenChapter {
@@ -72,6 +79,11 @@ struct ReaderView: View {
         // Keep the screen awake while reading (setting, on by default).
         .onChange(of: model.state.keepScreenOn, initial: true) { _, on in UIApplication.shared.isIdleTimerDisabled = on }
         .onDisappear { UIApplication.shared.isIdleTimerDisabled = false }
+        .sheet(isPresented: $languagesOpen) {
+            LanguageSheet(translation: translation)
+                .presentationDetents([.medium, .large])
+                .presentationBackground(Color.brandInk2)
+        }
         .sheet(isPresented: $settingsOpen, onDismiss: { model.send(ReaderIntentSettingsClosed.shared) }) {
             ReaderSettingsSheetView(model: model)
                 .presentationDetents([.medium, .large])
@@ -88,6 +100,9 @@ struct ReaderView: View {
                     Text(model.state.chapterLabel).font(.brandBody(13)).foregroundStyle(Color.brandMuted)
                 }
                 Spacer()
+                if !model.state.isBook && translation.state.available {
+                    LanguageButton(translation: translation) { languagesOpen = true }
+                }
                 if !model.state.isBook {
                     Button {
                         model.send(ReaderIntentSettingsOpened.shared)
@@ -401,6 +416,7 @@ private struct TapZonesOverlay: View {
 private struct PageImage: View {
     let page: ReaderPage
     var fit = false
+    @Environment(\.pageLettering) private var lettering
 
     var body: some View {
         AsyncImage(url: URL(string: page.url)) { image in
@@ -409,6 +425,11 @@ private struct PageImage: View {
             Color.brandInk2
         }
         .aspectRatio(CGFloat(page.aspectRatio), contentMode: .fit)
+        // Over the page's own bounds: the translated lettering, placed by fractions of the page.
+        .overlay {
+            let items = lettering(Int(page.index))
+            if !items.isEmpty { LetteringOverlay(items: items) }
+        }
         .frame(maxWidth: .infinity, maxHeight: fit ? .infinity : nil)
         .accessibilityLabel("Page \(page.index + 1)")
     }

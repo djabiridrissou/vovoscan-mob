@@ -165,6 +165,27 @@ final class ReaderModel: ObservableObject {
     deinit { owner.clear() }
 }
 
+/// The reader's language: translations of the chapter and the lettering laid over each page (TranslationViewModel).
+@MainActor
+final class TranslationModel: ObservableObject {
+    @Published private(set) var state: TranslationUiState
+    private let owner = ViewModels()
+    private let viewModel: TranslationViewModel
+
+    init(route: ReaderRoute) {
+        viewModel = owner.translation(sourceKey: route.sourceKey, chapterId: route.chapterId)
+        state = viewModel.state.value
+    }
+
+    func observe() async {
+        for await next in viewModel.state { state = next }
+    }
+
+    func send(_ intent: TranslationIntent) { viewModel.onIntent(intent: intent) }
+
+    deinit { owner.clear() }
+}
+
 @MainActor
 final class SourcesModel: ObservableObject {
     @Published private(set) var state: SourcesUiState

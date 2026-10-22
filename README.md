@@ -363,6 +363,19 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   `SpeedLines` (deterministic, drawn with `Canvas`). Ink tab and navigation bars, red selection, a selection haptic per
   tab. Every animation is skipped under Reduce Motion.
 
+## Translated reader (`TranslationViewModel`, `iosApp/Sources/TranslationViews.swift`)
+
+- Chapters of our catalog only (`sourceKey == "vovoscan"`): a language button in the reader's top bar opens a
+  searchable picker (own name, English name or code), languages already made first ("Ready": shared, free).
+- `TranslationsRepository` (reader slice, online only): `GET api/v1/translations/chapters/{id}` (languages and status),
+  `POST …/{id} {lang}` (200 exists, 202 queued, 402 no credits), `GET …/{id}/{lang}` (pages and text boxes; `w`/`h` +
+  `balloons` or `width`/`height` + `texts`, boxes `[x, y, width, height]` in page pixels). A queued language is polled
+  every 4 s until ready.
+- `LetteringLayout` (reader domain) is the web reader's `lettering.ts`: paint patches over the original letters (the
+  balloon's interior when known, ellipse for round balloons) and the rectangle the translation is fitted in, as
+  fractions of the page. iOS draws them in `LetteringOverlay` over each `PageImage` (any mode, any zoom). `Language.ALL`
+  mirrors the server's `LANGUAGES` (48 entries).
+
 ## Screens (account and episodes)
 
 - Settings (4th tab, gear on both): Keys (two provider slots, add / replace / remove with a confirmation, privacy note;

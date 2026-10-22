@@ -29,6 +29,7 @@ import com.vovoscan.feature.reader.domain.DownloadsRepository
 import com.vovoscan.feature.reader.presentation.DownloadsViewModel
 import com.vovoscan.feature.reader.presentation.ReaderViewModel
 import com.vovoscan.feature.reader.presentation.TitleDownloadsViewModel
+import com.vovoscan.feature.reader.presentation.TranslationViewModel
 import com.vovoscan.feature.sources.presentation.AddSourceViewModel
 import com.vovoscan.feature.sources.presentation.SourceDetailViewModel
 import com.vovoscan.feature.sources.presentation.SourcesViewModel
@@ -146,6 +147,12 @@ class ViewModels : KoinComponent {
         remember("titleDownloads:$sourceKey/$titleId") { get<TitleDownloadsViewModel> { parametersOf(sourceKey, titleId) } }
 
     fun downloads(): DownloadsViewModel = remember("downloads") { get<DownloadsViewModel>() }
+
+    fun translation(
+        sourceKey: String,
+        chapterId: String,
+    ): TranslationViewModel =
+        remember("translation:$sourceKey/$chapterId") { get<TranslationViewModel> { parametersOf(sourceKey, chapterId) } }
 
     fun providerKeys(): ProviderKeysViewModel = remember("providerKeys") { get<ProviderKeysViewModel>() }
 
