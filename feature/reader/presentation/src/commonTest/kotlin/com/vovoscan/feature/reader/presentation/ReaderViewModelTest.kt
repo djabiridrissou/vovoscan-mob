@@ -128,6 +128,54 @@ class ReaderViewModelTest {
             assertEquals("Next chapter →", vm.state.value.nextLabel)
         }
 
+    /**
+     * A chapter first seen without its pages (saved for the first time: the chapter row before its page rows, or a
+     * source that sends the list later) keeps the saved page: the resume position is not clamped to an empty list.
+     */
+    @Test
+    fun resumeSurvivesAChapterSeenBeforeItsPages() =
+        runTest(dispatcher) {
+            val unsized = comic.copy(pages = (0 until 7).map { ReaderPage(it, "https://img.test/$it", 0, 0) })
+            val reader = FakeReader(unsized.copy(pages = emptyList()), AppResult.Ok(Unit))
+            val saved = mutableListOf<Int>()
+            val vm =
+                ReaderViewModel("rules", "t1", "c1", startPage = 4, reader, FakeSettings(), noHeadings) { _, _, _, page -> saved += page }
+            advanceUntilIdle()
+            assertEquals(4, vm.state.value.currentIndex)
+            reader.stored.value = unsized
+            advanceUntilIdle()
+            assertEquals("5 / 7", vm.state.value.positionLabel)
+            // Page i is item i + 1 (the previous-chapter card comes first).
+            assertEquals(5, vm.state.value.currentItem)
+            // The same pages again (new links, the images' sizes still unknown): the page on screen stays.
+            reader.stored.value = unsized.copy(pages = unsized.pages.map { it.copy(url = it.url + "?sig=2") })
+            advanceUntilIdle()
+            assertEquals(5, vm.state.value.currentItem)
+            assertEquals(emptyList(), saved)
+        }
+
+    /** Opening at the end (going back from the next chapter) waits for the pages too. */
+    @Test
+    fun startAtEndSurvivesAChapterSeenBeforeItsPages() =
+        runTest(dispatcher) {
+            val reader = FakeReader(comic.copy(pages = emptyList()), AppResult.Ok(Unit))
+            val vm =
+                ReaderViewModel(
+                    "rules",
+                    "t1",
+                    "c1",
+                    startPage = ReaderViewModel.START_AT_END,
+                    reader,
+                    FakeSettings(),
+                    noHeadings,
+                ) { _, _, _, _ -> }
+            advanceUntilIdle()
+            reader.stored.value = comic
+            advanceUntilIdle()
+            assertEquals("5 / 5", vm.state.value.positionLabel)
+            assertEquals(5, vm.state.value.currentItem)
+        }
+
     @Test
     fun progressIsSavedAfterAPause() =
         runTest(dispatcher) {

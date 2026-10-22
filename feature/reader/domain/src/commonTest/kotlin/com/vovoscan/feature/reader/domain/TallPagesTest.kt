@@ -26,6 +26,28 @@ class TallPagesTest {
         assertEquals(h, TallPages.height(0.625f, w, h))
     }
 
+    @Test
+    fun theRuleIsTheSameWhicheverWayTheDeviceIsHeld() {
+        // Landscape: the reading area is wide (874 × 402). A manga page fit to that width would be taller than the
+        // screen, yet it stays a whole page (fitted to the screen), as in portrait.
+        assertFalse(TallPages.fitsWidth(800f / 1280f, h, w))
+        assertFalse(TallPages.fitsWidth(1f, h, w))
+        assertFalse(TallPages.fitsWidth(w / (h * 1.2f), h, w))
+        // Strip-like pages still fit the width and scroll inside their page.
+        assertTrue(TallPages.fitsWidth(800f / 14_000f, h, w))
+        assertTrue(TallPages.fitsWidth(w / (h * 1.3f), h, w))
+        // The same answer in both orientations, for any page.
+        listOf(0.05f, 0.2f, 0.3f, 0.35f, 0.4f, 0.625f, 0.7f, 1f, 1.5f).forEach { ratio ->
+            assertEquals(TallPages.fitsWidth(ratio, w, h), TallPages.fitsWidth(ratio, h, w), "ratio $ratio")
+        }
+        // Fit to width in landscape: its height there.
+        assertEquals(h * 14_000f / 800f, TallPages.height(800f / 14_000f, h, w), 1f)
+        assertEquals(w, TallPages.height(0.625f, h, w))
+        // A Pixel 7 in landscape (2400 × 1080 px, bars aside): the same.
+        assertFalse(TallPages.fitsWidth(0.7f, 2400f, 1000f))
+        assertTrue(TallPages.fitsWidth(800f / 12_000f, 2400f, 1000f))
+    }
+
     // A tall page from 1000 to 8000 (its last screen starts at 8000 - 874 = 7126).
     private fun rest(
         release: Float,

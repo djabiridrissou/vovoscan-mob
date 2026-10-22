@@ -615,7 +615,13 @@ class ReaderViewModel(
         val mode = ReadingModes.resolve(chapter.mode, chapter.format, seriesMode, preferences)
         val isBook = mode == ReadingMode.Book
         mutableState.update {
-            val index = if (isBook) it.currentIndex else it.currentIndex.coerceIn(0, (chapter.pages.size - 1).coerceAtLeast(0))
+            // A chapter seen before its pages (saved for the first time, or a source that sends them later) keeps the
+            // resume page: clamped to an empty list, it opened at page 1.
+            val index =
+                when {
+                    isBook || chapter.pages.isEmpty() -> it.currentIndex
+                    else -> it.currentIndex.coerceIn(0, chapter.pages.lastIndex)
+                }
             val items = if (isBook) emptyList() else items(chapter)
             it.copy(
                 titleName = chapter.titleName,

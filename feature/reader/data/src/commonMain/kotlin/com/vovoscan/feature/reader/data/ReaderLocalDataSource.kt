@@ -2,7 +2,6 @@ package com.vovoscan.feature.reader.data
 
 import app.cash.sqldelight.coroutines.asFlow
 import app.cash.sqldelight.coroutines.mapToList
-import app.cash.sqldelight.coroutines.mapToOneOrNull
 import com.vovoscan.feature.reader.data.db.ReaderDatabase
 import com.vovoscan.feature.reader.domain.Book
 import com.vovoscan.feature.reader.domain.BookSection
@@ -13,6 +12,7 @@ import com.vovoscan.feature.reader.domain.ReadingMode
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 
@@ -72,27 +72,30 @@ class SqlReaderLocalDataSource(
         chapterId: String,
     ): Flow<ReaderChapter?> {
         val key = chapterKey(sourceKey, chapterId)
-        return combine(
-            queries.chapter(key).asFlow().mapToOneOrNull(io),
-            queries.pages(key).asFlow().mapToList(io),
-        ) { chapter, pages ->
-            chapter?.let {
-                ReaderChapter(
-                    sourceKey = it.source_key,
-                    id = it.id,
-                    titleId = it.title_id,
-                    titleName = it.title_name,
-                    number = it.number,
-                    name = it.name,
-                    mode = ReadingMode.from(it.kind, it.format),
-                    previousChapterId = it.previous_id,
-                    nextChapterId = it.next_id,
-                    pages = pages.map { page -> ReaderPage(page.page_index.toInt(), page.url, page.width.toInt(), page.height.toInt()) },
-                    documentUrl = it.document_url,
-                    format = ComicFormat.from(it.format),
-                )
-            }
-        }
+        // Either table changing reads both at once: two separate queries combined could pair a chapter saved for the
+        // first time with its pages before the save (none), and the reader then lost its resume page.
+        return combine(queries.chapter(key).asFlow(), queries.pages(key).asFlow()) { _, _ -> }
+            .map { withContext(io) { queries.transactionWithResult { read(key) } } }
+            .distinctUntilChanged()
+    }
+
+    private fun read(key: String): ReaderChapter? {
+        val chapter = queries.chapter(key).executeAsOneOrNull() ?: return null
+        val pages = queries.pages(key).executeAsList()
+        return ReaderChapter(
+            sourceKey = chapter.source_key,
+            id = chapter.id,
+            titleId = chapter.title_id,
+            titleName = chapter.title_name,
+            number = chapter.number,
+            name = chapter.name,
+            mode = ReadingMode.from(chapter.kind, chapter.format),
+            previousChapterId = chapter.previous_id,
+            nextChapterId = chapter.next_id,
+            pages = pages.map { page -> ReaderPage(page.page_index.toInt(), page.url, page.width.toInt(), page.height.toInt()) },
+            documentUrl = chapter.document_url,
+            format = ComicFormat.from(chapter.format),
+        )
     }
 
     override suspend fun chapter(

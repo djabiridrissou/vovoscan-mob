@@ -60,7 +60,9 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -70,6 +72,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import coil3.request.allowHardware
+import coil3.size.Dimension
+import coil3.size.Size
 import com.vovoscan.app.MainActivity
 import com.vovoscan.app.ui.common.ErrorText
 import com.vovoscan.app.ui.common.GhostButton
@@ -588,6 +592,14 @@ private fun PageImage(
     onLoadedRatio: (Float) -> Unit = {},
 ) {
     val context = LocalContext.current
+    // A page of unknown size is decoded for the screen's width, whatever its height: sized for the placeholder (a
+    // box fitted to the screen), a webtoon strip came out a few hundred pixels wide and was blurred once it filled
+    // the width.
+    val screenWidth =
+        with(LocalDensity.current) {
+            LocalConfiguration.current.screenWidthDp.dp
+                .roundToPx()
+        }
     var attempt by remember(page.url) { mutableIntStateOf(0) }
     var failed by remember(page.url) { mutableStateOf(false) }
     // The image's own width / height once loaded, for a page whose size the source didn't give.
@@ -595,11 +607,12 @@ private fun PageImage(
     // Webtoon pages can be very tall (800 × 14 000 px): beyond what a GPU texture holds, a hardware bitmap fails
     // to draw, so tall pages, and pages of unknown height, are decoded as ordinary bitmaps.
     val request =
-        remember(page.url, attempt) {
+        remember(page.url, attempt, screenWidth) {
             ImageRequest
                 .Builder(context)
                 .data(page.url)
                 .allowHardware(page.hasSize && page.height <= MAX_HARDWARE_SIDE)
+                .apply { if (!page.hasSize) size(Size(Dimension(screenWidth), Dimension.Undefined)) }
                 .build()
         }
     // Known size: space reserved from it, no jump when the image arrives. Unknown: a placeholder, then the image's
