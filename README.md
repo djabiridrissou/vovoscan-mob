@@ -61,7 +61,9 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
     itself**. Nothing goes through our API, except the `(sourceKey, titleRef)` reference of a followed title and
     its progress.
 - `core/sources`: manifest (v1 contract, copy of `vovo-plugin/schema`), JSONPath, `{{settings.x}}` templates,
-  CSS selectors (Ksoup), transforms, `RulesSource` (catalog, title page, pages, book URL).
+  CSS selectors (Ksoup) over HTML **and XML** (Atom/OPDS) responses, transforms, `RulesSource` (catalog, title
+  page, pages, book URL). Catalog pagination: plain `{{page}}`, `startIndex` (`base + (page-1)*pageSize`) and
+  `cursor` (next-page value extracted from each response, sent as a query parameter).
 - `RulesHttp`: a separate client, **without the vovoscan session or cookies**, redirects followed by hand and
   limited to declared hosts (manifest + URL-type settings), rate capped by the manifest.
 - Catalog, title pages and chapters are keyed by `(sourceKey, id)`: two sources never mix.
@@ -78,7 +80,7 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
 ## Reader
 
 - `feature/reader`: a chapter ready to read (`GET api/v1/catalog/chapters/{id}`), local copy of the chapter,
-  reading mode (`PagedRightToLeft` for manga, `Vertical` for webtoon, `Book` for a book), resume and progress.
+  reading mode, tap zones, chapter transitions, reader settings, resume and progress.
 - Books (EPUB): downloaded once (signed URL from the API, or the source's host for a rule-based source),
   read by `EpubParser` (Okio + Ksoup: `container.xml` → OPF → reading order, nav/NCX table of contents), sections
   sanitized (allowlist, images as `data:` only, links removed) and stored in the database: offline rereading.
