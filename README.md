@@ -92,7 +92,10 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   for the shared session behind AsyncImage, replaying the request with `Referer` on a cookie-less session of its own).
   Only those hosts get it, covers included; never the API.
 - `RulesHttp`: a separate client, **without the vovoscan session or cookies**, redirects followed by hand and
-  limited to declared hosts (manifest + URL-type settings), rate capped by the manifest. Never the local network
+  limited to declared hosts (manifest + URL-type settings), rate capped by the manifest. Limits by what is fetched
+  (`Transfer`): a page of the source (JSON, HTML, XML) 30 s and 5 MB, an image 2 min and 30 MB, a book file 10 min and
+  100 MB; 30 s without a byte fails any of them. Responses are streamed: a file announced too large is refused from its
+  headers, and a body is read at most one byte past the limit. Never the local network
   (`HostPolicy`, `core/common`): loopback, private, link-local, CGNAT, multicast and reserved IPv4 ranges (in any
   notation: `127.1`, `0x7f…`, `2130706433`), IPv6 literals, `localhost` and local-only names (`.local`, `.lan`,
   `.internal`, `.home.arpa`…) are dropped from a manifest's hosts and refused on every redirect hop; a third-party
@@ -211,8 +214,8 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   Downloads) as a `book` row; the queue fetches the chapter (document URL), the file (`fetchBook`, shared with
   opening), reads it into sections (`EpubParser`, stoppable between sections) and saves them with the row's removal in
   one transaction, so it then shows exactly as an opened book. "Remove from this device" appears once something is
-  saved. Limit: `RulesHttp` gives a request 30 s (`core/sources`), so a very large file on a slow link (Pride and
-  Prejudice with images is 25 MB on Gutenberg) fails with "isn't answering"; opening it has the same limit.
+  saved. A book file may take as long as its bytes keep coming: 10 minutes in all, 30 s without a byte is a stalled
+  link (`Transfer.File` in `core/sources`; the API's own files the same in `ApiReaderRemoteDataSource.download`).
 - Title page (catalog + reader, wired by the app; `TitleChapters` port in `shared`: chapters from the catalog, the
   chapter being read from the library): a control per chapter (download arrow; cyan progress ring with a stop square;
   check = downloaded, tap to delete after a confirmation; failed = retry), "Download next 5" (from the chapter being
