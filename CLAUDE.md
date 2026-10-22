@@ -130,7 +130,8 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   call, so pull to refresh and Load more ask again for those still unknown, `askFormatsAgain`), else manga: only while
   such a filter needs it, so browsing a source never tells the server what it lists. A learned webtoon beats the manga
   default in every listing of that source, every category included, and is saved over it (`title.format`, query
-  `learnFormat`, only where it says manga; no schema change), so "All categories" and the next launch show it. The
+  `learnFormat`, only where it says manga; no schema change), so "All categories", search results (typed query, no filter: nothing more asked) and the next launch show it; a
+  listing's "manga" never turns a saved webtoon back. The
   chosen category is kept in memory.
 - Tests: `core/sources/src/commonTest/.../Fixtures.kt` copies the manifests (change them with `vovo-plugin`).
 - Third-party sources (user plugins, spec v1): added from a link (single manifest or `repo.json`, GitHub pages

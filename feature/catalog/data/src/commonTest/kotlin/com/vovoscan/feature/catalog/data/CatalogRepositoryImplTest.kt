@@ -175,7 +175,7 @@ class CatalogRepositoryImplTest {
                             .orEmpty()
                             .joinToString(",")
                     when (path) {
-                        "/api/v1/source-reader/inkwell/formats" -> respondJson("""{"data":{"1":"webtoon"}}""")
+                        "/api/v1/source-reader/inkwell/formats" -> respondJson("""{"data":{"1":"webtoon","2":"webtoon"}}""")
                         "/api/v1/source-reader/quill/formats" -> respondJson("""{"data":{"5":"webtoon"}}""")
                         else -> respondJson("""{"data":{}}""")
                     }
@@ -188,7 +188,7 @@ class CatalogRepositoryImplTest {
                 listOf("1" to ReadingFormat.Manga, "2" to ReadingFormat.Manga),
                 repo.observeListing("inkwell").first().map { it.title.id to it.title.format },
             )
-            assertEquals(mapOf("1" to ReadingFormat.Webtoon), repo.learnFormats("inkwell", listOf("1", "2")))
+            assertEquals(mapOf("1" to ReadingFormat.Webtoon, "2" to ReadingFormat.Webtoon), repo.learnFormats("inkwell", listOf("1", "2")))
             assertEquals(mapOf("5" to ReadingFormat.Webtoon), repo.learnFormats("quill", listOf("5")))
             // Never a source without comics.
             assertEquals(emptyMap(), repo.learnFormats("books", listOf("7")))
@@ -196,10 +196,15 @@ class CatalogRepositoryImplTest {
                 listOf("/api/v1/source-reader/inkwell/formats?1,2", "/api/v1/source-reader/quill/formats?5"),
                 asked,
             )
-            // Applied to every listing of the source, whatever the category.
+            // Applied to every listing of the source, whatever the category, over the source's own "manga" too.
             assertEquals(
-                listOf("1" to ReadingFormat.Webtoon, "2" to ReadingFormat.Manga),
+                listOf("1" to ReadingFormat.Webtoon, "2" to ReadingFormat.Webtoon),
                 repo.observeListing("inkwell").first().map { it.title.id to it.title.format },
+            )
+            // And to search results (typed query, no format filter: nothing more is asked).
+            assertEquals(
+                listOf("1" to ReadingFormat.Webtoon, "2" to ReadingFormat.Webtoon),
+                repo.search("inkwell", "ink").titles.map { it.id to it.format },
             )
             assertEquals(
                 ReadingFormat.Webtoon,
@@ -217,8 +222,12 @@ class CatalogRepositoryImplTest {
             val relaunched = repository(local) { respond("", HttpStatusCode.NotFound) }
             relaunched.refreshListing("inkwell")
             assertEquals(
-                listOf("1" to ReadingFormat.Webtoon, "2" to ReadingFormat.Manga),
+                listOf("1" to ReadingFormat.Webtoon, "2" to ReadingFormat.Webtoon),
                 relaunched.observeListing("inkwell").first().map { it.title.id to it.title.format },
+            )
+            assertEquals(
+                listOf("1" to ReadingFormat.Webtoon, "2" to ReadingFormat.Webtoon),
+                relaunched.search("inkwell", "ink").titles.map { it.id to it.format },
             )
             assertEquals(2, asked.size)
         }

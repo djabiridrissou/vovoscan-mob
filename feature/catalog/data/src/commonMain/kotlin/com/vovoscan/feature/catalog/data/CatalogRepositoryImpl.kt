@@ -101,10 +101,24 @@ class CatalogRepositoryImpl(
             is AppResult.Ok -> {
                 val items = result.value.items
                 local.saveSummaries(sourceKey, items)
-                // A source that names no format: the format saved from the title page, as the grid shows it.
-                val guessed = items.filterNot { it.formatKnown }.map { it.id }
+                // As the grid shows them: a source that names no format takes the format saved from the title page,
+                // and a webtoon the server learned (kept here and saved) beats a manga in every result.
+                val guessed = items.filter { !it.formatKnown || it.format == MANGA }.map { it.id }
                 val saved = if (guessed.isEmpty()) emptyMap() else local.savedFormats(sourceKey, guessed)
-                SearchResult(items.map { (saved[it.id]?.let { f -> it.copy(format = f) } ?: it).toDomain(sourceKey) }, offline = false)
+                val known = learned.value[sourceKey].orEmpty()
+                SearchResult(
+                    items.map { item ->
+                        val format =
+                            when {
+                                known[item.id] == ReadingFormat.Webtoon && item.format == MANGA -> WEBTOON
+                                !item.formatKnown -> saved[item.id]
+                                item.format == MANGA && saved[item.id] == WEBTOON -> WEBTOON
+                                else -> null
+                            }
+                        (format?.let { item.copy(format = it) } ?: item).toDomain(sourceKey)
+                    },
+                    offline = false,
+                )
             }
             is AppResult.Err ->
                 when (val error = result.error) {
@@ -179,5 +193,8 @@ class CatalogRepositoryImpl(
     private companion object {
         /** The one learned format kept on the device (over the manga default). */
         const val WEBTOON = "webtoon"
+
+        /** The default a source's listing gives a comic it names no format for. */
+        const val MANGA = "manga"
     }
 }

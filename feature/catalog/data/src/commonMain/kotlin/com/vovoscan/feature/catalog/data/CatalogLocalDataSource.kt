@@ -309,8 +309,15 @@ class SqlCatalogLocalDataSource(
         it: TitleSummaryDto,
     ) {
         queries.insertSummary(sourceKey, it.id, it.name, it.coverUrl, it.kind, it.format, it.status, it.contentRating)
-        // A source that names no format sends the default: the format read from the title page (its genres) stays.
-        val format = if (it.formatKnown) it.format else queries.titleById(sourceKey, it.id).executeAsOneOrNull()?.format ?: it.format
+        // A source that names no format sends the default: the format read from the title page (its genres) stays. A
+        // saved webtoon (its genres, or the server's word) is never turned back into a manga by a listing.
+        val saved = queries.titleById(sourceKey, it.id).executeAsOneOrNull()?.format
+        val format =
+            when {
+                !it.formatKnown -> saved ?: it.format
+                sourceKey != INTERNAL_SOURCE && it.format == "manga" && saved == "webtoon" -> saved
+                else -> it.format
+            }
         queries.updateSummary(it.name, it.coverUrl, it.kind, format, it.status, it.contentRating, sourceKey, it.id)
     }
 
