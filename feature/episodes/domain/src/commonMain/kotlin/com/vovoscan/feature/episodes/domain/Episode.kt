@@ -223,10 +223,42 @@ fun interface EpisodeAccess {
 
 /** What preparing an episode would cost this account, from the credits wallet. */
 data class RunCost(
+    /** Typical charge in credits, for the providers run on the platform's keys only. */
     val credits: Long,
     val coveredByOwnKeys: Boolean,
     val alreadyAvailable: Boolean,
-)
+    /** What must be available to start (the worst case, held while it runs). */
+    val maxCredits: Long = credits,
+    /** Every paid step can run: own keys, or platform credits the wallet can hold. */
+    val fundable: Boolean = true,
+    /** Providers (`anthropic`, `elevenlabs`) run on the platform's keys and paid in credits; null: not said. */
+    val metered: Set<String>? = null,
+    /** Providers nobody pays for: that step is skipped (bubbles unread, lines silent); null: not said. */
+    val unfunded: Set<String>? = null,
+) {
+    /** Who runs [provider] when the account has no key for it. Never inferred from a zero charge. */
+    fun funding(provider: String): ProviderFunding =
+        when {
+            alreadyAvailable || coveredByOwnKeys -> ProviderFunding.Own
+            metered != null -> if (provider in metered) ProviderFunding.Platform else ProviderFunding.None
+            unfunded != null -> if (provider in unfunded) ProviderFunding.None else ProviderFunding.Platform
+            // A server that lists neither: only a positive charge says the platform pays.
+            else -> if (fundable && maxCredits > 0) ProviderFunding.Platform else ProviderFunding.None
+        }
+
+    /** Something is paid in credits from the wallet. */
+    val meteredRun: Boolean
+        get() = !alreadyAvailable && !coveredByOwnKeys && PROVIDERS.any { funding(it) == ProviderFunding.Platform }
+
+    companion object {
+        const val ANTHROPIC = "anthropic"
+        const val ELEVENLABS = "elevenlabs"
+        val PROVIDERS = listOf(ANTHROPIC, ELEVENLABS)
+    }
+}
+
+/** For a provider the account has no key for: the platform's key (credits), or nothing (that step is skipped). */
+enum class ProviderFunding { Own, Platform, None }
 
 /** Cost quotes before a run. A feature port wired by the app to the account's wallet. */
 fun interface RunQuotes {

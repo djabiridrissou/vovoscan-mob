@@ -118,7 +118,6 @@ struct AddSourceView: View {
             }
             .buttonStyle(PrimaryButtonStyle())
             .disabled(!model.state.canSubmit)
-            .opacity(model.state.canSubmit ? 1 : 0.5)
             .padding(.bottom, 6)
             Button("Choose a .vovo file") { importing = true }
                 .buttonStyle(GhostButtonStyle())

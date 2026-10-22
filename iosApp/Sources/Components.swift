@@ -4,22 +4,32 @@ import SwiftUI
 /// When pressed, it sinks by 2 pt and its shadow shrinks (150 ms), with haptic feedback.
 struct PrimaryButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
-        let shadow: CGFloat = configuration.isPressed ? 2 : 6
-        configuration.label
-            .font(.brandBody(16, weight: .bold))
-            .foregroundStyle(Color.brandInk)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 15)
-            .background(Color.brandRed, in: RoundedRectangle(cornerRadius: 8))
-            .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.brandInk, lineWidth: 2))
-            .background(
-                RoundedRectangle(cornerRadius: 8).fill(Color.brandPaper).offset(x: shadow, y: shadow)
-            )
-            .offset(x: 6 - shadow, y: 6 - shadow)
-            .animation(.easeOut(duration: 0.15), value: configuration.isPressed)
-            .onChange(of: configuration.isPressed) { _, pressed in
-                if pressed { UIImpactFeedbackGenerator(style: .light).impactOccurred() }
-            }
+        PrimaryButton(configuration: configuration)
+    }
+
+    /// Disabled: flat ink with a hairline and muted text, no offset shadow, so it never reads as a faded action.
+    private struct PrimaryButton: View {
+        let configuration: ButtonStyleConfiguration
+        @Environment(\.isEnabled) private var enabled
+
+        var body: some View {
+            let shadow: CGFloat = configuration.isPressed ? 2 : 6
+            configuration.label
+                .font(.brandBody(16, weight: .bold))
+                .foregroundStyle(enabled ? Color.brandInk : Color.brandMuted)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 15)
+                .background(enabled ? Color.brandRed : Color.brandInk2, in: RoundedRectangle(cornerRadius: 8))
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(enabled ? Color.brandInk : Color.brandLine, lineWidth: enabled ? 2 : 1))
+                .background(
+                    RoundedRectangle(cornerRadius: 8).fill(enabled ? Color.brandPaper : Color.clear).offset(x: shadow, y: shadow)
+                )
+                .offset(x: 6 - shadow, y: 6 - shadow)
+                .animation(.easeOut(duration: 0.15), value: configuration.isPressed)
+                .onChange(of: configuration.isPressed) { _, pressed in
+                    if pressed && enabled { UIImpactFeedbackGenerator(style: .light).impactOccurred() }
+                }
+        }
     }
 }
 

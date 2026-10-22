@@ -74,7 +74,9 @@ struct SourcesView: View {
                             // Cyan: change waiting to be sent (the brand reserves cyan for work in progress).
                             if row.pendingSync { Circle().fill(Color.brandCyan).frame(width: 8, height: 8) }
                         }
-                        Text("\(row.kindsLabel) ✦ \(row.engineLabel)").font(.brandBody(13)).foregroundStyle(Color.brandMuted)
+                        // Kinds and engine on their own lines: a narrow row never breaks "Read on your device" in two.
+                        Text(row.kindsLabel).font(.brandBody(13)).foregroundStyle(Color.brandMuted).lineLimit(1)
+                        Text(row.engineLabel).font(.brandBody(13)).foregroundStyle(Color.brandMuted).lineLimit(1).minimumScaleFactor(0.85)
                         if row.needsSettings {
                             Text("Settings needed").font(.brandBody(13)).foregroundStyle(Color.brandYellow)
                         }

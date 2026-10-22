@@ -30,6 +30,14 @@ data class Quote(
     val coveredByOwnKeys: Boolean,
     /** A shared result already exists: watching or reading it costs nothing and nothing is generated. */
     val alreadyAvailable: Boolean,
+    /** The worst case the wallet must hold to start. */
+    val maxCredits: Long = credits,
+    /** Every paid step can run (own keys or credits); false: a step is skipped, or the wallet is short. */
+    val fundable: Boolean = true,
+    /** Providers paid in credits; null when the server doesn't list them. */
+    val metered: Set<String>? = null,
+    /** Providers nobody pays for (the step is skipped); null when the server doesn't list them. */
+    val unfunded: Set<String>? = null,
 )
 
 interface WalletRepository {

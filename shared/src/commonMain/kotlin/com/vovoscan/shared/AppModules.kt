@@ -196,7 +196,7 @@ fun appModules(
                 val wallet = get<WalletRepository>()
                 RunQuotes { chapterId, lang ->
                     (wallet.quote(QuoteKind.Episode, chapterId, lang.ifEmpty { null }) as? AppResult.Ok)?.value?.let {
-                        RunCost(it.credits, it.coveredByOwnKeys, it.alreadyAvailable)
+                        RunCost(it.credits, it.coveredByOwnKeys, it.alreadyAvailable, it.maxCredits, it.fundable, it.metered, it.unfunded)
                     }
                 }
             }

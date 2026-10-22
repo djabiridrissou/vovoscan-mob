@@ -87,15 +87,20 @@ class EpisodeViewModelTest {
         }
 
     @Test
-    fun withoutKeysThePlatformRunIsSaidPlainly() =
+    fun withoutKeysAnUnfundedRunPromisesNothing() =
         runTest(dispatcher) {
-            val vm = EpisodeViewModel("c1", FakeEpisodes(), noKeys, EpisodeAccess.Open, RunQuotes { _, _ -> RunCost(0, false, false) })
+            // The quote an owner without keys gets while platform funding is off: nobody pays, nothing is charged.
+            val unfunded = RunCost(0, false, false, maxCredits = 0, fundable = false)
+            val vm = EpisodeViewModel("c1", FakeEpisodes(), noKeys, EpisodeAccess.Open, RunQuotes { _, _ -> unfunded })
             advanceUntilIdle()
             val state = vm.state.value
-            assertEquals("No credit needed for this run.", state.costLine)
-            assertEquals(listOf("The platform's key reads the bubbles.", "The platform's key voices the lines."), state.keyLines)
-            assertNull(state.keyWarning)
-            assertEquals(EpisodeText.PLATFORM_NOTE, state.costNote)
+            assertNull(state.costLine)
+            assertEquals(
+                listOf("No Anthropic key: the bubbles stay unread.", "No ElevenLabs key: the episode stays silent."),
+                state.keyLines,
+            )
+            assertEquals(EpisodeText.UNFUNDED_WARNING, state.keyWarning)
+            assertEquals(EpisodeText.UNFUNDED_NOTE, state.costNote)
             // No quote (a server without credits): the missing keys are said as they are.
             val bare = EpisodeViewModel("c2", FakeEpisodes(), noKeys)
             advanceUntilIdle()
@@ -104,7 +109,34 @@ class EpisodeViewModelTest {
                 bare.state.value.keyLines
                     .first(),
             )
+            assertEquals(EpisodeText.KEY_WARNING, bare.state.value.keyWarning)
             assertEquals(EpisodeText.COST_NOTE, bare.state.value.costNote)
+        }
+
+    @Test
+    fun eachProviderSaysWhoPaysForIt() =
+        runTest(dispatcher) {
+            // Reading on credits, voice unfunded (the server lists both).
+            val split =
+                RunCost(4, false, false, maxCredits = 9, fundable = false, metered = setOf("anthropic"), unfunded = setOf("elevenlabs"))
+            val vm = EpisodeViewModel("c1", FakeEpisodes(), noKeys, EpisodeAccess.Open, RunQuotes { _, _ -> split })
+            advanceUntilIdle()
+            var state = vm.state.value
+            assertEquals(
+                listOf("The platform's key reads the bubbles, paid in credits.", "No ElevenLabs key: the episode stays silent."),
+                state.keyLines,
+            )
+            assertEquals(EpisodeText.KEY_WARNING, state.keyWarning)
+            assertEquals(EpisodeText.PLATFORM_NOTE, state.costNote)
+            assertEquals("Not enough credits: this run needs 9 available.", state.costLine)
+            // Both on credits, the wallet can hold it.
+            val paid = RunCost(7, false, false, maxCredits = 20, fundable = true, metered = setOf("anthropic", "elevenlabs"))
+            val both = EpisodeViewModel("c2", FakeEpisodes(), noKeys, EpisodeAccess.Open, RunQuotes { _, _ -> paid })
+            advanceUntilIdle()
+            state = both.state.value
+            assertEquals("Costs 7 credits from your wallet.", state.costLine)
+            assertEquals("The platform's key voices the lines, paid in credits.", state.keyLines[1])
+            assertNull(state.keyWarning)
         }
 
     @Test

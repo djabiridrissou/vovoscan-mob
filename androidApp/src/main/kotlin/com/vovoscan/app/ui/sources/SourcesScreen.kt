@@ -133,7 +133,8 @@ private fun SourceRowItem(
                 // Cyan: change waiting to be sent (the brand reserves cyan for work in progress).
                 if (row.pendingSync) Box(Modifier.size(8.dp).background(Brand.Cyan, CircleShape))
             }
-            Text("${row.kindsLabel} ✦ ${row.engineLabel}", style = MaterialTheme.typography.bodySmall)
+            Text(row.kindsLabel, style = MaterialTheme.typography.bodySmall, maxLines = 1)
+            Text(row.engineLabel, style = MaterialTheme.typography.bodySmall, maxLines = 1)
             if (row.needsSettings) Text("Settings needed", style = MaterialTheme.typography.bodySmall.copy(color = Brand.Yellow))
         }
         Arrow("↑", row.canMoveUp) { onIntent(SourcesIntent.MoveUp(row.key)) }

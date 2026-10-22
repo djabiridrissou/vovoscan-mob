@@ -29,7 +29,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -54,26 +53,29 @@ fun PrimaryButton(
     val pressed by interaction.collectIsPressedAsState()
     val shadow by animateDpAsState(if (pressed) 2.dp else 6.dp, tween(150), label = "shadow")
     val haptics = LocalHapticFeedback.current
-    Box(modifier.fillMaxWidth().alpha(if (enabled) 1f else 0.5f)) {
-        Box(
-            Modifier
-                .matchParentSize()
-                .offset(x = shadow, y = shadow)
-                .background(Brand.Paper, RoundedCornerShape(8.dp)),
-        )
+    // Disabled: flat ink with a hairline and muted text, no offset shadow, so it never reads as a faded action.
+    Box(modifier.fillMaxWidth()) {
+        if (enabled) {
+            Box(
+                Modifier
+                    .matchParentSize()
+                    .offset(x = shadow, y = shadow)
+                    .background(Brand.Paper, RoundedCornerShape(8.dp)),
+            )
+        }
         Box(
             Modifier
                 .fillMaxWidth()
                 .offset(x = 6.dp - shadow, y = 6.dp - shadow)
-                .background(Brand.Red, RoundedCornerShape(8.dp))
-                .border(2.dp, Brand.Ink, RoundedCornerShape(8.dp))
+                .background(if (enabled) Brand.Red else Brand.Ink2, RoundedCornerShape(8.dp))
+                .border(if (enabled) 2.dp else 1.dp, if (enabled) Brand.Ink else Brand.Line, RoundedCornerShape(8.dp))
                 .clickable(interactionSource = interaction, indication = null, enabled = enabled) {
                     haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                     onClick()
                 }.padding(vertical = 15.dp, horizontal = 24.dp),
             contentAlignment = Alignment.Center,
         ) {
-            Text(label, style = MaterialTheme.typography.labelLarge, color = Brand.Ink)
+            Text(label, style = MaterialTheme.typography.labelLarge, color = if (enabled) Brand.Ink else Brand.Muted)
         }
     }
 }

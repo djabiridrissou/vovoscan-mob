@@ -17,6 +17,7 @@ import com.vovoscan.feature.episodes.domain.KeyStatus
 import com.vovoscan.feature.episodes.domain.KeyStatusProvider
 import com.vovoscan.feature.episodes.domain.PipelineStage
 import com.vovoscan.feature.episodes.domain.PrepareResult
+import com.vovoscan.feature.episodes.domain.ProviderFunding
 import com.vovoscan.feature.episodes.domain.RunCost
 import com.vovoscan.feature.episodes.domain.RunQuotes
 import kotlinx.coroutines.Job
@@ -496,23 +497,37 @@ class EpisodeViewModel(
     private fun render() {
         val current = episode
         val status = keyStatus
-        // The quote says whether the platform's keys (and the wallet) run what the account's own keys don't.
-        val platform = cost?.let { !it.coveredByOwnKeys && !it.alreadyAvailable } == true
+        // The quote says, per provider, whether the platform's keys (and the wallet) run what the account's own keys
+        // don't, or whether that step is skipped. Without a quote, nothing is promised.
+        val quote = cost
+        val anthropic = quote?.funding(RunCost.ANTHROPIC) ?: ProviderFunding.None
+        val elevenLabs = quote?.funding(RunCost.ELEVENLABS) ?: ProviderFunding.None
+        val platform = quote?.meteredRun == true
         val keyLines =
             when {
                 status == null -> emptyList()
                 !status.enabled && !platform -> listOf(EpisodeText.KEYS_DISABLED)
                 else ->
                     listOf(
-                        EpisodeText.anthropicLine(status.anthropicHint.takeIf { status.enabled }, platform),
-                        EpisodeText.elevenLabsLine(status.elevenLabsHint.takeIf { status.enabled }, platform),
+                        EpisodeText.anthropicLine(status.anthropicHint.takeIf { status.enabled }, anthropic),
+                        EpisodeText.elevenLabsLine(status.elevenLabsHint.takeIf { status.enabled }, elevenLabs),
                     )
             }
-        val keyWarning =
+        val missing =
             status
-                ?.takeIf {
-                    !platform && it.enabled && (it.anthropicHint == null || it.elevenLabsHint == null)
-                }?.let { EpisodeText.KEY_WARNING }
+                ?.takeIf { it.enabled }
+                ?.let {
+                    listOfNotNull(
+                        anthropic.takeIf { _ -> it.anthropicHint == null },
+                        elevenLabs.takeIf { _ -> it.elevenLabsHint == null },
+                    )
+                }.orEmpty()
+        val keyWarning =
+            when {
+                missing.none { it == ProviderFunding.None } -> null
+                missing.size == 2 && missing.all { it == ProviderFunding.None } && quote != null -> EpisodeText.UNFUNDED_WARNING
+                else -> EpisodeText.KEY_WARNING
+            }
         mutableState.update { state ->
             // `comingSoon` is set again below only while the feature stays closed.
             val base =
@@ -557,18 +572,18 @@ class EpisodeViewModel(
     private fun Language.matches(needle: String): Boolean =
         native.lowercase().contains(needle) || name.lowercase().contains(needle) || code.lowercase() == needle
 
-    private fun EpisodeUiState.withCost() =
-        copy(
-            costLine = if (canPrepare || canReread) cost?.let(EpisodeText::cost) else null,
+    private fun EpisodeUiState.withCost(): EpisodeUiState {
+        val quote = cost
+        return copy(
+            costLine = if (canPrepare || canReread) quote?.let(EpisodeText::cost) else null,
             costNote =
-                if (cost?.let { !it.coveredByOwnKeys && !it.alreadyAvailable } ==
-                    true
-                ) {
-                    EpisodeText.PLATFORM_NOTE
-                } else {
-                    EpisodeText.COST_NOTE
+                when {
+                    quote == null || quote.coveredByOwnKeys || quote.alreadyAvailable -> EpisodeText.COST_NOTE
+                    quote.meteredRun -> EpisodeText.PLATFORM_NOTE
+                    else -> EpisodeText.UNFUNDED_NOTE
                 },
         )
+    }
 
     /** Not open to this account: one calm line, no action, nothing that would spend a key or a credit. */
     private fun comingSoonState(base: EpisodeUiState) =

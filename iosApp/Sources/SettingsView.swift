@@ -210,7 +210,6 @@ private struct KeyForm: View {
             }
             .buttonStyle(PrimaryButtonStyle())
             .disabled(!state.canSubmit)
-            .opacity(state.canSubmit ? 1 : 0.5)
             Button("Cancel") { model.send(ProviderKeysIntentCloseForm.shared) }.buttonStyle(GhostButtonStyle())
         }
         .padding(16)

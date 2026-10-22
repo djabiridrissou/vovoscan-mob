@@ -121,7 +121,8 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   old per-source rank into the `''` listings. `CatalogMerge.merge`: page 1 of every source interleaved one title at a
   time (round-robin, the user's order), then page 2 of every source…; "Load more" asks the next page of every source
   that has one, so a new round is appended and nothing on screen moves. Search goes to every source read (page 1
-  each, round-robin), offline per source as before.
+  each, round-robin), offline per source as before. A manifest whose catalog request never sends `{{search}}`
+  (`RulesSource.searchable`) lists the same titles whatever is typed: its results keep only names holding every word.
 - Filters (`CatalogFilter`, remembered in `catalog_setting`): sources (`ShowAllSources`, `ToggleSource`: from "All" a
   tap keeps that source alone; none left or every one chosen is "All"; `CatalogSelection`), and a category by name.
   Categories: the internal source's from `GET api/v1/catalog/sources/vovoscan/categories` (`key` = id, `?category=`
@@ -358,8 +359,11 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   `FEATURE_DISABLED` / `FEATURE_COMING_SOON` does the same. The server checks every call again.
 - Credits (runs on the platform's keys; own keys cost none): `WalletRepository` (account slice, in memory only)
   reads `GET api/v1/me/wallet` `{balanceCredits, usesOwnKeys, dailyCapReached}`; a 404 means a server without
-  credits (nothing shown). `POST api/v1/quotes {kind, chapterId, lang?}` → `{credits, coveredByOwnKeys,
-  alreadyAvailable}` feeds the `RunQuotes` port: the episode card shows the cost next to Prepare (`costLine`).
+  credits (nothing shown). `POST api/v1/quotes {kind, chapterId, lang?}` → `{credits, maxCredits, coveredByOwnKeys,
+  alreadyAvailable, fundable, metered?, unfunded?}` feeds the `RunQuotes` port: per provider (`RunCost.funding`) the
+  card says own key, platform key paid in credits, or nothing (that step is skipped: bubbles unread, lines silent);
+  never inferred from a zero charge. The cost shows next to Prepare (`costLine`; none for an unfunded run, "Not enough
+  credits" when the wallet can't hold `maxCredits`).
   Errors: `402 INSUFFICIENT_CREDITS`, `503 PLATFORM_PAUSED`, `429 DAILY_CAP` (kept as `Rejected`, not a rate limit,
   by `errorOf`), each with a calm line (`EpisodeText.creditError`). `WalletViewModel` = the credits card in Settings.
 - The creator studio is web only: Settings links to `WEB_BASE_URL` + `contribute` (`project.yml`), "Creator studio"

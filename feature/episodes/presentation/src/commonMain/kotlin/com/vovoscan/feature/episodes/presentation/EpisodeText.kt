@@ -4,6 +4,7 @@ import com.vovoscan.core.common.AppError
 import com.vovoscan.core.common.Language
 import com.vovoscan.core.common.userMessage
 import com.vovoscan.feature.episodes.domain.EpisodeAudio
+import com.vovoscan.feature.episodes.domain.ProviderFunding
 import com.vovoscan.feature.episodes.domain.RunCost
 import com.vovoscan.feature.episodes.domain.StageProgress
 
@@ -61,6 +62,8 @@ object EpisodeText {
     const val COST_NOTE = "Your own keys pay for this run. Everyone can watch the result."
     const val PLATFORM_NOTE =
         "What your keys don't cover runs on the platform's keys, paid from your wallet. Everyone can watch the result."
+    const val UNFUNDED_NOTE = "Only your own keys pay for runs here. Everyone can watch the result."
+    const val UNFUNDED_WARNING = "Without keys the episode stays unread and silent. Add yours in Settings, or ask the owner."
     const val OFFLINE_WRITE = "You're offline. Connect to the internet to prepare this episode."
     const val NO_PAGES = "This chapter has no pages yet."
     const val CHAPTER_NOT_FOUND = "This chapter isn't available."
@@ -73,24 +76,24 @@ object EpisodeText {
     /** Codes saying the feature isn't open to this account (the server's feature flags). */
     val FEATURE_OFF_CODES = setOf("FEATURE_DISABLED", "FEATURE_COMING_SOON")
 
-    /** [platform]: the platform's keys run what the account's own don't (paid in credits). */
+    /** Who reads the bubbles: the account's key, the platform's (credits), or nobody. */
     fun anthropicLine(
         hint: String?,
-        platform: Boolean = false,
+        funding: ProviderFunding = ProviderFunding.None,
     ): String =
         when {
             hint != null -> "Your Anthropic key (•••• $hint) reads the bubbles."
-            platform -> "The platform's key reads the bubbles."
+            funding == ProviderFunding.Platform -> "The platform's key reads the bubbles, paid in credits."
             else -> "No Anthropic key: the bubbles stay unread."
         }
 
     fun elevenLabsLine(
         hint: String?,
-        platform: Boolean = false,
+        funding: ProviderFunding = ProviderFunding.None,
     ): String =
         when {
             hint != null -> "Your ElevenLabs key (•••• $hint) voices the lines."
-            platform -> "The platform's key voices the lines."
+            funding == ProviderFunding.Platform -> "The platform's key voices the lines, paid in credits."
             else -> "No ElevenLabs key: the episode stays silent."
         }
 
@@ -117,12 +120,14 @@ object EpisodeText {
             else -> creditError(error) ?: error.userMessage()
         }
 
-    /** The quote shown with Prepare. */
-    fun cost(cost: RunCost): String =
+    /** The quote shown with Prepare; null when nothing is charged and nothing is covered (the key lines say why). */
+    fun cost(cost: RunCost): String? =
         when {
             cost.alreadyAvailable -> "Already made: it costs nothing."
             cost.coveredByOwnKeys -> "Your own keys pay: no credit spent."
-            cost.credits == 0L -> "No credit needed for this run."
+            !cost.meteredRun -> null
+            !cost.fundable -> "Not enough credits: this run needs ${cost.maxCredits} available."
+            cost.credits == 0L -> "Costs less than 1 credit from your wallet."
             cost.credits == 1L -> "Costs 1 credit from your wallet."
             else -> "Costs ${cost.credits} credits from your wallet."
         }

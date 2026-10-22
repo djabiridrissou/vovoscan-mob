@@ -39,6 +39,10 @@ data class QuoteDto(
     val credits: Long,
     val coveredByOwnKeys: Boolean = false,
     val alreadyAvailable: Boolean = false,
+    val maxCredits: Long? = null,
+    val fundable: Boolean = true,
+    val metered: List<String>? = null,
+    val unfunded: List<String>? = null,
 )
 
 /** Remote source: the caller's own wallet (`api/v1/me/wallet`) and cost quotes (`api/v1/quotes`). */
@@ -105,7 +109,18 @@ class WalletRepositoryImpl(
     ): AppResult<Quote?> {
         val result = remote.quote(kind.wire, chapterId, lang)
         if (result is AppResult.Err && result.error.isNoWallet()) return AppResult.Ok(null)
-        return result.map { Quote(it.credits.coerceAtLeast(0), it.coveredByOwnKeys, it.alreadyAvailable) }
+        return result.map {
+            val credits = it.credits.coerceAtLeast(0)
+            Quote(
+                credits = credits,
+                coveredByOwnKeys = it.coveredByOwnKeys,
+                alreadyAvailable = it.alreadyAvailable,
+                maxCredits = it.maxCredits?.coerceAtLeast(0) ?: credits,
+                fundable = it.fundable,
+                metered = it.metered?.toSet(),
+                unfunded = it.unfunded?.toSet(),
+            )
+        }
     }
 
     override fun clear() {
