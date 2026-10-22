@@ -66,7 +66,12 @@ fun CatalogScreen(
                 // Two features side by side, unaware of each other: sources (picker) and catalog.
                 SourcePicker(sourcesState.chips, state.sourceKey) { viewModel.onIntent(CatalogIntent.SelectSource(it)) }
                 BrandField("Search", state.query, { viewModel.onIntent(CatalogIntent.Query(it)) })
-                state.offlineNotice?.let { OfflineNotice(it) }
+                state.offlineNotice?.let {
+                    OfflineNotice(
+                        it,
+                        onRetry = if (state.canRetry) ({ viewModel.onIntent(CatalogIntent.Refresh) }) else null,
+                    )
+                }
                 state.error?.let { ErrorText(it) }
                 if (state.empty) Text(state.emptyMessage, style = MaterialTheme.typography.bodyMedium)
             }

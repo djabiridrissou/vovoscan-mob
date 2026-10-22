@@ -142,9 +142,12 @@ fun ErrorText(text: String) {
     Text(text, style = MaterialTheme.typography.bodySmall.copy(color = Brand.Danger), modifier = Modifier.padding(top = 6.dp))
 }
 
-/** Small offline banner: discreet, the local copy stays in focus. */
+/** Small offline banner: discreet, the local copy stays in focus. `onRetry`: a source that may answer again. */
 @Composable
-fun OfflineNotice(text: String) {
+fun OfflineNotice(
+    text: String,
+    onRetry: (() -> Unit)? = null,
+) {
     Row(
         Modifier
             .fillMaxWidth()
@@ -155,7 +158,14 @@ fun OfflineNotice(text: String) {
     ) {
         Box(Modifier.size(8.dp).background(Brand.Muted, CircleShape))
         Spacer(Modifier.width(8.dp))
-        Text(text, style = MaterialTheme.typography.bodySmall)
+        Text(text, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+        if (onRetry != null) {
+            Text(
+                "Retry",
+                style = MaterialTheme.typography.labelLarge.copy(color = Brand.Red),
+                modifier = Modifier.clickable(onClick = onRetry).padding(start = 12.dp, top = 4.dp, bottom = 4.dp),
+            )
+        }
     }
 }
 

@@ -75,13 +75,18 @@ struct ErrorText: View {
     var body: some View { Text(text).font(.brandBody(13)).foregroundStyle(Color.brandDanger) }
 }
 
-/// Offline banner: discreet, the local copy stays in focus.
+/// Offline banner: discreet, the local copy stays in focus. `onRetry`: a source that may answer again.
 struct OfflineNotice: View {
     let text: String
+    var onRetry: (() -> Void)?
     var body: some View {
         HStack(spacing: 8) {
             Circle().fill(Color.brandMuted).frame(width: 8, height: 8)
             Text(text).font(.brandBody(13)).foregroundStyle(Color.brandMuted)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            if let onRetry {
+                Button("Retry", action: onRetry).font(.brandBody(13, weight: .bold)).foregroundStyle(Color.brandRed)
+            }
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 8)

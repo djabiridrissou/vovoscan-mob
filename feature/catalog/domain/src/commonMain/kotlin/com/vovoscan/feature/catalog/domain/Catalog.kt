@@ -82,7 +82,7 @@ interface CatalogRepository {
 
     suspend fun loadMoreTitles(sourceKey: String): AppResult<Boolean>
 
-    /** Searches the source; offline, searches the titles already saved on the device. */
+    /** Searches the source; offline (or the source isn't answering), searches the titles already saved on the device. */
     suspend fun search(
         sourceKey: String,
         query: String,
@@ -106,6 +106,8 @@ interface CatalogRepository {
 
 data class SearchResult(
     val titles: List<TitleSummary>,
-    /** Results taken from the local copy (network unavailable). */
+    /** Results taken from the local copy (network unavailable, or the source isn't answering). */
     val offline: Boolean,
+    /** The source that didn't answer (its name), when that is why the local copy was searched. */
+    val unavailableSource: String? = null,
 )

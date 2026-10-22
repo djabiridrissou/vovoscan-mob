@@ -10,6 +10,8 @@ fun AppError.userMessage(): String =
         AppError.Unauthorized -> "Your session has ended. Sign in again."
         AppError.Forbidden -> "Your role doesn't allow this action."
         AppError.RateLimited -> "Too many attempts. Try again in a few minutes."
-        is AppError.Rejected -> message.ifBlank { "Request refused." }
+        is AppError.SourceUnavailable -> "$sourceName isn't answering right now."
+        is AppError.Rejected ->
+            if (code == SOURCE_RULES) StaleReason.UNREADABLE_SOURCE else message.ifBlank { "Request refused." }
         is AppError.Unknown -> "Something went wrong. Try again."
     }

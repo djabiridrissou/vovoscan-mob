@@ -64,19 +64,24 @@ final class CatalogModel: ObservableObject {
     deinit { owner.clear() }
 }
 
+/// Title page: details (catalog), following (library) and downloads (reader), three ViewModels unaware of each other.
 @MainActor
 final class TitleModel: ObservableObject {
     @Published private(set) var state: TitleDetailUiState
     @Published private(set) var follow: FollowUiState
+    @Published private(set) var downloads: TitleDownloadsUiState
     private let owner = ViewModels()
     private let detail: TitleDetailViewModel
     private let following: FollowViewModel
+    private let downloading: TitleDownloadsViewModel
 
     init(sourceKey: String, titleId: String) {
         detail = owner.titleDetail(sourceKey: sourceKey, titleId: titleId)
         following = owner.follow(sourceKey: sourceKey, titleId: titleId)
+        downloading = owner.titleDownloads(sourceKey: sourceKey, titleId: titleId)
         state = detail.state.value
         follow = following.state.value
+        downloads = downloading.state.value
     }
 
     func observe() async {
@@ -86,6 +91,12 @@ final class TitleModel: ObservableObject {
     func observeFollow() async {
         for await next in following.state { follow = next }
     }
+
+    func observeDownloads() async {
+        for await next in downloading.state { downloads = next }
+    }
+
+    func send(_ intent: TitleDownloadsIntent) { downloading.onIntent(intent: intent) }
 
     func refresh() { detail.refresh() }
 
@@ -110,6 +121,26 @@ final class LibraryModel: ObservableObject {
     }
 
     func send(_ intent: LibraryIntent) { viewModel.onIntent(intent: intent) }
+
+    deinit { owner.clear() }
+}
+
+@MainActor
+final class DownloadsModel: ObservableObject {
+    @Published private(set) var state: DownloadsUiState
+    private let owner = ViewModels()
+    private let viewModel: DownloadsViewModel
+
+    init() {
+        viewModel = owner.downloads()
+        state = viewModel.state.value
+    }
+
+    func observe() async {
+        for await next in viewModel.state { state = next }
+    }
+
+    func send(_ intent: DownloadsIntent) { viewModel.onIntent(intent: intent) }
 
     deinit { owner.clear() }
 }

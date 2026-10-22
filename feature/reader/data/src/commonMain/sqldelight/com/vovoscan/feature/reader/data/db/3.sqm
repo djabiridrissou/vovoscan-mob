@@ -1,0 +1,22 @@
+-- v3 → v4: chapters downloaded for offline reading, page by page (files in the app's own storage).
+CREATE TABLE download (
+    chapter_key TEXT NOT NULL PRIMARY KEY,
+    source_key TEXT NOT NULL,
+    title_id TEXT NOT NULL,
+    chapter_id TEXT NOT NULL,
+    title_name TEXT NOT NULL,
+    label TEXT NOT NULL,
+    number REAL NOT NULL,
+    state TEXT NOT NULL,
+    page_count INTEGER NOT NULL,
+    error TEXT,
+    requested_at INTEGER NOT NULL
+);
+
+CREATE TABLE download_page (
+    chapter_key TEXT NOT NULL,
+    page_index INTEGER NOT NULL,
+    file_path TEXT NOT NULL,
+    bytes INTEGER NOT NULL,
+    PRIMARY KEY (chapter_key, page_index)
+);

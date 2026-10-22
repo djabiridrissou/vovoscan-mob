@@ -2,6 +2,7 @@ package com.vovoscan.core.sources
 
 import com.vovoscan.core.common.AppError
 import com.vovoscan.core.common.AppResult
+import com.vovoscan.core.common.SOURCE_RULES
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.contentOrNull
@@ -48,7 +49,7 @@ data class RulesImage(
 
 /**
  * A rule-based source run on the device: catalog, title details, comic pages, book file.
- * Rule errors become `Rejected("SOURCE_RULES")`, connection failures `Network`.
+ * Rule errors become `Rejected(SOURCE_RULES)`; a source that doesn't answer `SourceUnavailable`, no network `Network`.
  */
 class RulesSource(
     val manifest: SourceManifest,
@@ -115,9 +116,9 @@ class RulesSource(
                 AppResult.Ok(block())
             }
         } catch (e: RuleException) {
-            AppResult.Err(AppError.Rejected("SOURCE_RULES", e.message ?: "Unreadable answer from ${manifest.name}."))
+            AppResult.Err(AppError.Rejected(SOURCE_RULES, e.message ?: "Unreadable answer from ${manifest.name}."))
         } catch (e: IllegalArgumentException) {
-            AppResult.Err(AppError.Rejected("SOURCE_RULES", e.message ?: "Unreadable answer from ${manifest.name}."))
+            AppResult.Err(AppError.Rejected(SOURCE_RULES, e.message ?: "Unreadable answer from ${manifest.name}."))
         }
 
     private fun str(value: Any?): String? =
@@ -173,7 +174,7 @@ class RulesSource(
             }
             variables = vars("page" to p + 1, "search" to search) + ("cursor" to cursorValue)
         }
-        val ctx = finalCtx ?: return AppResult.Err(AppError.Rejected("SOURCE_RULES", "${manifest.name} returned no page."))
+        val ctx = finalCtx ?: return AppResult.Err(AppError.Rejected(SOURCE_RULES, "${manifest.name} returned no page."))
         return rules {
             val hasNext =
                 when {
@@ -328,5 +329,5 @@ class RulesSource(
         }
 
     private fun <T> noContent(kind: String): AppResult<T> =
-        AppResult.Err(AppError.Rejected("SOURCE_RULES", "${manifest.name} has no $kind content."))
+        AppResult.Err(AppError.Rejected(SOURCE_RULES, "${manifest.name} has no $kind content."))
 }

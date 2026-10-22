@@ -2,6 +2,7 @@ package com.vovoscan.core.sources
 
 import com.vovoscan.core.common.AppError
 import com.vovoscan.core.common.AppResult
+import com.vovoscan.core.common.NetworkMonitor
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.HttpClientEngine
 import io.ktor.client.plugins.HttpTimeout
@@ -41,8 +42,14 @@ class Fetched(
     val finalUrl: String,
 )
 
+/**
+ * Failures are told apart: no network at all is [AppError.Network] (the offline banner); a source that doesn't
+ * answer while the device is online (site down, error status, timeout) is [AppError.SourceUnavailable] with the
+ * source's name.
+ */
 class RulesHttp(
     private val client: HttpClient,
+    private val network: NetworkMonitor = NetworkMonitor.AssumeOnline,
 ) {
     private val throttle = Mutex()
     private val recent = mutableMapOf<String, MutableList<Long>>()
@@ -71,7 +78,7 @@ class RulesHttp(
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
-                    return AppResult.Err(AppError.Network)
+                    return AppResult.Err(if (network.state.value.online) AppError.SourceUnavailable(manifest.name) else AppError.Network)
                 }
             val location = response.headers[HttpHeaders.Location]
             if (response.status.value in 300..399 && location != null) {
@@ -79,10 +86,16 @@ class RulesHttp(
                 params = emptyMap()
                 return@repeat
             }
-            if (!response.status.isSuccess()) {
-                return AppResult.Err(AppError.Rejected("SOURCE_ERROR", "The source answered ${response.status.value}."))
-            }
-            val body = response.bodyAsBytes()
+            // Down, overloaded, refusing or gone: the source isn't answering (the reader can retry later).
+            if (!response.status.isSuccess()) return AppResult.Err(AppError.SourceUnavailable(manifest.name))
+            val body =
+                try {
+                    response.bodyAsBytes()
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    return AppResult.Err(if (network.state.value.online) AppError.SourceUnavailable(manifest.name) else AppError.Network)
+                }
             if (body.size > maxBytes) return AppResult.Err(AppError.Rejected("SOURCE_ERROR", "The source answered with a file too large."))
             return AppResult.Ok(Fetched(body, response.request.url.toString()))
         }

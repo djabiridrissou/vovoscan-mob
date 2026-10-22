@@ -33,10 +33,11 @@ class CatalogRepositoryImpl(
                 SearchResult(result.value.items.map { it.toDomain(sourceKey) }, offline = false)
             }
             is AppResult.Err ->
-                if (result.error == AppError.Network) {
-                    SearchResult(local.searchLocal(sourceKey, query.trim()), offline = true)
-                } else {
-                    SearchResult(emptyList(), offline = false)
+                when (val error = result.error) {
+                    AppError.Network -> SearchResult(local.searchLocal(sourceKey, query.trim()), offline = true)
+                    is AppError.SourceUnavailable ->
+                        SearchResult(local.searchLocal(sourceKey, query.trim()), offline = true, unavailableSource = error.sourceName)
+                    else -> SearchResult(emptyList(), offline = false)
                 }
         }
 
