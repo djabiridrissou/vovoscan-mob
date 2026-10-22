@@ -18,6 +18,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -37,6 +38,7 @@ import com.vovoscan.app.ui.downloads.DownloadControl
 import com.vovoscan.app.ui.sources.BrandAlert
 import com.vovoscan.app.ui.theme.Brand
 import com.vovoscan.core.common.i18n.I18n
+import com.vovoscan.feature.catalog.presentation.ChapterTarget
 import com.vovoscan.feature.catalog.presentation.TitleDetailIntent
 import com.vovoscan.feature.catalog.presentation.TitleDetailViewModel
 import com.vovoscan.feature.library.presentation.FollowViewModel
@@ -69,6 +71,15 @@ fun TitleScreen(
     val state by detail.state.collectAsStateWithLifecycle()
     val followState by follow.state.collectAsStateWithLifecycle()
     val downloadState by downloads.state.collectAsStateWithLifecycle()
+    // A chapter row's pill, through the view model: opened once, then answered.
+    LaunchedEffect(state.open?.seq) {
+        val open = state.open ?: return@LaunchedEffect
+        when (open.target) {
+            ChapterTarget.Translate -> onTranslate(open.chapterId)
+            ChapterTarget.Episode -> onEpisode(open.chapterId)
+        }
+        detail.onIntent(TitleDetailIntent.OpenHandled(open.seq))
+    }
     // A delete waiting for its confirmation: a chapter id, or "*" for every download of the title.
     var confirmDelete by rememberSaveable { mutableStateOf<String?>(null) }
     LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -159,7 +170,7 @@ fun TitleScreen(
                         modifier =
                             Modifier
                                 .border(1.dp, Brand.Line, RoundedCornerShape(999.dp))
-                                .clickable { onTranslate(chapter.id) }
+                                .clickable { detail.onIntent(TitleDetailIntent.Translate(chapter.id)) }
                                 .padding(horizontal = 12.dp, vertical = 8.dp),
                     )
                 }
@@ -171,7 +182,7 @@ fun TitleScreen(
                         modifier =
                             Modifier
                                 .border(1.dp, Brand.Line, RoundedCornerShape(999.dp))
-                                .clickable { onEpisode(chapter.id) }
+                                .clickable { detail.onIntent(TitleDetailIntent.Episode(chapter.id)) }
                                 .padding(horizontal = 12.dp, vertical = 8.dp),
                     )
                 }

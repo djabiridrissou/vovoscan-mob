@@ -46,6 +46,22 @@ data class ChapterRow(
     val openLanguage: String? = null,
 )
 
+/** Where a chapter row's pill leads. */
+enum class ChapterTarget {
+    /** The reader, on its language picker. */
+    Translate,
+
+    /** The chapter's voiced episode card. */
+    Episode,
+}
+
+/** A chapter row's pill was tapped: the screen opens [target] for [chapterId] once, then answers `OpenHandled(seq)`. */
+data class ChapterOpen(
+    val seq: Long,
+    val chapterId: String,
+    val target: ChapterTarget,
+)
+
 /** The title page's main action: where reading picks up ("Continue reading") or starts ("Start reading"). */
 data class ReadAction(
     val chapterId: String,
@@ -83,6 +99,8 @@ data class TitleDetailUiState(
     val error: String? = null,
     /** Why the last reload failed while the saved page stays on screen. */
     val stale: StaleReason? = null,
+    /** A pill tapped on a chapter row, waiting for the screen to open it. */
+    val open: ChapterOpen? = null,
 ) {
     /** "Offline: …", "Project Gutenberg isn't answering right now. Showing what's saved.", or rules that can't read it. */
     val notice: String? get() = if (unavailable) null else stale?.notice(hasSaved = true)
@@ -116,6 +134,21 @@ data class TitleDetailUiState(
 sealed interface TitleDetailIntent {
     /** Chapter 1 on top, or the latest on top; remembered on this device for every title. */
     data object ToggleOrder : TitleDetailIntent
+
+    /** "Translate" on a chapter row: the reader opens on its language picker. */
+    data class Translate(
+        val chapterId: String,
+    ) : TitleDetailIntent
+
+    /** "Episode" on a chapter row: the chapter's episode card opens. */
+    data class Episode(
+        val chapterId: String,
+    ) : TitleDetailIntent
+
+    /** The screen opened [seq]. */
+    data class OpenHandled(
+        val seq: Long,
+    ) : TitleDetailIntent
 }
 
 /** Title page: name, description, chapters. Readable offline once it has been opened. */
@@ -131,6 +164,7 @@ class TitleDetailViewModel(
     private var known = false
     private var badges: TitleTranslationBadges? = null
     private var shown: Triple<TitleDetail, Boolean, ResumePoint?>? = null
+    private var openSeq = 0L
 
     init {
         val point = resume.observe().map { points -> points.firstOrNull { it.sourceKey == sourceKey && it.titleId == titleId } }
@@ -153,6 +187,27 @@ class TitleDetailViewModel(
             TitleDetailIntent.ToggleOrder -> {
                 val next = !state.value.newestFirst
                 viewModelScope.launch { repository.saveNewestFirst(next) }
+            }
+            is TitleDetailIntent.Translate ->
+                open(intent.chapterId, ChapterTarget.Translate) { it.offersTranslation }
+            is TitleDetailIntent.Episode ->
+                open(intent.chapterId, ChapterTarget.Episode) { it.offersEpisodes }
+            is TitleDetailIntent.OpenHandled ->
+                mutableState.update { if (it.open?.seq == intent.seq) it.copy(open = null) else it }
+        }
+    }
+
+    // Only a chapter on the page, and only where the pill is offered (never a book).
+    private fun open(
+        chapterId: String,
+        target: ChapterTarget,
+        offered: (TitleDetailUiState) -> Boolean,
+    ) {
+        mutableState.update { now ->
+            if (!offered(now) || now.chapters.none { it.id == chapterId }) {
+                now
+            } else {
+                now.copy(open = ChapterOpen(++openSeq, chapterId, target))
             }
         }
     }

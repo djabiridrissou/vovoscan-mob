@@ -12,6 +12,10 @@ struct TitleView: View {
     @StateObject private var model: TitleModel
     /// A delete waiting for its confirmation: a chapter id, or "*" for every download of the title.
     @State private var confirmDelete: String?
+    /// Opened by a chapter's "Translate": the reader on its language picker.
+    @State private var pickLanguage: ReaderRoute?
+    /// Opened by a chapter's "Episode": its episode card.
+    @State private var episode: EpisodeRoute?
 
     private let route: TitleRoute
 
@@ -114,29 +118,11 @@ struct TitleView: View {
                             .buttonStyle(.plain)
                             // Any comic: the chapter in another language (the reader opens on its picker).
                             if model.state.offersTranslation {
-                                NavigationLink(value: ReaderRoute(sourceKey: route.sourceKey, titleId: route.titleId, chapterId: chapter.id, startPage: 0, pickLanguage: true)) {
-                                    Text(model.state.translateChip)
-                                        .font(.brandBody(12, weight: .bold))
-                                        .tracking(1.2)
-                                        .foregroundStyle(Color.brandPaper)
-                                        .padding(.horizontal, 12)
-                                        .padding(.vertical, 8)
-                                        .overlay(Capsule().stroke(Color.brandLine, lineWidth: 1))
-                                }
-                                .buttonStyle(.plain)
+                                ChapterPill(text: model.state.translateChip) { model.translate(chapter.id) }
                             }
                             // Any comic: the chapter's voiced episode, next to reading it.
                             if model.state.offersEpisodes {
-                                NavigationLink(value: EpisodeRoute(chapterId: chapter.id, title: model.state)) {
-                                    Text(L("episode.kickerChip"))
-                                        .font(.brandBody(12, weight: .bold))
-                                        .tracking(1.2)
-                                        .foregroundStyle(Color.brandPaper)
-                                        .padding(.horizontal, 12)
-                                        .padding(.vertical, 8)
-                                        .overlay(Capsule().stroke(Color.brandLine, lineWidth: 1))
-                                }
-                                .buttonStyle(.plain)
+                                ChapterPill(text: L("episode.kickerChip")) { model.episode(chapter.id) }
                             }
                             DownloadControl(row: download) {
                                 if download.action == .delete {
@@ -160,7 +146,20 @@ struct TitleView: View {
         .readableWidth()
         .background(Color.brandInk)
         .refreshable { model.refresh() }
-        .navigationDestination(for: EpisodeRoute.self) { EpisodeContainer(route: $0) }
+        // The pills open through the view model, with destinations of this page's own (never a value link: two
+        // value links in a row next to the chapter's own link lost their taps).
+        .onChange(of: model.state.open?.seq) { _, _ in
+            guard let open = model.state.open else { return }
+            switch open.target {
+            case .translate:
+                pickLanguage = ReaderRoute(sourceKey: route.sourceKey, titleId: route.titleId, chapterId: open.chapterId, startPage: 0, pickLanguage: true)
+            case .episode:
+                episode = EpisodeRoute(chapterId: open.chapterId, title: model.state)
+            }
+            model.openHandled(open.seq)
+        }
+        .navigationDestination(item: $pickLanguage) { ReaderContainer(route: $0) }
+        .navigationDestination(item: $episode) { EpisodeContainer(route: $0) }
         .task { await model.observe() }
         .task { await model.observeFollow() }
         .task { await model.observeDownloads() }
@@ -206,6 +205,30 @@ struct TitleView: View {
                     .font(.brandBody(13, weight: .bold)).foregroundStyle(Color.brandMuted)
             }
         }
+    }
+}
+
+/// "TRANSLATE" / "EPISODE" on a chapter row: a real button with its whole capsule as the target.
+private struct ChapterPill: View {
+    let text: String
+    let action: () -> Void
+
+    var body: some View {
+        Button {
+            Haptics.select()
+            action()
+        } label: {
+            Text(text)
+                .font(.brandBody(12, weight: .bold))
+                .tracking(1.2)
+                .foregroundStyle(Color.brandPaper)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .overlay(Capsule().stroke(Color.brandLine, lineWidth: 1))
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .fixedSize()
     }
 }
 

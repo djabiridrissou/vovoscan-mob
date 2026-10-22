@@ -53,15 +53,33 @@ class CatalogRepositoryImplTest {
             """"content":{"book":{"document":{"url":{"template":"https://books.e""" +
             """xample/files/{{id}}.epub"},"mediaType":"application/epub+zip"}}}}"""
 
+    /** A comic source whose catalog declares a format rule (it reads nothing for some titles), and one without. */
+    private val inkwellManifest =
+        """{"contractVersion":1,"key":"inkwell","name":"Inkwell","version":"1.0.0","kinds":["comic"],"langs":["en"],""" +
+            """"rights":{"basis":"public-domain","notes":"Test source."},"hosts":["inkwell.example"],""" +
+            """"catalog":{"request":{"url":"https://inkwell.example/strips","type":"json","query":{"page":"{{page}}"}},""" +
+            """"list":"${'$'}.items[*]","item":{"id":{"path":"${'$'}.id","then":["string"]},"name":"${'$'}.title",""" +
+            """"format":"${'$'}.format"}},""" +
+            """"title":{"request":{"url":"https://inkwell.example/t/{{id}}","type":"json"},"fields":{"name":"${'$'}.title"},""" +
+            """"units":{"single":{"id":"{{id}}"}}},"content":{"comic":{"request":{"url":"https://inkwell.example/r/{{unitId}}",""" +
+            """"type":"json"},"list":"${'$'}.pages[*]","item":{"url":"${'$'}.url"}}}}"""
+    private val quillManifest =
+        """{"contractVersion":1,"key":"quill","name":"Quill","version":"1.0.0","kinds":["comic"],"langs":["en"],""" +
+            """"rights":{"basis":"public-domain","notes":"Test source."},"hosts":["quill.example"],""" +
+            """"catalog":{"request":{"url":"https://quill.example/strips","type":"json","query":{"page":"{{page}}"}},""" +
+            """"list":"${'$'}.items[*]","item":{"id":{"path":"${'$'}.id","then":["string"]},"name":"${'$'}.title"}},""" +
+            """"title":{"request":{"url":"https://quill.example/t/{{id}}","type":"json"},"fields":{"name":"${'$'}.title"},""" +
+            """"units":{"single":{"id":"{{id}}"}}},"content":{"comic":{"request":{"url":"https://quill.example/r/{{unitId}}",""" +
+            """"type":"json"},"list":"${'$'}.pages[*]","item":{"url":"${'$'}.url"}}}}"""
+
     private val manifests =
         ManifestProvider { key ->
-            if (key ==
-                "books"
-            ) {
-                SourceManifest("books", Json.parseToJsonElement(booksManifest).jsonObject, emptyMap())
-            } else {
-                null
-            }
+            when (key) {
+                "books" -> booksManifest
+                "inkwell" -> inkwellManifest
+                "quill" -> quillManifest
+                else -> null
+            }?.let { SourceManifest(key, Json.parseToJsonElement(it).jsonObject, emptyMap()) }
         }
 
     /** The on-device source's site answers 503. */
@@ -82,6 +100,13 @@ class CatalogRepositoryImplTest {
                 deviceRequests += request.url.toString()
                 val body =
                     when (request.url.encodedPath) {
+                        // Ink Road names no format although the rule is declared; Paper Kite says manga.
+                        "/strips" ->
+                            if (request.url.host == "inkwell.example") {
+                                """{"items":[{"id":1,"title":"Ink Road"},{"id":2,"title":"Paper Kite","format":"manga"}]}"""
+                            } else {
+                                """{"items":[{"id":5,"title":"Quill Tide"}]}"""
+                            }
                         "/list" ->
                             if (request.url.parameters["shelf"] == "poetry") {
                                 """{"items":[{"id":9,"title":"Odes"}],"next":"2"}"""
@@ -132,6 +157,59 @@ class CatalogRepositoryImplTest {
             // Our own catalog's format is the server's word, whatever the genres.
             local.saveDetail("vovoscan", TitleDetailDto("t1", "Griot", format = "manga", status = "ongoing", genres = listOf("Webtoon")))
             assertEquals(mapOf("t1" to "manga"), local.savedFormats("vovoscan", listOf("t1")))
+        }
+
+    @Test
+    fun formatsAreAskedForEveryComicSourceAndTheServersWordBeatsTheMangaDefault() =
+        runTest {
+            val asked = mutableListOf<String>()
+            val repo =
+                repository { request ->
+                    val path = request.url.encodedPath
+                    if (!path.endsWith("/formats")) return@repository respond("", HttpStatusCode.NotFound)
+                    asked += path + "?" +
+                        request.url.parameters
+                            .getAll("ref")
+                            .orEmpty()
+                            .joinToString(",")
+                    when (path) {
+                        "/api/v1/source-reader/inkwell/formats" -> respondJson("""{"data":{"1":"webtoon"}}""")
+                        "/api/v1/source-reader/quill/formats" -> respondJson("""{"data":{"5":"webtoon"}}""")
+                        else -> respondJson("""{"data":{}}""")
+                    }
+                }
+            repo.refreshListing("inkwell")
+            repo.refreshListing("quill")
+            repo.refreshListing("books")
+            // A listing whose declared rule read nothing: the default, which a strip known on the device beats.
+            assertEquals(
+                listOf("1" to ReadingFormat.Manga, "2" to ReadingFormat.Manga),
+                repo.observeListing("inkwell").first().map { it.title.id to it.title.format },
+            )
+            assertEquals(mapOf("1" to ReadingFormat.Webtoon), repo.learnFormats("inkwell", listOf("1", "2")))
+            assertEquals(mapOf("5" to ReadingFormat.Webtoon), repo.learnFormats("quill", listOf("5")))
+            // Never a source without comics.
+            assertEquals(emptyMap(), repo.learnFormats("books", listOf("7")))
+            assertEquals(
+                listOf("/api/v1/source-reader/inkwell/formats?1,2", "/api/v1/source-reader/quill/formats?5"),
+                asked,
+            )
+            // Applied to every listing of the source, whatever the category.
+            assertEquals(
+                listOf("1" to ReadingFormat.Webtoon, "2" to ReadingFormat.Manga),
+                repo.observeListing("inkwell").first().map { it.title.id to it.title.format },
+            )
+            assertEquals(
+                ReadingFormat.Webtoon,
+                repo
+                    .observeListing("quill")
+                    .first()
+                    .single()
+                    .title.format,
+            )
+            // Asked once each.
+            repo.learnFormats("inkwell", listOf("1", "2"))
+            assertEquals(2, asked.size)
         }
 
     @Test

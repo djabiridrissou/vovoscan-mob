@@ -9,7 +9,6 @@ import com.vovoscan.core.sources.ManifestProvider
 import com.vovoscan.core.sources.RulesHttp
 import com.vovoscan.core.sources.RulesSource
 import com.vovoscan.core.sources.RulesTitleSummary
-import com.vovoscan.core.sources.declaresFormat
 import com.vovoscan.core.sources.formatHint
 import com.vovoscan.feature.catalog.domain.ReadingFormat
 import com.vovoscan.feature.catalog.domain.SourceCategory
@@ -221,8 +220,9 @@ class OnDeviceCatalogRemoteDataSource(
                     genres = title.genres,
                     // Newest to oldest, like the API.
                     chapters = title.units.reversed().map { ChapterDto(it.id, it.number, it.name) },
+                    // A declared format rule that read nothing is the default too.
                     formatKnown =
-                        s.declaresFormat ||
+                        title.summary.formatRead ||
                             title.summary.kind == "book" ||
                             title.summary.format != "manga" ||
                             formatHint(title.genres) != null,
@@ -241,7 +241,7 @@ class OnDeviceCatalogRemoteDataSource(
         item.format,
         item.status,
         item.contentRating,
-        formatKnown = source.declaresFormat || item.kind == "book",
+        formatKnown = item.formatRead || item.kind == "book",
     )
 
     private fun <T> unknown(): AppResult<T> =
@@ -278,12 +278,16 @@ class RoutingCatalogRemoteDataSource(
         id: String,
     ) = pick(sourceKey).title(sourceKey, id)
 
-    /** Asked of the API for a source read on the device whose catalog names no format; nothing for the others. */
+    /**
+     * Asked of the API for a comic source read on the device, whether or not its catalog names a format: a declared
+     * rule that reads nothing for a title leaves it a manga by default, and the server's word beats that default.
+     * Nothing for a source without comics.
+     */
     override suspend fun learnedFormats(
         sourceKey: String,
         refs: List<String>,
     ): Map<String, String> {
         val manifest = manifests.manifest(sourceKey) ?: return emptyMap()
-        return if (manifest.declaresFormat || refs.isEmpty()) emptyMap() else api.learnedFormats(sourceKey, refs)
+        return if ("comic" !in manifest.kinds || refs.isEmpty()) emptyMap() else api.learnedFormats(sourceKey, refs)
     }
 }

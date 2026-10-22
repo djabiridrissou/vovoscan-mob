@@ -218,6 +218,13 @@ final class TitleModel: ObservableObject {
 
     func toggleOrder() { detail.onIntent(intent: TitleDetailIntentToggleOrder.shared) }
 
+    /// A chapter row's pill: the view model answers with `state.open`, which the page opens once.
+    func translate(_ chapterId: String) { detail.onIntent(intent: TitleDetailIntentTranslate(chapterId: chapterId)) }
+
+    func episode(_ chapterId: String) { detail.onIntent(intent: TitleDetailIntentEpisode(chapterId: chapterId)) }
+
+    func openHandled(_ seq: Int64) { detail.onIntent(intent: TitleDetailIntentOpenHandled(seq: seq)) }
+
     deinit { owner.clear() }
 }
 

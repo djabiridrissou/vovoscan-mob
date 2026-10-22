@@ -123,11 +123,13 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   ("Watch" plays `EpisodeUiState.chapterId`, our id); from a source's reader "Watch from here" opens the card (Android
   over the title page, iOS a sheet, `SourceEpisodeSheet`).
 - Format filter for sources: our categories carry `format` (`manga`, `webtoon`, `text`); a rule-based source without
-  the chosen category is read unfiltered and its titles kept by format (`CatalogViewModel` readings); a manifest
-  without `catalog.item.format` (`RulesSource.declaresFormat`) asks `GET api/v1/source-reader/{key}/formats?ref=…`
+  the chosen category is read unfiltered and its titles kept by format (`CatalogViewModel` readings); every such comic
+  source (one that declares `catalog.item.format` too: a rule that reads nothing for a title leaves it a manga by
+  default, `RulesTitleSummary.formatRead` false) asks `GET api/v1/source-reader/{key}/formats?ref=…`
   (`CatalogRepository.learnFormats`, 100 refs a call, each title once; the server learns a few unopened titles per
   call, so pull to refresh and Load more ask again for those still unknown, `askFormatsAgain`), else manga: only while
-  such a filter needs it, so browsing a source never tells the server what it lists. Category and learned formats are kept in memory (no
+  such a filter needs it, so browsing a source never tells the server what it lists. A learned format beats the manga
+  default in every listing of that source, every category included. Category and learned formats are kept in memory (no
   schema change).
 - Tests: `core/sources/src/commonTest/.../Fixtures.kt` copies the manifests (change them with `vovo-plugin`).
 - Third-party sources (user plugins, spec v1): added from a link (single manifest or `repo.json`, GitHub pages
@@ -665,7 +667,9 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
 - Title page of a comic of our catalog (`TitleDetailUiState.offersEpisodes`): each chapter row has an "Episode" chip
   next to reading it → Episode card → Watch → full-screen player. Any comic, any source: a "Translate" chip per row
   (`offersTranslation`) opens the reader on its language picker (iOS `ReaderRoute.pickLanguage`, Android
-  `ReaderScreen(openLanguages = true)`). `nextChapterId(…)` (reading order) gives "Next
+  `ReaderScreen(openLanguages = true)`). Both pills go through the view model (`TitleDetailIntent.Translate` /
+  `Episode` → `state.open` → the screen opens it once and answers `OpenHandled(seq)`); iOS opens them with the page's
+  own `navigationDestination(item:)`, never value links next to the chapter's (they lost their taps). `nextChapterId(…)` (reading order) gives "Next
   chapter →"; at the end it swaps the card for the next chapter's (Android `openEpisode`, iOS `EpisodeContainer`).
 - Episode card: Start / Stop on start / stop (Android lifecycle) or appear / disappear (iOS): live events only while it
   is visible. Video: Android saves through `DownloadManager` (`Movies/vovoscan`, Android 10+; the app's own Movies

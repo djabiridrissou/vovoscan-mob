@@ -98,6 +98,62 @@ class ContinueReadingTest {
         }
 
     @Test
+    fun aPluginChapterRowsTranslateAndEpisodePillsReachTheViewModelAndOpenOnce() =
+        runTest(dispatcher) {
+            val vm = TitleDetailViewModel("inkwell", "dle", repository(), resume)
+            advanceUntilIdle()
+            assertTrue(vm.state.value.offersTranslation)
+            assertTrue(vm.state.value.offersEpisodes)
+
+            vm.onIntent(TitleDetailIntent.Translate("k2"))
+            val translate = vm.state.value.open
+            assertEquals("k2", translate?.chapterId)
+            assertEquals(ChapterTarget.Translate, translate?.target)
+            // Tapped again before the screen opened it: a new command, never a lost tap.
+            vm.onIntent(TitleDetailIntent.Translate("k2"))
+            val again = vm.state.value.open
+            assertTrue(again != null && translate != null && again.seq > translate.seq)
+            // An older answer leaves the newer command alone.
+            vm.onIntent(TitleDetailIntent.OpenHandled(translate!!.seq))
+            assertEquals(again, vm.state.value.open)
+            vm.onIntent(TitleDetailIntent.OpenHandled(again!!.seq))
+            assertNull(vm.state.value.open)
+
+            vm.onIntent(TitleDetailIntent.Episode("k3"))
+            assertEquals(
+                ChapterTarget.Episode,
+                vm.state.value.open
+                    ?.target,
+            )
+            assertEquals(
+                "k3",
+                vm.state.value.open
+                    ?.chapterId,
+            )
+            // A chapter that is not on the page opens nothing.
+            vm.onIntent(
+                TitleDetailIntent.OpenHandled(
+                    vm.state.value.open!!
+                        .seq,
+                ),
+            )
+            vm.onIntent(TitleDetailIntent.Episode("gone"))
+            assertNull(vm.state.value.open)
+        }
+
+    @Test
+    fun aBookOffersNeitherPill() =
+        runTest(dispatcher) {
+            val book = detail.copy(summary = summary.copy(kind = ContentKind.Book))
+            val repository = FakeCatalog().apply { this.detail.value = book }
+            val vm = TitleDetailViewModel("inkwell", "dle", repository, resume)
+            advanceUntilIdle()
+            vm.onIntent(TitleDetailIntent.Translate("k1"))
+            vm.onIntent(TitleDetailIntent.Episode("k1"))
+            assertNull(vm.state.value.open)
+        }
+
+    @Test
     fun chapterOneIsOnTopAndTheOrderIsRemembered() =
         runTest(dispatcher) {
             val repository = repository()

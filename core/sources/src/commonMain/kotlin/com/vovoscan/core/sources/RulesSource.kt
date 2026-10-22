@@ -21,6 +21,8 @@ data class RulesTitleSummary(
     val status: String,
     /** `safe`, `suggestive`, `erotica`, `pornographic`, or null when the source doesn't say (unknown). */
     val contentRating: String? = null,
+    /** The source said the format (its rule read one); false: [format] is the default for [kind]. */
+    val formatRead: Boolean = true,
 )
 
 data class RulesPage(
@@ -175,12 +177,14 @@ class RulesSource(
     ): RulesTitleSummary? {
         val name = str(Rules.evaluate(ctx, item["name"])) ?: return null
         val kind = str(Rules.evaluate(ctx, item["kind"])) ?: defaultKind()
+        val format = str(Rules.evaluate(ctx, item["format"]))
         return RulesTitleSummary(
             id = id,
             name = name,
             coverUrl = str(Rules.evaluate(ctx, item["cover"])),
             kind = kind,
-            format = str(Rules.evaluate(ctx, item["format"])) ?: defaultFormat(kind),
+            format = format ?: defaultFormat(kind),
+            formatRead = format != null,
             status = str(Rules.evaluate(ctx, item["status"])) ?: "ongoing",
             contentRating = rating(str(Rules.evaluate(ctx, item["contentRating"]))),
         )
@@ -343,7 +347,7 @@ class RulesSource(
                             ?: throw RuleException("The title has no name.")
                     // A page that names no format: its genres may say it is one vertical strip (the server's rule too).
                     val hinted = formatHint(genres).takeIf { kind != "book" && str(Rules.evaluate(ctx, fields["format"])) == null }
-                    val head = hinted?.let { read.copy(format = it) } ?: read
+                    val head = hinted?.let { read.copy(format = it, formatRead = true) } ?: read
                     RulesTitle(
                         summary = head,
                         description = str(Rules.evaluate(ctx, fields["description"])).orEmpty(),

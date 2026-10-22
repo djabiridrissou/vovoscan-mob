@@ -310,6 +310,58 @@ class CatalogViewModelTest {
         }
 
     @Test
+    fun theWebtoonFilterAsksEveryThirdPartySourceAndItsWordShowsInEveryCategory() =
+        runTest(dispatcher) {
+            val inkwell = CatalogSource("inkwell", "Inkwell")
+            val quill = CatalogSource("quill", "Quill")
+            val repository =
+                FakeCatalog().apply {
+                    remote["vovoscan" to null] = listOf(listOf(title("vovoscan", "v1", ReadingFormat.Webtoon)))
+                    remote["vovoscan" to "webtoon"] = listOf(listOf(title("vovoscan", "v1", ReadingFormat.Webtoon)))
+                    remote["inkwell" to null] =
+                        listOf(listOf(title("inkwell", "i1", ReadingFormat.Manga), title("inkwell", "i2", ReadingFormat.Manga)))
+                    remote["quill" to null] =
+                        listOf(listOf(title("quill", "q1", ReadingFormat.Manga), title("quill", "q2", ReadingFormat.Manga)))
+                    serverFormats["inkwell/i2"] = ReadingFormat.Webtoon
+                    serverFormats["quill/q1"] = ReadingFormat.Webtoon
+                    categories["vovoscan"] = listOf(SourceCategory("webtoon", "Webtoon", ReadingFormat.Webtoon))
+                }
+            val vm = CatalogViewModel(repository)
+            vm.onIntent(CatalogIntent.SourcesChanged(listOf(vovoscan, inkwell, quill)))
+            advanceUntilIdle()
+            // Browsing every category tells the server nothing.
+            assertTrue(repository.formatsAsked.isEmpty())
+
+            vm.onIntent(CatalogIntent.SelectCategory("Webtoon"))
+            advanceUntilIdle()
+            assertEquals(
+                setOf("inkwell" to listOf("i1", "i2"), "quill" to listOf("q1", "q2")),
+                repository.formatsAsked.toSet(),
+            )
+            assertEquals(setOf("v1", "i2", "q1"), ids(vm).toSet())
+
+            // Back to every category: the learned strips keep their badge.
+            vm.onIntent(CatalogIntent.SelectCategory(null))
+            advanceUntilIdle()
+            val labels =
+                vm.state.value.cards
+                    .associate { it.id to it.formatLabel }
+            assertEquals("WEBTOON", labels["i2"])
+            assertEquals("WEBTOON", labels["q1"])
+            assertEquals("MANGA", labels["i1"])
+
+            // Refresh under the filter asks both sources again for what the server didn't know.
+            repository.serverFormats["quill/q2"] = ReadingFormat.Webtoon
+            vm.onIntent(CatalogIntent.SelectCategory("Webtoon"))
+            advanceUntilIdle()
+            vm.onIntent(CatalogIntent.Refresh)
+            advanceUntilIdle()
+            assertTrue("inkwell" to listOf("i1") in repository.formatsAsked)
+            assertTrue("quill" to listOf("q2") in repository.formatsAsked)
+            assertEquals(setOf("v1", "i2", "q1", "q2"), ids(vm).toSet())
+        }
+
+    @Test
     fun aSearchResultFollowsTheFormatItsTitlePageLearned() =
         runTest(dispatcher) {
             val inkwell = CatalogSource("inkwell", "Inkwell")
