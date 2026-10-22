@@ -63,6 +63,18 @@ class RulesSource(
 ) {
     private val json: JsonObject get() = manifest.json
 
+    /**
+     * The catalog request sends `{{search}}` somewhere: the site does the matching. A manifest without it lists the
+     * same titles whatever is typed, so its search keeps only the titles whose name contains the query.
+     */
+    val searchable: Boolean
+        get() =
+            json["catalog"]
+                ?.jsonObject
+                ?.get("request")
+                ?.toString()
+                ?.let { SEARCH_PLACEHOLDER.containsMatchIn(it) } == true
+
     private fun vars(vararg extra: Pair<String, Any?>): Map<String, Any?> =
         mapOf("settings" to manifest.settings, "page" to 1, "search" to "", "lang" to deviceLanguage()) + extra
 
@@ -228,8 +240,18 @@ class RulesSource(
                     stoppedEarly -> false
                     else -> str(Rules.evaluate(ctx, cursor.getValue("from"))) != null
                 }
-            page(ctx, section, hasNext)
+            val found = page(ctx, section, hasNext)
+            if (search.isBlank() || searchable) found else found.copy(items = found.items.filter { matches(it.name, search) }, total = null)
         }
+    }
+
+    private fun matches(
+        name: String,
+        query: String,
+    ): Boolean {
+        val words = query.lowercase().split(' ').filter { it.isNotBlank() }
+        val haystack = name.lowercase()
+        return words.all { haystack.contains(it) }
     }
 
     private fun page(
@@ -384,3 +406,6 @@ class RulesSource(
     private fun <T> noContent(kind: String): AppResult<T> =
         AppResult.Err(AppError.Rejected(SOURCE_RULES, "${manifest.name} has no $kind content."))
 }
+
+/** `{{search}}` in a request (braces escaped: Android's ICU engine rejects a bare `}`). */
+private val SEARCH_PLACEHOLDER = Regex("\\{\\{\\s*search\\s*\\}\\}")

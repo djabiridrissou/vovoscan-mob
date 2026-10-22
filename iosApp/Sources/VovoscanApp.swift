@@ -39,6 +39,13 @@ enum AppEnvironment {
         Bundle.main.object(forInfoDictionaryKey: "API_BASE_URL") as? String ?? "http://localhost:8000/"
     }
 
+    /// The website (WEB_BASE_URL in Info.plist): the creator studio is web only.
+    static var webBaseUrl: String {
+        Bundle.main.object(forInfoDictionaryKey: "WEB_BASE_URL") as? String ?? "http://localhost:3000/"
+    }
+
+    static var studioUrl: URL? { URL(string: webBaseUrl)?.appending(path: "contribute") }
+
     /// Debug builds only: `VOVOSCAN_OFFLINE=1` in the launch environment (`SIMCTL_CHILD_VOVOSCAN_OFFLINE=1 xcrun simctl
     /// launch …`) makes the app behave as with no network. The simulator shares the Mac's network and has no switch.
     static var simulateOffline: Bool {

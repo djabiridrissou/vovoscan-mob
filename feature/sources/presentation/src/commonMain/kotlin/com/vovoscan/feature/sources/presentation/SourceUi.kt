@@ -63,6 +63,12 @@ object SourceLabels {
     const val SETTINGS_NEEDED = "Fill in the required settings to use this source."
     const val KEEP_ONE_VISIBLE = "Keep at least one source visible."
     const val PENDING = "Your changes will sync when you're back online."
+    const val TURN_ON = "Turn on"
+    const val INTERNAL_SUMMARY = "vovoscan's own manga, webtoons and books, read and voiced in your language."
+    const val INTERNAL_ENGINE = "vovoscan's catalog"
+    const val ON_DEVICE_ENGINE = "Read on your device"
+
+    fun turnedOn(name: String) = "$name is on. Its titles are in the catalog."
 
     fun kind(kind: String) =
         when (kind) {

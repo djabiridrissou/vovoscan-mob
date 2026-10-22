@@ -52,6 +52,43 @@ class RulesHttpFailuresTest {
         }
 
     @Test
+    fun aSourceNeverReachesTheLocalNetwork() =
+        runTest {
+            var calls = 0
+            val engine =
+                MockEngine {
+                    calls++
+                    respond("", HttpStatusCode.OK)
+                }
+            val json =
+                Json
+                    .parseToJsonElement(
+                        """{"key":"lan","name":"LAN","hosts":["127.0.0.1","comics.inkwell.example"],"settings":{"base":{"type":"url"}}}""",
+                    ).jsonObject
+            val lan = SourceManifest("lan", json, mapOf("base" to "https://192.168.1.10"))
+            assertEquals(setOf("comics.inkwell.example"), lan.allowedHosts)
+            val http = RulesHttp(createRulesHttpClient(engine), online)
+            for (url in listOf("http://127.0.0.1/admin", "https://192.168.1.10/", "https://comics.inkwell.example:x@127.0.0.1/")) {
+                assertEquals("HOST_NOT_ALLOWED", ((http.get(lan, url) as AppResult.Err).error as AppError.Rejected).code, url)
+            }
+            assertEquals(0, calls)
+        }
+
+    @Test
+    fun aRedirectCannotSmuggleTheDeviceOntoTheLocalNetwork() =
+        runTest {
+            val requested = mutableListOf<String>()
+            val engine =
+                MockEngine { request ->
+                    requested += request.url.toString()
+                    respond("", HttpStatusCode.Found, headersOf(HttpHeaders.Location, "https://comics.inkwell.example:x@127.0.0.1/"))
+                }
+            val result = RulesHttp(createRulesHttpClient(engine), online).get(manifest, "https://comics.inkwell.example/browse")
+            assertEquals("HOST_NOT_ALLOWED", ((result as AppResult.Err).error as AppError.Rejected).code)
+            assertEquals(listOf("https://comics.inkwell.example/browse"), requested)
+        }
+
+    @Test
     fun aPageTheRulesCannotReadIsARuleError() =
         runTest {
             val html = """<h1></h1><p>Redesigned site</p>"""

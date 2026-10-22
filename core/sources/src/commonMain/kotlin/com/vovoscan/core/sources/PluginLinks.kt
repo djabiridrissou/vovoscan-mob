@@ -1,5 +1,7 @@
 package com.vovoscan.core.sources
 
+import com.vovoscan.core.common.HostPolicy
+
 /**
  * Links typed or pasted by the user to add a source or a repository. Only `https://` (debug builds may also reach a
  * local server); GitHub pages are turned into the raw file they show.
@@ -30,16 +32,20 @@ object PluginLinks {
         return link
     }
 
-    /** `https://` with a host; with [allowLocal], also `http://` to a local development server. */
+    /**
+     * `https://` to a public host (a repository can't point the device at the reader's own network, [HostPolicy]);
+     * with [allowLocal] (debug builds), also a local development server.
+     */
     fun isAllowed(
         url: String,
         allowLocal: Boolean,
     ): Boolean {
         val host = hostOf(url) ?: return false
         if (url.any { it.isWhitespace() }) return false
+        val local = allowLocal && host in localHosts
         return when {
-            url.startsWith("https://", ignoreCase = true) -> true
-            url.startsWith("http://", ignoreCase = true) -> allowLocal && host in localHosts
+            url.startsWith("https://", ignoreCase = true) -> local || HostPolicy.isPublic(host)
+            url.startsWith("http://", ignoreCase = true) -> local
             else -> false
         }
     }

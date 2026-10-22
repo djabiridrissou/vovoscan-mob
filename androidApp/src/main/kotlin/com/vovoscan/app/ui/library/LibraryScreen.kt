@@ -30,6 +30,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
+import com.vovoscan.app.ui.common.EmptyStateCard
 import com.vovoscan.app.ui.common.ErrorText
 import com.vovoscan.app.ui.common.GhostButton
 import com.vovoscan.app.ui.common.Kicker
@@ -45,6 +46,8 @@ import org.koin.compose.viewmodel.koinViewModel
 fun LibraryScreen(
     onOpenTitle: (sourceKey: String, titleId: String) -> Unit,
     onOpenDownloads: () -> Unit,
+    onOpenSources: () -> Unit,
+    onOpenCatalog: () -> Unit,
     onSignOut: () -> Unit,
     viewModel: LibraryViewModel = koinViewModel(),
     sources: SourcesViewModel = koinViewModel(),
@@ -69,7 +72,23 @@ fun LibraryScreen(
                 GhostButton(downloadsState.entryLabel + " →", onOpenDownloads)
                 state.pendingNotice?.let { OfflineNotice(it) }
                 state.error?.let { ErrorText(it) }
-                if (state.empty) Text(state.emptyMessage, style = MaterialTheme.typography.bodyMedium)
+                if (state.empty) {
+                    if (sourcesState.needsSource) {
+                        EmptyStateCard(
+                            sourcesState.firstSourceTitle,
+                            sourcesState.firstSourceMessage,
+                            sourcesState.firstSourceAction,
+                            onOpenSources,
+                        )
+                    } else {
+                        EmptyStateCard(
+                            state.emptyMessage,
+                            "Follow a title from its page: it lands here, on every device.",
+                            "Browse the catalog →",
+                            onOpenCatalog,
+                        )
+                    }
+                }
             }
         }
         items(state.rows, key = { it.sourceKey + "/" + it.titleId }) { row ->

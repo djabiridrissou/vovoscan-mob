@@ -1,18 +1,17 @@
 package com.vovoscan.app.ui.theme
 
-import android.annotation.SuppressLint
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
+import com.vovoscan.app.R
 
 /** Brand colors (`brand/tokens.json`), the only ones allowed in the UI. */
 object Brand {
@@ -35,23 +34,20 @@ class BrandFonts(
     val body: FontFamily,
 )
 
-/**
- * Dela Gothic One (headings) and Space Grotesk (body), copied into `res/font` by `scripts/fetch-fonts.sh`.
- * If missing, the system font is used instead: the app stays usable.
- */
-@SuppressLint("DiscouragedApi")
+/** Dela Gothic One (headings) and Space Grotesk (body: Regular, Medium, Bold), bundled in `res/font` (OFL). */
 @Composable
-fun rememberBrandFonts(): BrandFonts {
-    val context = LocalContext.current
-    return remember {
-        fun family(name: String): FontFamily =
-            context.resources
-                .getIdentifier(name, "font", context.packageName)
-                .takeIf { it != 0 }
-                ?.let { FontFamily(Font(it)) } ?: FontFamily.Default
-        BrandFonts(display = family("dela_gothic_one"), body = family("space_grotesk"))
+fun rememberBrandFonts(): BrandFonts =
+    remember {
+        BrandFonts(
+            display = FontFamily(Font(R.font.dela_gothic_one)),
+            body =
+                FontFamily(
+                    Font(R.font.space_grotesk_regular, FontWeight.Normal),
+                    Font(R.font.space_grotesk_medium, FontWeight.Medium),
+                    Font(R.font.space_grotesk_bold, FontWeight.Bold),
+                ),
+        )
     }
-}
 
 @Composable
 fun VovoscanTheme(content: @Composable () -> Unit) {

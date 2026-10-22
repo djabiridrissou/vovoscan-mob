@@ -18,14 +18,17 @@ import com.vovoscan.feature.reader.data.RoutingReaderRemoteDataSource
 import com.vovoscan.feature.reader.data.SqlDownloadsLocalDataSource
 import com.vovoscan.feature.reader.data.SqlReaderLocalDataSource
 import com.vovoscan.feature.reader.data.SqlReaderSettingsRepository
+import com.vovoscan.feature.reader.data.TranslationsRepositoryImpl
 import com.vovoscan.feature.reader.data.db.ReaderDatabase
 import com.vovoscan.feature.reader.domain.DownloadScheduler
 import com.vovoscan.feature.reader.domain.DownloadsRepository
 import com.vovoscan.feature.reader.domain.ReaderRepository
 import com.vovoscan.feature.reader.domain.ReaderSettingsRepository
+import com.vovoscan.feature.reader.domain.TranslationsRepository
 import com.vovoscan.feature.reader.presentation.DownloadsViewModel
 import com.vovoscan.feature.reader.presentation.ReaderViewModel
 import com.vovoscan.feature.reader.presentation.TitleDownloadsViewModel
+import com.vovoscan.feature.reader.presentation.TranslationViewModel
 import kotlinx.coroutines.CoroutineScope
 import org.koin.core.module.dsl.viewModel
 import org.koin.core.module.dsl.viewModelOf
@@ -73,4 +76,7 @@ val readerModule =
         }
         viewModel { (sourceKey: String, titleId: String) -> TitleDownloadsViewModel(sourceKey, titleId, get(), get()) }
         viewModelOf(::DownloadsViewModel)
+        // Translations of our catalog's chapters: read fresh from the API, lettering laid out in shared code.
+        single<TranslationsRepository> { TranslationsRepositoryImpl(get()) }
+        viewModel { (sourceKey: String, chapterId: String) -> TranslationViewModel(sourceKey, chapterId, get()) }
     }

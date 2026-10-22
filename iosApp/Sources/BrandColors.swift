@@ -26,7 +26,12 @@ extension Color {
 /// Dela Gothic One (headings) and Space Grotesk (body); without the files, the system font is used instead.
 extension Font {
     static func brandDisplay(_ size: CGFloat) -> Font { .custom("DelaGothicOne-Regular", size: size) }
+    /// Space Grotesk ships as three static faces (Fonts/): each weight names its own face, never a synthesized one.
     static func brandBody(_ size: CGFloat, weight: Font.Weight = .regular) -> Font {
-        .custom("SpaceGrotesk-Regular", size: size).weight(weight)
+        switch weight {
+        case .bold, .semibold, .heavy, .black: .custom("SpaceGrotesk-Bold", size: size)
+        case .medium: .custom("SpaceGrotesk-Medium", size: size)
+        default: .custom("SpaceGrotesk-Regular", size: size)
+        }
     }
 }

@@ -12,8 +12,10 @@ import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.plugins.HttpTimeoutConfig
 import io.ktor.client.plugins.timeout
+import io.ktor.client.request.HttpRequestBuilder
 import io.ktor.client.request.get
 import io.ktor.client.request.header
+import io.ktor.client.request.parameter
 import io.ktor.client.request.post
 import io.ktor.client.request.prepareGet
 import io.ktor.client.statement.HttpResponse
@@ -21,6 +23,7 @@ import io.ktor.client.statement.bodyAsChannel
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
+import io.ktor.http.encodeURLPathPart
 import io.ktor.http.isSuccess
 import io.ktor.utils.io.LineEnding
 import io.ktor.utils.io.readLine
@@ -45,22 +48,43 @@ sealed interface RunDto {
     ) : RunDto
 }
 
-/** Remote source: `api/v1/episodes/chapters/{chapterId}` (episode, prepare, reread, live events, watch). */
+/**
+ * Remote source: `api/v1/episodes/chapters/{chapterId}` (episode, prepare, reread, live events, watch, export), each
+ * with `?lang=` for an episode in another language ([lang] "" = the original, no parameter).
+ */
 interface EpisodesRemoteDataSource {
     /** `Ok(null)`: no episode yet (`404 EPISODE_NOT_FOUND`). */
-    suspend fun episode(chapterId: String): AppResult<EpisodeDto?>
+    suspend fun episode(
+        chapterId: String,
+        lang: String = "",
+    ): AppResult<EpisodeDto?>
 
-    suspend fun prepare(chapterId: String): AppResult<RunDto>
+    suspend fun prepare(
+        chapterId: String,
+        lang: String = "",
+    ): AppResult<RunDto>
 
-    suspend fun reread(chapterId: String): AppResult<RunDto>
+    suspend fun reread(
+        chapterId: String,
+        lang: String = "",
+    ): AppResult<RunDto>
 
-    suspend fun watch(chapterId: String): AppResult<WatchDto>
+    suspend fun watch(
+        chapterId: String,
+        lang: String = "",
+    ): AppResult<WatchDto>
 
     /** `POST …/export` (202 queued, 200 already ready or being made). */
-    suspend fun requestExport(chapterId: String): AppResult<ExportDto>
+    suspend fun requestExport(
+        chapterId: String,
+        lang: String = "",
+    ): AppResult<ExportDto>
 
     /** `GET …/export`. */
-    suspend fun export(chapterId: String): AppResult<ExportDto>
+    suspend fun export(
+        chapterId: String,
+        lang: String = "",
+    ): AppResult<ExportDto>
 
     /**
      * One connection to `…/events` (server-sent events): calls [onSnapshot] for every `event: snapshot`, until it
@@ -68,6 +92,7 @@ interface EpisodesRemoteDataSource {
      */
     suspend fun events(
         chapterId: String,
+        lang: String = "",
         onSnapshot: suspend (EpisodeDto) -> Boolean,
     ): AppResult<Unit>
 }
@@ -75,30 +100,48 @@ interface EpisodesRemoteDataSource {
 class KtorEpisodesRemoteDataSource(
     private val http: HttpClient,
 ) : EpisodesRemoteDataSource {
-    private fun path(chapterId: String) = "api/v1/episodes/chapters/$chapterId"
+    private fun path(chapterId: String) = "api/v1/episodes/chapters/${chapterId.encodeURLPathPart()}"
 
-    override suspend fun episode(chapterId: String): AppResult<EpisodeDto?> =
-        when (val result = http.apiCall<ApiData<EpisodeDto>> { get(path(chapterId)) }) {
+    override suspend fun episode(
+        chapterId: String,
+        lang: String,
+    ): AppResult<EpisodeDto?> =
+        when (val result = http.apiCall<ApiData<EpisodeDto>> { get(path(chapterId)) { language(lang) } }) {
             is AppResult.Ok -> AppResult.Ok(result.value.data)
             is AppResult.Err -> if (result.error.isCode(EPISODE_NOT_FOUND)) AppResult.Ok(null) else result
         }
 
-    override suspend fun prepare(chapterId: String): AppResult<RunDto> = run(path(chapterId))
+    override suspend fun prepare(
+        chapterId: String,
+        lang: String,
+    ): AppResult<RunDto> = run(path(chapterId), lang)
 
-    override suspend fun reread(chapterId: String): AppResult<RunDto> = run(path(chapterId) + "/reread")
+    override suspend fun reread(
+        chapterId: String,
+        lang: String,
+    ): AppResult<RunDto> = run(path(chapterId) + "/reread", lang)
 
-    override suspend fun watch(chapterId: String): AppResult<WatchDto> =
-        http.apiCall<ApiData<WatchDto>> { get(path(chapterId) + "/watch") }.map { it.data }
+    override suspend fun watch(
+        chapterId: String,
+        lang: String,
+    ): AppResult<WatchDto> = http.apiCall<ApiData<WatchDto>> { get(path(chapterId) + "/watch") { language(lang) } }.map { it.data }
 
-    override suspend fun requestExport(chapterId: String): AppResult<ExportDto> =
-        http.apiCall<ApiData<ExportDto>> { post(path(chapterId) + "/export") }.map { it.data }
+    override suspend fun requestExport(
+        chapterId: String,
+        lang: String,
+    ): AppResult<ExportDto> = http.apiCall<ApiData<ExportDto>> { post(path(chapterId) + "/export") { language(lang) } }.map { it.data }
 
-    override suspend fun export(chapterId: String): AppResult<ExportDto> =
-        http.apiCall<ApiData<ExportDto>> { get(path(chapterId) + "/export") }.map { it.data }
+    override suspend fun export(
+        chapterId: String,
+        lang: String,
+    ): AppResult<ExportDto> = http.apiCall<ApiData<ExportDto>> { get(path(chapterId) + "/export") { language(lang) } }.map { it.data }
 
-    private suspend fun run(path: String): AppResult<RunDto> =
+    private suspend fun run(
+        path: String,
+        lang: String,
+    ): AppResult<RunDto> =
         try {
-            val response = http.post(path)
+            val response = http.post(path) { language(lang) }
             when {
                 response.status == HttpStatusCode.Conflict -> busy(response)
                 response.status.isSuccess() -> {
@@ -135,11 +178,13 @@ class KtorEpisodesRemoteDataSource(
 
     override suspend fun events(
         chapterId: String,
+        lang: String,
         onSnapshot: suspend (EpisodeDto) -> Boolean,
     ): AppResult<Unit> =
         try {
             http
                 .prepareGet(path(chapterId) + "/events") {
+                    language(lang)
                     header(HttpHeaders.Accept, "text/event-stream")
                     header(HttpHeaders.CacheControl, "no-cache")
                     // The stream lasts up to 30 minutes; a heartbeat comes every 15 s, so 45 s of silence is a dead link.
@@ -171,6 +216,11 @@ class KtorEpisodesRemoteDataSource(
         const val SNAPSHOT = "snapshot"
         const val STREAM_IDLE_MS = 45_000L
     }
+}
+
+/** `?lang=` for an episode in another language; the original sends none. */
+private fun HttpRequestBuilder.language(lang: String) {
+    if (lang.isNotEmpty()) parameter("lang", lang)
 }
 
 internal const val EPISODE_NOT_FOUND = "EPISODE_NOT_FOUND"

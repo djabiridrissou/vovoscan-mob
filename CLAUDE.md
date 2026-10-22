@@ -9,7 +9,7 @@ a local copy so it works offline. Brand: `brand/BRAND.md` (copy of the shared br
 ```bash
 ./gradlew check :androidApp:assembleDebug
 ./gradlew -p build-logic test
-scripts/fetch-fonts.sh                     # brand fonts (otherwise, the system font)
+scripts/check-fonts.sh                     # brand fonts bundled (OFL), both copies identical
 cd iosApp && xcodegen && open Vovoscan.xcodeproj
 cd iosApp && xcodebuild test -project Vovoscan.xcodeproj -scheme Vovoscan \
   -destination 'platform=iOS Simulator,name=iPhone 16 Pro,OS=18.6' -derivedDataPath build -only-testing:VovoscanAudioTests
@@ -64,6 +64,10 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
 
 ## Sources
 
+- The official "vovoscan" source is off for a new account (backend ADR-0055): "Add a source" offers it first
+  (`AddSourceUiState.officialOffers`, one tap = `EnableOfficial`: turned on and moved first, `PUT
+  api/v1/catalog/sources`); it is never hidden from the list. iOS draws the on/off control as `BrandSwitch` (a plain
+  button: one tap, one intent).
 - `feature/sources`: the user's active sources (`GET api/v1/catalog/sources`), visible or not, in their order;
   choices applied locally then sent (`PUT`, replayed if they could not go out). At least one stays visible.
   "Sources" screen; its visible sources (in order) feed the catalog's source filter (`CatalogIntent.SourcesChanged`,
@@ -88,7 +92,13 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   for the shared session behind AsyncImage, replaying the request with `Referer` on a cookie-less session of its own).
   Only those hosts get it, covers included; never the API.
 - `RulesHttp`: a separate client, **without the vovoscan session or cookies**, redirects followed by hand and
-  limited to declared hosts (manifest + URL-type settings), rate capped by the manifest. A failure is `Network` only
+  limited to declared hosts (manifest + URL-type settings), rate capped by the manifest. Never the local network
+  (`HostPolicy`, `core/common`): loopback, private, link-local, CGNAT, multicast and reserved IPv4 ranges (in any
+  notation: `127.1`, `0x7f…`, `2130706433`), IPv6 literals, `localhost` and local-only names (`.local`, `.lan`,
+  `.internal`, `.home.arpa`…) are dropped from a manifest's hosts and refused on every redirect hop; a third-party
+  manifest that declares one is not installed (`PLUGIN_HOST`), a url-type setting pointing at one is refused, a URL
+  with user info (`https://a.example:x@127.0.0.1/`) has no host. Repository and manifest links (`PluginLinks`) follow
+  the same rule. DNS rebinding (a public name resolving to a private address) is not covered. A failure is `Network` only
   when `NetworkMonitor` says the device is offline; otherwise (exception, timeout, any error status)
   `SourceUnavailable(manifest name)`. The API client sends the session only to the API's own host.
 - Regexes in shared code: escape `{` and `}` (`\{\{…\}\}`). Android's ICU engine rejects a bare `}` that the JVM
@@ -114,7 +124,8 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   has titles left (`MAX_RUN`). The draw follows a seed kept by the view model: "Load more" (the next page of every
   source that has one) appends a new round and nothing on screen moves; pull to refresh (`CatalogIntent.Refresh`)
   draws a new seed, so a new mix. Search goes to every source read (page 1 each, mixed the same way), offline per
-  source as before.
+  source as before. A manifest whose catalog request never sends `{{search}}`
+  (`RulesSource.searchable`) lists the same titles whatever is typed: its results keep only names holding every word.
 - Filters (`CatalogFilter`, remembered in `catalog_setting`): sources (`ShowAllSources`, `ToggleSource`: from "All" a
   tap keeps that source alone; none left or every one chosen is "All"; `CatalogSelection`), and a category by name.
   Categories: the internal source's from `GET api/v1/catalog/sources/vovoscan/categories` (`key` = id, `?category=`
@@ -323,6 +334,12 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   screen answers `VideoHandled` or `VideoFailed`. 409 and 429 have calm messages (`EpisodeText.exportError`).
 - Which keys a run would use comes through the `KeyStatusProvider` port (hints only), wired in `shared` to the account
   slice: episodes do not know about `account`.
+- Languages (`?lang=` on every episode call, "" = the original; `EpisodeDto.language`, `audio` `dub | sub`): the card
+  has a searchable language picker (`EpisodeIntent.ChooseLanguage`, `LanguageQuery`; `Language.ALL` in `core/common`,
+  the server's `core/languages.py` with its `dub` / `mp4` / `beta` flags): "Dubbed" when ElevenLabs speaks it, else
+  "Subtitled" (the original voices, captions in it). Each language is its own episode, stored under `<chapterId>~<lang>`
+  (`storeKey`; the original keeps the bare chapter id), quoted with its `lang`, run with a TRANSLATE stage
+  (`translating`). The player opens in the card's `language`, and "Next chapter →" opens the next card in it.
 
 ## Player core
 
@@ -342,6 +359,56 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   navigation, end of chapter ("Next chapter →" when the opening screen gave one). The native side calls
   `frame(frameTimeMs, stageW, stageH)` on every display frame and draws and plays exactly what it returns (audio: one
   player per cue id). URLs are refetched 5 minutes before they expire, or on `PlayerIntent.MediaFailed`.
+
+## Account access: feature flags, credits, studio
+
+- `/auth/me` (`UserDto`) reads both server generations: `displayName`/`roleName` (v1) and `name`/`role` (unified API),
+  plus `isSuperAdmin`, `permissions`, `features`, `emailVerified`. `Session.has(feature)`: a super-admin has every
+  feature. `Session.isCreator` = `titles:create`.
+- `video` gates episodes: the `EpisodeAccess` port (episodes domain, wired in `shared` to the session) turns the
+  episode card into "Episodes are coming soon." with no action (`EpisodeUiState.comingSoon`); a server answer
+  `FEATURE_DISABLED` / `FEATURE_COMING_SOON` does the same. The server checks every call again.
+- Credits (runs on the platform's keys; own keys cost none): `WalletRepository` (account slice, in memory only)
+  reads `GET api/v1/me/wallet` `{balanceCredits, usesOwnKeys, dailyCapReached}`; a 404 means a server without
+  credits (nothing shown). `POST api/v1/quotes {kind, chapterId, lang?}` → `{credits, maxCredits, coveredByOwnKeys,
+  alreadyAvailable, fundable, metered?, unfunded?}` feeds the `RunQuotes` port: per provider (`RunCost.funding`) the
+  card says own key, platform key paid in credits, or nothing (that step is skipped: bubbles unread, lines silent);
+  never inferred from a zero charge. The cost shows next to Prepare (`costLine`; none for an unfunded run, "Not enough
+  credits" when the wallet can't hold `maxCredits`).
+  Errors: `402 INSUFFICIENT_CREDITS`, `503 PLATFORM_PAUSED`, `429 DAILY_CAP` (kept as `Rejected`, not a rate limit,
+  by `errorOf`), each with a calm line (`EpisodeText.creditError`). `WalletViewModel` = the credits card in Settings.
+- The creator studio is web only: Settings links to `WEB_BASE_URL` + `contribute` (`project.yml`), "Creator studio"
+  for creators, "Publish your own series" otherwise. The apps never upload, translate or schedule releases.
+- A new account has no source turned on (the official one starts hidden): `SourcesUiState.needsSource` (no source, or
+  every one switched off) makes the catalog and the library show "Start with a source." / "Turn on a source." with an
+  action to the Sources tab (`OpenTabAction` in the SwiftUI environment, the tab state on Android), never a skeleton;
+  a catalog with nothing to read settles `Fresh` and empty.
+
+## iOS finish (`iosApp/Sources/Premium.swift`)
+
+- Launch: the mark is stamped on the page (spring, haptic, speed lines), then the app or the sign-in fades in.
+- Sign-in: a printed-manga hero (speed lines, red halftone, ドン!, "Invite only" kicker), password AutoFill content
+  types, an error haptic.
+- Catalog: covers open their title page with the iOS 18 zoom transition (`matchedTransitionSource` +
+  `.navigationTransition(.zoom)`), tiles sink when pressed (`PressableCardStyle`), rise in one after the other
+  (`riseIn`), skeleton tiles shimmer while the first page loads.
+- `EmptyStateCard` (onomatopoeia, one sentence, one action), `Sticker`, `ScreenHeader`, `Haptics`, `HalftoneBackground`,
+  `SpeedLines` (deterministic, drawn with `Canvas`). Ink tab and navigation bars, red selection, a selection haptic per
+  tab. Every animation is skipped under Reduce Motion.
+
+## Translated reader (`TranslationViewModel`, `iosApp/Sources/TranslationViews.swift`)
+
+- Chapters of our catalog only (`sourceKey == "vovoscan"`): a language button in the reader's top bar opens a
+  searchable picker (own name, English name or code), languages already made first ("Ready": shared, free).
+- `TranslationsRepository` (reader slice, online only): `GET api/v1/translations/chapters/{id}` (`{translations:
+  [{language, status, progress…}]}`), `POST …/{id} {language}` (200 exists or runs: shared, free; 202 queued; 402 / 429
+  / 503 from credits), `GET …/{id}/read?lang=` (pages `width`/`height` + `texts` `{id, bbox, text, fill, ink, round,
+  area}`, boxes `[x, y, width, height]` in page pixels). A queued language is polled every 4 s until ready. Corrections
+  (`PUT …/{lang}`) are the web studio's, never the app's.
+- `LetteringLayout` (reader domain) is the web reader's `lettering.ts`: paint patches over the original letters (the
+  balloon's interior when known, ellipse for round balloons) and the rectangle the translation is fitted in, as
+  fractions of the page. iOS draws them in `LetteringOverlay` over each `PageImage` (any mode, any zoom). `Language.ALL`
+  (`core/common`) mirrors the server's `LANGUAGES` (48 entries).
 
 ## Screens (account and episodes)
 

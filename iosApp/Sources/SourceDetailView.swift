@@ -92,7 +92,6 @@ struct SourceDetailView: View {
                 }
                 .buttonStyle(PrimaryButtonStyle())
                 .disabled(!model.state.canSaveSettings)
-                .opacity(model.state.canSaveSettings ? 1 : 0.5)
                 .padding(.bottom, 6)
             } else {
                 ForEach(model.state.settings, id: \.name) { SettingValue(field: $0) }

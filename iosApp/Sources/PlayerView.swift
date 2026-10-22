@@ -8,7 +8,9 @@ import UIKit
 struct PlayerRoute: Hashable, Identifiable {
     let chapterId: String
     let nextChapterId: String?
-    var id: String { chapterId }
+    /// "" = the original; else the language of the episode the card showed.
+    var language: String = ""
+    var id: String { "\(chapterId)~\(language)" }
 }
 
 /// The full-screen episode player: a 9:16 stage (letterboxed on other screens) redrawn at the display's rate by a
@@ -28,7 +30,7 @@ struct PlayerView: View {
     let onNextChapter: (String) -> Void
 
     init(route: PlayerRoute, onNextChapter: @escaping (String) -> Void) {
-        _model = StateObject(wrappedValue: PlayerModel(chapterId: route.chapterId, nextChapterId: route.nextChapterId))
+        _model = StateObject(wrappedValue: PlayerModel(chapterId: route.chapterId, nextChapterId: route.nextChapterId, language: route.language))
         self.onNextChapter = onNextChapter
     }
 

@@ -165,6 +165,27 @@ final class ReaderModel: ObservableObject {
     deinit { owner.clear() }
 }
 
+/// The reader's language: translations of the chapter and the lettering laid over each page (TranslationViewModel).
+@MainActor
+final class TranslationModel: ObservableObject {
+    @Published private(set) var state: TranslationUiState
+    private let owner = ViewModels()
+    private let viewModel: TranslationViewModel
+
+    init(route: ReaderRoute) {
+        viewModel = owner.translation(sourceKey: route.sourceKey, chapterId: route.chapterId)
+        state = viewModel.state.value
+    }
+
+    func observe() async {
+        for await next in viewModel.state { state = next }
+    }
+
+    func send(_ intent: TranslationIntent) { viewModel.onIntent(intent: intent) }
+
+    deinit { owner.clear() }
+}
+
 @MainActor
 final class SourcesModel: ObservableObject {
     @Published private(set) var state: SourcesUiState
@@ -287,6 +308,26 @@ final class UsageModel: ObservableObject {
     deinit { owner.clear() }
 }
 
+@MainActor
+final class WalletModel: ObservableObject {
+    @Published private(set) var state: WalletUiState
+    private let owner = ViewModels()
+    private let viewModel: WalletViewModel
+
+    init() {
+        viewModel = owner.wallet()
+        state = viewModel.state.value
+    }
+
+    func observe() async {
+        for await next in viewModel.state { state = next }
+    }
+
+    func send(_ intent: WalletIntent) { viewModel.onIntent(intent: intent) }
+
+    deinit { owner.clear() }
+}
+
 // Episodes.
 
 @MainActor
@@ -295,8 +336,8 @@ final class EpisodeModel: ObservableObject {
     private let owner = ViewModels()
     private let viewModel: EpisodeViewModel
 
-    init(chapterId: String) {
-        viewModel = owner.episode(chapterId: chapterId)
+    init(chapterId: String, language: String = "") {
+        viewModel = owner.episode(chapterId: chapterId, language: language)
         state = viewModel.state.value
     }
 
@@ -317,8 +358,8 @@ final class PlayerModel: ObservableObject {
     private let owner = ViewModels()
     let viewModel: PlayerViewModel
 
-    init(chapterId: String, nextChapterId: String?) {
-        viewModel = owner.player(chapterId: chapterId, nextChapterId: nextChapterId)
+    init(chapterId: String, nextChapterId: String?, language: String = "") {
+        viewModel = owner.player(chapterId: chapterId, nextChapterId: nextChapterId, language: language)
         state = viewModel.state.value
     }
 

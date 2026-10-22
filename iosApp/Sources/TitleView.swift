@@ -27,9 +27,15 @@ struct TitleView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
-                AsyncImage(url: model.state.coverUrl.flatMap(URL.init(string:))) { image in
-                    image.resizable().scaledToFill()
-                } placeholder: { Color.brandInk2 }
+                AsyncImage(url: model.state.coverUrl.flatMap(URL.init(string:))) { phase in
+                    if let image = phase.image {
+                        image.resizable().scaledToFill()
+                    } else if phase.error != nil || model.state.coverUrl == nil {
+                        CoverArtPlaceholder(name: model.state.name)
+                    } else {
+                        Color.brandInk2
+                    }
+                }
                 .frame(height: 260)
                 .frame(maxWidth: .infinity)
                 .clipped()
@@ -164,5 +170,24 @@ struct TitleView: View {
                     .font(.brandBody(13, weight: .bold)).foregroundStyle(Color.brandMuted)
             }
         }
+    }
+}
+
+/// A title without a cover (or one that didn't load): its initial stamped over speed lines and red halftone, never
+/// an empty grey band.
+private struct CoverArtPlaceholder: View {
+    let name: String
+
+    var body: some View {
+        ZStack {
+            Color.brandInk2
+            SpeedLines(center: UnitPoint(x: 0.5, y: 0.5), count: 48, color: .brandPaper.opacity(0.35))
+            HalftoneBackground(color: .brandRed, spacing: 11, maxOpacity: 0.35)
+            Text(name.first.map { String($0).uppercased() } ?? "")
+                .font(.brandDisplay(120))
+                .foregroundStyle(Color.brandPaper)
+                .shadow(color: .brandRed, radius: 0, x: 6, y: 6)
+        }
+        .accessibilityHidden(true)
     }
 }

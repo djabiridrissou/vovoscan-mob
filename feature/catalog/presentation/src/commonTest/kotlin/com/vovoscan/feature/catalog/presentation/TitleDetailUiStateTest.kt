@@ -28,4 +28,14 @@ class TitleDetailUiStateTest {
         assertEquals("Chapter 2", state.chapterLabel("c2"))
         assertEquals("", state.chapterLabel("unknown"))
     }
+
+    @Test
+    fun aChapterNameThatRepeatsTheNumberIsShownOnce() {
+        assertEquals("Chapter 2", chapterLabel("2", "Chapter 2"))
+        assertEquals("Chapter 2", chapterLabel("2", "ch. 2"))
+        assertEquals("Chapter 2", chapterLabel("2", " 2 "))
+        assertEquals("Chapter 2", chapterLabel("2", null))
+        assertEquals("Chapter 2 · The Well", chapterLabel("2", "The Well"))
+        assertEquals("Chapter 2 · Chapter 20", chapterLabel("2", "Chapter 20"))
+    }
 }

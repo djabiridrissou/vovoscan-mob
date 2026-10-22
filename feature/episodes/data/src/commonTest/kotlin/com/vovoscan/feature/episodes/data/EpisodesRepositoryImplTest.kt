@@ -7,6 +7,7 @@ import com.vovoscan.core.testing.inMemoryDriver
 import com.vovoscan.core.testing.respondJson
 import com.vovoscan.core.testing.testHttpClient
 import com.vovoscan.feature.episodes.data.db.EpisodesDatabase
+import com.vovoscan.feature.episodes.domain.EpisodeAudio
 import com.vovoscan.feature.episodes.domain.EpisodeStatus
 import com.vovoscan.feature.episodes.domain.ExportStatus
 import com.vovoscan.feature.episodes.domain.PipelineStage
@@ -300,6 +301,28 @@ class EpisodesRepositoryImplTest {
             assertEquals(AppResult.Err(AppError.Rejected("NOT_REQUESTER", "Only the person…")), repo.reread("c4"))
             assertEquals("EPISODE_NOT_SUPPORTED", ((repo.prepare("book") as AppResult.Err).error as AppError.Rejected).code)
             assertTrue(answer != null)
+        }
+
+    @Test
+    fun anEpisodeInALanguageIsItsOwnEpisode() =
+        runTest {
+            val asked = mutableListOf<String?>()
+            val repo =
+                repository { request ->
+                    asked += request.url.parameters["lang"]
+                    val french =
+                        ready.replace(""""updatedAt"""", """"language":"fr","audio":"sub","updatedAt"""")
+                    respondJson("""{"data":${if (request.url.parameters["lang"] == "fr") french else episode("queued")}}""")
+                }
+            repo.refresh("c1")
+            val inFrench = (repo.refresh("c1", "fr") as AppResult.Ok).value
+            assertEquals(listOf(null, "fr"), asked)
+            assertEquals("fr", inFrench?.language)
+            assertEquals(EpisodeAudio.Sub, inFrench?.audio)
+            // Two rows: the original stays as it was, the French one is filed apart.
+            assertEquals(EpisodeStatus.Queued, repo.observe("c1").first()?.status)
+            assertEquals(EpisodeStatus.Ready, repo.observe("c1", "fr").first()?.status)
+            assertNull(repo.observe("c1", "de").first())
         }
 
     @Test

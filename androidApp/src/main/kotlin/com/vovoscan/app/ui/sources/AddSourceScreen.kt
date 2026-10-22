@@ -48,6 +48,7 @@ import com.vovoscan.feature.sources.presentation.AddSourceIntent
 import com.vovoscan.feature.sources.presentation.AddSourceStep
 import com.vovoscan.feature.sources.presentation.AddSourceUiState
 import com.vovoscan.feature.sources.presentation.AddSourceViewModel
+import com.vovoscan.feature.sources.presentation.OfficialOfferUi
 import com.vovoscan.feature.sources.presentation.RepositoryEntryRow
 import com.vovoscan.feature.sources.presentation.SourcePreviewUi
 import kotlinx.coroutines.Dispatchers
@@ -99,6 +100,7 @@ fun AddSourceScreen(
                 GhostButton("← Back", onBack)
                 Kicker("Sources")
                 Text("Add a source.", style = MaterialTheme.typography.headlineSmall)
+                state.officialOffers.forEach { OfficialCard(it) { send(AddSourceIntent.EnableOfficial(it.key)) } }
                 Warning(state.warning)
                 state.error?.let { MessageBanner(it, error = true) { send(AddSourceIntent.DismissMessage) } }
                 state.notice?.let { MessageBanner(it, error = false) { send(AddSourceIntent.DismissMessage) } }
@@ -281,4 +283,30 @@ private fun readFile(
         } ?: uri.lastPathSegment ?: "source.vovo"
     val bytes = resolver.openInputStream(uri)?.use { it.readBytes() } ?: return null
     return name to bytes
+}
+
+/** vovoscan's own catalog (and any official source left off), first: one tap turns it on. */
+@Composable
+private fun OfficialCard(
+    offer: OfficialOfferUi,
+    onTurnOn: () -> Unit,
+) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .background(Brand.Ink2, RoundedCornerShape(14.dp))
+            .border(1.5.dp, Brand.Red, RoundedCornerShape(14.dp))
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+            SourceIcon(offer.iconUrl, offer.initial)
+            Column {
+                Text(offer.name, style = MaterialTheme.typography.titleMedium.copy(color = Brand.Paper))
+                Text(offer.kindsLabel, style = MaterialTheme.typography.bodySmall.copy(color = Brand.Muted))
+            }
+        }
+        if (offer.summary.isNotEmpty()) Text(offer.summary, style = MaterialTheme.typography.bodyMedium.copy(color = Brand.Paper))
+        PrimaryButton(offer.actionLabel, onTurnOn)
+    }
 }

@@ -194,6 +194,9 @@ class CatalogViewModel(
     private val filter = MutableStateFlow<CatalogFilter?>(null)
     private var plan: Plan? = null
     private var readings: List<Reading> = emptyList()
+
+    /** False until the first plan: an empty first plan must still settle the screen. */
+    private var planned = false
     private var hasMore: Map<String, Boolean> = emptyMap()
     private var generation = 0
     private var searchJob: Job? = null
@@ -289,7 +292,8 @@ class CatalogViewModel(
             viewModelScope.launch { repository.refreshCategories(source.key) }
         }
         val nextReadings = next.readings
-        if (nextReadings == readings) return
+        if (planned && nextReadings == readings) return
+        planned = true
         readings = nextReadings
         hasMore = emptyMap()
         listingsJob?.cancel()
@@ -316,8 +320,12 @@ class CatalogViewModel(
         if (categoriesToo) {
             plan?.selected?.forEach { source -> viewModelScope.launch { repository.refreshCategories(source.key) } }
         }
-        if (current.isEmpty()) return
         val run = ++generation
+        if (current.isEmpty()) {
+            // Nothing to read (no source selected, or none has the category): an empty catalog, never a skeleton.
+            mutableState.update { it.copy(freshness = Freshness.Fresh, problems = emptyList(), canLoadMore = false) }
+            return
+        }
         mutableState.update { it.copy(freshness = Freshness.Refreshing, error = null) }
         viewModelScope.launch {
             val results =

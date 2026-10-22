@@ -26,6 +26,31 @@ class AddSourceViewModelTest {
     fun tearDown() = Dispatchers.resetMain()
 
     @Test
+    fun theOfficialCatalogIsOfferedFirstAndTurnedOnInOneTap() =
+        runTest {
+            val fake = FakeSources()
+            // A new account: vovoscan's catalog is listed but off, as the server sends it.
+            fake.items.value =
+                fake.items.value.map { if (it.key == "vovoscan") it.copy(enabled = false, position = 1) else it.copy(position = 0) }
+            val vm = AddSourceViewModel(fake, fake)
+            // Every official source left off is offered, vovoscan's own catalog first.
+            val offers = vm.state.value.officialOffers
+            assertEquals(listOf("vovoscan", "gutenberg"), offers.map { it.key })
+            val offer = offers.first()
+            assertEquals("Turn on", offer.actionLabel)
+            assertEquals("Manga · Books", offer.kindsLabel)
+
+            vm.onIntent(AddSourceIntent.EnableOfficial("vovoscan"))
+            assertEquals(listOf("vovoscan" to true, "gutenberg" to false), fake.items.value.map { it.key to it.enabled })
+            val left = vm.state.value.officialOffers
+            assertEquals(listOf("gutenberg"), left.map { it.key })
+            assertEquals("vovoscan is on. Its titles are in the catalog.", vm.state.value.notice)
+            // A third-party key is never turned on from here.
+            vm.onIntent(AddSourceIntent.EnableOfficial("unknown"))
+            assertEquals(2, fake.items.value.size)
+        }
+
+    @Test
     fun singleSourceAsksForRequiredSettingsBeforeInstall() =
         runTest {
             val fake = FakeSources()

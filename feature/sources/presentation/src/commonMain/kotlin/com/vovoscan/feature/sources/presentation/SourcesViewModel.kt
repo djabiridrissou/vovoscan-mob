@@ -86,6 +86,27 @@ data class SourcesUiState(
         get() = updatesCount.takeIf { it > 0 }?.let { if (it == 1) "1 update available" else "$it updates available" }
 
     val empty: Boolean get() = rows.isEmpty() && freshness != Freshness.Refreshing
+
+    /** Sources listed, every one hidden: the official source starts hidden for a new account. */
+    val noneVisible: Boolean get() = rows.isNotEmpty() && rows.none { it.enabled }
+
+    /** The catalog and the library invite to add a source, or turn one on, instead of waiting for titles. */
+    val needsSource: Boolean get() = empty || noneVisible
+
+    val firstSourceTitle: String get() = if (noneVisible) TURN_ON_TITLE else FIRST_SOURCE_TITLE
+    val firstSourceMessage: String get() = if (noneVisible) TURN_ON_MESSAGE else FIRST_SOURCE_MESSAGE
+    val firstSourceAction: String get() = if (noneVisible) TURN_ON_ACTION else FIRST_SOURCE_ACTION
+
+    private companion object {
+        const val FIRST_SOURCE_TITLE = "Start with a source."
+        const val FIRST_SOURCE_MESSAGE =
+            "Your shelf is empty until you add one: a repository, a link to a source or a .vovo file. " +
+                "Its titles show here, read by your phone."
+        const val FIRST_SOURCE_ACTION = "Add a source →"
+        const val TURN_ON_TITLE = "Turn on a source."
+        const val TURN_ON_MESSAGE = "Your sources are all switched off. Turn one on and its titles show here."
+        const val TURN_ON_ACTION = "Choose a source →"
+    }
 }
 
 sealed interface SourcesIntent {
@@ -233,7 +254,7 @@ class SourcesViewModel(
         key = source.key,
         name = source.name,
         kindsLabel = SourceLabels.kinds(source.kinds),
-        engineLabel = if (source.engine == SourceEngine.Internal) "vovoscan" else "Read on your device",
+        engineLabel = if (source.engine == SourceEngine.Internal) SourceLabels.INTERNAL_ENGINE else SourceLabels.ON_DEVICE_ENGINE,
         enabled = source.enabled,
         canMoveUp = index > 0,
         canMoveDown = index < count - 1,

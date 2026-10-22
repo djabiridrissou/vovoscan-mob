@@ -2,13 +2,18 @@ package com.vovoscan.feature.episodes.presentation
 
 import com.vovoscan.core.common.AppError
 import com.vovoscan.core.common.AppResult
+import com.vovoscan.feature.episodes.domain.EpisodeAccess
+import com.vovoscan.feature.episodes.domain.EpisodeAudio
 import com.vovoscan.feature.episodes.domain.EpisodeStatus
 import com.vovoscan.feature.episodes.domain.KeyStatus
 import com.vovoscan.feature.episodes.domain.PipelineStage
 import com.vovoscan.feature.episodes.domain.PrepareResult
+import com.vovoscan.feature.episodes.domain.RunCost
+import com.vovoscan.feature.episodes.domain.RunQuotes
 import com.vovoscan.feature.episodes.domain.StageProgress
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
@@ -26,12 +31,200 @@ import kotlin.test.assertTrue
 class EpisodeViewModelTest {
     private val dispatcher = StandardTestDispatcher()
     private val bothKeys = FakeKeyStatus(KeyStatus(true, "abcd", "9876"))
+    private val noKeys = FakeKeyStatus(KeyStatus(true, null, null))
 
     @BeforeTest
     fun setUp() = Dispatchers.setMain(dispatcher)
 
     @AfterTest
     fun tearDown() = Dispatchers.resetMain()
+
+    @Test
+    fun comingSoonOffersNothingUntilTheAccountGetsTheFeature() =
+        runTest(dispatcher) {
+            val open = MutableStateFlow(false)
+            val repo = FakeEpisodes(episode(EpisodeStatus.Ready))
+            val vm = EpisodeViewModel("c1", repo, bothKeys, EpisodeAccess { open })
+            advanceUntilIdle()
+            var state = vm.state.value
+            assertTrue(state.comingSoon)
+            assertEquals("Episodes are coming soon.", state.headline)
+            assertFalse(state.canWatch)
+            assertFalse(state.canPrepare)
+            assertFalse(state.canReread)
+            assertFalse(state.exportShown)
+            assertTrue(state.keyLines.isEmpty())
+            vm.onIntent(EpisodeIntent.Prepare)
+            advanceUntilIdle()
+            assertTrue(repo.runs.isEmpty())
+            open.value = true
+            vm.onIntent(EpisodeIntent.Start)
+            advanceUntilIdle()
+            state = vm.state.value
+            assertFalse(state.comingSoon)
+            assertTrue(state.canWatch)
+        }
+
+    @Test
+    fun theServerTurningTheFeatureOffShowsComingSoon() =
+        runTest(dispatcher) {
+            val repo = FakeEpisodes()
+            repo.refreshResult = AppResult.Err(AppError.Rejected("FEATURE_DISABLED", "Coming soon."))
+            val vm = EpisodeViewModel("c1", repo, bothKeys)
+            advanceUntilIdle()
+            assertTrue(vm.state.value.comingSoon)
+        }
+
+    @Test
+    fun theQuoteShowsNextToPrepare() =
+        runTest(dispatcher) {
+            val vm = EpisodeViewModel("c1", FakeEpisodes(), bothKeys, EpisodeAccess.Open, RunQuotes { _, _ -> RunCost(12, false, false) })
+            advanceUntilIdle()
+            assertEquals("Costs 12 credits from your wallet.", vm.state.value.costLine)
+            val own = EpisodeViewModel("c2", FakeEpisodes(), bothKeys, EpisodeAccess.Open, RunQuotes { _, _ -> RunCost(12, true, false) })
+            advanceUntilIdle()
+            assertEquals("Your own keys pay: no credit spent.", own.state.value.costLine)
+        }
+
+    @Test
+    fun withoutKeysAnUnfundedRunPromisesNothing() =
+        runTest(dispatcher) {
+            // The quote an owner without keys gets while platform funding is off: nobody pays, nothing is charged.
+            val unfunded = RunCost(0, false, false, maxCredits = 0, fundable = false)
+            val vm = EpisodeViewModel("c1", FakeEpisodes(), noKeys, EpisodeAccess.Open, RunQuotes { _, _ -> unfunded })
+            advanceUntilIdle()
+            val state = vm.state.value
+            assertNull(state.costLine)
+            assertEquals(
+                listOf("No Anthropic key: the bubbles stay unread.", "No ElevenLabs key: the episode stays silent."),
+                state.keyLines,
+            )
+            assertEquals(EpisodeText.UNFUNDED_WARNING, state.keyWarning)
+            assertEquals(EpisodeText.UNFUNDED_NOTE, state.costNote)
+            // No quote (a server without credits): the missing keys are said as they are.
+            val bare = EpisodeViewModel("c2", FakeEpisodes(), noKeys)
+            advanceUntilIdle()
+            assertEquals(
+                "No Anthropic key: the bubbles stay unread.",
+                bare.state.value.keyLines
+                    .first(),
+            )
+            assertEquals(EpisodeText.KEY_WARNING, bare.state.value.keyWarning)
+            assertEquals(EpisodeText.COST_NOTE, bare.state.value.costNote)
+        }
+
+    @Test
+    fun eachProviderSaysWhoPaysForIt() =
+        runTest(dispatcher) {
+            // Reading on credits, voice unfunded (the server lists both).
+            val split =
+                RunCost(4, false, false, maxCredits = 9, fundable = false, metered = setOf("anthropic"), unfunded = setOf("elevenlabs"))
+            val vm = EpisodeViewModel("c1", FakeEpisodes(), noKeys, EpisodeAccess.Open, RunQuotes { _, _ -> split })
+            advanceUntilIdle()
+            var state = vm.state.value
+            assertEquals(
+                listOf("The platform's key reads the bubbles, paid in credits.", "No ElevenLabs key: the episode stays silent."),
+                state.keyLines,
+            )
+            assertEquals(EpisodeText.KEY_WARNING, state.keyWarning)
+            assertEquals(EpisodeText.PLATFORM_NOTE, state.costNote)
+            assertEquals("Not enough credits: this run needs 9 available.", state.costLine)
+            // Both on credits, the wallet can hold it.
+            val paid = RunCost(7, false, false, maxCredits = 20, fundable = true, metered = setOf("anthropic", "elevenlabs"))
+            val both = EpisodeViewModel("c2", FakeEpisodes(), noKeys, EpisodeAccess.Open, RunQuotes { _, _ -> paid })
+            advanceUntilIdle()
+            state = both.state.value
+            assertEquals("Costs 7 credits from your wallet.", state.costLine)
+            assertEquals("The platform's key voices the lines, paid in credits.", state.keyLines[1])
+            assertNull(state.keyWarning)
+        }
+
+    @Test
+    fun eachLanguageIsItsOwnEpisode() =
+        runTest(dispatcher) {
+            val repo = FakeEpisodes(episode(EpisodeStatus.Ready))
+            repo.inLanguage["ee"] =
+                MutableStateFlow(episode(EpisodeStatus.Ready).copy(language = "ee", audio = EpisodeAudio.Sub))
+            val quoted = mutableListOf<String>()
+            val quotes =
+                RunQuotes { _, lang ->
+                    quoted += lang
+                    RunCost(3, false, false)
+                }
+            val vm = EpisodeViewModel("c1", repo, bothKeys, EpisodeAccess.Open, quotes)
+            advanceUntilIdle()
+            var state = vm.state.value
+            assertEquals("", state.language)
+            assertEquals("Original", state.languageLabel)
+            assertNull(state.languageMode)
+            // The original first, then every language by English name.
+            assertEquals(listOf(null, "am", "ar"), state.languageOptions.take(3).map { it.code })
+            assertTrue(state.languageOptions.first().selected)
+
+            vm.onIntent(EpisodeIntent.LanguageQuery("ewe"))
+            assertEquals(
+                listOf("ee"),
+                vm.state.value.languageOptions
+                    .map { it.code },
+            )
+            vm.onIntent(EpisodeIntent.ChooseLanguage("ee"))
+            advanceUntilIdle()
+            state = vm.state.value
+            assertEquals("ee", state.language)
+            assertEquals("Eʋegbe", state.languageLabel)
+            assertEquals("Subtitled", state.languageMode)
+            assertEquals("", state.languageQuery)
+            assertTrue("Subtitled" in state.badges)
+            assertTrue("The original voices, with Ewe captions." in state.notes)
+            assertEquals(listOf("", "ee"), repo.languages)
+            assertEquals(listOf("", "ee"), quoted)
+
+            vm.onIntent(EpisodeIntent.ChooseLanguage("fr"))
+            advanceUntilIdle()
+            state = vm.state.value
+            assertEquals("Dubbed", state.languageMode)
+            // Nothing in French yet: offer to prepare it, in French.
+            assertEquals(EpisodePhase.None, state.phase)
+            vm.onIntent(EpisodeIntent.Prepare)
+            advanceUntilIdle()
+            assertEquals("fr", repo.languages.last())
+
+            vm.onIntent(EpisodeIntent.ChooseLanguage("xx"))
+            advanceUntilIdle()
+            assertEquals("", vm.state.value.language)
+        }
+
+    @Test
+    fun aRunInALanguageShowsTheTranslateStage() =
+        runTest(dispatcher) {
+            val running = episode(EpisodeStatus.Translating).copy(language = "fr")
+            val repo = FakeEpisodes(episode(EpisodeStatus.Voicing))
+            repo.inLanguage["fr"] = MutableStateFlow(running)
+            val vm = EpisodeViewModel("c1", repo, bothKeys, language = "fr")
+            advanceUntilIdle()
+            val stages = vm.state.value.stages
+            assertEquals(listOf("ANALYZE", "OCR", "TRANSLATE", "VOICE", "TIMELINE"), stages.map { it.label })
+            assertEquals(StageState.Active, stages.first { it.stage == PipelineStage.Translate }.state)
+            vm.onIntent(EpisodeIntent.ChooseLanguage(null))
+            advanceUntilIdle()
+            assertEquals(
+                listOf("ANALYZE", "OCR", "VOICE", "TIMELINE"),
+                vm.state.value.stages
+                    .map { it.label },
+            )
+        }
+
+    @Test
+    fun anEmptyWalletSaysHowToGoOn() =
+        runTest(dispatcher) {
+            val repo = FakeEpisodes()
+            repo.runResult = { AppResult.Err(AppError.Rejected("INSUFFICIENT_CREDITS", "Not enough credits.")) }
+            val vm = EpisodeViewModel("c1", repo, bothKeys)
+            advanceUntilIdle()
+            vm.onIntent(EpisodeIntent.Prepare)
+            advanceUntilIdle()
+            assertEquals(EpisodeText.NO_CREDITS, vm.state.value.error)
+        }
 
     @Test
     fun noEpisodeYetOffersToPrepareWithTheUsersKeys() =

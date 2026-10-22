@@ -73,13 +73,42 @@ internal class FakeEpisodes(
     var watchResults = ArrayDeque<AppResult<Watch>>()
     val watchCalls = mutableListOf<Boolean>()
 
-    override fun observe(chapterId: String): Flow<Episode?> = stored
+    /** The language of every call, in order ("" = the original). */
+    val languages = mutableListOf<String>()
 
-    override suspend fun refresh(chapterId: String): AppResult<Episode?> = refreshResult ?: AppResult.Ok(stored.value)
+    /** Episodes in other languages, by code; the original is [stored]. */
+    val inLanguage = mutableMapOf<String, MutableStateFlow<Episode?>>()
 
-    override suspend fun prepare(chapterId: String) = run(false)
+    private fun store(lang: String) = if (lang.isEmpty()) stored else inLanguage.getOrPut(lang) { MutableStateFlow(null) }
 
-    override suspend fun reread(chapterId: String) = run(true)
+    override fun observe(
+        chapterId: String,
+        lang: String,
+    ): Flow<Episode?> = store(lang)
+
+    override suspend fun refresh(
+        chapterId: String,
+        lang: String,
+    ): AppResult<Episode?> {
+        languages += lang
+        return refreshResult ?: AppResult.Ok(store(lang).value)
+    }
+
+    override suspend fun prepare(
+        chapterId: String,
+        lang: String,
+    ): AppResult<PrepareResult> {
+        languages += lang
+        return run(false)
+    }
+
+    override suspend fun reread(
+        chapterId: String,
+        lang: String,
+    ): AppResult<PrepareResult> {
+        languages += lang
+        return run(true)
+    }
 
     private fun run(reread: Boolean): AppResult<PrepareResult> {
         runs += reread
@@ -94,7 +123,10 @@ internal class FakeEpisodes(
         return result
     }
 
-    override suspend fun follow(chapterId: String): AppResult<Episode?> {
+    override suspend fun follow(
+        chapterId: String,
+        lang: String,
+    ): AppResult<Episode?> {
         follows += 1
         try {
             return followEnd.await()
@@ -107,8 +139,10 @@ internal class FakeEpisodes(
     override suspend fun watch(
         chapterId: String,
         forceRefresh: Boolean,
+        lang: String,
     ): AppResult<Watch> {
         watchCalls += forceRefresh
+        languages += lang
         return watchResults.removeFirstOrNull() ?: AppResult.Err(com.vovoscan.core.common.AppError.Network)
     }
 
@@ -119,14 +153,20 @@ internal class FakeEpisodes(
     }
     var exportResult: () -> AppResult<EpisodeExport> = { AppResult.Err(com.vovoscan.core.common.AppError.Network) }
 
-    override suspend fun requestExport(chapterId: String): AppResult<EpisodeExport> {
+    override suspend fun requestExport(
+        chapterId: String,
+        lang: String,
+    ): AppResult<EpisodeExport> {
         exportRequests += 1
         val result = exportRequestResult()
         if (result is AppResult.Ok) stored.value = stored.value?.copy(export = result.value)
         return result
     }
 
-    override suspend fun export(chapterId: String): AppResult<EpisodeExport> {
+    override suspend fun export(
+        chapterId: String,
+        lang: String,
+    ): AppResult<EpisodeExport> {
         exportFetches += 1
         val result = exportResult()
         if (result is AppResult.Ok) stored.value = stored.value?.copy(export = result.value)

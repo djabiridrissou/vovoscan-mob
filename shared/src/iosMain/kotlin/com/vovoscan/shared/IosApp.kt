@@ -13,6 +13,7 @@ import com.vovoscan.core.security.SecureStore
 import com.vovoscan.feature.account.presentation.ProviderKeysViewModel
 import com.vovoscan.feature.account.presentation.ReadingSettingsViewModel
 import com.vovoscan.feature.account.presentation.UsageViewModel
+import com.vovoscan.feature.account.presentation.WalletViewModel
 import com.vovoscan.feature.auth.domain.AuthRepository
 import com.vovoscan.feature.auth.presentation.SessionViewModel
 import com.vovoscan.feature.auth.presentation.SignInViewModel
@@ -28,6 +29,7 @@ import com.vovoscan.feature.reader.domain.DownloadsRepository
 import com.vovoscan.feature.reader.presentation.DownloadsViewModel
 import com.vovoscan.feature.reader.presentation.ReaderViewModel
 import com.vovoscan.feature.reader.presentation.TitleDownloadsViewModel
+import com.vovoscan.feature.reader.presentation.TranslationViewModel
 import com.vovoscan.feature.sources.presentation.AddSourceViewModel
 import com.vovoscan.feature.sources.presentation.SourceDetailViewModel
 import com.vovoscan.feature.sources.presentation.SourcesViewModel
@@ -146,19 +148,46 @@ class ViewModels : KoinComponent {
 
     fun downloads(): DownloadsViewModel = remember("downloads") { get<DownloadsViewModel>() }
 
+    fun translation(
+        sourceKey: String,
+        chapterId: String,
+    ): TranslationViewModel =
+        remember("translation:$sourceKey/$chapterId") { get<TranslationViewModel> { parametersOf(sourceKey, chapterId) } }
+
     fun providerKeys(): ProviderKeysViewModel = remember("providerKeys") { get<ProviderKeysViewModel>() }
 
     fun readingSettings(): ReadingSettingsViewModel = remember("readingSettings") { get<ReadingSettingsViewModel>() }
 
     fun usage(): UsageViewModel = remember("usage") { get<UsageViewModel>() }
 
+    fun wallet(): WalletViewModel = remember("wallet") { get<WalletViewModel>() }
+
     fun episode(chapterId: String): EpisodeViewModel = remember("episode:$chapterId") { get<EpisodeViewModel> { parametersOf(chapterId) } }
+
+    /** The card of the next chapter, opened in the language just watched ("" = the original). */
+    fun episode(
+        chapterId: String,
+        language: String,
+    ): EpisodeViewModel =
+        if (language.isEmpty()) {
+            episode(chapterId)
+        } else {
+            remember("episode:$chapterId~$language") { get<EpisodeViewModel> { parametersOf(chapterId, language) } }
+        }
 
     /** `nextChapterId`: the chapter after this one when the opening screen knows it ("Next chapter →" at the end). */
     fun player(
         chapterId: String,
         nextChapterId: String?,
-    ): PlayerViewModel = remember("player:$chapterId") { get<PlayerViewModel> { parametersOf(chapterId, nextChapterId) } }
+    ): PlayerViewModel = player(chapterId, nextChapterId, "")
+
+    /** The player of the episode in [language] ("" = the original): the card's `language`. */
+    fun player(
+        chapterId: String,
+        nextChapterId: String?,
+        language: String,
+    ): PlayerViewModel =
+        remember("player:$chapterId~$language") { get<PlayerViewModel> { parametersOf(chapterId, nextChapterId, language) } }
 
     fun clear() = store.clear()
 

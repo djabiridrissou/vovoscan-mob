@@ -20,7 +20,7 @@ targets:
       testTargets: [VovoscanAudioTests]
     sources:
       - Sources
-      # Dela Gothic One and Space Grotesk (scripts/fetch-fonts.sh); if missing, the system font is used instead.
+      # Dela Gothic One and Space Grotesk (Regular, Medium, Bold), bundled with their OFL licences.
       - path: Fonts
         buildPhase: resources
     info:
@@ -30,10 +30,11 @@ targets:
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         API_BASE_URL: $(API_BASE_URL)
+        WEB_BASE_URL: $(WEB_BASE_URL)
         UILaunchScreen: {}
         UIStatusBarStyle: UIStatusBarStyleLightContent
         UIUserInterfaceStyle: Dark
-        UIAppFonts: [DelaGothicOne-Regular.ttf, SpaceGrotesk.ttf]
+        UIAppFonts: [DelaGothicOne-Regular.ttf, SpaceGrotesk-Regular.ttf, SpaceGrotesk-Medium.ttf, SpaceGrotesk-Bold.ttf]
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
         # The share sheet's "Save Video" for an episode's MP4 (adds to Photos, never reads it).
         NSPhotoLibraryAddUsageDescription: Saves the episode videos you choose to keep in Photos.
@@ -58,8 +59,10 @@ targets:
         Debug:
           PRODUCT_BUNDLE_IDENTIFIER: com.vovoscan.app.dev
           API_BASE_URL: http://localhost:8000/
+          WEB_BASE_URL: http://localhost:3000/
         Release:
           API_BASE_URL: https://vovoscan.yieldgrowth.org/
+          WEB_BASE_URL: https://vovoscan.yieldgrowth.org/
     preBuildScripts:
       - name: Build the Kotlin Shared framework
         basedOnDependencyAnalysis: false

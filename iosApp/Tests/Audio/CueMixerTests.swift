@@ -8,7 +8,7 @@ import XCTest
 /// The test drives the mixer like the player screen: one `sync` per 60 fps display frame (800 frames at 48 kHz).
 @MainActor
 final class CueMixerTests: XCTestCase {
-    private static let rate = 48_000.0
+    nonisolated private static let rate = 48_000.0
     private static let frameStep: AVAudioFrameCount = 800
     private static let loopFrames = 97_200
     /// Render cycles a node attached while the engine runs may take to be heard (0 to 3 seen: up to 50 ms here).
@@ -410,9 +410,15 @@ final class CueMixerTests: XCTestCase {
         let held = try XCTUnwrap(rig.mixer.positionMs(id))
         XCTAssertEqual(held, 500, accuracy: 1)
         let resumed = try rig.run(0.5) { [self] t in [cue(id, url, at: 500 + t * 1000)] }
-        let match = bestLag(resumed.left, window: 1200..<10_800, source: voice, expected: 24_000 + 1200)
+        // Rendered frame 2400 is clip frame 24 000 + 2400 (the place held), later by whole render cycles only: play()
+        // on a node of a running engine takes effect at the start of a render cycle, the first or one of the next
+        // (the start latency every node has, `startCycles`). A lag that is not a whole number of cycles would be the
+        // place lost (frames skipped or played twice); the window starts after the latest start.
+        let match = bestLag(resumed.left, window: 2400..<12_000, source: voice, expected: 24_000 + 2400)
         print("resume: lag \(match.lag) frames, correlation \(match.score)")
-        XCTAssertEqual(match.lag, 0)
+        XCTAssertEqual(match.lag % Int(Self.frameStep), 0)
+        XCTAssertLessThanOrEqual(match.lag, 0)
+        XCTAssertGreaterThanOrEqual(match.lag, -Self.startCycles * Int(Self.frameStep))
         XCTAssertGreaterThan(match.score, 0.999)
         XCTAssertEqual(rig.mixer.resyncs, 0)
     }
@@ -452,7 +458,7 @@ final class CueMixerTests: XCTestCase {
         }
         XCTAssertEqual(rig.mixer.nodeCount, 2)
         XCTAssertEqual(rig.engine.attachedNodes.count, base + 2)
-        let out = try rig.run(0.2) { [self] _ in [] }
+        let out = try rig.run(0.2) { _ in [] }
         XCTAssertEqual(rig.mixer.nodeCount, 0)
         XCTAssertEqual(rig.engine.attachedNodes.count, base)
         XCTAssertEqual(rms(out.left, 4800..<out.left.count), 0)

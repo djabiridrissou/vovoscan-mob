@@ -5,8 +5,11 @@ import androidx.lifecycle.viewModelScope
 import com.vovoscan.core.common.AppError
 import com.vovoscan.core.common.AppResult
 import com.vovoscan.core.common.Freshness
+import com.vovoscan.core.common.Language
 import com.vovoscan.core.common.userMessage
 import com.vovoscan.feature.episodes.domain.Episode
+import com.vovoscan.feature.episodes.domain.EpisodeAccess
+import com.vovoscan.feature.episodes.domain.EpisodeAudio
 import com.vovoscan.feature.episodes.domain.EpisodeStatus
 import com.vovoscan.feature.episodes.domain.EpisodesRepository
 import com.vovoscan.feature.episodes.domain.ExportStatus
@@ -14,6 +17,9 @@ import com.vovoscan.feature.episodes.domain.KeyStatus
 import com.vovoscan.feature.episodes.domain.KeyStatusProvider
 import com.vovoscan.feature.episodes.domain.PipelineStage
 import com.vovoscan.feature.episodes.domain.PrepareResult
+import com.vovoscan.feature.episodes.domain.ProviderFunding
+import com.vovoscan.feature.episodes.domain.RunCost
+import com.vovoscan.feature.episodes.domain.RunQuotes
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -51,6 +57,17 @@ data class StageChip(
     val stage: PipelineStage,
     val label: String,
     val state: StageState,
+)
+
+/** A row of the episode's language picker: the original first, then every language (dubbed or subtitled). */
+data class EpisodeLanguageOption(
+    /** Null for the original. */
+    val code: String?,
+    /** Own name ("Français"), or "Original". */
+    val label: String,
+    /** "French ✦ Dubbed", "Ewe ✦ Subtitled ✦ beta". */
+    val detail: String,
+    val selected: Boolean,
 )
 
 /** A video to download now: a freshly signed link and the file's name. [id] changes with every request. */
@@ -113,6 +130,22 @@ data class EpisodeUiState(
     /** Short confirmation ("Already in progress. Following it."). */
     val notice: String? = null,
     val error: String? = null,
+    /**
+     * Episodes aren't open to this account yet (no `video` feature): the card says so ([headline], [detail]) and
+     * offers nothing. The server refuses these calls too.
+     */
+    val comingSoon: Boolean = false,
+    /** What preparing would cost ("Costs 12 credits from your wallet."), shown with Prepare; null without a quote. */
+    val costLine: String? = null,
+    /** The episode's language: "" = the original. The player opens in this language. */
+    val language: String = "",
+    /** The language button: "Original", "Français"… */
+    val languageLabel: String = EpisodeText.ORIGINAL,
+    /** "Dubbed" / "Subtitled" next to the button for another language; null for the original. */
+    val languageMode: String? = null,
+    /** The picker's rows, filtered by [languageQuery]. */
+    val languageOptions: List<EpisodeLanguageOption> = emptyList(),
+    val languageQuery: String = "",
 ) {
     /** False for a book: show nothing about episodes. */
     val visible: Boolean get() = phase != EpisodePhase.Unsupported
@@ -161,22 +194,41 @@ sealed interface EpisodeIntent {
 
     /** The download of [EpisodeUiState.videoDownload] failed. */
     data object VideoFailed : EpisodeIntent
+
+    /** The episode in another language (null: the original). Shared like the original: nobody pays twice. */
+    data class ChooseLanguage(
+        val code: String?,
+    ) : EpisodeIntent
+
+    /** Filters the language picker (own name, English name or code). */
+    data class LanguageQuery(
+        val text: String,
+    ) : EpisodeIntent
 }
 
 /**
  * A chapter's episode card: whether it exists, its live progress, and what the user may do (prepare with their own
  * keys, watch, prepare again when outdated, retry after a failure, rerun when the server says their keys can improve
- * it). Shared episodes: nobody pays twice; a run already in progress is followed, not restarted.
+ * it). Shared episodes: nobody pays twice; a run already in progress is followed, not restarted. Each language is its
+ * own episode (`?lang=`): dubbed when ElevenLabs speaks it, else the original voices with captions in it.
  */
 class EpisodeViewModel(
     private val chapterId: String,
     private val repository: EpisodesRepository,
     private val keys: KeyStatusProvider,
+    private val access: EpisodeAccess = EpisodeAccess.Open,
+    private val quotes: RunQuotes = RunQuotes.None,
+    language: String = "",
 ) : ViewModel() {
     private val mutableState = MutableStateFlow(EpisodeUiState())
     val state: StateFlow<EpisodeUiState> = mutableState.asStateFlow()
     private var episode: Episode? = null
     private var keyStatus: KeyStatus? = null
+
+    /** False: episodes are "coming soon" for this account. True until the session says otherwise. */
+    private var allowed = true
+    private var cost: RunCost? = null
+    private var quoteJob: Job? = null
 
     /** The server answered once: no local episode now means "no episode yet". */
     private var known = false
@@ -186,25 +238,49 @@ class EpisodeViewModel(
     private var refreshJob: Job? = null
     private var downloads = 0
 
+    /** "" = the original; else a code of [Language.ALL]. */
+    private var lang = language.takeIf { Language.of(it) != null }.orEmpty()
+    private var query = ""
+    private var observeJob: Job? = null
+
     init {
-        repository
-            .observe(chapterId)
-            .onEach { stored ->
-                episode = stored
-                render()
-                if (stored?.inProgress == true) follow()
-            }.launchIn(viewModelScope)
+        observe()
         keys
             .observe()
             .onEach { status ->
                 keyStatus = status
                 render()
             }.launchIn(viewModelScope)
+        access
+            .observe()
+            .onEach { open ->
+                allowed = open
+                if (!open) stop()
+                render()
+            }.launchIn(viewModelScope)
         start()
+    }
+
+    /** The stored episode in the current language: the card shows it, and follows it while something is made. */
+    private fun observe() {
+        observeJob?.cancel()
+        observeJob =
+            repository
+                .observe(chapterId, lang)
+                .onEach { stored ->
+                    episode = stored
+                    render()
+                    if (stored?.inProgress == true) follow()
+                }.launchIn(viewModelScope)
     }
 
     fun onIntent(intent: EpisodeIntent) {
         when (intent) {
+            is EpisodeIntent.ChooseLanguage -> chooseLanguage(intent.code)
+            is EpisodeIntent.LanguageQuery -> {
+                query = intent.text
+                render()
+            }
             EpisodeIntent.Start -> start()
             EpisodeIntent.Stop -> stop()
             EpisodeIntent.Refresh -> refresh()
@@ -219,12 +295,44 @@ class EpisodeViewModel(
         if (intent == EpisodeIntent.VideoHandled || intent == EpisodeIntent.VideoFailed) render()
     }
 
+    /** Another language is another episode: forget what was shown, read it from the device, then from the server. */
+    private fun chooseLanguage(code: String?) {
+        val next = code?.takeIf { Language.of(it) != null }.orEmpty()
+        query = ""
+        // A prepare or reread in flight belongs to the language it was asked in: let it answer first.
+        if (next == lang || state.value.working) {
+            render()
+            return
+        }
+        lang = next
+        listOf(followJob, refreshJob, quoteJob).forEach { it?.cancel() }
+        followJob = null
+        refreshJob = null
+        quoteJob = null
+        episode = null
+        known = false
+        cost = null
+        mutableState.update {
+            it.copy(
+                notice = null,
+                error = null,
+                live = false,
+                working = false,
+                exportWorking = false,
+                videoDownload = null,
+            )
+        }
+        observe()
+        if (started) refresh()
+        render()
+    }
+
     private fun requestExport() {
         val current = state.value
-        if (current.exportWorking || !current.canRequestExport) return
+        if (current.comingSoon || current.exportWorking || !current.canRequestExport) return
         mutableState.update { it.copy(exportWorking = true, notice = null, error = null) }
         viewModelScope.launch {
-            val result = repository.requestExport(chapterId)
+            val result = repository.requestExport(chapterId, lang)
             mutableState.update {
                 when (result) {
                     is AppResult.Ok ->
@@ -247,7 +355,7 @@ class EpisodeViewModel(
         mutableState.update { it.copy(exportWorking = true, notice = null, error = null) }
         viewModelScope.launch {
             // The link kept with the episode may have expired: a download always gets a fresh one.
-            val result = repository.export(chapterId)
+            val result = repository.export(chapterId, lang)
             mutableState.update {
                 when (result) {
                     is AppResult.Err -> it.copy(exportWorking = false, error = EpisodeText.exportError(result.error))
@@ -267,7 +375,7 @@ class EpisodeViewModel(
     }
 
     private fun start() {
-        if (started) return
+        if (started || !allowed) return
         started = true
         refresh()
         viewModelScope.launch { keys.refresh() }
@@ -286,10 +394,11 @@ class EpisodeViewModel(
         mutableState.update { it.copy(freshness = Freshness.Refreshing) }
         refreshJob =
             viewModelScope.launch {
-                when (val result = repository.refresh(chapterId)) {
+                when (val result = repository.refresh(chapterId, lang)) {
                     is AppResult.Ok -> {
                         known = true
                         mutableState.update { it.copy(freshness = Freshness.Fresh, error = null) }
+                        quote()
                     }
                     is AppResult.Err -> failed(result.error, refreshing = true)
                 }
@@ -299,12 +408,12 @@ class EpisodeViewModel(
 
     private fun run(reread: Boolean) {
         val current = state.value
-        if (current.working) return
+        if (current.comingSoon || current.working) return
         if (reread && !current.canReread) return
         if (!reread && !current.canPrepare) return
         mutableState.update { it.copy(working = true, notice = null, error = null) }
         viewModelScope.launch {
-            val result = if (reread) repository.reread(chapterId) else repository.prepare(chapterId)
+            val result = if (reread) repository.reread(chapterId, lang) else repository.prepare(chapterId, lang)
             mutableState.update { it.copy(working = false) }
             when (result) {
                 is AppResult.Ok -> {
@@ -329,6 +438,16 @@ class EpisodeViewModel(
         }
     }
 
+    /** Asks once per refresh what a run would cost; the card shows it next to Prepare. */
+    private fun quote() {
+        if (!allowed || quoteJob?.isActive == true) return
+        quoteJob =
+            viewModelScope.launch {
+                cost = quotes.episode(chapterId, lang)
+                render()
+            }
+    }
+
     private fun refreshNow() {
         refreshJob?.cancel()
         refreshJob = null
@@ -341,6 +460,12 @@ class EpisodeViewModel(
     ) {
         if (error is AppError.Rejected && error.code == "EPISODE_NOT_SUPPORTED") {
             unsupported = true
+            stop()
+            return
+        }
+        if (error is AppError.Rejected && error.code in EpisodeText.FEATURE_OFF_CODES) {
+            // The server says the feature isn't open to this account, whatever the session said.
+            allowed = false
             stop()
             return
         }
@@ -359,11 +484,11 @@ class EpisodeViewModel(
 
     /** Follows the run while the screen is visible and the episode is not final. */
     private fun follow() {
-        if (!started || followJob?.isActive == true) return
+        if (!started || !allowed || followJob?.isActive == true) return
         mutableState.update { it.copy(live = true) }
         followJob =
             viewModelScope.launch {
-                val result = repository.follow(chapterId)
+                val result = repository.follow(chapterId, lang)
                 if (result is AppResult.Err) mutableState.update { it.copy(error = result.error.userMessage()) }
                 mutableState.update { it.copy(live = false) }
             }
@@ -372,23 +497,46 @@ class EpisodeViewModel(
     private fun render() {
         val current = episode
         val status = keyStatus
+        // The quote says, per provider, whether the platform's keys (and the wallet) run what the account's own keys
+        // don't, or whether that step is skipped. Without a quote, nothing is promised.
+        val quote = cost
+        val anthropic = quote?.funding(RunCost.ANTHROPIC) ?: ProviderFunding.None
+        val elevenLabs = quote?.funding(RunCost.ELEVENLABS) ?: ProviderFunding.None
+        val platform = quote?.meteredRun == true
         val keyLines =
             when {
                 status == null -> emptyList()
-                !status.enabled -> listOf(EpisodeText.KEYS_DISABLED)
-                else -> listOf(EpisodeText.anthropicLine(status.anthropicHint), EpisodeText.elevenLabsLine(status.elevenLabsHint))
+                !status.enabled && !platform -> listOf(EpisodeText.KEYS_DISABLED)
+                else ->
+                    listOf(
+                        EpisodeText.anthropicLine(status.anthropicHint.takeIf { status.enabled }, anthropic),
+                        EpisodeText.elevenLabsLine(status.elevenLabsHint.takeIf { status.enabled }, elevenLabs),
+                    )
             }
-        val keyWarning =
+        val missing =
             status
-                ?.takeIf {
-                    it.enabled && (it.anthropicHint == null || it.elevenLabsHint == null)
-                }?.let { EpisodeText.KEY_WARNING }
+                ?.takeIf { it.enabled }
+                ?.let {
+                    listOfNotNull(
+                        anthropic.takeIf { _ -> it.anthropicHint == null },
+                        elevenLabs.takeIf { _ -> it.elevenLabsHint == null },
+                    )
+                }.orEmpty()
+        val keyWarning =
+            when {
+                missing.none { it == ProviderFunding.None } -> null
+                missing.size == 2 && missing.all { it == ProviderFunding.None } && quote != null -> EpisodeText.UNFUNDED_WARNING
+                else -> EpisodeText.KEY_WARNING
+            }
         mutableState.update { state ->
-            val base = exportState(state.copy(keyLines = keyLines, keyWarning = keyWarning), current)
+            // `comingSoon` is set again below only while the feature stays closed.
+            val base =
+                exportState(state.copy(keyLines = keyLines, keyWarning = keyWarning, comingSoon = false), current).withLanguages()
             when {
                 unsupported -> EpisodeUiState(phase = EpisodePhase.Unsupported)
-                current != null -> episodeState(base, current)
-                known -> noneState(base)
+                !allowed -> comingSoonState(base)
+                current != null -> episodeState(base, current).withCost()
+                known -> noneState(base).withCost()
                 state.freshness == Freshness.Offline ->
                     base.copy(
                         phase = EpisodePhase.Unavailable,
@@ -401,6 +549,68 @@ class EpisodeViewModel(
             }
         }
     }
+
+    private fun EpisodeUiState.withLanguages(): EpisodeUiState {
+        val chosen = Language.of(lang)
+        val needle = query.trim().lowercase()
+        val original = EpisodeLanguageOption(null, EpisodeText.ORIGINAL, EpisodeText.ORIGINAL_DETAIL, chosen == null)
+        val languages =
+            Language.ALL
+                .sortedBy { it.name }
+                .filter { needle.isEmpty() || it.matches(needle) }
+                .map { EpisodeLanguageOption(it.code, it.native, EpisodeText.languageDetail(it), it.code == lang) }
+        val showOriginal = needle.isEmpty() || EpisodeText.ORIGINAL.lowercase().contains(needle)
+        return copy(
+            language = lang,
+            languageLabel = chosen?.native ?: EpisodeText.ORIGINAL,
+            languageMode = chosen?.let { if (it.dub) EpisodeText.DUBBED else EpisodeText.SUBTITLED },
+            languageOptions = (if (showOriginal) listOf(original) else emptyList()) + languages,
+            languageQuery = query,
+        )
+    }
+
+    private fun Language.matches(needle: String): Boolean =
+        native.lowercase().contains(needle) || name.lowercase().contains(needle) || code.lowercase() == needle
+
+    private fun EpisodeUiState.withCost(): EpisodeUiState {
+        val quote = cost
+        return copy(
+            costLine = if (canPrepare || canReread) quote?.let(EpisodeText::cost) else null,
+            costNote =
+                when {
+                    quote == null || quote.coveredByOwnKeys || quote.alreadyAvailable -> EpisodeText.COST_NOTE
+                    quote.meteredRun -> EpisodeText.PLATFORM_NOTE
+                    else -> EpisodeText.UNFUNDED_NOTE
+                },
+        )
+    }
+
+    /** Not open to this account: one calm line, no action, nothing that would spend a key or a credit. */
+    private fun comingSoonState(base: EpisodeUiState) =
+        base.copy(
+            phase = EpisodePhase.Unavailable,
+            headline = EpisodeText.COMING_SOON,
+            detail = EpisodeText.COMING_SOON_DETAIL,
+            stages = emptyList(),
+            progressLabel = null,
+            progressFraction = null,
+            badges = emptyList(),
+            notes = emptyList(),
+            canWatch = false,
+            canPrepare = false,
+            canReread = false,
+            keyLines = emptyList(),
+            keyWarning = null,
+            working = false,
+            live = false,
+            exportShown = false,
+            canRequestExport = false,
+            canSaveVideo = false,
+            error = null,
+            comingSoon = true,
+            costLine = null,
+            languageOptions = emptyList(),
+        )
 
     /** The video section: only for a ready episode, from the export carried by the stored episode. */
     private fun exportState(
@@ -482,17 +692,23 @@ class EpisodeViewModel(
                 notes += EpisodeText.NOTE_OUTDATED
             }
             if (e.canReread && (e.degraded == true || e.silent == true)) notes += EpisodeText.NOTE_REREAD
+            Language.of(e.language)?.let { language ->
+                badges += if (e.audio == EpisodeAudio.Dub) EpisodeText.DUBBED else EpisodeText.SUBTITLED
+                notes += EpisodeText.audioNote(language, e.audio)
+            }
         }
         return when {
             e.status.active -> {
                 val stage = e.stage
                 val progress = e.progress
+                // TRANSLATE only runs for an episode in another language.
+                val pipeline = PipelineStage.entries.filter { it != PipelineStage.Translate || lang.isNotEmpty() }
                 base.copy(
                     phase = EpisodePhase.Running,
                     headline = EpisodeText.RUNNING + (stage?.let { " ✦ ${it.label}" } ?: ""),
                     detail = null,
                     stages =
-                        PipelineStage.entries.map { s ->
+                        pipeline.map { s ->
                             val state =
                                 when {
                                     stage == null -> StageState.Waiting

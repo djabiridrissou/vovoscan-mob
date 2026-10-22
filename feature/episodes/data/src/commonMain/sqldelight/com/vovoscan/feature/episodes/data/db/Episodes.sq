@@ -1,6 +1,7 @@
 -- The last known episode of each chapter opened (the API's EpisodeOut as JSON), and the last watch of each chapter
 -- (timeline and signed URLs, WatchOut as JSON): offline, the screen keeps the last state; the player refetches the
--- watch when its URLs come close to expiring.
+-- watch when its URLs come close to expiring. `chapter_id` holds the store key: the chapter id for the original,
+-- `<chapterId>~<lang>` for an episode in another language (EpisodesLocalDataSource.storeKey).
 CREATE TABLE episode (
     chapter_id TEXT NOT NULL PRIMARY KEY,
     status TEXT NOT NULL,

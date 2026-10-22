@@ -40,6 +40,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
 import com.vovoscan.app.ui.common.BrandField
+import com.vovoscan.app.ui.common.EmptyStateCard
 import com.vovoscan.app.ui.common.ErrorText
 import com.vovoscan.app.ui.common.GhostButton
 import com.vovoscan.app.ui.common.Kicker
@@ -58,6 +59,7 @@ private enum class Sheet { Sources, Categories }
 @Composable
 fun CatalogScreen(
     onOpenTitle: (sourceKey: String, titleId: String) -> Unit,
+    onOpenSources: () -> Unit,
     viewModel: CatalogViewModel = koinViewModel(),
     sources: SourcesViewModel = koinViewModel(),
 ) {
@@ -98,7 +100,17 @@ fun CatalogScreen(
                     )
                 }
                 state.error?.let { ErrorText(it) }
-                if (state.empty) Text(state.emptyMessage, style = MaterialTheme.typography.bodyMedium)
+                if (sourcesState.needsSource) {
+                    // A new account has no source on yet: nothing to read until one is added or turned on.
+                    EmptyStateCard(
+                        sourcesState.firstSourceTitle,
+                        sourcesState.firstSourceMessage,
+                        sourcesState.firstSourceAction,
+                        onOpenSources,
+                    )
+                } else if (state.empty) {
+                    EmptyStateCard(state.emptyMessage, "Pull down to check again.")
+                }
             }
         }
         items(state.visible, key = { it.sourceKey + "/" + it.id }) { card -> TitleTile(card) { onOpenTitle(card.sourceKey, card.id) } }

@@ -2,6 +2,7 @@ package com.vovoscan.app.ui.episode
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,27 +14,37 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.vovoscan.app.ui.common.BrandField
 import com.vovoscan.app.ui.common.ErrorText
 import com.vovoscan.app.ui.common.GhostButton
 import com.vovoscan.app.ui.common.Kicker
@@ -59,8 +70,11 @@ fun EpisodeScreen(
     titleName: String,
     chapterLabel: String,
     onBack: () -> Unit,
-    onWatch: () -> Unit,
-    viewModel: EpisodeViewModel = koinViewModel(key = "episode:$chapterId") { parametersOf(chapterId) },
+    /** Opens the player in the episode's language ("" = the original). */
+    onWatch: (language: String) -> Unit,
+    /** The language the card opens in: the next chapter keeps the one just watched. */
+    language: String = "",
+    viewModel: EpisodeViewModel = koinViewModel(key = "episode:$chapterId~$language") { parametersOf(chapterId, language) },
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
@@ -89,7 +103,7 @@ fun EpisodeScreen(
                 state.offlineNotice?.let { OfflineNotice(it) }
             }
         }
-        if (state.visible) item { EpisodeCard(state, viewModel::onIntent, onWatch) }
+        if (state.visible) item { EpisodeCard(state, viewModel::onIntent) { onWatch(state.language) } }
     }
 }
 
@@ -108,6 +122,7 @@ private fun EpisodeCard(
             .padding(18.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
+        if (state.languageOptions.isNotEmpty()) LanguageButton(state, send)
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(state.headline, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
             if (state.live) LiveDot()
@@ -146,6 +161,7 @@ private fun EpisodeCard(
             }
         }
         if (state.canReread) GhostButton(state.rereadLabel, { if (!state.working) send(EpisodeIntent.Reread) })
+        state.costLine?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
         if (state.showsKeyNotice) KeyNotice(state)
 
         if (state.exportShown) VideoSection(state, send)
@@ -154,6 +170,81 @@ private fun EpisodeCard(
         state.error?.let { ErrorText(it) }
         if (state.phase == EpisodePhase.Unavailable) {
             GhostButton("Try again", { send(EpisodeIntent.Refresh) })
+        }
+    }
+}
+
+/** The episode's language: the original, or another one (dubbed when ElevenLabs speaks it, else subtitled). */
+@Composable
+private fun LanguageButton(
+    state: EpisodeUiState,
+    send: (EpisodeIntent) -> Unit,
+) {
+    var open by rememberSaveable { mutableStateOf(false) }
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .border(1.dp, Brand.Line, RoundedCornerShape(8.dp))
+            .clickable(enabled = !state.working) { open = true }
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(state.languageLabel, style = MaterialTheme.typography.bodyMedium.copy(color = Brand.Paper))
+        state.languageMode?.let { Text(it.uppercase(), style = MaterialTheme.typography.labelSmall.copy(color = Brand.Cyan)) }
+        Spacer(Modifier.weight(1f))
+        Text("▾", style = MaterialTheme.typography.bodyMedium.copy(color = Brand.Muted))
+    }
+    if (open) {
+        LanguageSheet(state, send) {
+            open = false
+            send(EpisodeIntent.LanguageQuery(""))
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun LanguageSheet(
+    state: EpisodeUiState,
+    send: (EpisodeIntent) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        containerColor = Brand.Ink2,
+    ) {
+        Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 20.dp, vertical = 8.dp)) {
+            Text("Episode language", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(bottom = 8.dp))
+            BrandField(
+                label = "Search",
+                value = state.languageQuery,
+                onValueChange = { send(EpisodeIntent.LanguageQuery(it)) },
+                placeholder = "Search a language",
+            )
+            LazyColumn(Modifier.fillMaxWidth().padding(top = 8.dp)) {
+                items(state.languageOptions, key = { it.code ?: "" }) { option ->
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(if (option.selected) Brand.Line else Color.Transparent)
+                            .clickable {
+                                send(EpisodeIntent.ChooseLanguage(option.code))
+                                onDismiss()
+                            }.padding(horizontal = 8.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text(option.label, style = MaterialTheme.typography.bodyLarge.copy(color = Brand.Paper))
+                            Text(option.detail, style = MaterialTheme.typography.bodySmall)
+                        }
+                        if (option.selected) Text("✓", style = MaterialTheme.typography.titleMedium.copy(color = Brand.Red))
+                    }
+                }
+            }
         }
     }
 }

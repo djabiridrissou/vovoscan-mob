@@ -51,6 +51,27 @@ class RulesSourceTest {
             """"bookshelves":["Best Books"],"formats":{}}"""
 
     @Test
+    fun aSourceWithoutSearchOnlyKeepsTitlesThatMatch() =
+        runTest {
+            // The catalog request never sends `{{search}}`: the site answers its listing whatever is typed.
+            val manifest =
+                """{"contractVersion":1,"key":"list","name":"List","version":"1.0.0","kinds":["comic"],"langs":["en"],""" +
+                    """"hosts":["list.example"],"catalog":{"request":{"url":"https://list.example/all","type":"json"},""" +
+                    """"list":"$.items[*]","item":{"id":"$.id","name":"$.name"}},""" +
+                    """"title":{"request":{"url":"https://list.example/t/{{id}}","type":"json"},"fields":{"name":"$.name"},""" +
+                    """"units":{"single":{"id":"{{id}}"}}},"content":{"comic":{"request":""" +
+                    """{"url":"https://list.example/c/{{unitId}}","type":"json"},"list":"$.pages[*]","item":{"url":"$"}}}}"""
+            val body =
+                """{"items":[{"id":"1","name":"Demo Strip"},{"id":"2","name":"Hyangdan Chronicles"},""" +
+                    """{"id":"3","name":"The Demon Road"}]}"""
+            val list = source(manifest, "list", emptyMap(), mapOf("https://list.example/all" to (body to "application/json")))
+            assertEquals(false, list.searchable)
+            assertEquals(listOf("1", "3"), (list.catalog(1, "Demo") as AppResult.Ok).value.items.map { it.id })
+            assertEquals(listOf("1"), (list.catalog(1, " demo  strip ") as AppResult.Ok).value.items.map { it.id })
+            assertEquals(3, (list.catalog(1) as AppResult.Ok).value.items.size)
+        }
+
+    @Test
     fun gutenbergRunsOnTheDevice() =
         runTest {
             val gutenberg =

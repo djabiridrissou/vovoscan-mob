@@ -164,21 +164,23 @@ private fun Root(session: SessionViewModel = koinViewModel()) {
     var openSource by rememberSaveable { mutableStateOf<String?>(null) }
     // Open reader: "source|title|chapter|start page" (`ReaderViewModel.START_AT_END`: from its last page).
     var openReader by rememberSaveable { mutableStateOf<String?>(null) }
-    // Open episode card (over the title page): chapter id.
+    // Open episode card (over the title page): "chapter|language" (language empty = the original).
     var openEpisode by rememberSaveable { mutableStateOf<String?>(null) }
-    // Open player (full screen): "chapter|next chapter or empty".
+    // Open player (full screen): "chapter|next chapter or empty|language or empty".
     var openPlayer by rememberSaveable { mutableStateOf<String?>(null) }
     val player = openPlayer?.split("|")
     if (user != null && player != null) {
+        val language = player.getOrNull(2).orEmpty()
         BackHandler { openPlayer = null }
         PlayerScreen(
             chapterId = player[0],
             nextChapterId = player[1].ifEmpty { null },
+            language = language,
             onClose = { openPlayer = null },
             onNextChapter = {
-                // The next chapter's episode card: watch it from there, or prepare it.
+                // The next chapter's episode card, in the language just watched: watch it from there, or prepare it.
                 openPlayer = null
-                openEpisode = it
+                openEpisode = "$it|$language"
             },
         )
         return
@@ -210,7 +212,8 @@ private fun Root(session: SessionViewModel = koinViewModel()) {
         Column(Modifier.weight(1f)) {
             val title = openTitle?.split("|")
             val source = openSource?.split("|", limit = 2)
-            val episode = openEpisode
+            val episodeRoute = openEpisode?.split("|")
+            val episode = episodeRoute?.first()
             if (title != null && episode != null) {
                 BackHandler { openEpisode = null }
                 // The title page's own ViewModel (same key): chapter label and the next chapter in reading order.
@@ -222,7 +225,8 @@ private fun Root(session: SessionViewModel = koinViewModel()) {
                     titleName = titleState.name,
                     chapterLabel = titleState.chapterLabel(episode),
                     onBack = { openEpisode = null },
-                    onWatch = { openPlayer = "$episode|${titleState.nextChapterId(episode).orEmpty()}" },
+                    onWatch = { language -> openPlayer = "$episode|${titleState.nextChapterId(episode).orEmpty()}|$language" },
+                    language = episodeRoute.getOrNull(1).orEmpty(),
                 )
             } else if (title != null) {
                 BackHandler { openTitle = null }
@@ -249,11 +253,17 @@ private fun Root(session: SessionViewModel = koinViewModel()) {
                 }
             } else {
                 when (tab) {
-                    Tab.Catalog -> CatalogScreen(onOpenTitle = { source, id -> openTitle = "$source|$id" })
+                    Tab.Catalog ->
+                        CatalogScreen(
+                            onOpenTitle = { source, id -> openTitle = "$source|$id" },
+                            onOpenSources = { tab = Tab.Sources },
+                        )
                     Tab.Library ->
                         LibraryScreen(
                             onOpenTitle = { source, id -> openTitle = "$source|$id" },
                             onOpenDownloads = { openDownloads = true },
+                            onOpenSources = { tab = Tab.Sources },
+                            onOpenCatalog = { tab = Tab.Catalog },
                             onSignOut = session::signOut,
                         )
                     Tab.Sources ->

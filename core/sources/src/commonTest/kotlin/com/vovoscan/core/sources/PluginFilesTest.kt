@@ -4,6 +4,9 @@ import com.vovoscan.core.common.AppError
 import com.vovoscan.core.common.AppResult
 import com.vovoscan.core.testing.TestZip
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonObject
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -100,6 +103,15 @@ class PluginFilesTest {
         assertEquals("PLUGIN_INVALID", code(ManifestCheck.parse("[1, 2]".encodeToByteArray())))
         assertEquals("PLUGIN_TOO_LARGE", code(ManifestCheck.parse(ByteArray(PluginLimits.MANIFEST_MAX_BYTES + 1) { ' '.code.toByte() })))
         assertEquals("PLUGIN_INCOMPLETE", code(ManifestCheck.parse("""{"contractVersion":1,"key":"abc"}""".encodeToByteArray())))
+    }
+
+    @Test
+    fun aSourceThatReachesALocalNetworkIsRefused() {
+        val gutenberg = Json.parseToJsonElement(Fixtures.gutenberg).jsonObject
+        for (host in listOf("192.168.1.1", "localhost", "nas.local", "[::1]", "169.254.169.254")) {
+            val hosts = JsonArray(listOf(JsonPrimitive("www.gutenberg.org"), JsonPrimitive(host)))
+            assertEquals("PLUGIN_HOST", code(ManifestCheck.check(JsonObject(gutenberg + ("hosts" to hosts)))), host)
+        }
     }
 
     private fun index(

@@ -1,7 +1,11 @@
 package com.vovoscan.feature.episodes.presentation
 
 import com.vovoscan.core.common.AppError
+import com.vovoscan.core.common.Language
 import com.vovoscan.core.common.userMessage
+import com.vovoscan.feature.episodes.domain.EpisodeAudio
+import com.vovoscan.feature.episodes.domain.ProviderFunding
+import com.vovoscan.feature.episodes.domain.RunCost
 import com.vovoscan.feature.episodes.domain.StageProgress
 
 /** Every user-facing string of the episode card and the player (brand tone: calm, short, ✦ separator). */
@@ -31,19 +35,67 @@ object EpisodeText {
     const val NOTE_OUTDATED = "The chapter or the pipeline changed since this episode was made. Prepare it again to catch up."
     const val NOTE_REREAD = "Your keys can improve it."
 
+    // Languages (`?lang=`): the original, or the episode dubbed / subtitled in another language.
+    const val ORIGINAL = "Original"
+    const val ORIGINAL_DETAIL = "The chapter's own language"
+    const val DUBBED = "Dubbed"
+    const val SUBTITLED = "Subtitled"
+    const val BETA = "beta"
+
+    fun languageDetail(language: Language): String =
+        listOfNotNull(language.name, if (language.dub) DUBBED else SUBTITLED, BETA.takeIf { language.beta }).joinToString(" ✦ ")
+
+    /** Under a ready episode in another language: how it sounds. */
+    fun audioNote(
+        language: Language,
+        audio: EpisodeAudio?,
+    ): String =
+        if (audio == EpisodeAudio.Dub) {
+            "Voiced in ${language.name}."
+        } else {
+            "The original voices, with ${language.name} captions."
+        }
+
     // The key lines already say what each missing key costs; this only says where to fix it.
     const val KEY_WARNING = "Add the missing key in Settings."
     const val KEYS_DISABLED = "Keys are turned off on this server: the episode will be unread and silent."
     const val COST_NOTE = "Your own keys pay for this run. Everyone can watch the result."
+    const val PLATFORM_NOTE =
+        "What your keys don't cover runs on the platform's keys, paid from your wallet. Everyone can watch the result."
+    const val UNFUNDED_NOTE = "Only your own keys pay for runs here. Everyone can watch the result."
+    const val UNFUNDED_WARNING = "Without keys the episode stays unread and silent. Add yours in Settings, or ask the owner."
     const val OFFLINE_WRITE = "You're offline. Connect to the internet to prepare this episode."
     const val NO_PAGES = "This chapter has no pages yet."
     const val CHAPTER_NOT_FOUND = "This chapter isn't available."
+    const val COMING_SOON = "Episodes are coming soon."
+    const val COMING_SOON_DETAIL = "Voiced episodes open to more readers soon. The chapter reads as usual meanwhile."
+    const val NO_CREDITS = "Not enough credits for this run. Add your own keys in Settings, or ask for a top-up."
+    const val CREDITS_PAUSED = "Runs on the platform's keys are paused right now. Your own keys still work."
+    const val DAILY_CAP = "Today's limit is reached. Try again tomorrow, or use your own keys."
 
-    fun anthropicLine(hint: String?): String =
-        if (hint != null) "Your Anthropic key (•••• $hint) reads the bubbles." else "No Anthropic key: the bubbles stay unread."
+    /** Codes saying the feature isn't open to this account (the server's feature flags). */
+    val FEATURE_OFF_CODES = setOf("FEATURE_DISABLED", "FEATURE_COMING_SOON")
 
-    fun elevenLabsLine(hint: String?): String =
-        if (hint != null) "Your ElevenLabs key (•••• $hint) voices the lines." else "No ElevenLabs key: the episode stays silent."
+    /** Who reads the bubbles: the account's key, the platform's (credits), or nobody. */
+    fun anthropicLine(
+        hint: String?,
+        funding: ProviderFunding = ProviderFunding.None,
+    ): String =
+        when {
+            hint != null -> "Your Anthropic key (•••• $hint) reads the bubbles."
+            funding == ProviderFunding.Platform -> "The platform's key reads the bubbles, paid in credits."
+            else -> "No Anthropic key: the bubbles stay unread."
+        }
+
+    fun elevenLabsLine(
+        hint: String?,
+        funding: ProviderFunding = ProviderFunding.None,
+    ): String =
+        when {
+            hint != null -> "Your ElevenLabs key (•••• $hint) voices the lines."
+            funding == ProviderFunding.Platform -> "The platform's key voices the lines, paid in credits."
+            else -> "No ElevenLabs key: the episode stays silent."
+        }
 
     /** "3 / 12 pages", "4 / 30 lines", "Queued", "Step 2 / 5". */
     fun progress(progress: StageProgress?): String? {
@@ -65,7 +117,28 @@ object EpisodeText {
             error == AppError.Network -> OFFLINE_WRITE
             error is AppError.Rejected && error.code == "EPISODE_NO_PAGES" -> NO_PAGES
             error is AppError.Rejected && error.code == "CHAPTER_NOT_FOUND" -> CHAPTER_NOT_FOUND
-            else -> error.userMessage()
+            else -> creditError(error) ?: error.userMessage()
+        }
+
+    /** The quote shown with Prepare; null when nothing is charged and nothing is covered (the key lines say why). */
+    fun cost(cost: RunCost): String? =
+        when {
+            cost.alreadyAvailable -> "Already made: it costs nothing."
+            cost.coveredByOwnKeys -> "Your own keys pay: no credit spent."
+            !cost.meteredRun -> null
+            !cost.fundable -> "Not enough credits: this run needs ${cost.maxCredits} available."
+            cost.credits == 0L -> "Costs less than 1 credit from your wallet."
+            cost.credits == 1L -> "Costs 1 credit from your wallet."
+            else -> "Costs ${cost.credits} credits from your wallet."
+        }
+
+    /** The credits wallet refused a run on the platform's keys; null for any other error. */
+    fun creditError(error: AppError): String? =
+        when ((error as? AppError.Rejected)?.code) {
+            "INSUFFICIENT_CREDITS" -> NO_CREDITS
+            "PLATFORM_PAUSED" -> CREDITS_PAUSED
+            "DAILY_CAP" -> DAILY_CAP
+            else -> null
         }
 
     // Video (MP4 export).

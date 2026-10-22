@@ -4,11 +4,13 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -24,6 +26,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
 import com.vovoscan.app.ui.common.ErrorText
@@ -65,12 +68,16 @@ fun TitleScreen(
     var confirmDelete by rememberSaveable { mutableStateOf<String?>(null) }
     LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         item {
-            AsyncImage(
-                state.coverUrl,
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxWidth().height(260.dp).background(Brand.Ink2),
-            )
+            if (state.coverUrl == null) {
+                CoverArtPlaceholder(state.name)
+            } else {
+                AsyncImage(
+                    state.coverUrl,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxWidth().height(260.dp).background(Brand.Ink2),
+                )
+            }
         }
         item {
             Column(Modifier.padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -192,5 +199,20 @@ private fun DownloadsBlock(
             style = MaterialTheme.typography.labelLarge.copy(color = Brand.Muted),
             modifier = Modifier.clickable(onClick = onDeleteAll).padding(vertical = 4.dp),
         )
+    }
+}
+
+/** A title without a cover: its initial stamped with a hard red offset, never an empty grey band. */
+@Composable
+private fun CoverArtPlaceholder(name: String) {
+    val initial = name.firstOrNull()?.uppercase().orEmpty()
+    Box(Modifier.fillMaxWidth().height(260.dp).background(Brand.Ink2), contentAlignment = Alignment.Center) {
+        Text(
+            initial,
+            style = MaterialTheme.typography.displayLarge.copy(fontSize = 120.sp),
+            color = Brand.Red,
+            modifier = Modifier.offset(6.dp, 6.dp),
+        )
+        Text(initial, style = MaterialTheme.typography.displayLarge.copy(fontSize = 120.sp), color = Brand.Paper)
     }
 }
