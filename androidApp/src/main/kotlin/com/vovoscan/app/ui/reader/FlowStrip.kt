@@ -191,9 +191,15 @@ internal fun FlowStrip(
             items(state.items, key = { it.key }) { item ->
                 when (item) {
                     is ReaderItem.Page -> {
-                        PageImage(item.page, Modifier.fillMaxWidth())
+                        val index = state.pages.indexOfFirst { it.index == item.page.index }
+                        PageImage(item.page, Modifier.fillMaxWidth(), onSize = {
+                            w,
+                            h,
+                            ->
+                            onIntent(ReaderIntent.PageSized(item.page.index, w, h))
+                        })
                         LaunchedEffect(item.page.url) {
-                            luminance(context, item.page)?.let { onIntent(ReaderIntent.PageLuminance(state.pages.indexOf(item.page), it)) }
+                            luminance(context, item.page)?.let { onIntent(ReaderIntent.PageLuminance(index, it)) }
                         }
                     }
                     is ReaderItem.Transition -> TransitionCardView(item.card, onIntent, Modifier.fillMaxWidth().heightIn(min = 280.dp))

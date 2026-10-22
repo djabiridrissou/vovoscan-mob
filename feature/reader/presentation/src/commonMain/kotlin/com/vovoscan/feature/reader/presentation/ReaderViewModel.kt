@@ -314,6 +314,13 @@ sealed interface ReaderIntent {
         override fun hashCode(): Int = 31 * page + values.contentHashCode()
     }
 
+    /** A page whose size the source didn't give: the image's own size once loaded (any unit, only the shape counts). */
+    data class PageSized(
+        val page: Int,
+        val width: Int,
+        val height: Int,
+    ) : ReaderIntent
+
     data class ReducedMotion(
         val on: Boolean,
     ) : ReaderIntent
@@ -431,6 +438,9 @@ class ReaderViewModel(
     private var userScrolled = false
     private var analysis: Map<Int, List<PanelBox>> = emptyMap()
     private val bands = mutableMapOf<Int, List<PanelBox>>()
+
+    /** Sizes of pages the source gave none for, from the loaded images (page index → width, height). */
+    private val measuredSizes = mutableMapOf<Int, Pair<Int, Int>>()
     private var restore: ReadingPosition? = null
     private var restored = false
     private var hideJob: Job? = null
@@ -483,6 +493,7 @@ class ReaderViewModel(
             is ReaderIntent.StripMeasured -> measured(intent.width, intent.viewport)
             is ReaderIntent.StripScrolled -> scrolled(intent.offset, intent.byUser, intent.settled)
             is ReaderIntent.PageLuminance -> luminance(intent.page, intent.values)
+            is ReaderIntent.PageSized -> pageSized(intent.page, intent.width, intent.height)
             is ReaderIntent.ReducedMotion -> mutableState.update { it.copy(reducedMotion = intent.on) }
             ReaderIntent.ToggleFocus -> {
                 val on = !state.value.preferences.focus
@@ -649,6 +660,29 @@ class ReaderViewModel(
         restoreIfReady()
     }
 
+    /**
+     * A source read on the device rarely gives its pages' sizes: the strip's layout (stops, offsets, focus) takes each
+     * image's own shape once it has loaded, the shape the page is drawn at.
+     */
+    private fun pageSized(
+        page: Int,
+        width: Int,
+        height: Int,
+    ) {
+        if (width <= 0 || height <= 0 || measuredSizes[page] == (width to height)) return
+        // Our own pages carry their size: theirs is the one drawn.
+        if (chapter?.pages?.firstOrNull { it.index == page }?.hasSize != false) return
+        measuredSizes[page] = width to height
+        mutableState.update { it.copy(pages = chapter?.let { c -> sized(c.pages) } ?: it.pages) }
+        rebuildStops()
+    }
+
+    private fun sized(pages: List<ReaderPage>): List<ReaderPage> =
+        pages.map { page ->
+            val size = measuredSizes[page.index]
+            if (page.hasSize || size == null) page else page.copy(width = size.first, height = size.second)
+        }
+
     private fun luminance(
         page: Int,
         values: IntArray,
@@ -767,7 +801,7 @@ class ReaderViewModel(
                 titleName = chapter.titleName,
                 chapterLabel = if (isBook) chapter.label else listOfNotNull(chapter.label, chapter.name).joinToString(" · "),
                 mode = mode,
-                pages = chapter.pages,
+                pages = sized(chapter.pages),
                 items = items,
                 currentIndex = index,
                 // The previous-chapter card comes first: page i is item i + 1. The same item stays on screen when

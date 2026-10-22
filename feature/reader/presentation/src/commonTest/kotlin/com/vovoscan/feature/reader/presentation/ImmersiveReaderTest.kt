@@ -117,6 +117,7 @@ class ImmersiveReaderTest {
         panels: ChapterPanels = ChapterPanels.None,
         sourceKey: String = "vovoscan",
         startPage: Int = 0,
+        chapter: ReaderChapter = manga,
     ): ReaderViewModel {
         val vm =
             ReaderViewModel(
@@ -124,7 +125,7 @@ class ImmersiveReaderTest {
                 "t1",
                 manga.id,
                 startPage,
-                StaticReader(manga),
+                StaticReader(chapter),
                 settings,
                 ChapterHeadings {
                     _,
@@ -163,6 +164,38 @@ class ImmersiveReaderTest {
             val vm = reader()
             assertTrue(vm.state.value.isStrip)
             assertTrue(vm.state.value.canFocus)
+        }
+
+    @Test
+    fun pagesOfUnknownSizeTakeTheirImagesShape() =
+        runTest(dispatcher) {
+            // A source read on the device gives no sizes: placeholders (0.7) until each image has loaded.
+            val strip = manga.copy(sourceKey = "toonspace", pages = manga.pages.map { it.copy(width = 0, height = 0) })
+            val vm = reader(sourceKey = "toonspace", chapter = strip)
+            // Page 0 is a 400 x 1600 strip: taller than the screen, read in two steps (from -24 clamped to 0, then 616).
+            vm.onIntent(ReaderIntent.PageSized(0, 400, 1600))
+            assertTrue(
+                vm.state.value.pages[0]
+                    .hasSize,
+            )
+            assertEquals(
+                1600f / 400f,
+                vm.state.value.pages[0]
+                    .height
+                    .toFloat() /
+                    vm.state.value.pages[0]
+                        .width,
+            )
+            vm.next()
+            assertEquals(616f, vm.glide().offset)
+            // Our own pages keep the size the API gave.
+            val own = reader()
+            own.onIntent(ReaderIntent.PageSized(0, 400, 1600))
+            assertEquals(
+                1500,
+                own.state.value.pages[0]
+                    .height,
+            )
         }
 
     @Test

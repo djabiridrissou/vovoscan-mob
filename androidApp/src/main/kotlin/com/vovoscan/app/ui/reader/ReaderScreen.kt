@@ -463,6 +463,7 @@ internal fun PageImage(
     modifier: Modifier,
     scale: ContentScale = ContentScale.FillWidth,
     reserve: Boolean = true,
+    onSize: ((Int, Int) -> Unit)? = null,
 ) {
     val context = LocalContext.current
     var attempt by remember(page.url) { mutableIntStateOf(0) }
@@ -508,7 +509,10 @@ internal fun PageImage(
         contentScale = scale,
         onSuccess = { success ->
             val image = success.result.image
-            if (image.width > 0 && image.height > 0) loadedRatio = image.width.toFloat() / image.height
+            if (image.width > 0 && image.height > 0) {
+                loadedRatio = image.width.toFloat() / image.height
+                if (!page.hasSize) onSize?.invoke(image.width, image.height)
+            }
         },
         onError = { failed = true },
         modifier = sized.background(Brand.Ink2),

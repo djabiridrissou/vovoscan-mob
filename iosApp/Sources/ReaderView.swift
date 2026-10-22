@@ -371,8 +371,10 @@ private struct FlowStrip: View {
                 ForEach(Array(items.enumerated()), id: \.offset) { index, item in
                     Group {
                         if let page = item as? ReaderItemPage {
-                            PageImage(page: page.page)
-                                .task(id: page.page.url) { await luminance(page.page) }
+                            PageImage(page: page.page) { size in
+                                model.send(ReaderIntentPageSized(page: page.page.index, width: Int32(size.width.rounded()), height: Int32(size.height.rounded())))
+                            }
+                            .task(id: page.page.url) { await luminance(page.page) }
                         } else if let transition = item as? ReaderItemTransition {
                             if transition.card.forward {
                                 TransitionCardView(card: transition.card, model: model).frame(minHeight: Self.cardHeight)
@@ -706,6 +708,8 @@ private struct TapZonesOverlay: View {
 private struct PageImage: View {
     let page: ReaderPage
     var fit = false
+    /// A page the source gave no size for: the image's own size once loaded (the strip lays out from it).
+    var onSize: ((CGSize) -> Void)? = nil
     @Environment(\.pageLettering) private var lettering
     @StateObject private var loader = PageLoader()
 
@@ -732,6 +736,9 @@ private struct PageImage: View {
         .onAppear { loader.show(page.url) }
         // The saved copy of a chapter shows first; the fresh one may bring new signed links.
         .onChange(of: page.url) { _, url in loader.show(url) }
+        .onChange(of: loader.image?.size) { _, size in
+            if !page.hasSize, let size, size.width > 0, size.height > 0 { onSize?(size) }
+        }
         .accessibilityLabel(L("library.page", ["n": Int(page.index) + 1]))
     }
 
