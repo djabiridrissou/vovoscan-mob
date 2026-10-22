@@ -9,6 +9,7 @@ import com.vovoscan.core.sources.ManifestProvider
 import com.vovoscan.core.sources.RulesHttp
 import com.vovoscan.core.sources.RulesSource
 import io.ktor.client.HttpClient
+import io.ktor.client.plugins.timeout
 import io.ktor.client.request.get
 import io.ktor.client.statement.bodyAsBytes
 import io.ktor.http.isSuccess
@@ -80,7 +81,15 @@ class ApiReaderRemoteDataSource(
         url: String,
     ): AppResult<ByteArray> =
         try {
-            val response = http.get(url)
+            // A book file or a page image: as long as its bytes keep coming (30 s without one is a stalled link), not
+            // the API's 30 s for a whole answer.
+            val response =
+                http.get(url) {
+                    timeout {
+                        requestTimeoutMillis = FILE_TOTAL_MILLIS
+                        socketTimeoutMillis = STALLED_MILLIS
+                    }
+                }
             if (response.status.isSuccess()) {
                 AppResult.Ok(
                     response.bodyAsBytes(),
@@ -173,3 +182,6 @@ class RoutingReaderRemoteDataSource(
         url: String,
     ) = pick(sourceKey).downloadPage(sourceKey, url)
 }
+
+private const val FILE_TOTAL_MILLIS = 600_000L
+private const val STALLED_MILLIS = 30_000L

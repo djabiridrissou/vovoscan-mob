@@ -98,7 +98,7 @@ class RulesSource(
                 val start = base + (page - 1) * pageSize
                 if (start != base) query[pagination.getValue("param").jsonPrimitive.content] = start.toString()
             }
-        return when (val fetched = http.get(manifest, url, query, maxBytes = 5 * 1024 * 1024)) {
+        return when (val fetched = http.get(manifest, url, query, Transfer.Page)) {
             is AppResult.Err -> fetched
             is AppResult.Ok -> {
                 val type = request.getValue("type").jsonPrimitive.content
@@ -391,14 +391,14 @@ class RulesSource(
 
     /** A book file, fetched from the source (allowed hosts only). */
     suspend fun download(url: String): AppResult<ByteArray> =
-        when (val fetched = http.get(manifest, url)) {
+        when (val fetched = http.get(manifest, url, transfer = Transfer.File)) {
             is AppResult.Err -> fetched
             is AppResult.Ok -> AppResult.Ok(fetched.value.body)
         }
 
     /** A page image, fetched from the source (allowed hosts only) with its Referer when the manifest declares one. */
     suspend fun downloadImage(url: String): AppResult<ByteArray> =
-        when (val fetched = http.get(manifest, url, referer = manifest.imageReferer)) {
+        when (val fetched = http.get(manifest, url, transfer = Transfer.Image, referer = manifest.imageReferer)) {
             is AppResult.Err -> fetched
             is AppResult.Ok -> AppResult.Ok(fetched.value.body)
         }
