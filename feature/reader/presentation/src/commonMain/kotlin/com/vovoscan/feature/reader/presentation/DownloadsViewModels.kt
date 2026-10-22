@@ -2,6 +2,8 @@ package com.vovoscan.feature.reader.presentation
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.vovoscan.core.common.i18n.LocalFormat
+import com.vovoscan.core.common.i18n.t
 import com.vovoscan.feature.reader.domain.ChapterDownload
 import com.vovoscan.feature.reader.domain.DownloadActivity
 import com.vovoscan.feature.reader.domain.DownloadBlock
@@ -62,24 +64,31 @@ enum class DownloadStatus {
 
 /** Copy and sizes for downloads. */
 object DownloadText {
-    const val EMPTY = "Nothing downloaded yet. Download chapters from a title's page to read them offline."
-    const val WIFI_ONLY = "Download on Wi-Fi only"
-    const val WIFI_ONLY_HELP = "Off: downloads also use mobile data."
+    val EMPTY: String get() = t("downloads.empty")
+    val WIFI_ONLY: String get() = t("downloads.wifiOnly")
+    val WIFI_ONLY_HELP: String get() = t("downloads.wifiOnlyHelp")
 
     /** "820 KB", "4.2 MB", "42 MB", "1.3 GB" (decimal units, as the systems show storage). */
     fun size(bytes: Long): String =
         when {
-            bytes < 1_000_000 -> "${(bytes + 999) / 1000} KB"
-            bytes < 10_000_000 -> "${oneDecimal(bytes / 100_000)} MB"
-            bytes < 1_000_000_000 -> "${(bytes + 500_000) / 1_000_000} MB"
-            else -> "${oneDecimal(bytes / 100_000_000)} GB"
+            bytes < 1_000_000 -> t("downloads.kb", "n" to LocalFormat.integer((bytes + 999) / 1000))
+            bytes < 10_000_000 -> t("downloads.mb", "n" to LocalFormat.decimal((bytes / 100_000) / 10.0, 1))
+            bytes < 1_000_000_000 -> t("downloads.mb", "n" to LocalFormat.integer((bytes + 500_000) / 1_000_000))
+            else -> t("downloads.gb", "n" to LocalFormat.decimal((bytes / 100_000_000) / 10.0, 1))
         }
 
-    private fun oneDecimal(tenths: Long) = "${tenths / 10}.${tenths % 10}"
+    fun chapters(count: Int) = t("downloads.chapters", "count" to count)
 
-    fun chapters(count: Int) = if (count == 1) "1 chapter" else "$count chapters"
-
-    fun waiting(block: DownloadBlock?) = if (block == DownloadBlock.NoConnection) "Waiting for a connection" else "Waiting for Wi-Fi"
+    fun waiting(block: DownloadBlock?) =
+        t(
+            if (block ==
+                DownloadBlock.NoConnection
+            ) {
+                "downloads.waitingConnection"
+            } else {
+                "downloads.waitingWifi"
+            },
+        )
 
     /** Why the queue waits; on the Downloads screen the switch is right there (`here`). */
     fun notice(
@@ -87,9 +96,8 @@ object DownloadText {
         here: Boolean = false,
     ): String? =
         when (block) {
-            DownloadBlock.NoConnection -> "Downloads wait for a connection."
-            DownloadBlock.NotOnWifi ->
-                "Downloads wait for Wi-Fi. Turn off “Wi-Fi only”" + (if (here) "" else " in Downloads") + " to use mobile data."
+            DownloadBlock.NoConnection -> t("downloads.noticeConnection")
+            DownloadBlock.NotOnWifi -> t(if (here) "downloads.noticeWifiHere" else "downloads.noticeWifi")
             null -> null
         }
 
@@ -98,13 +106,13 @@ object DownloadText {
         val what =
             listOfNotNull(
                 activity.chapters.takeIf { it > 0 }?.let(::chapters),
-                activity.books.takeIf { it > 0 }?.let { if (it == 1) "1 book" else "$it books" },
-            ).joinToString(" and ")
+                activity.books.takeIf { it > 0 }?.let { t("downloads.books", "count" to it) },
+            ).joinToString(t("common.and"))
         val current = activity.current
         val text =
             when {
                 activity.block != null -> waiting(activity.block)
-                current == null -> "Starting"
+                current == null -> t("downloads.starting")
                 else ->
                     listOfNotNull(
                         current.titleName,
@@ -113,7 +121,7 @@ object DownloadText {
                     ).joinToString(" ✦ ")
             }
         return DownloadNotice(
-            title = if (what.isEmpty()) "Downloads" else "Downloading $what…",
+            title = if (what.isEmpty()) t("downloads.title") else t("downloads.downloadingWhat", "what" to what),
             text = text,
             progress =
                 current?.takeIf { activity.block == null && it.pageCount > 0 }?.let { it.pagesDone.toFloat() / it.pageCount },
@@ -134,12 +142,18 @@ object DownloadText {
             }
         val text =
             when (status) {
-                DownloadStatus.Queued -> "Queued"
+                DownloadStatus.Queued -> t("downloads.queued")
                 DownloadStatus.Waiting -> waiting(block)
                 DownloadStatus.Downloading ->
-                    if (download.pageCount > 0) "Downloading ✦ ${download.pagesDone} / ${download.pageCount}" else "Downloading"
-                DownloadStatus.Done -> (if (download.isBook) "Saved on this device" else "Downloaded") + " ✦ " + size(download.bytes)
-                DownloadStatus.Failed -> download.error ?: "The download stopped. Try again."
+                    if (download.pageCount > 0) {
+                        t("downloads.downloading") + " ✦ ${download.pagesDone} / ${download.pageCount}"
+                    } else {
+                        t("downloads.downloading")
+                    }
+                DownloadStatus.Done ->
+                    t(if (download.isBook) "downloads.savedHere" else "downloads.downloaded") + " ✦ " +
+                        size(download.bytes)
+                DownloadStatus.Failed -> download.error ?: t("downloads.stopped")
                 DownloadStatus.NotDownloaded -> null
             }
         return DownloadRow(
@@ -187,8 +201,8 @@ data class TitleDownloadsUiState(
     val downloadAllLabel: String? = null,
     val canDeleteAll: Boolean = false,
     /** The "delete every download" link and its confirmation. */
-    val deleteAllLabel: String = "Delete downloads",
-    val deleteAllTitle: String = "Delete the downloads?",
+    val deleteAllLabel: String = t("downloads.deleteAll"),
+    val deleteAllTitle: String = t("downloads.deleteAllTitle"),
     val deleteAllMessage: String = "",
     /** Why the queue waits (no connection, not on Wi-Fi). */
     val notice: String? = null,
@@ -293,14 +307,14 @@ class TitleDownloadsViewModel(
             offersDownloads = title.chapters.isNotEmpty(),
             summary =
                 listOfNotNull(
-                    if (done > 0) "$done of ${title.chapters.size} downloaded" else null,
-                    if (active > 0) "$active in the queue" else null,
+                    if (done > 0) t("downloads.doneOf", "done" to done, "total" to title.chapters.size) else null,
+                    if (active > 0) t("downloads.inQueueCount", "count" to active) else null,
                     if (total > 0) DownloadText.size(total) else null,
                 ).joinToString(" ✦ ").ifEmpty { null },
-            downloadNextLabel = if (next.isEmpty()) null else "Download next ${next.size}",
-            downloadAllLabel = if (left.size > next.size) "Download all (${left.size})" else null,
+            downloadNextLabel = if (next.isEmpty()) null else t("downloads.next", "count" to next.size),
+            downloadAllLabel = if (left.size > next.size) t("downloads.all", "count" to left.size) else null,
             canDeleteAll = downloads.isNotEmpty(),
-            deleteAllMessage = "Every chapter of ${title.titleName} saved on this device goes. Reading them will need the network again.",
+            deleteAllMessage = t("downloads.deleteAllMessage", "title" to title.titleName),
             notice = if (active > 0) DownloadText.notice(block) else null,
             rows = rows,
             sourceKey = sourceKey,
@@ -326,29 +340,27 @@ class TitleDownloadsViewModel(
                 listOfNotNull(
                     when {
                         saved == 0 -> null
-                        parts > 1 && saved < parts -> "$saved of $parts parts saved"
-                        else -> "Saved on this device"
+                        parts > 1 && saved < parts -> t("downloads.partsSaved", "saved" to saved, "total" to parts)
+                        else -> t("downloads.savedHere")
                     },
-                    if (active >
-                        0
-                    ) {
-                        (if (downloads.any { it.state == DownloadState.Downloading }) "Downloading" else "In the queue")
-                    } else {
-                        null
+                    when {
+                        active == 0 -> null
+                        downloads.any { it.state == DownloadState.Downloading } -> t("downloads.downloading")
+                        else -> t("downloads.inQueue")
                     },
                     if (total > 0) DownloadText.size(total) else null,
                 ).joinToString(" ✦ ").ifEmpty { null },
             downloadAllLabel =
                 when {
                     left.isEmpty() -> null
-                    left.size < parts -> "Download the rest (${left.size})"
-                    else -> "Download the book"
+                    left.size < parts -> t("downloads.rest", "count" to left.size)
+                    else -> t("downloads.book")
                 },
             // Only once something is saved: a part still in the queue is cancelled from its own control.
             canDeleteAll = saved > 0,
-            deleteAllLabel = "Remove from this device",
-            deleteAllTitle = "Remove the book from this device?",
-            deleteAllMessage = "The copy of ${title.titleName} saved on this device goes. Reading it will need the network again.",
+            deleteAllLabel = t("downloads.removeBook"),
+            deleteAllTitle = t("downloads.removeBookTitle"),
+            deleteAllMessage = t("downloads.removeBookMessage", "title" to title.titleName),
             notice = if (active > 0) DownloadText.notice(block) else null,
             rows = rows,
             sourceKey = sourceKey,
@@ -396,7 +408,7 @@ data class DownloadsUiState(
     /** "42 MB on this device". */
     val total: String = "",
     /** The Library's link: "Downloads ✦ 42 MB". */
-    val entryLabel: String = "Downloads",
+    val entryLabel: String = t("downloads.title"),
     val wifiOnly: Boolean = true,
     val notice: String? = null,
     val loaded: Boolean = false,
@@ -486,7 +498,7 @@ class DownloadsViewModel(
                         meta =
                             listOfNotNull(
                                 if (sorted.all { it.isBook }) {
-                                    if (sorted.size == 1) "Book" else "${sorted.size} parts"
+                                    t("downloads.bookParts", "count" to sorted.size)
                                 } else {
                                     DownloadText.chapters(sorted.size)
                                 },
@@ -499,8 +511,8 @@ class DownloadsViewModel(
         val active = all.any { it.state != DownloadState.Done && it.state != DownloadState.Failed }
         return DownloadsUiState(
             groups = groups,
-            total = if (all.isEmpty()) "" else DownloadText.size(bytes) + " on this device",
-            entryLabel = if (bytes == 0L) "Downloads" else "Downloads ✦ ${DownloadText.size(bytes)}",
+            total = if (all.isEmpty()) "" else t("downloads.onDevice", "size" to DownloadText.size(bytes)),
+            entryLabel = if (bytes == 0L) t("downloads.title") else t("downloads.title") + " ✦ ${DownloadText.size(bytes)}",
             wifiOnly = wifiOnly,
             notice = if (active) DownloadText.notice(block, here = true) else null,
             loaded = true,
