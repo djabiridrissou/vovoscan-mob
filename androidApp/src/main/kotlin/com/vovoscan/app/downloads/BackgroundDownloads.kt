@@ -35,6 +35,7 @@ import com.vovoscan.feature.reader.presentation.DownloadText
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.conflate
@@ -128,7 +129,11 @@ class DownloadWorker(
                 if (!AppVisibility.visible) withContext(NonCancellable) { downloads.pause() }
                 throw e
             } finally {
-                progress.cancel()
+                // An update posted after WorkManager took its foreground notification down would stay on screen.
+                withContext(NonCancellable) {
+                    progress.cancelAndJoin()
+                    DownloadNotifications.clear(applicationContext)
+                }
             }
         }
 
@@ -187,6 +192,8 @@ object DownloadNotifications {
             ForegroundInfo(NOTIFICATION_ID, notification)
         }
     }
+
+    fun clear(context: Context) = NotificationManagerCompat.from(context).cancel(NOTIFICATION_ID)
 
     /** Without the notification permission (Android 13+) nothing shows, and the downloads go on all the same. */
     fun update(
