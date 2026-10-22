@@ -8,7 +8,7 @@ import XCTest
 /// The test drives the mixer like the player screen: one `sync` per 60 fps display frame (800 frames at 48 kHz).
 @MainActor
 final class CueMixerTests: XCTestCase {
-    private static let rate = 48_000.0
+    nonisolated private static let rate = 48_000.0
     private static let frameStep: AVAudioFrameCount = 800
     private static let loopFrames = 97_200
     /// Render cycles a node attached while the engine runs may take to be heard (0 to 3 seen: up to 50 ms here).
@@ -452,7 +452,7 @@ final class CueMixerTests: XCTestCase {
         }
         XCTAssertEqual(rig.mixer.nodeCount, 2)
         XCTAssertEqual(rig.engine.attachedNodes.count, base + 2)
-        let out = try rig.run(0.2) { [self] _ in [] }
+        let out = try rig.run(0.2) { _ in [] }
         XCTAssertEqual(rig.mixer.nodeCount, 0)
         XCTAssertEqual(rig.engine.attachedNodes.count, base)
         XCTAssertEqual(rms(out.left, 4800..<out.left.count), 0)
