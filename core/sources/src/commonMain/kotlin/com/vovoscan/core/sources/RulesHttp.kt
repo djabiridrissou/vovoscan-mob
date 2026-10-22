@@ -4,6 +4,7 @@ import com.vovoscan.core.common.AppError
 import com.vovoscan.core.common.AppResult
 import com.vovoscan.core.common.HostPolicy
 import com.vovoscan.core.common.NetworkMonitor
+import com.vovoscan.core.common.i18n.t
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.HttpClientEngine
 import io.ktor.client.plugins.HttpTimeout
@@ -71,7 +72,7 @@ class RulesHttp(
             val scheme = current.startsWith("https://", ignoreCase = true) || current.startsWith("http://", ignoreCase = true)
             // Checked again on every hop: a redirect can't lead to a host the source didn't declare, nor off the internet.
             if (host == null || host !in hosts || !HostPolicy.isPublic(host) || !scheme) {
-                return AppResult.Err(AppError.Rejected("HOST_NOT_ALLOWED", "This source can't reach $host."))
+                return AppResult.Err(AppError.Rejected("HOST_NOT_ALLOWED", t("plugins.hostNotAllowed", "host" to host)))
             }
             wait(manifest)
             val response: HttpResponse =
@@ -102,10 +103,10 @@ class RulesHttp(
                 } catch (e: Exception) {
                     return AppResult.Err(if (network.state.value.online) AppError.SourceUnavailable(manifest.name) else AppError.Network)
                 }
-            if (body.size > maxBytes) return AppResult.Err(AppError.Rejected("SOURCE_ERROR", "The source answered with a file too large."))
+            if (body.size > maxBytes) return AppResult.Err(AppError.Rejected("SOURCE_ERROR", t("plugins.sourceTooLarge")))
             return AppResult.Ok(Fetched(body, response.request.url.toString()))
         }
-        return AppResult.Err(AppError.Rejected("SOURCE_ERROR", "Too many redirects."))
+        return AppResult.Err(AppError.Rejected("SOURCE_ERROR", t("plugins.tooManyRedirects")))
     }
 
     /** Per-source rate limit, taken from the manifest: wait rather than hammer the site. */

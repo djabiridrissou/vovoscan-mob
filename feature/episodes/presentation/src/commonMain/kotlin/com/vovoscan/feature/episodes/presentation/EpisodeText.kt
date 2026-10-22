@@ -1,10 +1,10 @@
 package com.vovoscan.feature.episodes.presentation
 
-import com.vovoscan.core.common.i18n.t
 import com.vovoscan.core.common.AppError
 import com.vovoscan.core.common.Language
 import com.vovoscan.core.common.i18n.displayName
 import com.vovoscan.core.common.i18n.displayTitle
+import com.vovoscan.core.common.i18n.t
 import com.vovoscan.core.common.userMessage
 import com.vovoscan.feature.episodes.domain.EpisodeAudio
 import com.vovoscan.feature.episodes.domain.ProviderFunding
@@ -37,12 +37,14 @@ object EpisodeText {
     val NOTE_SILENT: String get() = t("episode.noteSilent")
     val NOTE_OUTDATED: String get() = t("episode.noteOutdated")
     val NOTE_REREAD: String get() = t("episode.noteReread")
+
     // Languages (`?lang=`): the original, or the episode dubbed / subtitled in another language.
     val ORIGINAL: String get() = t("episode.original")
     val ORIGINAL_DETAIL: String get() = t("episode.originalDetail")
     val DUBBED: String get() = t("episode.dubbed")
     val SUBTITLED: String get() = t("episode.subtitled")
     val BETA: String get() = t("episode.beta")
+
     fun languageDetail(language: Language): String =
         listOfNotNull(language.displayTitle(), if (language.dub) DUBBED else SUBTITLED, BETA.takeIf { language.beta }).joinToString(" ✦ ")
 
@@ -50,8 +52,7 @@ object EpisodeText {
     fun audioNote(
         language: Language,
         audio: EpisodeAudio?,
-    ): String =
-        t(if (audio == EpisodeAudio.Dub) "episode.audioDub" else "episode.audioSub", "language" to language.displayName())
+    ): String = t(if (audio == EpisodeAudio.Dub) "episode.audioDub" else "episode.audioSub", "language" to language.displayName())
 
     // The key lines already say what each missing key costs; this only says where to fix it.
     val KEY_WARNING: String get() = t("episode.keyWarning")
@@ -223,6 +224,7 @@ object EpisodeText {
     val SILENT_HINT: String get() = t("episode.silentHint")
     val PLAY: String get() = t("episode.play")
     val PAUSE: String get() = t("episode.pause")
+
     fun watchError(error: AppError): String =
         when {
             error == AppError.Network -> PLAYER_OFFLINE

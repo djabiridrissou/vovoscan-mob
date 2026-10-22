@@ -1,6 +1,7 @@
 package com.vovoscan.core.sources
 
 import com.vovoscan.core.common.AppResult
+import com.vovoscan.core.common.i18n.t
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
@@ -67,10 +68,10 @@ data class RepositoryIndex(
             if (format != FORMAT_VERSION) return PluginErrors.notASource
             val id =
                 json.string("id")?.takeIf { idPattern.matches(it) }
-                    ?: return PluginErrors.rejected("REPOSITORY_INVALID", "This repository has no valid id.")
+                    ?: return PluginErrors.rejected("REPOSITORY_INVALID", t("plugins.repositoryInvalid"))
             val list = json["sources"] as? JsonArray ?: return PluginErrors.notASource
             if (list.size > PluginLimits.REPOSITORY_MAX_SOURCES) {
-                return PluginErrors.rejected("REPOSITORY_TOO_LARGE", "This repository lists too many sources.")
+                return PluginErrors.rejected("REPOSITORY_TOO_LARGE", t("plugins.repositoryTooLarge"))
             }
             val seen = mutableSetOf<String>()
             val entries =

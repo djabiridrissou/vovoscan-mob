@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.vovoscan.core.common.AppResult
 import com.vovoscan.core.common.Clock
 import com.vovoscan.core.common.SystemClock
+import com.vovoscan.core.common.i18n.t
 import com.vovoscan.feature.episodes.domain.EpisodesRepository
 import com.vovoscan.feature.episodes.domain.Watch
 import com.vovoscan.feature.episodes.domain.player.CaptionPlacement
@@ -58,7 +59,7 @@ data class PlayerUiState(
     val timeLabel: String get() = "${EpisodeText.clock(positionMs)} / ${EpisodeText.clock(durationMs)}"
 
     /** "Page 3 / 12". */
-    val pageLabel: String get() = if (pageCount > 0) "Page $pageNumber / $pageCount" else ""
+    val pageLabel: String get() = if (pageCount > 0) t("episode.pageOf", "n" to pageNumber, "total" to pageCount) else ""
 
     val soundLabel: String get() =
         if (silent) {
