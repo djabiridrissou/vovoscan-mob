@@ -155,6 +155,8 @@ data class BookSection(
 
 data class Book(
     val sections: List<BookSection>,
+    /** The book's own table of contents, nested; empty for a book opened before it was kept (the sections then). */
+    val toc: List<TocEntry> = emptyList(),
 )
 
 /**
