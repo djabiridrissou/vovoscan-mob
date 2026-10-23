@@ -49,6 +49,7 @@ struct ReaderView: View {
     @State private var pushSettled = false
     @State private var pickerShown = false
     @State private var keysOpen = false
+    @State private var marginSheetOpen = false
     /// The bottom bar's height: the language dock sits above it while the bars show.
     @State private var bottomBarHeight: CGFloat = 0
     @State private var player: PlayerRoute?
@@ -252,6 +253,9 @@ struct ReaderView: View {
             .task { await translation.observe() }
             .task { await next.observe() }
             .task { await margin.observe() }
+            .onChange(of: margin.state.visible && margin.state.open) { _, open in
+                if marginSheetOpen != open { marginSheetOpen = open }
+            }
             .onChange(of: translation.state.shown, initial: true) { _, shown in next.send(NextChapterIntentLanguageShown(code: shown)) }
             .onChange(of: model.state.readShare, initial: true) { _, share in next.send(NextChapterIntentReached(share: share)) }
             .onChange(of: model.state.onEndCard, initial: true) { _, end in next.send(NextChapterIntentAtEnd(atEnd: end)) }
@@ -293,7 +297,12 @@ struct ReaderView: View {
             .fullScreenCover(item: $player) { (route: PlayerRoute) in PlayerView(route: route) { _, _ in player = nil } }
             .sheet(item: $sourceEpisode) { (episode: SourceEpisode) in SourceEpisodeSheet(episode: episode) }
             // The margin: the pages stay readable and markable under its lower detent.
-            .sheet(isPresented: marginOpen) {
+            // Presented from a local flag that follows the shared state (never a binding computed from it: the state
+            // comes back a moment after a swipe down, so the binding read "open" again mid-dismissal and the sheet's
+            // dimming layer stayed over the pages).
+            .sheet(isPresented: $marginSheetOpen, onDismiss: {
+                if margin.state.open { margin.send(MarginIntentClose.shared) }
+            }) {
                 MarginSheet(margin: margin)
                     .presentationDetents([.fraction(0.4), .large])
                     .presentationBackgroundInteraction(.enabled(upThrough: .fraction(0.4)))
@@ -314,15 +323,6 @@ struct ReaderView: View {
                     .presentationDetents([.medium, .large])
                     .presentationBackground(Color.brandInk2)
             }
-    }
-
-    /// Open while the shared state says so; a swipe down closes it through the view model.
-    private var marginOpen: Binding<Bool> {
-        let model: MarginModel = margin
-        return Binding(
-            get: { model.state.visible && model.state.open },
-            set: { open in if !open && model.state.open { model.send(MarginIntentClose.shared) } }
-        )
     }
 
     /// A command of the shared reader that leaves this screen: another chapter, back, or the episode.
