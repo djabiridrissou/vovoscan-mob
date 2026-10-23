@@ -1037,7 +1037,7 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   source"; the credits step explains own keys vs credits and opens the keys screen.
 - Tutorial scenes (iOS `OnboardingScenes.swift`, Android `ui/onboarding/OnboardingScenes.kt`, the same on both):
   welcome opens cold on a manga page whose three panels slam in (a haptic each, ~1.6 s, the mark stamped last); the
-  reading step has a live translated page (`DemoLines.balloon`: one balloon, "行くぞ！" wiped and lettered again in the
+  reading step has a live translated page (`DemoLines.balloon`: one balloon of the drawn page, its original Japanese line (the source art, never UI text) wiped and lettered again in the
   reading language in its reading direction, on a loop; a line written by hand for 30 languages, any other shows
   the app's language and says so, never a guessed translation); credits count the wallet up (`balanceLabel`); done
   ends on the official source's first title (`OnboardingServices.featured`, loaded when the source is turned on) with
