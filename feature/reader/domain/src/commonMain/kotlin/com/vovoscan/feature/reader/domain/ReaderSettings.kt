@@ -155,6 +155,9 @@ interface ReaderSettingsRepository {
 
     suspend fun recordRead(read: LastRead) {}
 
+    /** Sends the places not on the account yet, then takes the account's newer ones (reader/SPEC.md §9). */
+    suspend fun syncHistory() = Unit
+
     /** The language our catalog was last read in on this device (the series page's badges); erased with the account. */
     suspend fun recordLanguage(code: String) {}
 

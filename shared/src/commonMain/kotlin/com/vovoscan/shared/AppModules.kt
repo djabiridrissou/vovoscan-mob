@@ -75,6 +75,8 @@ import com.vovoscan.feature.reader.domain.CoachSync
 import com.vovoscan.feature.reader.domain.DownloadableChapter
 import com.vovoscan.feature.reader.domain.DownloadableTitle
 import com.vovoscan.feature.reader.domain.DownloadsRepository
+import com.vovoscan.feature.reader.domain.HistoryTitle
+import com.vovoscan.feature.reader.domain.HistoryTitles
 import com.vovoscan.feature.reader.domain.LastRead
 import com.vovoscan.feature.reader.domain.NextChaptersRepository
 import com.vovoscan.feature.reader.domain.ReaderRepository
@@ -109,6 +111,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.launch
 import org.koin.core.module.Module
 import org.koin.dsl.module
@@ -218,11 +221,17 @@ fun appModules(
             }
             // "Continue reading": this device's reading and the library's progress (synced from the account's other
             // devices), the most recent per title.
+            // "Continue reading" is the account's (reader/SPEC.md §9): each screen that shows it sends this device's
+            // places and takes the other devices' first.
             single<ReadingResume> {
                 val library = get<LibraryRepository>()
                 val history = get<ReaderSettingsRepository>()
+                val scope = get<CoroutineScope>()
                 ReadingResume {
-                    combine(history.observeHistory(), library.observe()) { reads, entries ->
+                    combine(
+                        history.observeHistory().onStart { scope.launch { history.syncHistory() } },
+                        library.observe(),
+                    ) { reads, entries ->
                         ResumePoints.merge(
                             reads.map { ResumePoint(it.sourceKey, it.titleId, it.chapterId, it.page, it.readAt) },
                             entries.mapNotNull { e ->
@@ -230,6 +239,17 @@ fun appModules(
                             },
                         )
                     }.distinctUntilChanged()
+                }
+            }
+            // The account's history names a title read on the device from the title page the device keeps.
+            single<HistoryTitles> {
+                val catalog = get<CatalogRepository>()
+                HistoryTitles { sourceKey, titleId ->
+                    catalog
+                        .observeTitle(sourceKey, titleId)
+                        .first()
+                        ?.summary
+                        ?.let { HistoryTitle(it.name, it.coverUrl) }
                 }
             }
             // The reader's chapter transitions name the next / previous chapter from the title page kept on the device.

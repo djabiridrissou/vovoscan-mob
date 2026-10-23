@@ -5,6 +5,8 @@ import app.cash.sqldelight.coroutines.mapToList
 import app.cash.sqldelight.coroutines.mapToOneOrNull
 import com.vovoscan.feature.reader.data.db.ReaderDatabase
 import com.vovoscan.feature.reader.domain.CoachKind
+import com.vovoscan.feature.reader.domain.HistoryMerge
+import com.vovoscan.feature.reader.domain.HistorySync
 import com.vovoscan.feature.reader.domain.LastRead
 import com.vovoscan.feature.reader.domain.ReaderPreferences
 import com.vovoscan.feature.reader.domain.ReaderSettingsRepository
@@ -33,10 +35,13 @@ class SqlReaderSettingsRepository(
     private val io: CoroutineDispatcher,
     /** The account's copy of the series modes (the device's is its cache). */
     private val seriesSync: SeriesModeSync = SeriesModeSync.None,
+    /** The account's reading history (the device's is its cache). */
+    private val historySync: HistorySync = HistorySync.None,
 ) : ReaderSettingsRepository {
     private val queries get() = database.readerQueries
     private val writes = Mutex()
     private val seriesLock = Mutex()
+    private val historyLock = Mutex()
 
     override fun observePreferences(): Flow<ReaderPreferences> =
         queries
@@ -153,8 +158,53 @@ class SqlReaderSettingsRepository(
             }.distinctUntilChanged()
 
     override suspend fun recordRead(read: LastRead) {
-        withContext(io) { queries.putSetting(HISTORY_PREFIX + read.key, read.encode()) }
+        withContext(io) {
+            queries.transaction {
+                queries.putSetting(HISTORY_PREFIX + read.key, read.encode())
+                queries.putSetting(HISTORY_PENDING_PREFIX + read.key, read.encode())
+            }
+        }
+        // Sent at once when it can; else it waits for the next sync. A newer read of the title replaces it meanwhile.
+        if (historySync.push(read)) forgetPending(read)
     }
+
+    override suspend fun syncHistory() {
+        historyLock.withLock {
+            val pending =
+                withContext(io) {
+                    queries.pendingHistory().executeAsList().mapNotNull {
+                        LastRead.decode(it.name.removePrefix(HISTORY_PENDING_PREFIX), it.setting_value)
+                    }
+                }
+            pending.forEach { if (historySync.push(it)) forgetPending(it) }
+            val since = withContext(io) { queries.setting(HISTORY_SINCE).executeAsOneOrNull()?.toLongOrNull() }
+            val places = historySync.pull(since) ?: return
+            withContext(io) {
+                queries.transaction {
+                    val local =
+                        queries.history().executeAsList().mapNotNull {
+                            LastRead.decode(it.name.removePrefix(HISTORY_PREFIX), it.setting_value)
+                        }
+                    val changes = HistoryMerge.apply(local.associateBy { it.key }, places)
+                    changes.put.forEach { queries.putSetting(HISTORY_PREFIX + it.key, it.encode()) }
+                    changes.remove.forEach { queries.deleteSetting(HISTORY_PREFIX + it) }
+                    places.maxOfOrNull { it.updatedAt }?.let { newest ->
+                        queries.putSetting(HISTORY_SINCE, maxOf(newest, since ?: 0L).toString())
+                    }
+                }
+            }
+        }
+    }
+
+    // Only the read that was sent: a newer one recorded meanwhile stays pending.
+    private suspend fun forgetPending(read: LastRead) =
+        withContext(io) {
+            queries.transaction {
+                if (queries.setting(HISTORY_PENDING_PREFIX + read.key).executeAsOneOrNull() == read.encode()) {
+                    queries.deleteSetting(HISTORY_PENDING_PREFIX + read.key)
+                }
+            }
+        }
 
     override suspend fun recordLanguage(code: String) {
         withContext(io) { queries.putSetting(READ_LANGUAGE, code) }
@@ -164,6 +214,8 @@ class SqlReaderSettingsRepository(
 
     internal companion object {
         const val HISTORY_PREFIX = "last/"
+        const val HISTORY_PENDING_PREFIX = "historyPending/"
+        const val HISTORY_SINCE = "historySince"
         const val READ_LANGUAGE = "readLanguage"
         const val PENDING_PREFIX = "seriesPending/"
         const val MIGRATED = "seriesMigrated"

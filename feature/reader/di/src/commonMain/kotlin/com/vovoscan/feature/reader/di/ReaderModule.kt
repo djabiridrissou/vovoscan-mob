@@ -5,6 +5,7 @@ import com.vovoscan.core.common.ChapterImports
 import com.vovoscan.core.common.SystemClock
 import com.vovoscan.core.database.AppFolders
 import com.vovoscan.core.database.DatabaseDriverFactory
+import com.vovoscan.feature.reader.data.ApiHistorySync
 import com.vovoscan.feature.reader.data.ApiReaderRemoteDataSource
 import com.vovoscan.feature.reader.data.DownloadedPages
 import com.vovoscan.feature.reader.data.DownloadsLocalDataSource
@@ -28,6 +29,8 @@ import com.vovoscan.feature.reader.domain.ChapterPanels
 import com.vovoscan.feature.reader.domain.CoachSync
 import com.vovoscan.feature.reader.domain.DownloadScheduler
 import com.vovoscan.feature.reader.domain.DownloadsRepository
+import com.vovoscan.feature.reader.domain.HistorySync
+import com.vovoscan.feature.reader.domain.HistoryTitles
 import com.vovoscan.feature.reader.domain.NextChaptersRepository
 import com.vovoscan.feature.reader.domain.ReaderRepository
 import com.vovoscan.feature.reader.domain.ReaderSettingsRepository
@@ -48,8 +51,8 @@ import org.koin.dsl.module
 /**
  * Koin module for the reader: local (SQLDelight) and remote (Ktor) sources injected into the repository.
  * Expects from the app: `HttpClient`, `DatabaseDriverFactory`, `AppDispatchers`, `ReadingProgressSink`,
- * `ManifestProvider`, `RulesHttp`, `ChapterHeadings`, and for downloads `AppFolders`, `NetworkMonitor`, the app's
- * `CoroutineScope` and `TitleChapters`; optionally a `DownloadScheduler` (background downloads).
+ * `ManifestProvider`, `RulesHttp`, `ChapterHeadings`, `HistoryTitles`, and for downloads `AppFolders`, `NetworkMonitor`,
+ * the app's `CoroutineScope` and `TitleChapters`; optionally a `DownloadScheduler` (background downloads).
  */
 val readerModule =
     module {
@@ -80,9 +83,18 @@ val readerModule =
                 clock = SystemClock,
             )
         }
-        // Reading modes, tap zones and the other reader settings: on this device only.
+        // Where each title was left, on the account (reader/SPEC.md §9); a title read on the device is named from the
+        // title page the device keeps (`HistoryTitles`, from the app).
+        single<HistorySync> { ApiHistorySync(get(), getOrNull() ?: HistoryTitles { _, _ -> null }) }
+        // Reading modes, tap zones and the other reader settings: on this device, the series modes and the history
+        // also on the account.
         single<ReaderSettingsRepository> {
-            SqlReaderSettingsRepository(get(), get<AppDispatchers>().io, getOrNull() ?: SeriesModeSync.None)
+            SqlReaderSettingsRepository(
+                get(),
+                get<AppDispatchers>().io,
+                getOrNull() ?: SeriesModeSync.None,
+                get<HistorySync>(),
+            )
         }
         // Books: the page's typography and the position inside a section, on this device only (written in the app's
         // scope, so the last position is kept once the reader has closed).

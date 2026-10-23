@@ -205,6 +205,7 @@ class SqlReaderLocalDataSource(
                 queries.clearSeriesModesOf(sourceKey)
                 queries.clearPositionsOf("pos/$sourceKey/%")
                 queries.clearPositionsOf("last/$sourceKey/%")
+                queries.clearPositionsOf("historyPending/$sourceKey/%")
             }
         }
 }
