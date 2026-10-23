@@ -665,9 +665,23 @@ private struct PageSlider: View {
             }
         }
         .tint(Color.brandRed)
-        .environment(\.layoutDirection, model.state.rightToLeft ? .rightToLeft : .leftToRight)
-        // Made again when the direction changes: a slider flipped in place drew its thumb apart from its fill.
-        .id(model.state.rightToLeft)
+        // Right to left: a left-to-right slider drawn mirrored, thumb and fill together (a slider in a right-to-left
+        // layout direction, switched in place, drew its thumb apart from its fill).
+        .environment(\.layoutDirection, .leftToRight)
+        .scaleEffect(x: model.state.rightToLeft ? -1 : 1, y: 1)
+        // A drag the slider never saw end (the bars hidden under the finger, the reader switching modes) must not leave
+        // its page in the bar: the counter and the thumb stayed on it while the pages moved on.
+        .onDisappear {
+            editing = false
+            dragged = nil
+        }
+        .onChange(of: model.state.mode) { _, _ in
+            editing = false
+            dragged = nil
+        }
+        .onChange(of: model.state.currentIndex) { _, _ in
+            if !editing { dragged = nil }
+        }
         .accessibilityLabel("Page")
         .accessibilityValue(model.state.sliderLabel(page: Int32(dragged ?? Int(model.state.currentIndex))))
     }
@@ -910,9 +924,13 @@ private struct HorizontalPages: View {
         }
         .id("\(model.state.mode)-\(model.state.twoPages)")
         .onAppear {
-            // Placed once laid out: a lazy stack made mid-chapter may not have reached the current screen yet.
+            // Placed once laid out, and again once the lazy stack has measured its neighbours: a pager made mid-chapter
+            // may not have reached the current screen yet.
             let screen = Int(model.state.currentSpread)
             DispatchQueue.main.async { position = screen }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                if position != screen, Int(model.state.currentSpread) == screen { position = screen }
+            }
         }
         .onChange(of: position) { _, screen in
             if let screen, let spread = model.state.spreads[safe: screen] {
