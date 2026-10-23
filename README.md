@@ -557,7 +557,7 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
 ## iOS finish (`iosApp/Sources/Premium.swift`)
 
 - Launch: the mark is stamped on the page (spring, haptic, speed lines), then the app or the sign-in fades in.
-- Sign-in: a printed-manga hero (speed lines, red halftone, ドン!, "Invite only" kicker), password AutoFill content
+- Sign-in: a printed-manga hero (speed lines, red halftone, BOOM!, "Invite only" kicker), password AutoFill content
   types, an error haptic.
 - Catalog: covers open their title page with the iOS 18 zoom transition (`matchedTransitionSource` +
   `.navigationTransition(.zoom)`), tiles sink when pressed (`PressableCardStyle`), rise in one after the other

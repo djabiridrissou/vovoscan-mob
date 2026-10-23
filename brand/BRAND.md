@@ -12,7 +12,7 @@ Backend, web and mobile all follow this art direction.
 
 ## 2. Logo
 - Wordmark: lowercase **vovoscan** in Dela Gothic One, preceded by the mark. Ref: `.landing_logo`.
-- Mark: red square (#ff2d55), 4px paper outline, rotated **-6°**, katakana **ヴ** in ink; on an ink rounded tile (rx 12/64). Ref: `/icon.svg` (copied to assets/logo-mark.svg).
+- Mark ("Fukidashi"): a red (#ff2d55) manga speech balloon tilted **-6°**, its tail at the lower left, holding a heavy **V** with two sound waves in ink; paper outline, an ink print gap and a hard paper offset shadow (no blur). Flat (one red balloon, ink V and waves) and mono (one colour, V and waves knocked out) variants for small sizes and tinted icons. No Japanese or other script the user does not read, anywhere in the UI (2026-10-23). App icon: the mark on an ink tile, `assets/logo-mark.svg`. Geometry source: `tools/brand/kit.py` (web repo), one geometry for every file.
 - In-nav version: 32×32, 2px paper border, `3px 3px 0 paper` hard shadow, rotate(-6deg).
 - Always keep the -6° tilt; never recolor outside red/ink/paper. Minimum 24px.
 
@@ -36,7 +36,7 @@ Rules: dark-only (no light theme). Red = action, cyan = audio/AI processing, yel
 - **Display — Dela Gothic One** (400 only): logo, h1/h2/h3, big numbers, step numbers (outlined: transparent fill + 2px ink stroke), SFX. Tight leading (.98–1.15).
 - **Body — Space Grotesk** (variable 300–700): everything else. 15px/1.5 base, 13px labels, 12px uppercase kickers (tracking .12em, bold).
 - Hero title `clamp(44px,6.6vw,92px)`; section h2 `clamp(32px,4.6vw,60px)`; card h3 22px.
-- Japanese SFX (ドン! ゴゴゴ ザワ ジッ ペタ ドドド) set in the display font, often vertical (`writing-mode: vertical-rl`), with ink stroke/shadow.
+- Sound effects in Latin letters, in the UI language's alphabet (BOOM! GRRR BZZZ HAHA GASP SHHH), set in the display font, sometimes vertical, with ink stroke/shadow. Never Japanese or another script the user does not read (2026-10-23).
 - Both are open-source Google Fonts — bundle them in mobile.
 
 ## 5. Shape, depth, motion
@@ -93,7 +93,7 @@ Security promises (must stay true in backend): invite-only (single-use invites),
 - Hard offset shadows: implement as a second offset shape behind the view (no blur radius) — Flutter `BoxShadow(offset: Offset(6,6), blurRadius: 0)`, RN a sibling `View`, SwiftUI `.background(offset)`.
 - Haptics + 150ms lift/press animation on buttons (press = translate +2,+2 and shadow shrinks).
 - Reader/player: cyan waveform and scan-line for voice processing, red progress, sticker for "AUTO-VOICED / EP 01 · 04:12".
-- Status bar light content; app icon = logo-mark.svg (red tilted square on ink, ヴ).
+- Status bar light content; app icon = logo-mark.svg (the red balloon mark with V and sound waves, on ink).
 
 ## 10. Open items
 - Only the landing + login CSS are public; authenticated screens (library, reader, player) are not visible — extend this dossier once designed.
