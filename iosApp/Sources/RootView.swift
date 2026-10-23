@@ -49,6 +49,9 @@ struct RootView: View {
     /// Each tab's navigation, one typed path (see `AppRoute`): the tutorial ends by opening a title in the catalog's.
     @State private var catalogPath: [AppRoute] = []
     @State private var libraryPath: [AppRoute] = []
+    /// A reading circle's invite (`vovoscan://together/CODE`): its card over the app, then the reader, following.
+    @State private var invite: InviteLink?
+    @State private var joined: JoinedChapter?
 
     init() { Self.styleBars() }
 
@@ -90,15 +93,36 @@ struct RootView: View {
                         catalogPath = [.title(route)]
                     })
                 }
+                // The reader is pushed once the card is gone: a push under a closing sheet can be lost.
+                .sheet(item: $invite, onDismiss: openJoined) { (link: InviteLink) in
+                    TogetherInviteView(link: link.url, onJoined: { chapter in
+                        joined = chapter
+                        invite = nil
+                    }, onClose: { invite = nil })
+                    .presentationDetents([.medium])
+                    .presentationBackground(Color.brandInk2)
+                }
                 .transition(.opacity)
             } else {
                 SignInView().transition(.opacity)
             }
         }
         .animation(.easeInOut(duration: 0.3), value: session.session == nil)
+        // Signed out, the link waits for nothing: the card needs an account (it opens again from the link later).
+        .onOpenURL { url in
+            if session.session != nil, let link = InviteLink(url) { invite = link }
+        }
         .task { await session.observe() }
         .task { await session.observeTutorial() }
         .task { await session.observeDeletion() }
+    }
+
+    /// The circle's chapter, joined from an invite: the reader in the catalog's tab, already following the host.
+    private func openJoined() {
+        guard let chapter = joined else { return }
+        joined = nil
+        tab = .catalog
+        catalogPath.append(.reader(ReaderRoute(sourceKey: "vovoscan", titleId: chapter.titleRef, chapterId: chapter.chapterId, startPage: 0)))
     }
 
     /// Ink bars with a hairline, brand fonts in the navigation titles: the system chrome follows the brand.

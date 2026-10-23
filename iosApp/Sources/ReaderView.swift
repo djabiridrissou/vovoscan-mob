@@ -39,6 +39,9 @@ struct ReaderView: View {
     @StateObject private var next: NextChapterModel
     /// The chapter's margin (余白): pins over the pages, the sheet, the end of chapter (a chapter of the server only).
     @StateObject private var margin: MarginModel
+    /// The reading circle (一緒に読む) on this chapter: a chapter of the server only, like the margin.
+    @StateObject private var together: TogetherModel
+    @Environment(\.scenePhase) private var scenePhase
     @Environment(\.openURL) private var openURL
     @Environment(\.dismiss) private var dismiss
     /// The tab's path: ← and Escape pop it (the reader is always pushed on one; `dismiss` only as a fallback).
@@ -70,13 +73,20 @@ struct ReaderView: View {
         _translation = StateObject(wrappedValue: TranslationModel(route: route))
         _next = StateObject(wrappedValue: NextChapterModel(route: route))
         _margin = StateObject(wrappedValue: MarginModel(route: route))
+        _together = StateObject(wrappedValue: TogetherModel(route: route))
         self.onOpenChapter = onOpenChapter
         self.onOpenCopy = onOpenCopy
     }
 
     // The body is split into typed parts: as one expression it was more than the type checker would take.
     var body: some View {
-        withSheets(withObservers(layers))
+        withTogether(withSheets(withObservers(layers)))
+    }
+
+    /// Another chapter replaces this reader: a circle's host moves the circle there first.
+    private func openChapter(_ chapterId: String, _ startPage: Int) {
+        together.send(TogetherIntentMovingOn(chapterId: chapterId))
+        onOpenChapter(chapterId, startPage)
     }
 
     /// Every layer of the reader, back to front (the order of the ZStack is the order on screen).
@@ -96,7 +106,7 @@ struct ReaderView: View {
         if model.state.unavailable {
             unavailableNotice
         } else if model.state.isBook {
-            BookReader(model: model) { onOpenChapter($0, 0) }
+            BookReader(model: model) { openChapter($0, 0) }
         } else if !model.state.items.isEmpty {
             comicReader
         }
@@ -171,6 +181,25 @@ struct ReaderView: View {
         }
         if let toast = next.state.toast {
             nextToast(toast)
+        }
+        if together.state.circle != nil { togetherLayers }
+    }
+
+    /// The circle over the page: the rail, the bursts, the toast and the dock (with the bars, or while a line is
+    /// typed, or folded to its stamps).
+    @ViewBuilder private var togetherLayers: some View {
+        let state: TogetherUiState = together.state
+        TogetherRail(together: together).zIndex(0.4)
+        TogetherBursts(together: together).zIndex(0.55)
+        TogetherToast(together: together)
+            .padding(.top, model.state.chromeVisible ? 64 : 8)
+            .zIndex(0.65)
+        if model.state.chromeVisible || model.state.isBook || state.typing || state.collapsed {
+            TogetherDock(together: together)
+                .frame(maxHeight: .infinity, alignment: .bottom)
+                .padding(.bottom, (model.state.chromeVisible || model.state.isBook ? bottomBarHeight : 0) + 8)
+                .zIndex(0.92)
+                .transition(reduceMotion ? .opacity : .move(edge: .bottom).combined(with: .opacity))
         }
     }
 
@@ -327,12 +356,71 @@ struct ReaderView: View {
             }
     }
 
+    /// The circle's sheet, the host's menu on a reader, its stream, and the reader's place and gestures forwarded to it.
+    private func withTogether(_ base: some View) -> some View {
+        let state: TogetherUiState = together.state
+        let menu: MemberMenuUi? = state.memberMenu
+        return base
+            .sheet(
+                isPresented: Binding(get: { together.state.sheet != nil }, set: { if !$0 { together.send(TogetherIntentCloseSheet.shared) } })
+            ) {
+                TogetherSheetView(together: together)
+                    .presentationDetents([.medium, .large])
+                    .presentationBackground(Color.brandInk2)
+            }
+            .confirmationDialog(
+                menu?.name ?? "",
+                isPresented: Binding(get: { together.state.memberMenu != nil }, set: { if !$0 { together.send(TogetherIntentCloseMenu.shared) } }),
+                titleVisibility: .visible
+            ) {
+                if let menu {
+                    Button(menu.handOverLabel) { together.send(TogetherIntentHandOver(userId: menu.userId)) }
+                    Button(menu.removeLabel, role: .destructive) { together.send(TogetherIntentRemove(userId: menu.userId)) }
+                }
+            }
+            .task { await together.observe() }
+            .onAppear { together.send(TogetherIntentStart.shared) }
+            .onDisappear { together.send(TogetherIntentStop.shared) }
+            // In the background the heartbeat stops: the others see this reader away, then back.
+            .onChange(of: scenePhase) { _, phase in
+                together.send(phase == .active ? TogetherIntentStart.shared : TogetherIntentStop.shared)
+            }
+            .onChange(of: reduceMotion, initial: true) { _, on in together.send(TogetherIntentReducedMotion(on: on)) }
+            .onChange(of: model.state.place) { _, place in
+                guard let place else { return }
+                together.send(
+                    TogetherIntentPlaceChanged(
+                        book: place.book, page: place.page, fraction: place.fraction, panel: place.panel, section: place.section, count: place.count
+                    )
+                )
+            }
+            // The reader's own gesture: a follower lets go of the host (the shared reader never counts a glide it played).
+            .onChange(of: model.state.userMoves) { _, _ in
+                if together.state.circle?.following == true { together.send(TogetherIntentLetGo.shared) }
+            }
+            .onChange(of: together.state.command?.seq) { _, _ in handleTogether() }
+            .animation(model.state.reducedMotion ? nil : .spring(response: 0.35, dampingFraction: 0.85), value: state.toast?.id)
+    }
+
+    /// The circle's command: go to the host's (or a reader's) place, or open the chapter the circle moved to.
+    private func handleTogether() {
+        let command: TogetherCommand? = together.state.command
+        if let go = command as? TogetherCommandGoToPlace {
+            together.send(TogetherIntentCommandHandled(seq: go.seq))
+            model.send(ReaderIntentGoToPlace(page: go.page, fraction: go.fraction, section: go.section, animated: go.animated))
+        }
+        if let open = command as? TogetherCommandOpenChapter {
+            together.send(TogetherIntentCommandHandled(seq: open.seq))
+            onOpenChapter(open.chapterId, 0)
+        }
+    }
+
     /// A command of the shared reader that leaves this screen: another chapter, back, or the episode.
     private func handleCommand() {
         let command: ReaderCommand? = model.state.command
         if let open = command as? ReaderCommandOpenChapter {
             model.send(ReaderIntentCommandHandled(seq: open.seq))
-            onOpenChapter(open.chapterId, Int(open.startPage))
+            openChapter(open.chapterId, Int(open.startPage))
         }
         if let back = command as? ReaderCommandClose {
             model.send(ReaderIntentCommandHandled(seq: back.seq))
@@ -368,7 +456,7 @@ struct ReaderView: View {
                 if let language = button.language {
                     onOpenCopy(ReaderRoute(sourceKey: route.sourceKey, titleId: route.titleId, chapterId: id, startPage: 0, language: language))
                 } else {
-                    onOpenChapter(id, 0)
+                    openChapter(id, 0)
                 }
             case .prepare: next.send(prepare)
             case .addKey: keysOpen = true
@@ -435,6 +523,9 @@ struct ReaderView: View {
                     }
                     .accessibilityLabel(model.state.voiceLabel)
                 }
+                if together.state.visible {
+                    TogetherButton(together: together)
+                }
                 if !model.state.isBook && margin.state.visible {
                     MarginButton(margin: margin)
                 }
@@ -484,7 +575,7 @@ struct ReaderView: View {
                 }
                 // Chapters, not pages (pages turn with taps and swipes); right to left puts the next one on the left.
                 ForEach(model.state.chapterButtons, id: \.chapterId) { button in
-                    Button(button.label) { onOpenChapter(button.chapterId, 0) }
+                    Button(button.label) { openChapter(button.chapterId, 0) }
                         .font(.brandBody(button.forward ? 16 : 13, weight: button.forward ? .bold : .regular))
                         .foregroundStyle(button.forward ? Color.brandRed : Color.brandMuted)
                 }

@@ -93,6 +93,11 @@ import com.vovoscan.feature.sources.di.sourcesModule
 import com.vovoscan.feature.sources.domain.SourceEngine
 import com.vovoscan.feature.sources.domain.SourceRemovedListener
 import com.vovoscan.feature.sources.domain.SourcesRepository
+import com.vovoscan.feature.together.di.togetherModule
+import com.vovoscan.feature.together.domain.MutedReaders
+import com.vovoscan.feature.together.domain.TogetherAccess
+import com.vovoscan.feature.together.domain.TogetherLanguage
+import com.vovoscan.feature.together.presentation.TogetherSession
 import io.ktor.client.HttpClient
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
@@ -160,6 +165,7 @@ fun appModules(
                     get<WalletRepository>().clear()
                     get<EpisodesRepository>().clearLocal()
                     get<ForumRepository>().clearLocal()
+                    get<TogetherSession>().clear()
                 }
             }
             // A source left the list (third-party source removed, here or on another device): its catalog and
@@ -287,6 +293,27 @@ fun appModules(
             single<ForumAccess> {
                 val auth = get<AuthRepository>()
                 ForumAccess { auth.session.map { it?.has(FORUM_FEATURE) == true }.distinctUntilChanged() }
+            }
+            // Reading circles (一緒に読む) show only with the `shared_reading` flag (gated by default).
+            single<TogetherAccess> {
+                val auth = get<AuthRepository>()
+                TogetherAccess { auth.session.map { it?.has(SHARED_READING_FEATURE) == true }.distinctUntilChanged() }
+            }
+            // The others see the language this reader chose to read in (null: the original).
+            single<TogetherLanguage> {
+                val reading = get<ReadingSettingsRepository>()
+                TogetherLanguage { reading.observeTargetLanguage().first() }
+            }
+            // A reader muted in the margin is hidden from one's circle signals too (they are not told).
+            single<MutedReaders> {
+                val forum = get<ForumRepository>()
+                MutedReaders {
+                    (forum.mutes() as? AppResult.Ok)
+                        ?.value
+                        ?.map { it.userId }
+                        ?.toSet()
+                        .orEmpty()
+                }
             }
             // Readers write in their reading language when they chose one, else in the app's language.
             single<WritingLanguage> {
@@ -441,6 +468,7 @@ fun appModules(
         libraryModule,
         readerModule,
         sourcesModule,
+        togetherModule,
     )
 
 /**
@@ -468,6 +496,7 @@ class ImageRefererSync(
 /** The feature flag that opens episodes and their MP4 (the server's name for it). */
 private const val VIDEO_FEATURE = "video"
 private const val FORUM_FEATURE = "forum"
+private const val SHARED_READING_FEATURE = "shared_reading"
 
 /** The episodes' `KeyStatusProvider` port, served by the account slice's key list (hints only, never a secret). */
 private class AccountKeyStatus(

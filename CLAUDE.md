@@ -761,6 +761,49 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   shortcuts (a letter typed into the composer never turns a page). Android `ui/forum/Margin.kt` (`LocalPageMargin`, a non-modal `MarginPanel` docked at the
   bottom, 45 % or 90 % of the height; Back closes the replies, then the panel).
 
+## Reading circles (一緒に読む: reading live together)
+
+- `feature/together` (backend `api/v1/reading-rooms`, flag `shared_reading`, gated by default: the `TogetherAccess` port,
+  wired in `shared` to `Session.has("shared_reading")`; without it nothing shows, no "coming soon"). Two to eight
+  accounts read one chapter of the server at once, each on their own device, mode and language. Only a chapter of the
+  server (`sourceKey` `vovoscan`, or a source's chapter reopened on its server copy), like the margin.
+- Domain (`Together.kt`, pure): `Place` (comic `{page, fraction, panel?}` at the reading line, a third of the screen
+  down; book `{section, block, offset}`), `Room`, `Member`, `Signal`, `InviteCode` (normalise, `ABCD-EFGH`, from a
+  `vovoscan://together/CODE` or `https://…/together/CODE` link or a bare code), `Lines.check` (280 characters, no link),
+  `Presence` (away after 45 s without a heartbeat; heartbeat every 20 s). Ports `TogetherLanguage` (the reading
+  language), `MutedReaders` (the margin's mutes), `ThisDevice`.
+- Data (`TogetherRepositoryImpl`, online only, nothing queued): REST `{data}`; `live()` reads `GET …/{id}/events` (the
+  bare room as `event: snapshot`, `SseParser` now in `core/network`, shared with episodes): reconnects at once when the
+  server ends the stream, backoff 1 → 30 s on failures, after 3 failures polls `GET …/{id}` every 5 s and tries the
+  stream again after 12 polls; ROOM_NOT_FOUND / CLOSED / REMOVED / CHAPTER_HIDDEN, 401, 403 and the flag off are final.
+- `TogetherSession` (app scope): the room this account reads in, outliving reader screens (the next chapter replaces
+  the reader), with what was shown and applied (the newest `positionSeq`, a local follow choice until a snapshot agrees,
+  300 signal ids). A host opening another chapter moves the circle first (`PUT …/chapter`, in the app scope). Cleared on
+  sign-out.
+- `TogetherViewModel(chapterId)`: attaches to the open room on this chapter (the session's, else `GET /reading-rooms`
+  once per launch); while started (screen on and visible) the stream, the heartbeat and a 5 s tick. The 一緒 button and
+  sheet (read together / join with a code with its preview / the 入場券 ticket: code, share and copy the website's
+  `/together/CODE` link, the host's lock, new code, end; a reader's leave), the dock (hanko stamps in each reader's ink:
+  the eight slot colours of the web, host ringed red with 主, away dashed; the host's menu on a stamp: hand over, remove;
+  follow / on your own, 集合 for the host, 待って for a reader, the log, eight stickers from the margin, a line), the rail
+  (each reader's share of the chapter, a tap goes there), bursts (1.6 s, 6 at most then "×n"), balloons (5 s) and one
+  toast at a time (4 s, 8 s with an action). Followers glide only to a newer `positionSeq`; their own gesture
+  (`ReaderUiState.userMoves`: taps, swipes, a strip drag, a section change, never a glide the reader played) lets go.
+  Places sent: the host every 300 ms (trailing), a reader on their own every second, a follower never. A circle moved
+  on: a follower's reader opens that chapter (`TogetherCommand.OpenChapter`), others get "Go".
+- Reader hooks (`ReaderViewModel`): `place` (`ReaderPlace`, throttled 200 ms) and `ReaderIntent.GoToPlace` (strip: the
+  reading line glides to the fraction; paged: the spread of that page; book: the section; kept pending until laid out).
+- Invites: `vovoscan://together/CODE` (iOS `CFBundleURLTypes` in `project.yml`, `RootView.onOpenURL`; Android an
+  intent filter on `MainActivity`, `singleTop`, `onNewIntent`) opens `TogetherInviteViewModel`'s card over the app
+  (signed in), then the reader there, already following. The share link is the website's (`AppEnvironment.webBaseUrl`,
+  Android `BuildConfig.WEB_BASE_URL`, `-Pvovoscan.webBaseUrl`), whose page hands over to the app.
+- Native: iOS `TogetherViews.swift` (`TogetherModel` next to `ReaderView`, its layers, sheet and `confirmationDialog`),
+  Android `ui/together/Together.kt` (wired in `ReaderScreen`, `TogetherEffects`). Start / Stop with the screen (iOS
+  appear and scene phase, Android `ON_START` / `ON_STOP`).
+- v1 limits: stickers from the dock burst at the reading line (no point placed on the page by a long press); a tall
+  paged page opens at its top, not at the fraction; books place by section only (block and offset sent as 0); no https
+  universal links (the website hands over through `vovoscan://`).
+
 ## Screens (account and episodes)
 
 - Settings (4th tab, gear on both): Keys (two provider slots, add / replace / remove with a confirmation, privacy note;

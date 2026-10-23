@@ -34,6 +34,10 @@ targets:
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         API_BASE_URL: $(API_BASE_URL)
         WEB_BASE_URL: $(WEB_BASE_URL)
+        # Reading circle invites (vovoscan://together/CODE): the website's /together/CODE page hands over to the app.
+        CFBundleURLTypes:
+          - CFBundleURLName: $(PRODUCT_BUNDLE_IDENTIFIER).together
+            CFBundleURLSchemes: [vovoscan]
         UILaunchScreen:
           UIImageName: LaunchMark
           UIColorName: LaunchBackground

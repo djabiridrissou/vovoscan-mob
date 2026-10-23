@@ -444,6 +444,68 @@ class ImmersiveReaderTest {
             assertTrue(reader(sourceKey = "inkwell").state.value.voiceAvailable)
             assertNotNull(vm.state.value.pageAnnouncement)
         }
+
+    // Reading circles: the place reported, the circle's place reached, and the reader's own gestures counted.
+
+    @Test
+    fun aCirclesPlaceIsPutOnThisScreensReadingLine() =
+        runTest(dispatcher) {
+            val vm = reader()
+            // Page 2 (1200 to 1800), half way down: 1500 on the reading line, a third of the 800 screen down.
+            vm.onIntent(ReaderIntent.GoToPlace(page = 2, fraction = 0.5f, section = 0, animated = true))
+            val glide = vm.glide()
+            assertEquals(1500f - 800f / 3f, glide.offset, 0.01f)
+            assertTrue(glide.animated)
+            // The glide's own scrolling is not a gesture of the reader's.
+            vm.onIntent(ReaderIntent.StripScrolled(glide.offset, byUser = false, settled = true))
+            advanceTimeBy(250)
+            assertEquals(0, vm.state.value.userMoves)
+            val place = assertNotNull(vm.state.value.place)
+            assertEquals(2, place.page)
+            assertEquals(0.5f, place.fraction, 0.001f)
+            assertFalse(place.book)
+            // A drag (and its fling) counts once; a tap zone once more.
+            vm.onIntent(ReaderIntent.StripScrolled(1300f, byUser = true, settled = false))
+            vm.onIntent(ReaderIntent.StripScrolled(1400f, byUser = true, settled = true))
+            assertEquals(1, vm.state.value.userMoves)
+            vm.next()
+            assertEquals(2, vm.state.value.userMoves)
+        }
+
+    @Test
+    fun aCirclesPlaceWaitsForTheStripToBeLaidOut() =
+        runTest(dispatcher) {
+            val vm = reader()
+            vm.onIntent(ReaderIntent.StripMeasured(width = 0f, viewport = 0f))
+            vm.onIntent(ReaderIntent.StripMeasured(width = 400f, viewport = 600f))
+            vm.onIntent(ReaderIntent.GoToPlace(page = 4, fraction = 1f, section = 0, animated = false))
+            // The end of the strip at most.
+            assertEquals(3000f - 600f, vm.glide().offset, 0.01f)
+            assertFalse(vm.glide().animated)
+        }
+
+    @Test
+    fun pagedReadersTurnToTheCirclesPageAndThePagerOnTheWayIsNotTheirs() =
+        runTest(dispatcher) {
+            val vm = reader(settings = PositionSettings(ReaderPreferences(coachSeen = ALL_COACHES, tapZonesSeen = true)))
+            assertTrue(vm.state.value.isPaged)
+            vm.onIntent(ReaderIntent.GoToPlace(page = 3, fraction = 0.4f, section = 0, animated = true))
+            val go = assertIs<ReaderCommand.GoToItem>(vm.state.value.command)
+            assertEquals(4, go.item)
+            assertEquals(3, vm.state.value.currentIndex)
+            vm.onIntent(ReaderIntent.ItemVisible(2))
+            vm.onIntent(ReaderIntent.ItemVisible(4))
+            assertEquals(0, vm.state.value.userMoves)
+            advanceTimeBy(250)
+            assertEquals(
+                3,
+                vm.state.value.place
+                    ?.page,
+            )
+            // A swipe of their own.
+            vm.onIntent(ReaderIntent.ItemVisible(5))
+            assertEquals(1, vm.state.value.userMoves)
+        }
 }
 
 private suspend fun ReaderSettingsRepository.preferences(): ReaderPreferences = observePreferences().first()

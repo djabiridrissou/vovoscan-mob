@@ -42,6 +42,10 @@ import com.vovoscan.feature.reader.presentation.TranslationViewModel
 import com.vovoscan.feature.sources.presentation.AddSourceViewModel
 import com.vovoscan.feature.sources.presentation.SourceDetailViewModel
 import com.vovoscan.feature.sources.presentation.SourcesViewModel
+import com.vovoscan.feature.together.domain.Device
+import com.vovoscan.feature.together.domain.ThisDevice
+import com.vovoscan.feature.together.presentation.TogetherInviteViewModel
+import com.vovoscan.feature.together.presentation.TogetherViewModel
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.usePinned
@@ -80,6 +84,7 @@ fun initKoin(
                     }
                     single<AppFolders> { appFolders() }
                     single<DevicePreferences> { IosDevicePreferences() }
+                    single { ThisDevice(Device.Ios) }
                 },
             ),
         )
@@ -197,6 +202,14 @@ class ViewModels : KoinComponent {
 
     /** The margin (余白) of a chapter of ours (or a server copy), next to the reader. */
     fun forum(chapterId: String): ForumViewModel = remember("forum:$chapterId") { get<ForumViewModel> { parametersOf(chapterId) } }
+
+    /** The reading circle (一緒) next to a reader of a chapter of ours (or a server copy). */
+    fun together(chapterId: String): TogetherViewModel =
+        remember("together:$chapterId") { get<TogetherViewModel> { parametersOf(chapterId) } }
+
+    /** An invite link opened from outside (`vovoscan://together/CODE`): the preview card, then Join. */
+    fun togetherInvite(link: String): TogetherInviteViewModel =
+        remember("invite:$link") { get<TogetherInviteViewModel> { parametersOf(link) } }
 
     fun providerKeys(): ProviderKeysViewModel = remember("providerKeys") { get<ProviderKeysViewModel>() }
 

@@ -2,6 +2,7 @@ package com.vovoscan.app
 
 import android.Manifest
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -65,6 +66,8 @@ import com.vovoscan.app.ui.sources.SourcesScreen
 import com.vovoscan.app.ui.theme.Brand
 import com.vovoscan.app.ui.theme.VovoscanTheme
 import com.vovoscan.app.ui.title.TitleScreen
+import com.vovoscan.app.ui.together.TogetherInviteSheet
+import com.vovoscan.app.ui.together.inviteLinkOf
 import com.vovoscan.core.common.INTERNAL_SOURCE_KEY
 import com.vovoscan.core.common.Navigation
 import com.vovoscan.core.common.i18n.I18n
@@ -72,6 +75,7 @@ import com.vovoscan.feature.auth.presentation.DeletionBannerUi
 import com.vovoscan.feature.auth.presentation.SessionViewModel
 import com.vovoscan.feature.catalog.presentation.TitleDetailViewModel
 import com.vovoscan.feature.reader.domain.DownloadsRepository
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -84,6 +88,9 @@ class MainActivity : ComponentActivity() {
     var volumeKeys: ((up: Boolean) -> Boolean)? = null
     private var volumeKeyTaken = false
     private val downloads: DownloadsRepository by inject()
+
+    /** A reading circle's invite opened from outside (`vovoscan://together/CODE`), until its card is closed. */
+    private val invite = MutableStateFlow<String?>(null)
 
     // Android 13+: the downloads notification needs the permission, asked once at the first download. Refused, the
     // downloads go on all the same (the foreground service shows in the system's task manager only).
@@ -118,9 +125,11 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (savedInstanceState == null) invite.value = inviteLinkOf(intent)
         setContent {
             VovoscanTheme {
-                AdaptiveWindow { Root() }
+                val link by invite.collectAsStateWithLifecycle()
+                AdaptiveWindow { Root(invite = link, onInviteDone = { invite.value = null }) }
             }
         }
         // A new app language rebuilds every screen in it (the ViewModels survive; their labels are read on draw).
@@ -133,6 +142,11 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        inviteLinkOf(intent)?.let { invite.value = it }
     }
 
     override fun onStart() {
@@ -175,7 +189,11 @@ private enum class Tab(
  * reader, an episode card and the full-screen episode player on top.
  */
 @Composable
-private fun Root(session: SessionViewModel = koinViewModel()) {
+private fun Root(
+    invite: String? = null,
+    onInviteDone: () -> Unit = {},
+    session: SessionViewModel = koinViewModel(),
+) {
     val user by session.session.collectAsStateWithLifecycle()
     val tutorial by session.tutorial.collectAsStateWithLifecycle()
     val deletion by session.deletionBanner.collectAsStateWithLifecycle()
@@ -249,6 +267,14 @@ private fun Root(session: SessionViewModel = koinViewModel()) {
             return@Column
         }
         deletion?.let { DeletionBanner(it, session::keepAccount) }
+        // A circle's invite: its card over the app (signed in only), then the reader there, already following the host.
+        invite?.let { link ->
+            TogetherInviteSheet(link, onJoined = { chapter ->
+                onInviteDone()
+                openPlayer = null
+                openReader = "$INTERNAL_SOURCE_KEY|${chapter.titleRef}|${chapter.chapterId}|0"
+            }, onClose = onInviteDone)
+        }
         val reader = openReader?.split("|")
         if (reader != null) {
             BackHandler { openReader = null }

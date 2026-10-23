@@ -32,6 +32,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -101,6 +102,8 @@ import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
@@ -122,6 +125,12 @@ import com.vovoscan.app.ui.forum.MarginPanel
 import com.vovoscan.app.ui.forum.MarginPinsOverlay
 import com.vovoscan.app.ui.forum.PageMargin
 import com.vovoscan.app.ui.theme.Brand
+import com.vovoscan.app.ui.together.TogetherBursts
+import com.vovoscan.app.ui.together.TogetherButton
+import com.vovoscan.app.ui.together.TogetherDock
+import com.vovoscan.app.ui.together.TogetherRail
+import com.vovoscan.app.ui.together.TogetherSheetView
+import com.vovoscan.app.ui.together.TogetherToast
 import com.vovoscan.core.common.i18n.I18n
 import com.vovoscan.feature.forum.presentation.ForumViewModel
 import com.vovoscan.feature.forum.presentation.MarginIntent
@@ -145,6 +154,10 @@ import com.vovoscan.feature.reader.presentation.TapOverlay
 import com.vovoscan.feature.reader.presentation.TransitionCard
 import com.vovoscan.feature.reader.presentation.TranslationIntent
 import com.vovoscan.feature.reader.presentation.TranslationViewModel
+import com.vovoscan.feature.together.presentation.TogetherCommand
+import com.vovoscan.feature.together.presentation.TogetherIntent
+import com.vovoscan.feature.together.presentation.TogetherUiState
+import com.vovoscan.feature.together.presentation.TogetherViewModel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -208,6 +221,17 @@ fun ReaderScreen(
         if (sourceKey == OUR_SOURCE) koinViewModel(key = "forum:$chapterId") { parametersOf(chapterId) } else null
     val marginState = forum?.state?.collectAsStateWithLifecycle()?.value
     val pageMargin = forum?.let { vm -> marginState?.takeIf { it.visible }?.let { PageMargin(it, vm::onIntent) } }
+    // The reading circle (一緒に読む) on this chapter: a chapter of the server only, like the margin.
+    val together: TogetherViewModel? =
+        if (sourceKey == OUR_SOURCE) koinViewModel(key = "together:$chapterId") { parametersOf(chapterId) } else null
+    val togetherState = together?.state?.collectAsStateWithLifecycle()?.value
+    val sendTogether: (TogetherIntent) -> Unit = { together?.onIntent(it) }
+    // Another chapter replaces this reader: a circle's host moves the circle there first.
+    val openChapter: (String, Int) -> Unit = { chapter, page ->
+        sendTogether(TogetherIntent.MovingOn(chapter))
+        onOpenChapter(chapter, page)
+    }
+    TogetherEffects(state, togetherState, sendTogether, onIntent, onOpenChapter)
     LaunchedEffect(translationState.shown) { next.onIntent(NextChapterIntent.LanguageShown(translationState.shown)) }
     LaunchedEffect(state.readShare) { next.onIntent(NextChapterIntent.Reached(state.readShare)) }
     LaunchedEffect(state.onEndCard) { next.onIntent(NextChapterIntent.AtEnd(state.onEndCard)) }
@@ -218,7 +242,7 @@ fun ReaderScreen(
                 NextActionKind.Open ->
                     button.chapterId?.let { id ->
                         // In the language: our catalog's chapter opens in it, as a translated copy does.
-                        button.language?.let { onOpenCopy(titleId, id, it, 0) } ?: onOpenChapter(id, 0)
+                        button.language?.let { onOpenCopy(titleId, id, it, 0) } ?: openChapter(id, 0)
                     }
                 NextActionKind.Prepare -> next.onIntent(prepare)
                 NextActionKind.AddKey -> keysOpen = true
@@ -256,7 +280,7 @@ fun ReaderScreen(
     LaunchedEffect(command) {
         if (command is ReaderCommand.OpenChapter) {
             onIntent(ReaderIntent.CommandHandled(command.seq))
-            onOpenChapter(command.chapterId, command.startPage)
+            openChapter(command.chapterId, command.startPage)
         }
         if (command is ReaderCommand.OpenEpisode) {
             onIntent(ReaderIntent.CommandHandled(command.seq))
@@ -309,7 +333,7 @@ fun ReaderScreen(
                     state.error?.let { ErrorText(it) }
                     GhostButton(I18n.text("common.tryAgain"), { onIntent(ReaderIntent.Retry) })
                 }
-            state.isBook -> BookReader(state, onIntent) { onOpenChapter(it, 0) }
+            state.isBook -> BookReader(state, onIntent) { openChapter(it, 0) }
             state.items.isEmpty() -> Unit
             else ->
                 CompositionLocalProvider(
@@ -375,6 +399,7 @@ fun ReaderScreen(
                 onWatch = { onIntent(ReaderIntent.ReadWithVoice) },
                 onHelp = { onIntent(ReaderIntent.ShowCoach) },
                 language = {
+                    if (togetherState?.visible == true) TogetherButton(togetherState, sendTogether)
                     if (!state.isBook && pageMargin != null) {
                         MarginButton(pageMargin.state) { pageMargin.send(MarginIntent.Toggle) }
                     }
@@ -384,7 +409,7 @@ fun ReaderScreen(
             BottomBar(
                 state,
                 onIntent,
-                { onOpenChapter(it, 0) },
+                { openChapter(it, 0) },
                 Modifier.align(Alignment.BottomCenter).onSizeChanged { bottomBarPx = it.height },
             )
         }
@@ -447,6 +472,27 @@ fun ReaderScreen(
                 NextToastView(it, nextAction(NextChapterIntent.PrepareNext), onDismiss = { next.onIntent(NextChapterIntent.DismissToast) })
             }
         }
+        // The circle over the page: the rail, the bursts, the toast, and the dock (with the bars, or while a line is
+        // typed, or folded to its stamps).
+        if (togetherState?.circle != null) {
+            TogetherRail(togetherState, sendTogether, Modifier.align(Alignment.CenterEnd))
+            TogetherBursts(togetherState)
+            TogetherToast(
+                togetherState,
+                sendTogether,
+                Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = if (barsShown) 56.dp else 8.dp),
+            )
+            if (barsShown || togetherState.typing || togetherState.collapsed) {
+                TogetherDock(
+                    togetherState,
+                    sendTogether,
+                    Modifier
+                        .align(Alignment.BottomCenter)
+                        .imePadding()
+                        .padding(bottom = (if (barsShown) with(LocalDensity.current) { bottomBarPx.toDp() } else 0.dp) + 8.dp),
+                )
+            }
+        }
         // The margin, docked at the bottom and not modal: the pages above stay readable and take a mark.
         if (pageMargin != null && pageMargin.state.open && !state.isBook) {
             MarginPanel(pageMargin.state, pageMargin.send, Modifier.align(Alignment.BottomCenter))
@@ -462,12 +508,54 @@ fun ReaderScreen(
             shown?.let { CoachOverlay(it) { onIntent(ReaderIntent.DismissCoach) } }
         }
     }
+    if (togetherState?.sheet != null) TogetherSheetView(togetherState, sendTogether)
     if (languagesOpen) TranslationSheet(translationState, translation::onIntent) { languagesOpen = false }
     if (keysOpen) KeysSheet { keysOpen = false }
     if (settingsOpen && !state.isBook) {
         ReaderSettingsSheet(state.settings, onIntent, nextState.autoSwitch, { next.onIntent(NextChapterIntent.SetAuto(it)) }) {
             settingsOpen = false
             onIntent(ReaderIntent.SettingsClosed)
+        }
+    }
+}
+
+/**
+ * The circle's links with the reader: its stream while the screen is started, the reader's place and own gestures
+ * sent to it, and its commands (go to a place, open the chapter the circle moved to) played by the reader.
+ */
+@Composable
+private fun TogetherEffects(
+    state: ReaderUiState,
+    together: TogetherUiState?,
+    send: (TogetherIntent) -> Unit,
+    onIntent: (ReaderIntent) -> Unit,
+    onOpenChapter: (String, Int) -> Unit,
+) {
+    if (together == null) return
+    LifecycleEventEffect(Lifecycle.Event.ON_START) { send(TogetherIntent.Start) }
+    LifecycleEventEffect(Lifecycle.Event.ON_STOP) { send(TogetherIntent.Stop) }
+    LaunchedEffect(state.reducedMotion) { send(TogetherIntent.ReducedMotion(state.reducedMotion)) }
+    LaunchedEffect(state.place) {
+        state.place?.let { send(TogetherIntent.PlaceChanged(it.book, it.page, it.fraction, it.panel, it.section, it.count)) }
+    }
+    // The reader's own gesture: a follower lets go of the host (the shared reader never counts a glide it played).
+    var moves by remember { mutableIntStateOf(state.userMoves) }
+    LaunchedEffect(state.userMoves) {
+        if (state.userMoves != moves && together.circle?.following == true) send(TogetherIntent.LetGo)
+        moves = state.userMoves
+    }
+    val command = together.command
+    LaunchedEffect(command) {
+        when (command) {
+            is TogetherCommand.GoToPlace -> {
+                send(TogetherIntent.CommandHandled(command.seq))
+                onIntent(ReaderIntent.GoToPlace(command.page, command.fraction, command.section, command.animated))
+            }
+            is TogetherCommand.OpenChapter -> {
+                send(TogetherIntent.CommandHandled(command.seq))
+                onOpenChapter(command.chapterId, 0)
+            }
+            null -> Unit
         }
     }
 }
