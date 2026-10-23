@@ -269,6 +269,35 @@ class ReaderTapsTest {
         }
 
     @Test
+    fun theBottomOfAStripIsItsLastPage() =
+        runTest(dispatcher) {
+            val saved = mutableListOf<Int>()
+            val vm =
+                ReaderViewModel("vovoscan", "t1", webtoon.id, 0, StaticReader(webtoon), FakeSettings(strips), headings) { _, _, _, page ->
+                    saved += page
+                }
+            advanceUntilIdle()
+            // Opening: a strip not laid out yet may say it is at its bottom; nothing moves before the strip does.
+            vm.onIntent(ReaderIntent.StripEdges(atTop = true, atBottom = true))
+            assertEquals(0, vm.state.value.currentIndex)
+            vm.onIntent(ReaderIntent.StripEdges(atTop = true, atBottom = false))
+            // Page 4 at the top of the screen, then the end of the strip: the last page (5) shows below it and is read.
+            vm.onIntent(ReaderIntent.ItemVisible(4))
+            assertEquals("4 / 5", vm.state.value.positionLabel)
+            vm.onIntent(ReaderIntent.StripEdges(atTop = false, atBottom = true))
+            assertEquals("5 / 5", vm.state.value.positionLabel)
+            assertEquals(5, vm.state.value.currentItem)
+            // Still at the bottom, the top of the screen changing does not take it back.
+            vm.onIntent(ReaderIntent.ItemVisible(3))
+            assertEquals("5 / 5", vm.state.value.positionLabel)
+            advanceUntilIdle()
+            assertEquals(listOf(0, 4), saved) // the opening, then the last page
+            // Leaving the bottom: the page at the top of the screen again.
+            vm.onIntent(ReaderIntent.StripEdges(atTop = false, atBottom = false))
+            assertEquals("3 / 5", vm.state.value.positionLabel)
+        }
+
+    @Test
     fun noNextChapterNothingHappensAtTheEnd() =
         runTest(dispatcher) {
             val vm = reader(webtoon.copy(nextChapterId = null), settings = FakeSettings(strips))

@@ -155,7 +155,13 @@ class SqlReaderLocalDataSource(
             .asFlow()
             .mapToList(io)
             .map { rows ->
-                rows.takeIf { it.isNotEmpty() }?.let { Book(it.map { row -> BookSection(row.section_index.toInt(), row.title) }) }
+                // The contents are written with the sections (one transaction): reading them now sees the same book.
+                rows.takeIf { it.isNotEmpty() }?.let {
+                    Book(
+                        it.map { row -> BookSection(row.section_index.toInt(), row.title) },
+                        withContext(io) { database.toc(chapterKey(sourceKey, chapterId)) },
+                    )
+                }
             }
 
     override suspend fun saveBook(
@@ -164,10 +170,7 @@ class SqlReaderLocalDataSource(
         sections: List<ParsedSection>,
     ) = withContext(io) {
         val key = chapterKey(sourceKey, chapterId)
-        queries.transaction {
-            queries.deleteSections(key)
-            sections.forEachIndexed { index, section -> queries.putSection(key, index.toLong(), section.title, section.html) }
-        }
+        queries.transaction { database.putBook(key, sections) }
     }
 
     override suspend fun sectionHtml(
@@ -181,6 +184,8 @@ class SqlReaderLocalDataSource(
             queries.transaction {
                 queries.clearPages()
                 queries.clearSections()
+                database.bookQueries.clearToc()
+                database.bookQueries.clearPositions()
                 queries.clearChapters()
                 // The modes chosen per series go with the account; the device-wide preferences stay.
                 queries.clearSeriesModes()
@@ -193,6 +198,9 @@ class SqlReaderLocalDataSource(
             queries.transaction {
                 queries.clearPagesOf(sourceKey)
                 queries.clearSectionsOf(sourceKey)
+                // Before the chapters: these find the source's books through them.
+                database.bookQueries.clearTocOf(sourceKey)
+                database.bookQueries.clearPositionsOf(sourceKey)
                 queries.clearChaptersOf(sourceKey)
                 queries.clearSeriesModesOf(sourceKey)
                 queries.clearPositionsOf("pos/$sourceKey/%")

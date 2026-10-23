@@ -1,0 +1,16 @@
+-- v5 → v6: a book's nested table of contents, and where the reader was inside a section (device only).
+CREATE TABLE book_toc (
+    chapter_key TEXT NOT NULL,
+    entry_index INTEGER NOT NULL,
+    section_index INTEGER NOT NULL,
+    depth INTEGER NOT NULL,
+    title TEXT NOT NULL,
+    anchor TEXT,
+    PRIMARY KEY (chapter_key, entry_index)
+);
+
+CREATE TABLE book_position (
+    chapter_key TEXT NOT NULL PRIMARY KEY,
+    section_index INTEGER NOT NULL,
+    fraction REAL NOT NULL
+);
