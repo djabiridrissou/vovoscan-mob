@@ -16,11 +16,13 @@ import com.vovoscan.feature.reader.data.ReaderLocalDataSource
 import com.vovoscan.feature.reader.data.ReaderRemoteDataSource
 import com.vovoscan.feature.reader.data.ReaderRepositoryImpl
 import com.vovoscan.feature.reader.data.RoutingReaderRemoteDataSource
+import com.vovoscan.feature.reader.data.SqlBookReadingRepository
 import com.vovoscan.feature.reader.data.SqlDownloadsLocalDataSource
 import com.vovoscan.feature.reader.data.SqlReaderLocalDataSource
 import com.vovoscan.feature.reader.data.SqlReaderSettingsRepository
 import com.vovoscan.feature.reader.data.TranslationsRepositoryImpl
 import com.vovoscan.feature.reader.data.db.ReaderDatabase
+import com.vovoscan.feature.reader.domain.BookReadingRepository
 import com.vovoscan.feature.reader.domain.ChapterPanels
 import com.vovoscan.feature.reader.domain.CoachSync
 import com.vovoscan.feature.reader.domain.DownloadScheduler
@@ -76,6 +78,9 @@ val readerModule =
         }
         // Reading modes, tap zones and the other reader settings: on this device only.
         single<ReaderSettingsRepository> { SqlReaderSettingsRepository(get(), get<AppDispatchers>().io) }
+        // Books: the page's typography and the position inside a section, on this device only (written in the app's
+        // scope, so the last position is kept once the reader has closed).
+        single<BookReadingRepository> { SqlBookReadingRepository(get(), get<AppDispatchers>().io, get<CoroutineScope>()) }
         viewModel { (sourceKey: String, titleId: String, chapterId: String, startPage: Int) ->
             ReaderViewModel(
                 sourceKey,
@@ -87,6 +92,8 @@ val readerModule =
                 get(),
                 panels = get(),
                 coachSync = getOrNull() ?: CoachSync.None,
+                books = get(),
+                parts = get(),
                 progress = get(),
             )
         }

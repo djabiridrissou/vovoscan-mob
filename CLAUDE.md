@@ -179,9 +179,16 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   reading mode, tap zones, chapter transitions, reader settings, resume and progress.
 - Books (EPUB): downloaded once (signed URL from the API, or the source's host for a rule-based source),
   read by `EpubParser` (Okio + Ksoup: `container.xml` → OPF → reading order, nav/NCX table of contents), sections
-  sanitized (allowlist, images as `data:` only, links removed) and stored in the database: offline rereading.
+  sanitized (allowlist, ids kept, images as `data:` only, links removed) and stored in the database: offline
+  rereading.
   Displayed in a WebView / WKWebView with no JavaScript and no network, styles and CSP from `BookStyle`. A book's
-  progress counts in sections.
+  progress counts in sections. What is left of a removed link reads as the text around it (`a { color: inherit }`):
+  red promised a tap that did nothing, and Gutenberg books wrap headings, and whole chapters, in anchors. A file
+  holding several chapters (Gutenberg splits its books every few chapters) is named after its first table-of-contents
+  entry (nav or NCX): the last one used to win ("CHAPTER 3. The Spouter-Inn." over chapters 1 to 3); books opened
+  before keep their saved titles until opened again from a new download. The top bar's second line is the section read
+  (`ReaderUiState.subtitle`: "CHAPTER VI. Pig and Pepper", the part's name while the sections load); both bottom bars
+  offer "Next section →" alone while a section is left, the previous / next part after the last one.
 - Books: pull to turn. Pulling up past the bottom of a section (down past its top) shows a hint that grows with the
   pull: "↑ Pull for the next section" → past the threshold, red, "Release for the next section"; letting go there
   opens it at its top. The targets are the buttons' (kept): the next section, else at the last section the next part
@@ -201,8 +208,48 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   `.sensoryFeedback`). Reduced motion (Android "Remove animations", iOS Reduce Motion): the hint neither slides, grows
   nor fades, its bar still fills. A short fling that reaches the end does not turn (only the drag past the edge counts);
   a long drag past it does, as the threshold says.
+- Books: typography (gear in the top bar, books too; `BookSettingsSheet`, `BookIntent`), kept on the device in
+  `reader_setting` (keys `book.…`, `SqlBookReadingRepository`) and applied live through `BookStyle`: text size =
+  18 px × the device's text size (`BookIntent.SystemTextScale`: Android `fontScale`, iOS Dynamic Type as body text
+  scales, `UIFontMetrics`) × the user's own (70–200 %, steps of 10, Reset), line spacing (compact 1.45 / normal 1.7 /
+  relaxed 2), margins (12 / 20 / 36 px), font (serif: `ui-serif` = New York on iOS, Noto Serif on Android; sans: the
+  system's; system fonts only, the web view has no network and the CSP loads nothing), justification, and the page's
+  colours (dark, the default and the old page; sepia; light): the book page only, the app and its bars stay dark, the
+  web view's own colour follows (`BookReaderState.pageBackground`). Headings and spacing are in `em`, so the page grows
+  as a whole. Android sets `textZoom` to 100 so nothing scales on top. Defaults (`BookTypography`) are the page as it was.
+- Books: the position inside a section (Gutenberg sections hold several chapters, 1–4 MB) is kept on the device only
+  (`book_position`: section + the fraction of its height at the top of the screen; the library's progress still
+  counts sections). The web view reports its top (`BookIntent.SectionScrolled(section, fraction)`: Android
+  `onScrollChanged`, iOS KVO on `contentOffset`); the view model saves it once scrolling has paused 1 s
+  (`POSITION_DELAY_MS`) and at once when the reader closes (`onCleared`, written in the app's scope). Where the
+  section opens comes from one value, `ReaderUiState.book.opening` (`SectionOpening`: fraction, anchor or end, with
+  a `seq`): the native side applies each seq once, after the section has loaded, again at 0 / 120 / 400 / 1000 ms
+  while a big section is still growing, stops as soon as the reader touches it, and reports nothing meanwhile.
+  Reopening a book opens its section at the saved fraction when that section is the one opened (the library's
+  progress, or a part opened from its start), never when coming back from the next part (its end); a typography change
+  (or the device's text size) styles the section again and opens it at the fraction last reported. A fraction, not an element: with no JavaScript the web view can't say which element is at the top;
+  text, headings and spacing scale together, so the same fraction is about the same text (checked on iOS: wide margins
+  and 110 % kept the same first line; Dynamic Type XXXL moved it by about a line). Images keep their size, so an
+  illustrated section can drift a little more.
+- Books: contents (button in the top bar when the book has some; `BookContents.rows`, `BookIntent.ChooseContents`;
+  Android `ModalBottomSheet`, iOS `.sheet`). `EpubParser` keeps every nav / NCX entry (`ParsedTocEntry`: depth,
+  section, anchor; an EPUB 3 entry without its own link opens where its first nested entry does, an anchor its
+  section doesn't hold opens the section's start) and the sanitizer keeps `id` attributes; `book_toc` stores them
+  with the sections (`putBook`, one transaction, removed with them). A section the contents leave out keeps a row;
+  the rows of the section being read are marked. An entry inside a section opens it at its element. iOS: the
+  document's address is a fake one (`https://book.vovoscan.invalid/section`, never fetched), so a jump to `#anchor` is
+  a navigation inside the same document, which WebKit does with the page's JavaScript off (checked: Moby Dick,
+  "CHAPTER 2" inside the file of chapters 1–3, at the top of the screen). Android keeps the `null` base URL and
+  scrolls to where the element's text starts (`BookAnchors.textFraction`: the share of the section's text before it,
+  markup and images left out): a `loadUrl("…#anchor")` after `loadDataWithBaseURL` may not count as the same
+  document there and would then try to load a page, so it is not used (approximate in an illustrated section). A book in several parts (the title's chapters, from `TitleChapters`)
+  lists its parts, the part being read holding its rows; another part opens at its start. Books opened before keep
+  their saved sections (no contents but the sections, no ids) until downloaded again. Migration `5.sqm` (v5 → v6):
+  `book_toc`, `book_position`; sign-out and a removed source erase both.
 - Progress goes through the `ReadingProgressSink` port, wired to the library in `shared`: the reader does not
   know about `library`. It is kept only for a followed title.
+  Leaving before the pause saves it at once: a flag, not the save job (`viewModelScope` is already cancelled when
+  `onCleared` runs, so the job never looked active and the last page was lost).
 - Images are signed URLs, unchanged for a day: the image cache serves pages already seen.
 
 ## Downloads (offline reading)
@@ -369,12 +416,36 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   ("Finished: Chapter 3" / "Next: Chapter 4 · name" / "This is the last chapter for now."), a further Next opens the
   next chapter; before the first page the same backwards, and the previous chapter opens at its last page
   (`ReaderViewModel.START_AT_END`). Strips report their edges (`StripEdges`): Next at the bottom opens the next
-  chapter. Chapter names come through the `ChapterHeadings` port (wired in `shared` to the title page kept by the
-  catalog). Commands carry a `seq`; the native side starts them and answers `CommandHandled(seq)`.
+  chapter. A strip's page is the one at the top of the screen, except at the bottom of the strip, where the last page
+  is read (it can never reach the top: a chapter ended on "6 / 7" and was saved so); this needs the strip to have
+  moved (an `ItemVisible` report), so an opening strip not laid out yet does not jump to the end. Chapter names come
+  through the `ChapterHeadings` port (wired in `shared` to the title page kept by the catalog). Commands carry a `seq`; the native side starts them and answers `CommandHandled(seq)`.
 - Single taps act on touch-up (measured 6-19 ms from touch-up to the intent on the iOS simulator). Double tap to zoom
-  (off by default; 2×, pan by dragging, scrolling paused while zoomed) makes single taps wait for a possible second
-  tap (~370 ms). A drag, fling or pinch is never a tap (the scroll view takes it first). Taps faster than the scroll
-  animation add up.
+  (off by default) makes single taps wait for a possible second tap (~370 ms). A drag, fling or pinch is never a tap
+  (the scroll view, or the zoom, takes it first). Taps faster than the scroll animation add up.
+- Zoom, in every mode (`PageZoom`, `ZoomTransform`, pure, `domain`; drawn as `screen = content × scale + (x, y)`, the
+  zoomed content always covering the area): pinch from 1× to 4× around the fingers, whatever the double-tap setting;
+  double tap (when on) goes fit → 2× around the tapped point, and from any zoom back to fit. Zoomed, a drag pans the
+  view, and what goes past its top or bottom scrolls the content beneath (`PageZoom.pan` → `ZoomPan.scroll`: the strip,
+  or the current tall page inside its page, never into the next page); letting go flings it. The pager and the strip
+  do not scroll by themselves while zoomed (no page turn under a pan). Long strips zoom as a whole, as Mihon's webtoon
+  view: pages stay joined and the strip keeps scrolling under the zoom (zooming the page under the fingers cut it from
+  its neighbours at every page boundary and stopped the reading there). The native side reports
+  `ReaderIntent.ZoomChanged(zoomed)`; while zoomed a tap only shows or hides the bars (`ReaderUiState.zoomed`, the
+  zones would turn the page away from what is being read), and back at 1× they work again. `ReaderUiState.zoomReset`
+  changes when the zoom must go back to 1× at once: a page turned while zoomed (volume keys), a slider jump, another
+  mode. The page read, zoomed in a paged mode, is decoded again with all its pixels (`detail`), back to the screen's
+  width at 1×. Android: one `pointerInput` in the initial pass (`zoomGestures`: `calculateZoom` / `calculateCentroid` /
+  `calculatePan`, zoomed one-finger pans with a `VelocityTracker` fling) consumes what it uses, so the pager or the
+  list never sees it; `graphicsLayer` draws. iOS: `MagnifyGesture` (around where the fingers started: SwiftUI gives no
+  centre that follows them) and, zoomed, a `DragGesture`; `scaleEffect` + `offset`; `ZoomScroller` reaches the strip or
+  the tall page beneath.
+- Page slider (bottom bar, with the bars, comics of more than one page; `ReaderUiState.showsSlider`): every page of
+  the chapter, mirrored in right to left (first page on the right). While dragged, the bar's "5 / 19" shows the page
+  under the thumb in yellow (`sliderLabel`); letting go sends `ReaderIntent.SeekTo(page)` → `ReaderCommand.JumpTo(item)`:
+  that page at once, its top at the top of the screen, in every mode (a tall page from its top); the zoom goes back to
+  1× and the bars stay. A strip counts the jump as moved (its next reports follow from there). TalkBack / VoiceOver
+  adjustments jump at once.
 - "How to read" guide (reader SPEC §10, `ReaderCoach`, `CoachKind` Manga / Webtoon / Comic / Book): the first chapter
   of each format the account opens shows a static card (the real tap zones, one line per gesture for the mode it
   reads in); the first tap anywhere closes it and is not a page turn; the "?" in the top bar (`ShowCoach`) brings it
@@ -394,7 +465,13 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
 - Android: `HorizontalPager` (reversed for right to left) / `VerticalPager` / `LazyColumn`, `detectTapGestures`
   around them, volume keys through `MainActivity.onKeyDown`/`onKeyUp` while the reader is on screen. Pages taller than
   4096 px, and pages of unknown height, are decoded as software bitmaps (a hardware bitmap of an 800 × 14 000 webtoon
-  page never drew). A tall page is a `verticalScroll` inside its pager page (`PagedPage`): nested scrolling scrolls the
+  page never drew). Every page is decoded for the screen's width (`size(Size(width, Dimension.Undefined))`,
+  `Precision.INEXACT`: a page wider than the screen takes the screen's pixels, a narrower one keeps its own, never
+  scaled up); the `LazyColumn` only composes the pages near the screen, and a page above 16 MB decoded (a webtoon
+  strip of 800 × 13 000 px is about 40 MB) stays out of Coil's memory cache (`MAX_CACHED_BYTES`: read from it, never
+  written), so pages scrolled away are let go and come back from the disk cache (Reaper's chapter 1 on the Pixel 7: about
+  2 strips held at rest, 4 at the peak of a fling until the GC runs, as before: its 800 px pages are narrower than the
+  screen, so the width decode changes nothing there). A tall page is a `verticalScroll` inside its pager page (`PagedPage`): nested scrolling scrolls the
   page first, the rest of the drag moves the pager, a fling stops at the page's edge (the pager's own rule). Pages
   before the current one wait at their bottom, pages after it at their top, so a swipe back shows the end of the
   previous page. iOS: horizontal pages are a paging `ScrollView` (`scrollTargetBehavior(.paging)`, right-to-left layout
@@ -406,14 +483,20 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   the screen past the edge (`TURN_FRACTION`), else back to the edge, one page per gesture. The stack is a `VStack`,
   not lazy (a lazy stack's estimated positions for pages not laid out yet made scrolls to the next page stop short or
   not move), and only pages within 2 of the current one hold their image (`PageImage.active`). Strips: `ScrollView` +
-  `ScrollPosition`; one `SpatialTapGesture` on the container.
+  `ScrollPosition` over a `VStack` too (`StripReader`): the `LazyVStack` kept every page it had shown with its image
+  (Reaper's chapter 1, 7 pages of 800 × 12 000-14 000 px, about 40 MB each decoded, went from 113 to 278 MB; now about 70 MB all along), and a
+  jump needs every page's place; the pages within a screen above and two below the visible area hold their image
+  (`window`, from the measured frames), the others let it go. One `SpatialTapGesture` on the container. `PageLoader`
+  decodes with ImageIO (`CGImageSourceCreateThumbnailAtIndex`, decoded at once off the main thread) no wider than the
+  reading area's pixels (`pageDecodeWidth`, never scaled up), and keeps the file while the image is held, for the
+  zoom's detailed decode; `UIImage(data:)` kept the file and decoded it full size on the main thread when first drawn.
 - Page size (`ReaderPage.hasSize`): our pages come with their size, so the space is reserved and nothing jumps. A source
   read on the device usually sends none (0 × 0): the page shows a placeholder (0.7, portrait) until the image has loaded,
   then takes **the image's own shape** (Android: Coil's `onSuccess`; iOS: `PageLoader`, which fetches through the shared
   session so the cache and `SourceRefererProtocol` still apply). Never the placeholder's shape: a webtoon strip squeezed
-  into it was a thin band on iOS and cropped to its top on Android. Android decodes such a page for the screen's width,
-  whatever its height (`size(Size(width, Dimension.Undefined))`): sized for the placeholder's screen-fitted box, a strip
-  came out a few hundred pixels wide and was blurred once it filled the width.
+  into it was a thin band on iOS and cropped to its top on Android. Android decodes such a page (as every page) for the
+  screen's width, whatever its height: sized for the placeholder's screen-fitted box, a strip came out a few hundred
+  pixels wide and was blurred once it filled the width.
 - Resume with pages of unknown size (and as they change shape). The reader opens at the saved page in every mode and
   stays there while pages go from the placeholder to their real height. Cause of the bug ("page 1 / 7" instead of the
   saved page 5, right to left, a rule-based source): `SqlReaderLocalDataSource.observe` combined two queries (the
@@ -432,7 +515,11 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   then took no height at all). The loader starts again when the page's URL changes (the saved copy of a chapter shows
   first, the fresh one may bring new signed links). A page that fails shows "This page didn't load." and Retry; Retry
   sits under the reader's tap detector and takes the tap itself (the button consumes it, no tap zone fires; checked
-  on the Pixel 7 with a page whose file was missing: the page loaded on Retry and took its tall shape).
+  on the Pixel 7 with a page whose file was missing: the page loaded on Retry and took its tall shape). While its
+  image loads, a page shows a cyan spinner (centred, or near the top of a page fit to width); before, a slow source
+  left a blank grey page. A page fitted to the screen keeps the reader's black around it once loaded (Android drew
+  the placeholder's grey beside a wide xkcd strip). The reader's back, settings and previous-section controls have
+  TalkBack / VoiceOver labels ("Back", "Reader settings", "Previous section"), not "left arrow".
 
 ## Large screens (iPad, tablets, foldables)
 

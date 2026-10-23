@@ -20,6 +20,16 @@ class EpubParserTest {
     }
 
     @Test
+    fun aFileOfSeveralChaptersIsNamedAfterTheFirst() {
+        // EPUB 3 nav: the first entry pointing at a file names its section; a blank entry falls back to its heading.
+        val nav = EpubParser().parse(Base64.decode(EpubFixture.severalChaptersPerFileNav))
+        assertEquals(listOf("Chapter 1. The Lantern", "Chapter 3. The Far Bank"), nav.map { it.title })
+        // EPUB 2 NCX: the same rule.
+        val ncx = EpubParser().parse(Base64.decode(EpubFixture.severalChaptersPerFileNcx))
+        assertEquals(listOf("Chapter 1. The Lantern", "Chapter 3. The Far Bank"), ncx.map { it.title })
+    }
+
+    @Test
     fun htmlIsSanitized() {
         val html = EpubParser().parse(epub)[0].html
         listOf("<script", "alert(", "onclick", "<style", "style=", "<iframe", "tracker.example").forEach { assertFalse(it in html, it) }
