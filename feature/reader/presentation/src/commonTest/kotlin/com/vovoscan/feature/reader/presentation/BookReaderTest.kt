@@ -345,3 +345,19 @@ class BookReaderTest {
         assertEquals("#0b0b0e", BookStyle.hex(0x0B0B0E))
     }
 }
+
+class BookAnchorsTest {
+    @Test
+    fun anElementsShareOfTheText() {
+        val page =
+            BookStyle.document(
+                "T",
+                "<h2 id=\"c1\">One</h2><p>aaaaaaaaaa</p><img src=\"data:image/png;base64,QUFBQUFBQUFBQUFBQUFB\">" +
+                    "<h2 id=\"c2\">Two</h2><p>bbbbbbbbbb</p>",
+            )
+        assertEquals(0f, BookAnchors.textFraction(page, "c1"))
+        // 13 characters of text before "Two", 13 after it: the image and the style sheet don't count.
+        assertEquals(0.5f, BookAnchors.textFraction(page, "c2"))
+        assertNull(BookAnchors.textFraction(page, "gone"))
+    }
+}

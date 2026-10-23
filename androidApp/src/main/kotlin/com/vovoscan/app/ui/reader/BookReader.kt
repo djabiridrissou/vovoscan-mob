@@ -44,6 +44,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.vovoscan.app.ui.common.PrimaryButton
 import com.vovoscan.app.ui.theme.Brand
+import com.vovoscan.feature.reader.presentation.BookAnchors
 import com.vovoscan.feature.reader.presentation.BookIntent
 import com.vovoscan.feature.reader.presentation.PullHint
 import com.vovoscan.feature.reader.presentation.ReaderIntent
@@ -262,7 +263,7 @@ private class PullWebView(
             forHere?.let { appliedSeq = it.seq }
             loading = true
             placing = true
-            loadDataWithBaseURL(BASE_URL, document, "text/html", "utf-8", null)
+            loadDataWithBaseURL(null, document, "text/html", "utf-8", null)
             scrollTo(0, 0)
         } else if (forHere != null && !loading) {
             appliedSeq = forHere.seq
@@ -288,8 +289,12 @@ private class PullWebView(
             postDelayed({
                 if (generation != placeGeneration || touched) return@postDelayed
                 when {
-                    // Same document: the browser scrolls the element to the top, no page is loaded.
-                    opening.anchor != null -> loadUrl("$BASE_URL#${opening.anchor}")
+                    // Where the element's text starts (no navigation: a jump to an anchor could leave the page here).
+                    opening.anchor != null ->
+                        scrollTo(
+                            0,
+                            ((BookAnchors.textFraction(section(), opening.anchor!!) ?: 0f) * computeVerticalScrollRange()).roundToInt(),
+                        )
                     opening.fromEnd -> scrollTo(0, (computeVerticalScrollRange() - height).coerceAtLeast(0))
                     else -> scrollTo(0, ((opening.fraction ?: 0f) * computeVerticalScrollRange()).roundToInt())
                 }
@@ -300,6 +305,8 @@ private class PullWebView(
             }, delay)
         }
     }
+
+    private fun section(): String = tag as? String ?: ""
 
     private fun report() {
         val range = computeVerticalScrollRange()
@@ -359,11 +366,5 @@ private class PullWebView(
 
         /** The page's height settles over the first frames (longer for a big section): placed again meanwhile. */
         val PLACE_RETRIES_MS = listOf(0L, 120L, 400L, 1000L)
-
-        /**
-         * The document's address, never fetched (no network): a jump to an anchor is a navigation inside this same
-         * document, which the web view does without JavaScript.
-         */
-        const val BASE_URL = "https://book.vovoscan.invalid/section"
     }
 }

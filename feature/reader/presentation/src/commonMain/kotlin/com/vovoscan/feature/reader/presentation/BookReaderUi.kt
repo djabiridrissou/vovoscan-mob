@@ -291,3 +291,45 @@ object BookText {
             BookTheme.Light -> "Light"
         }
 }
+
+/**
+ * Where an element (by id) sits in a section, estimated without laying it out: the share of the page's text that comes
+ * before it (markup and inlined images don't count). Android opens a contents entry inside a section there: its web
+ * view has no way, without JavaScript, to jump to an element that is sure not to leave the page (iOS jumps to the
+ * element itself). Null when the page holds no such id.
+ */
+object BookAnchors {
+    fun textFraction(
+        html: String,
+        anchor: String,
+    ): Float? {
+        val start = html.indexOf("<body").takeIf { it >= 0 } ?: 0
+        val at =
+            listOf("id=\"$anchor\"", "id='$anchor'")
+                .map { html.indexOf(it, start) }
+                .filter { it >= 0 }
+                .minOrNull() ?: return null
+        // The tag holding the id starts at the last '<' before it.
+        val tag = html.lastIndexOf('<', at).coerceAtLeast(start)
+        val before = textLength(html, start, tag)
+        val total = before + textLength(html, tag, html.length)
+        return if (total == 0) 0f else before.toFloat() / total
+    }
+
+    private fun textLength(
+        html: String,
+        from: Int,
+        to: Int,
+    ): Int {
+        var count = 0
+        var inTag = false
+        for (i in from until to) {
+            when (html[i]) {
+                '<' -> inTag = true
+                '>' -> inTag = false
+                else -> if (!inTag && !html[i].isWhitespace()) count++
+            }
+        }
+        return count
+    }
+}
