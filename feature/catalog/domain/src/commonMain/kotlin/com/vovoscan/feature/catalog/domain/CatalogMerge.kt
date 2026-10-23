@@ -51,6 +51,8 @@ data class CategoryOption(
     val name: String,
     /** Source key → that source's category id, in the reader's order of sources. */
     val ids: Map<String, String>,
+    /** The title format it stands for: a source without the category shows its titles of that format under it. */
+    val format: ReadingFormat? = null,
 )
 
 object CategoryUnion {
@@ -62,6 +64,7 @@ object CategoryUnion {
     fun of(categories: List<Pair<String, List<SourceCategory>>>): List<CategoryOption> {
         val names = linkedMapOf<String, String>()
         val ids = mutableMapOf<String, LinkedHashMap<String, String>>()
+        val formats = mutableMapOf<String, ReadingFormat>()
         for ((sourceKey, list) in categories) {
             for (category in list) {
                 val name = category.name.trim()
@@ -69,9 +72,30 @@ object CategoryUnion {
                 val key = name.lowercase()
                 names.getOrPut(key) { name }
                 ids.getOrPut(key) { linkedMapOf() }.getOrPut(sourceKey) { category.id }
+                category.format?.let { formats.getOrPut(key) { it } }
             }
         }
-        return names.map { (key, name) -> CategoryOption(name, ids.getValue(key)) }
+        return names.map { (key, name) -> CategoryOption(name, ids.getValue(key), formats[key]) }
+    }
+
+    /**
+     * The format categories first, whatever the sources and their order: one per entry of [formats] (in that order),
+     * the sources' own category for it when one has it (its format, or its name, case-insensitive), else one that
+     * files every source's titles by that format. Then the other categories, in [union]'s order.
+     */
+    fun formatsFirst(
+        union: List<CategoryOption>,
+        formats: List<Pair<ReadingFormat, String>>,
+    ): List<CategoryOption> {
+        val used = mutableSetOf<CategoryOption>()
+        val first =
+            formats.map { (format, name) ->
+                val own =
+                    union.firstOrNull { it.format == format && it !in used }
+                        ?: union.firstOrNull { it.format == null && it.name.equals(name, ignoreCase = true) && it !in used }
+                own?.also { used += it } ?: CategoryOption(name, emptyMap(), format)
+            }
+        return first + union.filter { it !in used }
     }
 
     /** The option of that name (case-insensitive), if the selected sources have it. */

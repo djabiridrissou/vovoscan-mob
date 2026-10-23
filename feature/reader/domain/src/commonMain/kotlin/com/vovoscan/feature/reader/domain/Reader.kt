@@ -28,7 +28,10 @@ enum class ReadingMode {
         /** The modes a comic can be read in, in the order the settings show them. */
         val comicModes: List<ReadingMode> = listOf(PagedRightToLeft, PagedLeftToRight, PagedVertical, LongStrip, LongStripGaps)
 
-        /** The format rule: a book is text, every comic one continuous strip (`flow`, reader/SPEC.md §1). */
+        /**
+         * The format rule (reader/SPEC.md §1b): a book is text, a webtoon one continuous strip, a manga pages turned right
+         * to left, a comic pages turned left to right. The reader's choice for a series overrides it.
+         */
         fun from(
             kind: String,
             format: String,
@@ -46,11 +49,11 @@ enum class ComicFormat(
     /** The way its pages and panels are read when paged: Japanese manga right to left, the others left to right. */
     val rightToLeft: Boolean,
 ) {
-    Manga(ReadingMode.LongStrip, rightToLeft = true),
+    Manga(ReadingMode.PagedRightToLeft, rightToLeft = true),
     Webtoon(ReadingMode.LongStrip, rightToLeft = false),
 
     /** Western comics and bandes dessinées. */
-    Comic(ReadingMode.LongStrip, rightToLeft = false),
+    Comic(ReadingMode.PagedLeftToRight, rightToLeft = false),
     ;
 
     /** The paged mode that reads it in its own direction. */
@@ -60,7 +63,8 @@ enum class ComicFormat(
         /**
          * What a source says, in its own words: our API's `manga` / `webtoon` / `comic`, a plugin's own labels
          * ("Long Strip", "Web Comic", "manhwa", "manhua", "BD") or the work's original language (`ko`, `zh`: webtoons;
-         * `ja`: manga). Anything else is a manga.
+         * `en`, `fr`…: comics; `ja`: manga). A webtoon hint wins over the others; anything else is a manga (reader/SPEC.md
+         * §1b, the backend's `core/formats.py`).
          */
         fun from(format: String): ComicFormat {
             val said = format.trim().lowercase()
@@ -72,20 +76,23 @@ enum class ComicFormat(
         }
 
         /**
-         * The pages' own shape: a chapter whose sized pages are mostly taller than [STRIP_RATIO] times their width is
-         * a vertical strip, whatever the source said. null while no page has a size.
+         * The pages' own shape: a chapter whose sized pages have a median height of at least [STRIP_RATIO] times their
+         * width is a vertical strip, whatever the source said (decided again as more pages get their size). null while
+         * no page has a size.
          */
         fun fromPages(pages: List<ReaderPage>): ComicFormat? {
-            val sized = pages.filter { it.hasSize }
-            if (sized.isEmpty()) return null
-            val strips = sized.count { it.height.toFloat() / it.width > STRIP_RATIO }
-            return if (strips * 2 > sized.size) Webtoon else null
+            val ratios = pages.filter { it.hasSize }.map { it.height.toFloat() / it.width }.sorted()
+            if (ratios.isEmpty()) return null
+            val mid = ratios.size / 2
+            val median = if (ratios.size % 2 == 1) ratios[mid] else (ratios[mid - 1] + ratios[mid]) / 2
+            return if (median >= STRIP_RATIO) Webtoon else null
         }
 
-        const val STRIP_RATIO = 2.5f
+        const val STRIP_RATIO = 2.2f
         private val STRIP_LANGUAGES = setOf("ko", "zh", "zh-hk", "zh-hans", "zh-hant", "ko-ro", "zh-ro")
         private val STRIP_WORDS = listOf("webtoon", "long strip", "longstrip", "web comic", "webcomic", "manhwa", "manhua", "vertical")
-        private val COMIC_WORDS = setOf("comic", "comics", "western", "bd", "bande dessinée", "bande dessinee", "ltr")
+        private val COMIC_WORDS =
+            setOf("comic", "comics", "western", "bd", "bande dessinée", "bande dessinee", "ltr", "en", "fr", "es", "it", "de", "pt", "nl")
     }
 }
 

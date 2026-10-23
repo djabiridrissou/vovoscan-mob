@@ -69,7 +69,7 @@ class ReaderRepositoryImplTest {
             repo.refresh("vovoscan", "t1", "c2")
             repo.observe("vovoscan", "c2").test {
                 val read = awaitItem()!!
-                assertEquals(ReadingMode.LongStrip, read.mode)
+                assertEquals(ReadingMode.PagedRightToLeft, read.mode)
                 assertEquals(ComicFormat.Manga, read.format)
                 assertEquals(listOf(0, 1), read.pages.map { it.index })
                 assertEquals("c1", read.previousChapterId)

@@ -24,6 +24,7 @@ import androidx.compose.ui.unit.dp
 import com.vovoscan.app.ui.settings.Chip
 import com.vovoscan.app.ui.theme.Brand
 import com.vovoscan.feature.reader.domain.ComicFormat
+import com.vovoscan.feature.reader.presentation.NextAutoSwitch
 import com.vovoscan.feature.reader.presentation.ReaderIntent
 import com.vovoscan.feature.reader.presentation.ReaderSettingsSheet
 import com.vovoscan.feature.reader.presentation.ReaderText
@@ -34,6 +35,9 @@ import com.vovoscan.feature.reader.presentation.ReaderText
 internal fun ReaderSettingsSheet(
     sheet: ReaderSettingsSheet,
     onIntent: (ReaderIntent) -> Unit,
+    /** "Always prepare the next chapter of this series in …" while reading in a language. */
+    auto: NextAutoSwitch?,
+    onAuto: (Boolean) -> Unit,
     onDismiss: () -> Unit,
 ) {
     ModalBottomSheet(
@@ -59,6 +63,7 @@ internal fun ReaderSettingsSheet(
                 Help(sheet.seriesHint, Modifier.weight(1f))
                 if (sheet.canResetSeries) Chip(ReaderText.RESET_SERIES, false) { onIntent(ReaderIntent.ResetSeriesMode) }
             }
+            auto?.let { AutoRow(it, onAuto) }
 
             Section(ReaderText.DEFAULT_MODES)
             Label(ReaderText.MANGA)
@@ -95,6 +100,7 @@ internal fun ReaderSettingsSheet(
             Toggle(ReaderText.DOUBLE_TAP_ZOOM, ReaderText.DOUBLE_TAP_ZOOM_HELP, sheet.doubleTapZoom) {
                 onIntent(ReaderIntent.SetDoubleTapZoom(it))
             }
+            Toggle(ReaderText.DOUBLE_PAGES, ReaderText.DOUBLE_PAGES_HELP, sheet.doublePages) { onIntent(ReaderIntent.SetDoublePages(it)) }
             Toggle(ReaderText.KEEP_AWAKE, ReaderText.KEEP_AWAKE_HELP, sheet.keepAwake) { onIntent(ReaderIntent.SetKeepAwake(it)) }
             Toggle(ReaderText.VOLUME_KEYS, ReaderText.VOLUME_KEYS_HELP, sheet.volumeKeys) { onIntent(ReaderIntent.SetVolumeKeys(it)) }
             if (sheet.volumeKeys) {

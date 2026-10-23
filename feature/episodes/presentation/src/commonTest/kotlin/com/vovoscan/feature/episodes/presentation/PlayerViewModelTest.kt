@@ -189,4 +189,149 @@ class PlayerViewModelTest {
             assertTrue(offline.state.value.ready)
             assertNull(offline.state.value.error)
         }
+
+    private fun language(
+        status: com.vovoscan.feature.episodes.domain.EpisodeStatus,
+        code: String = "fr",
+        progress: com.vovoscan.feature.episodes.domain.StageProgress? = null,
+    ) = episode(status, progress = progress).copy(language = code)
+
+    @Test
+    fun aLanguageAlreadyMadeSwitchesAtOnceAtTheSamePageAndKeepsPlaying() =
+        runTest(dispatcher) {
+            val repo = repo(AppResult.Ok(watch()), AppResult.Ok(watch(renderKey = "rk-fr")))
+            repo.inLanguage["fr"] =
+                kotlinx.coroutines.flow.MutableStateFlow(language(com.vovoscan.feature.episodes.domain.EpisodeStatus.Ready))
+            val vm = PlayerViewModel("c1", null, repo, { 0L })
+            advanceUntilIdle()
+            assertEquals("Original", vm.state.value.languageLabel)
+            vm.onIntent(PlayerIntent.SeekToBeat(2))
+            vm.onIntent(PlayerIntent.Play)
+            vm.onIntent(PlayerIntent.ChooseLanguage("fr"))
+            advanceUntilIdle()
+            val state = vm.state.value
+            assertNull(state.languageDock)
+            assertEquals("fr", state.language)
+            assertEquals("Français", state.languageLabel)
+            assertTrue(state.playing)
+            assertEquals("rk-fr", vm.plan?.watch?.renderKey)
+            // Page 2 (chapter page 1) was playing: the new language starts there.
+            assertEquals(2000.0, state.positionMs)
+            assertEquals(listOf("", "fr", "fr"), repo.languages)
+        }
+
+    @Test
+    fun aNewLanguageIsQuotedThenMadeWhileTheEpisodePlaysThenSwitches() =
+        runTest(dispatcher) {
+            val repo = repo(AppResult.Ok(watch()), AppResult.Ok(watch(renderKey = "rk-yo")))
+            val quotes =
+                com.vovoscan.feature.episodes.domain.RunQuotes { _, _ ->
+                    com.vovoscan.feature.episodes.domain.RunCost(
+                        credits = 30,
+                        coveredByOwnKeys = false,
+                        alreadyAvailable = false,
+                        maxCredits = 40,
+                        metered = setOf("anthropic"),
+                    )
+                }
+            val queued = language(com.vovoscan.feature.episodes.domain.EpisodeStatus.Queued, "yo")
+            repo.runResult = {
+                AppResult.Ok(
+                    com.vovoscan.feature.episodes.domain.PrepareResult
+                        .Queued(queued),
+                )
+            }
+            val vm = PlayerViewModel("c1", null, repo, { 0L }, quotes = quotes)
+            advanceUntilIdle()
+            vm.onIntent(PlayerIntent.Play)
+            vm.onIntent(PlayerIntent.ChooseLanguage("yo"))
+            advanceUntilIdle()
+            val offer = assertNotNull(vm.state.value.languageDock)
+            assertEquals("Watch it in Yorùbá?", offer.title)
+            assertEquals("Costs 30 credits from your wallet.", offer.line)
+            assertEquals("Make it", offer.startLabel)
+            assertEquals("Add your own key", offer.addKeyLabel)
+            assertTrue(repo.runs.isEmpty())
+            vm.onIntent(PlayerIntent.StartLanguage)
+            runCurrent()
+            assertEquals(listOf(false), repo.runs)
+            repo.inLanguage.getValue("yo").value =
+                language(
+                    com.vovoscan.feature.episodes.domain.EpisodeStatus.Reading,
+                    "yo",
+                    com.vovoscan.feature.episodes.domain
+                        .StageProgress("OCR", "pages", 6, 12),
+                )
+            runCurrent()
+            val making = assertNotNull(vm.state.value.languageDock)
+            assertEquals("Making it in Yorùbá", making.title)
+            // OCR is the second of five stages, half done: 30 %.
+            assertEquals(0.3f, assertNotNull(making.progress), 0.001f)
+            assertTrue(vm.state.value.playing)
+            assertEquals("", vm.state.value.language)
+            repo.followEnd.complete(AppResult.Ok(language(com.vovoscan.feature.episodes.domain.EpisodeStatus.Ready, "yo")))
+            advanceUntilIdle()
+            assertNull(vm.state.value.languageDock)
+            assertEquals("yo", vm.state.value.language)
+            assertEquals("rk-yo", vm.plan?.watch?.renderKey)
+        }
+
+    @Test
+    fun nothingToPayWithSaysWhyAndLeadsToTheKeys() =
+        runTest(dispatcher) {
+            val quotes =
+                com.vovoscan.feature.episodes.domain.RunQuotes { _, _ ->
+                    com.vovoscan.feature.episodes.domain.RunCost(
+                        credits = 30,
+                        coveredByOwnKeys = false,
+                        alreadyAvailable = false,
+                        maxCredits = 40,
+                        fundable = false,
+                    )
+                }
+            val repo = repo(AppResult.Ok(watch()))
+            val vm = PlayerViewModel("c1", null, repo, { 0L }, quotes = quotes)
+            advanceUntilIdle()
+            vm.onIntent(PlayerIntent.ChooseLanguage("yo"))
+            advanceUntilIdle()
+            val dock = assertNotNull(vm.state.value.languageDock)
+            assertNull(dock.startLabel)
+            assertEquals("Add your own key", dock.addKeyLabel)
+            assertEquals("Nothing can pay for it yet. Add your own key (no credits needed), or ask the owner for credits.", dock.line)
+            vm.onIntent(PlayerIntent.StartLanguage)
+            advanceUntilIdle()
+            assertTrue(repo.runs.isEmpty())
+            vm.onIntent(PlayerIntent.CloseLanguageDock)
+            assertNull(vm.state.value.languageDock)
+            assertEquals("", vm.state.value.language)
+        }
+
+    @Test
+    fun aFailedRunSaysSoInTheDockWithTryAgain() =
+        runTest(dispatcher) {
+            val repo = repo(AppResult.Ok(watch()))
+            repo.runResult =
+                {
+                    AppResult.Ok(
+                        com.vovoscan.feature.episodes.domain.PrepareResult.Queued(
+                            language(com.vovoscan.feature.episodes.domain.EpisodeStatus.Queued, "yo"),
+                        ),
+                    )
+                }
+            val vm = PlayerViewModel("c1", null, repo, { 0L })
+            advanceUntilIdle()
+            vm.onIntent(PlayerIntent.ChooseLanguage("yo"))
+            advanceUntilIdle()
+            vm.onIntent(PlayerIntent.StartLanguage)
+            runCurrent()
+            repo.followEnd.complete(
+                AppResult.Ok(episode(com.vovoscan.feature.episodes.domain.EpisodeStatus.Failed, error = "The voices couldn't be made.")),
+            )
+            advanceUntilIdle()
+            val dock = assertNotNull(vm.state.value.languageDock)
+            assertTrue(dock.failed)
+            assertEquals("The voices couldn't be made.", dock.line)
+            assertEquals("Try again", dock.retryLabel)
+            assertEquals("", vm.state.value.language)
+        }
 }

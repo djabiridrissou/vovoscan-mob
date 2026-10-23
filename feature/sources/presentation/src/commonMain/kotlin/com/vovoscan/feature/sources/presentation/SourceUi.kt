@@ -36,6 +36,8 @@ data class SourceInfoUi(
     val hosts: List<String>,
     /** "This source connects your phone to: a.example, b.example"; null when it connects to none (internal source). */
     val hostsLabel: String?,
+    /** "Up to 30 requests a minute"; null for the internal source. */
+    val rateLabel: String? = null,
 )
 
 /** A setting in a form: the value shown, its kind (keyboard), and its validation error. */
@@ -94,6 +96,8 @@ object SourceLabels {
 
     fun hosts(hosts: List<String>) = hosts.takeIf { it.isNotEmpty() }?.let { t("sources.hosts", "hosts" to it.joinToString(", ")) }
 
+    fun rate(perMinute: Int?) = perMinute?.let { t("sources.rate", "n" to it) }
+
     fun newHosts(hosts: List<String>) = hosts.takeIf { it.isNotEmpty() }?.let { t("sources.newHosts", "hosts" to it.joinToString(", ")) }
 
     fun version(version: String) = t("sources.version", "version" to version)
@@ -146,6 +150,7 @@ internal fun SourceItem.toInfo() =
         rightsDisclaimer = SourceLabels.RIGHTS_DISCLAIMER.takeIf { thirdParty && rightsBasis != null },
         hosts = hosts,
         hostsLabel = SourceLabels.hosts(hosts),
+        rateLabel = SourceLabels.rate(requestsPerMinute),
     )
 
 internal fun PluginCandidate.toInfo(repositoryName: String?) =
@@ -167,6 +172,7 @@ internal fun PluginCandidate.toInfo(repositoryName: String?) =
         rightsDisclaimer = SourceLabels.RIGHTS_DISCLAIMER,
         hosts = info.hosts,
         hostsLabel = SourceLabels.hosts(info.hosts),
+        rateLabel = SourceLabels.rate(info.requestsPerMinute),
     )
 
 internal fun SettingField.toUi(

@@ -72,6 +72,36 @@ class RulesSourceTest {
         }
 
     @Test
+    fun contentRatingsAreMappedToTheSharedScale() =
+        runTest {
+            // Values on the shared scale, one the source words its own way (map keys compare in lower case), one missing,
+            // one unknown.
+            val manifest =
+                """{"contractVersion":1,"key":"rated","name":"Rated","version":"1.0.0","kinds":["comic"],"langs":["en"],""" +
+                    """"hosts":["rated.example"],"ratings":{"map":{"R18":"pornographic"}},""" +
+                    """"catalog":{"request":{"url":"https://rated.example/all","type":"json"},""" +
+                    """"list":"$.items[*]","item":{"id":"$.id","name":"$.name","contentRating":"$.rating"}},""" +
+                    """"title":{"request":{"url":"https://rated.example/t/{{id}}","type":"json"},"fields":{"name":"$.name"},""" +
+                    """"units":{"single":{"id":"{{id}}"}}},"content":{"comic":{"request":""" +
+                    """{"url":"https://rated.example/c/{{unitId}}","type":"json"},"list":"$.pages[*]","item":{"url":"$"}}}}"""
+            val body =
+                """{"items":[{"id":"1","name":"A","rating":"safe"},{"id":"2","name":"B","rating":"r18"},""" +
+                    """{"id":"3","name":"C"},{"id":"4","name":"D","rating":"spicy"},{"id":"5","name":"E","rating":"Suggestive"}]}"""
+            val rated = source(manifest, "rated", emptyMap(), mapOf("https://rated.example/all" to (body to "application/json")))
+            assertEquals(
+                listOf("safe", "pornographic", null, null, "suggestive"),
+                (rated.catalog(1) as AppResult.Ok).value.items.map { it.contentRating },
+            )
+            // A default for what the site doesn't rate (a public-domain library); a value it doesn't map stays unknown.
+            val library = manifest.replace("\"ratings\":{\"map\":{\"R18\":\"pornographic\"}}", "\"ratings\":{\"default\":\"safe\"}")
+            val all = source(library, "rated", emptyMap(), mapOf("https://rated.example/all" to (body to "application/json")))
+            assertEquals(
+                listOf("safe", null, "safe", null, "suggestive"),
+                (all.catalog(1) as AppResult.Ok).value.items.map { it.contentRating },
+            )
+        }
+
+    @Test
     fun gutenbergRunsOnTheDevice() =
         runTest {
             val gutenberg =
@@ -118,7 +148,8 @@ class RulesSourceTest {
                                 """<a class="next" href="/browse?p=2">Next</a>""" to "text/html"
                         ),
                         "$base/series/ink-road" to (
-                            """<h1>Ink Road</h1><p class="synopsis">A courier   crosses.</p><span class="author">Studio</span>""" +
+                            """<h1>Ink Road</h1><span class="rating"> Mature </span><p class="synopsis">A courier   crosses.</p>""" +
+                                """<span class="author">Studio</span>""" +
                                 """<ul class="chapters"><li><a href="/read/12">Chapter 2: The Gate</a></li>""" +
                                 """<li><a href="/read/11">Chapter 1</a></li></ul>""" to "text/html"
                         ),
@@ -131,7 +162,10 @@ class RulesSourceTest {
                 )
             val title = (inkwell.catalog(1) as AppResult.Ok).value.items.single()
             assertEquals("webtoon" to "https://comics.inkwell.example/c.jpg", title.format to title.coverUrl)
+            // Not rated on the card: the manifest's default. Rated on its page in the site's own word: mapped.
+            assertEquals("safe", title.contentRating)
             val detail = (inkwell.title("ink-road") as AppResult.Ok).value
+            assertEquals("suggestive", detail.summary.contentRating)
             assertEquals(listOf(RulesUnit("11", 1.0, null), RulesUnit("12", 2.0, "The Gate")), detail.units)
             val pages = (inkwell.comicPages("ink-road", "12") as AppResult.Ok).value
             assertEquals(listOf(RulesImage("$base/img/1.png", 60, 90), RulesImage("$base/img/2.png", 0, 0)), pages)
@@ -258,6 +292,8 @@ class RulesSourceTest {
             assertEquals("Alpha", title.summary.name)
             assertEquals(listOf("Author One"), title.authors)
             assertEquals(listOf("Action"), title.genres)
+            // No format named and no strip genre: a manga.
+            assertEquals("manga", title.summary.format)
             assertEquals(
                 listOf(RulesUnit("u1", 1.0, "Start"), RulesUnit("u2", 1.5, null), RulesUnit("u3", 3.0, "Oneshot")),
                 title.units,

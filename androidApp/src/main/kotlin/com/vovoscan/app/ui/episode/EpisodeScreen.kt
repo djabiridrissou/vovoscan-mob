@@ -45,6 +45,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.vovoscan.app.ui.common.BrandField
+import com.vovoscan.app.ui.common.CreditChip
 import com.vovoscan.app.ui.common.ErrorText
 import com.vovoscan.app.ui.common.GhostButton
 import com.vovoscan.app.ui.common.Kicker
@@ -53,6 +54,7 @@ import com.vovoscan.app.ui.common.PrimaryButton
 import com.vovoscan.app.ui.theme.Brand
 import com.vovoscan.core.common.i18n.I18n
 import com.vovoscan.feature.episodes.presentation.EpisodeIntent
+import com.vovoscan.feature.episodes.presentation.EpisodeLanguageOption
 import com.vovoscan.feature.episodes.presentation.EpisodePhase
 import com.vovoscan.feature.episodes.presentation.EpisodeUiState
 import com.vovoscan.feature.episodes.presentation.EpisodeViewModel
@@ -71,11 +73,15 @@ fun EpisodeScreen(
     titleName: String,
     chapterLabel: String,
     onBack: () -> Unit,
-    /** Opens the player in the episode's language ("" = the original). */
-    onWatch: (language: String) -> Unit,
+    /** Opens the player on our chapter id (a source's chapter: its copy on the server) in the episode's language. */
+    onWatch: (chapterId: String, language: String) -> Unit,
     /** The language the card opens in: the next chapter keeps the one just watched. */
     language: String = "",
-    viewModel: EpisodeViewModel = koinViewModel(key = "episode:$chapterId~$language") { parametersOf(chapterId, language) },
+    /** The chapter's source and title: a source read on the device has its pages brought to the server first. */
+    sourceKey: String = "vovoscan",
+    titleId: String = "",
+    viewModel: EpisodeViewModel =
+        koinViewModel(key = "episode:$sourceKey/$chapterId~$language") { parametersOf(chapterId, language, sourceKey, titleId) },
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
@@ -97,14 +103,18 @@ fun EpisodeScreen(
     ) {
         item {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                GhostButton(I18n.text("common.backArrow"), onBack)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    GhostButton(I18n.text("common.backArrow"), onBack)
+                    Spacer(Modifier.weight(1f))
+                    CreditChip()
+                }
                 Kicker(I18n.text("episode.kicker"))
                 if (titleName.isNotEmpty()) Text(titleName, style = MaterialTheme.typography.bodySmall)
                 if (chapterLabel.isNotEmpty()) Text(chapterLabel, style = MaterialTheme.typography.headlineSmall)
                 state.offlineNotice?.let { OfflineNotice(it) }
             }
         }
-        if (state.visible) item { EpisodeCard(state, viewModel::onIntent) { onWatch(state.language) } }
+        if (state.visible) item { EpisodeCard(state, viewModel::onIntent) { onWatch(state.chapterId, state.language) } }
     }
 }
 
@@ -198,18 +208,26 @@ private fun LanguageButton(
         Text("▾", style = MaterialTheme.typography.bodyMedium.copy(color = Brand.Muted))
     }
     if (open) {
-        LanguageSheet(state, send) {
+        EpisodeLanguageSheet(
+            state.languageOptions,
+            state.languageQuery,
+            onQuery = { send(EpisodeIntent.LanguageQuery(it)) },
+            onChoose = { send(EpisodeIntent.ChooseLanguage(it)) },
+        ) {
             open = false
             send(EpisodeIntent.LanguageQuery(""))
         }
     }
 }
 
+/** An episode's languages, searchable (the card's picker and the player's): a pick closes it. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun LanguageSheet(
-    state: EpisodeUiState,
-    send: (EpisodeIntent) -> Unit,
+fun EpisodeLanguageSheet(
+    options: List<EpisodeLanguageOption>,
+    query: String,
+    onQuery: (String) -> Unit,
+    onChoose: (String?) -> Unit,
     onDismiss: () -> Unit,
 ) {
     ModalBottomSheet(
@@ -218,33 +236,35 @@ private fun LanguageSheet(
         containerColor = Brand.Ink2,
     ) {
         Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 20.dp, vertical = 8.dp)) {
-            Text(
-                I18n.text("episode.languageTitle"),
-                style = MaterialTheme.typography.titleMedium,
-                modifier = Modifier.padding(bottom = 8.dp),
-            )
+            Row(Modifier.padding(bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(I18n.text("episode.languageTitle"), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                CreditChip()
+            }
             BrandField(
                 label = I18n.text("common.search"),
-                value = state.languageQuery,
-                onValueChange = { send(EpisodeIntent.LanguageQuery(it)) },
+                value = query,
+                onValueChange = onQuery,
                 placeholder = I18n.text("common.searchLanguage"),
             )
             LazyColumn(Modifier.fillMaxWidth().padding(top = 8.dp)) {
-                items(state.languageOptions, key = { it.code ?: "" }) { option ->
+                items(options, key = { it.code ?: "" }) { option ->
                     Row(
                         Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(10.dp))
                             .background(if (option.selected) Brand.Line else Color.Transparent)
                             .clickable {
-                                send(EpisodeIntent.ChooseLanguage(option.code))
+                                onChoose(option.code)
                                 onDismiss()
                             }.padding(horizontal = 8.dp, vertical = 10.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Column(Modifier.weight(1f)) {
                             Text(option.label, style = MaterialTheme.typography.bodyLarge.copy(color = Brand.Paper))
-                            Text(option.detail, style = MaterialTheme.typography.bodySmall)
+                            Text(
+                                option.detail,
+                                style = MaterialTheme.typography.bodySmall.copy(color = if (option.ready) Brand.Yellow else Brand.Muted),
+                            )
                         }
                         if (option.selected) Text("✓", style = MaterialTheme.typography.titleMedium.copy(color = Brand.Red))
                     }

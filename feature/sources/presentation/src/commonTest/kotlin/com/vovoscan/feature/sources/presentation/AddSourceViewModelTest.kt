@@ -130,7 +130,14 @@ class AddSourceViewModelTest {
             assertEquals(listOf("Install", "Update", null), listing.entries.map { it.actionLabel })
             assertEquals("3 sources", listing.countLabel)
 
+            // Reviewed first: what it connects to, how often, on what rights; nothing installed until confirmed.
             vm.onIntent(AddSourceIntent.InstallEntry("demo"))
+            val review = assertNotNull(vm.state.value.review)
+            assertNotNull(review.info.hostsLabel)
+            assertEquals("Up to 30 requests a minute", review.info.rateLabel)
+            assertTrue(fake.installs.isEmpty())
+            vm.onIntent(AddSourceIntent.ConfirmReview)
+            assertNull(vm.state.value.review)
             assertEquals(
                 EntryStatus.Installed,
                 vm.state.value.repository!!
@@ -138,10 +145,16 @@ class AddSourceViewModelTest {
                     .status,
             )
 
+            // An update's review names the new hosts; confirming it is the hosts' confirmation too.
             vm.onIntent(AddSourceIntent.InstallEntry("old"))
-            assertEquals("This version also connects to: cdn.example", vm.state.value.hostsConfirmation)
+            assertEquals(
+                "This version also connects to: cdn.example",
+                vm.state.value.review
+                    ?.newHostsLabel,
+            )
             assertEquals(listOf("demo"), fake.installs.map { it.first })
-            vm.onIntent(AddSourceIntent.ConfirmHosts)
+            vm.onIntent(AddSourceIntent.ConfirmReview)
+            assertNull(vm.state.value.hostsConfirmation)
             assertEquals(listOf("demo", "old"), fake.installs.map { it.first })
             assertEquals("Demo old updated.", vm.state.value.notice)
             assertEquals(

@@ -10,6 +10,7 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -50,8 +51,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -60,10 +63,15 @@ import coil3.compose.AsyncImage
 import com.vovoscan.app.ui.common.AppIcons
 import com.vovoscan.app.ui.common.BrandField
 import com.vovoscan.app.ui.common.EmptyStateCard
+import com.vovoscan.app.ui.common.EpisodeBadge
 import com.vovoscan.app.ui.common.ErrorText
 import com.vovoscan.app.ui.common.GhostButton
+import com.vovoscan.app.ui.common.HeartButton
 import com.vovoscan.app.ui.common.Kicker
+import com.vovoscan.app.ui.common.LocalAdaptive
+import com.vovoscan.app.ui.common.MarkLines
 import com.vovoscan.app.ui.common.OfflineNotice
+import com.vovoscan.app.ui.common.ToggleChip
 import com.vovoscan.app.ui.theme.Brand
 import com.vovoscan.core.common.i18n.I18n
 import com.vovoscan.feature.catalog.presentation.CatalogIntent
@@ -71,6 +79,9 @@ import com.vovoscan.feature.catalog.presentation.CatalogSource
 import com.vovoscan.feature.catalog.presentation.CatalogUiState
 import com.vovoscan.feature.catalog.presentation.CatalogViewModel
 import com.vovoscan.feature.catalog.presentation.ResumeCard
+import com.vovoscan.feature.catalog.presentation.SuggestionKind
+import com.vovoscan.feature.catalog.presentation.SuggestionRow
+import com.vovoscan.feature.catalog.presentation.SuggestionSection
 import com.vovoscan.feature.catalog.presentation.TitleCard
 import com.vovoscan.feature.sources.presentation.SourcesViewModel
 import org.koin.compose.viewmodel.koinViewModel
@@ -91,6 +102,20 @@ fun CatalogScreen(
     val visible = sourcesState.chips.map { CatalogSource(it.key, it.name) }
     LaunchedEffect(visible) { viewModel.onIntent(CatalogIntent.SourcesChanged(visible)) }
     var sheet by remember { mutableStateOf<Sheet?>(null) }
+    val focusManager = LocalFocusManager.current
+    // Opening a title from search results or a suggestion teaches the search (the view model decides which).
+    val open: (String, String) -> Unit = { sourceKey, titleId ->
+        viewModel.onIntent(CatalogIntent.TitleOpened(sourceKey, titleId))
+        onOpenTitle(sourceKey, titleId)
+    }
+    val choose: (SuggestionRow) -> Unit = { row ->
+        focusManager.clearFocus()
+        if (row.kind == SuggestionKind.Title) {
+            open(row.sourceKey.orEmpty(), row.titleId.orEmpty())
+        } else {
+            viewModel.onIntent(CatalogIntent.UseSearch(row.text))
+        }
+    }
     val grid = rememberLazyGridState()
     // Scrolled past the search field: it folds into a floating magnifier; a tap floats the field over the catalog.
     val folded by remember { derivedStateOf { grid.firstVisibleItemIndex > 0 } }
@@ -100,7 +125,7 @@ fun CatalogScreen(
     LaunchedEffect(state.query) { if (floating) grid.animateScrollToItem(0) }
     Box(Modifier.fillMaxSize()) {
         LazyVerticalGrid(
-            columns = GridCells.Adaptive(150.dp),
+            columns = GridCells.Adaptive(LocalAdaptive.current.minTileWidth.dp),
             contentPadding = PaddingValues(20.dp),
             horizontalArrangement = Arrangement.spacedBy(14.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
@@ -111,8 +136,8 @@ fun CatalogScreen(
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Kicker(I18n.text("nav.catalog"))
                     Text(I18n.text("catalog.headline"), style = MaterialTheme.typography.headlineSmall)
-                    if (state.showSourceFilter || state.showCategoryFilter) {
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (state.showSourceFilter || state.showCategoryFilter || state.showEpisodesFilter) {
+                        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             if (state.showSourceFilter) FilterButton(state.sourceFilterLabel, !state.allSources) { sheet = Sheet.Sources }
                             if (state.showCategoryFilter) {
                                 FilterButton(state.categoryFilterLabel, state.category != null) {
@@ -120,10 +145,20 @@ fun CatalogScreen(
                                         Sheet.Categories
                                 }
                             }
+                            if (state.showEpisodesFilter) {
+                                ToggleChip(state.episodesLabel, state.episodesOnly) { viewModel.onIntent(CatalogIntent.ToggleEpisodes) }
+                            }
                         }
                     }
                     state.categoryNote?.let { Text(it, style = MaterialTheme.typography.bodySmall.copy(color = Brand.Muted)) }
-                    BrandField(I18n.text("common.search"), state.query, { viewModel.onIntent(CatalogIntent.Query(it)) })
+                    state.safeNote?.let { Text(it, style = MaterialTheme.typography.bodySmall.copy(color = Brand.Muted)) }
+                    BrandField(
+                        I18n.text("common.search"),
+                        state.query,
+                        { viewModel.onIntent(CatalogIntent.Query(it)) },
+                        modifier = Modifier.onFocusChanged { viewModel.onIntent(CatalogIntent.SearchFocused(it.isFocused)) },
+                    )
+                    if (state.showSuggestions && !floating) SuggestionList(state.suggestions, choose)
                     state.offlineNotice?.let {
                         OfflineNotice(
                             it,
@@ -131,6 +166,7 @@ fun CatalogScreen(
                         )
                     }
                     state.error?.let { ErrorText(it) }
+                    state.favoriteError?.let { ErrorText(it) }
                     // The last title read, opened where it was left.
                     state.resume?.takeIf { state.results == null }?.let { resume ->
                         ResumeBanner(resume) { onResume(resume.sourceKey, resume.titleId, resume.chapterId, resume.page) }
@@ -148,7 +184,13 @@ fun CatalogScreen(
                     }
                 }
             }
-            items(state.visible, key = { it.sourceKey + "/" + it.id }) { card -> TitleTile(card) { onOpenTitle(card.sourceKey, card.id) } }
+            items(state.visible, key = { it.sourceKey + "/" + it.id }) { card ->
+                TitleTile(
+                    card,
+                    state.popularLabel,
+                    onHeart = { viewModel.onIntent(CatalogIntent.ToggleFavorite(card.sourceKey, card.id)) },
+                ) { open(card.sourceKey, card.id) }
+            }
             if (state.canLoadMore && state.results == null) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
                     GhostButton(if (state.loadingMore) I18n.text("common.loading") else I18n.text("catalog.loadMore"), {
@@ -190,7 +232,18 @@ fun CatalogScreen(
             exit = slideOutVertically { -it } + fadeOut(),
             modifier = Modifier.align(Alignment.TopCenter),
         ) {
-            FloatingSearch(state.query, { viewModel.onIntent(CatalogIntent.Query(it)) }) { floating = false }
+            Column {
+                FloatingSearch(
+                    state.query,
+                    { viewModel.onIntent(CatalogIntent.Query(it)) },
+                    { viewModel.onIntent(CatalogIntent.SearchFocused(it)) },
+                ) { floating = false }
+                if (state.showSuggestions) {
+                    Box(Modifier.background(Brand.Ink.copy(alpha = 0.92f)).padding(horizontal = 16.dp).padding(bottom = 8.dp)) {
+                        SuggestionList(state.suggestions, choose)
+                    }
+                }
+            }
         }
     }
     when (sheet) {
@@ -212,6 +265,7 @@ fun CatalogScreen(
 private fun FloatingSearch(
     query: String,
     onQuery: (String) -> Unit,
+    onFocus: (Boolean) -> Unit,
     onClose: () -> Unit,
 ) {
     val focus = remember { FocusRequester() }
@@ -235,13 +289,79 @@ private fun FloatingSearch(
             textStyle = MaterialTheme.typography.bodyLarge.copy(color = Brand.Paper),
             cursorBrush = SolidColor(Brand.Red),
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-            modifier = Modifier.weight(1f).focusRequester(focus),
+            modifier = Modifier.weight(1f).focusRequester(focus).onFocusChanged { onFocus(it.isFocused) },
         )
         Text(
             "✕",
             style = MaterialTheme.typography.titleMedium.copy(color = Brand.Paper),
             modifier = Modifier.clickable(onClickLabel = I18n.text("common.close"), onClick = onClose).padding(4.dp),
         )
+    }
+}
+
+/**
+ * Under the search field while it has the focus: "Your searches" (↺), "Others searched", "Titles" (cover, name,
+ * "Popular ✦ source"). A search fills the field and runs; a title opens.
+ */
+@Composable
+private fun SuggestionList(
+    sections: List<SuggestionSection>,
+    onChoose: (SuggestionRow) -> Unit,
+) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(Brand.Ink2)
+            .border(1.dp, Brand.Line, RoundedCornerShape(12.dp))
+            .padding(vertical = 6.dp),
+    ) {
+        sections.forEach { section ->
+            Text(
+                section.title,
+                style = MaterialTheme.typography.labelSmall.copy(color = Brand.Muted),
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
+            )
+            section.rows.forEach { row -> SuggestionLine(row) { onChoose(row) } }
+        }
+    }
+}
+
+@Composable
+private fun SuggestionLine(
+    row: SuggestionRow,
+    onClick: () -> Unit,
+) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        when (row.kind) {
+            SuggestionKind.Title ->
+                AsyncImage(
+                    row.coverUrl,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.size(30.dp, 40.dp).clip(RoundedCornerShape(4.dp)).background(Brand.Line),
+                )
+            SuggestionKind.Recent -> Text("↺", style = MaterialTheme.typography.titleMedium.copy(color = Brand.Muted))
+            SuggestionKind.Query -> Icon(AppIcons.Search, contentDescription = null, tint = Brand.Muted, modifier = Modifier.size(18.dp))
+        }
+        Column(Modifier.weight(1f)) {
+            Text(row.text, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            row.detail?.takeIf { it.isNotEmpty() }?.let {
+                Text(
+                    it,
+                    style = MaterialTheme.typography.bodySmall.copy(color = Brand.Muted),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
     }
 }
 
@@ -342,8 +462,18 @@ private fun CategoryRows(
     send: (CatalogIntent) -> Unit,
 ) {
     CheckRow(I18n.text("catalog.allCategories"), state.category == null) { send(CatalogIntent.SelectCategory(null)) }
-    state.categories.forEach { category ->
-        CheckRow(category.name, category.selected) { send(CatalogIntent.SelectCategory(category.name)) }
+    // The formats first (every source's comics and books), then each source's own categories under its name.
+    state.categoryGroups.forEach { group ->
+        group.title?.let { title ->
+            Text(
+                title.uppercase(),
+                style = MaterialTheme.typography.labelMedium.copy(color = Brand.Muted),
+                modifier = Modifier.padding(top = 14.dp, bottom = 2.dp),
+            )
+        }
+        group.choices.forEach { category ->
+            CheckRow(category.name, category.selected) { send(CatalogIntent.SelectCategory(category.name)) }
+        }
     }
 }
 
@@ -373,6 +503,8 @@ private fun CheckRow(
 @Composable
 private fun TitleTile(
     card: TitleCard,
+    popularLabel: String,
+    onHeart: () -> Unit,
     onClick: () -> Unit,
 ) {
     Column(
@@ -384,6 +516,9 @@ private fun TitleTile(
     ) {
         Box(Modifier.fillMaxWidth().aspectRatio(3f / 4f).background(Brand.Line)) {
             AsyncImage(card.coverUrl, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+            // The heart in the corner (its own tap: it never opens the card), the episode badge under it.
+            HeartButton(card.favorite, card.favoriteAction, Modifier.align(Alignment.TopEnd).padding(6.dp), onHeart)
+            card.episodeBadge?.let { EpisodeBadge(it, Modifier.align(Alignment.TopEnd).padding(top = 54.dp, end = 8.dp)) }
             Column(Modifier.align(Alignment.TopStart).padding(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(
                     card.formatLabel,
@@ -397,6 +532,17 @@ private fun TitleTile(
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.background(Brand.Ink.copy(alpha = 0.85f)).padding(horizontal = 6.dp, vertical = 2.dp),
                 )
+                if (card.popular) {
+                    Text(
+                        popularLabel,
+                        style = MaterialTheme.typography.labelSmall.copy(color = Brand.Red),
+                        modifier =
+                            Modifier
+                                .background(Brand.Ink.copy(alpha = 0.85f))
+                                .border(1.dp, Brand.Red)
+                                .padding(horizontal = 6.dp, vertical = 2.dp),
+                    )
+                }
                 if (card.started) {
                     Text(
                         I18n.text("catalog.started"),
@@ -408,6 +554,11 @@ private fun TitleTile(
         }
         Column(Modifier.padding(12.dp)) {
             Text(card.name, style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            // One card per series: the other sources that carry it.
+            card.moreSources?.let {
+                Text(it, style = MaterialTheme.typography.labelSmall.copy(color = Brand.Muted), maxLines = 1)
+            }
+            MarkLines(card.ratingLine, card.favoriteLine)
             Text(card.status, style = MaterialTheme.typography.bodySmall)
         }
     }

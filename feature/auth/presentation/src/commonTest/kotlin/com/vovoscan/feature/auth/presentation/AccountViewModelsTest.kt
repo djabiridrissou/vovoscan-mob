@@ -12,6 +12,7 @@ import com.vovoscan.feature.auth.domain.ProfileChange
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
@@ -186,10 +187,34 @@ class AccountViewModelsTest {
     // Preferences.
 
     @Test
+    fun safeModeIsOnByDefaultAndTurnsOffOnlyAfterTheAgeIsConfirmed() =
+        runTest {
+            val auth = FakeAuth(signedIn = testSession())
+            val vm = PreferencesViewModel(auth, auth, language, clock)
+            assertTrue(vm.state.value.safeMode)
+            // Off asks first; cancelling changes nothing.
+            vm.onIntent(PreferencesIntent.SetSafeMode(false))
+            assertTrue(vm.state.value.confirmingAdult)
+            vm.onIntent(PreferencesIntent.CancelAdult)
+            assertTrue(auth.showAdultCalls.isEmpty())
+            assertTrue(vm.state.value.safeMode)
+            vm.onIntent(PreferencesIntent.SetSafeMode(false))
+            vm.onIntent(PreferencesIntent.ConfirmAdult)
+            advanceUntilIdle()
+            assertEquals(listOf(true), auth.showAdultCalls)
+            assertFalse(vm.state.value.safeMode)
+            // Back on: at once, no question.
+            vm.onIntent(PreferencesIntent.SetSafeMode(true))
+            advanceUntilIdle()
+            assertEquals(listOf(true, false), auth.showAdultCalls)
+            assertTrue(vm.state.value.safeMode)
+        }
+
+    @Test
     fun choosingTheLanguageAppliesAtOnceAndSavesOnTheAccount() =
         runTest {
             val auth = FakeAuth(signedIn = testSession())
-            val vm = PreferencesViewModel(auth, language, clock)
+            val vm = PreferencesViewModel(auth, auth, language, clock)
             vm.onIntent(PreferencesIntent.ChooseLocale("fr"))
             assertEquals("fr", I18n.locale.value)
             assertEquals("fr", prefs.get("ui_locale"))
@@ -201,7 +226,7 @@ class AccountViewModelsTest {
     fun theRegionIsSearchedAndShownInTheSample() =
         runTest {
             val auth = FakeAuth(signedIn = testSession())
-            val vm = PreferencesViewModel(auth, language, clock)
+            val vm = PreferencesViewModel(auth, auth, language, clock)
             vm.onIntent(PreferencesIntent.RegionQuery("tog"))
             assertEquals(
                 listOf("TG"),

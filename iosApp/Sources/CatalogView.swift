@@ -1,7 +1,10 @@
+import os
 import Shared
 import SwiftUI
 
 struct CatalogView: View {
+    /// The catalog tab's navigation: a suggested title is pushed once its list is closed (see `openSuggested`).
+    @Environment(\.push) private var push
     @StateObject private var model = CatalogModel()
     @StateObject private var sources = SourcesModel()
     @State private var query = ""
@@ -14,6 +17,8 @@ struct CatalogView: View {
     /// The magnifier was tapped: the search field floats over the top of the catalog.
     @State private var searchFloating = false
     @FocusState private var floatingFocus: Bool
+    /// The search field at the top has the focus: its suggestions show under it.
+    @FocusState private var fieldFocus: Bool
     private let columns = [GridItem(.adaptive(minimum: 150), spacing: 14)]
 
     var body: some View {
@@ -29,14 +34,32 @@ struct CatalogView: View {
                     if let note = model.state.categoryNote {
                         Text(note).font(.brandBody(13)).foregroundStyle(Color.brandMuted)
                     }
+                    if let note = model.state.safeNote {
+                        Text(note).font(.brandBody(13)).foregroundStyle(Color.brandMuted)
+                    }
                     IntentField(label: L("common.search"), text: $query, value: model.state.query) { model.send(CatalogIntentQuery(value: $0)) }
+                        .focused($fieldFocus)
+                        .submitLabel(.search)
+                        // Over the catalog, never in its flow: closing it moves nothing, and it takes every tap on it
+                        // (an inline list closed on the focus loss and let the tap through to the card under it).
+                        .overlay(alignment: .bottom) {
+                            if model.state.showSuggestions && !searchFloating {
+                                // Its own height, not the field's (a list squeezed into the field's frame overflowed
+                                // upwards over the field and the filters), hung 6 pt under the field.
+                                SuggestionList(sections: model.state.suggestions, onSearch: useSearch, onTitle: openSuggested)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                    .alignmentGuide(.bottom) { $0[.top] - 6 }
+                            }
+                        }
+                        .zIndex(1)
                     if let notice = model.state.offlineNotice {
                         OfflineNotice(text: notice, onRetry: model.state.canRetry ? { model.send(CatalogIntentRefresh.shared) } : nil)
                     }
                     if let error = model.state.error { ErrorText(text: error) }
+                    if let error = model.state.favoriteError { ErrorText(text: error) }
                     // The last title read, opened where it was left.
                     if let resume = model.state.resume, model.state.results == nil {
-                        NavigationLink(value: ReaderRoute(sourceKey: resume.sourceKey, titleId: resume.titleId, chapterId: resume.chapterId, startPage: Int(resume.page))) {
+                        NavigationLink(value: AppRoute.reader(ReaderRoute(sourceKey: resume.sourceKey, titleId: resume.titleId, chapterId: resume.chapterId, startPage: Int(resume.page)))) {
                             ResumeBanner(card: resume)
                         }
                         .buttonStyle(PressableCardStyle())
@@ -54,11 +77,23 @@ struct CatalogView: View {
                         EmptyStateCard(sfx: "SHHH", title: model.state.emptyMessage, message: L("catalog.pullToRefresh"))
                     }
                     LazyVGrid(columns: columns, spacing: 14) {
-                        ForEach(Array(model.state.visible.enumerated()), id: \.element) { index, card in
+                        // By title, never by the whole card: a card whose badges change (the title page saved its format or status)
+                        // stays the same view, so the zoom transition's source survives under the open title page.
+                        ForEach(Array(model.state.visible.enumerated()), id: \.element.key) { index, card in
                             let route = TitleRoute(sourceKey: card.sourceKey, titleId: card.id)
-                            NavigationLink(value: route) { TitleTile(card: card) }
+                            NavigationLink(value: AppRoute.title(route)) { TitleTile(card: card, popularLabel: model.state.popularLabel) }
                                 .buttonStyle(PressableCardStyle())
+                                // From search results, opening a title teaches the search (the view model decides).
+                                .simultaneousGesture(TapGesture().onEnded { opened(card.sourceKey, card.id) })
                                 .matchedTransitionSource(id: route, in: zoom)
+                                // Outside the link: the heart never opens the card.
+                                .overlay(alignment: .topTrailing) {
+                                    HeartButton(on: card.favorite, label: card.favoriteAction) {
+                                        model.send(CatalogIntentToggleFavorite(sourceKey: card.sourceKey, titleId: card.id))
+                                    }
+                                    .padding(6)
+                                    .accessibilityIdentifier("catalog.heart.\(card.key)")
+                                }
                                 .riseIn(index)
                         }
                         // The shape of the grid while the first page of every source loads.
@@ -83,9 +118,20 @@ struct CatalogView: View {
             }
             .safeAreaInset(edge: .top, spacing: 0) {
                 if searchFloating {
-                    floatingSearch
-                        .transition(reduceMotion ? .opacity : .move(edge: .top).combined(with: .opacity))
+                    VStack(spacing: 0) {
+                        floatingSearch
+                        if model.state.showSuggestions {
+                            SuggestionList(sections: model.state.suggestions, onSearch: useSearch, onTitle: openSuggested)
+                                .padding(.horizontal, 16)
+                                .padding(.bottom, 8)
+                                .background(Color.brandInk.opacity(0.92))
+                        }
+                    }
+                    .transition(reduceMotion ? .opacity : .move(edge: .top).combined(with: .opacity))
                 }
+            }
+            .onChange(of: fieldFocus || floatingFocus) { _, focused in
+                model.send(CatalogIntentSearchFocused(focused: focused))
             }
             .overlay(alignment: .bottomTrailing) {
                 if searchFolded && !searchFloating {
@@ -123,12 +169,31 @@ struct CatalogView: View {
                 .presentationDetents([.medium, .large])
                 .presentationBackground(Color.brandInk2)
         }
-        .navigationDestination(for: TitleRoute.self) { route in
-            TitleView(route: route).navigationTransition(.zoom(sourceID: route, in: zoom))
-        }
-        .navigationDestination(for: ReaderRoute.self) { ReaderContainer(route: $0) }
+        // The stack's only destinations (pushed screens register none): a title zooms out of its tile.
+        .navigationDestination(for: AppRoute.self) { AppRouteView(route: $0, zoom: zoom) }
         .task { await model.observe() }
         .task { await sources.observe() }
+    }
+
+    /// A search under the field (this account's or others'): fills the field and runs at once.
+    private func useSearch(_ text: String) {
+        query = text
+        fieldFocus = false
+        floatingFocus = false
+        model.send(CatalogIntentUseSearch(text: text))
+    }
+
+    private func opened(_ sourceKey: String, _ titleId: String) {
+        model.send(CatalogIntentTitleOpened(sourceKey: sourceKey, titleId: titleId))
+    }
+
+    /// A suggested title: the list and the keyboard go first, then one push (never a second one from the grid).
+    private func openSuggested(_ sourceKey: String, _ titleId: String) {
+        fieldFocus = false
+        floatingFocus = false
+        opened(sourceKey, titleId)
+        searchFloating = false
+        push(.title(TitleRoute(sourceKey: sourceKey, titleId: titleId)))
     }
 
     private static let top = "catalog-top"
@@ -169,13 +234,22 @@ struct CatalogView: View {
     }
 
     @ViewBuilder private var filters: some View {
-        if model.state.showSourceFilter || model.state.showCategoryFilter {
-            HStack(spacing: 8) {
-                if model.state.showSourceFilter {
-                    FilterButton(label: model.state.sourceFilterLabel, active: !model.state.allSources) { sheet = .sources }
-                }
-                if model.state.showCategoryFilter {
-                    FilterButton(label: model.state.categoryFilterLabel, active: model.state.category != nil) { sheet = .categories }
+        if model.state.showSourceFilter || model.state.showCategoryFilter || model.state.showEpisodesFilter {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    if model.state.showSourceFilter {
+                        FilterButton(label: model.state.sourceFilterLabel, active: !model.state.allSources) { sheet = .sources }
+                    }
+                    if model.state.showCategoryFilter {
+                        FilterButton(label: model.state.categoryFilterLabel, active: model.state.category != nil) { sheet = .categories }
+                    }
+                    if model.state.showEpisodesFilter {
+                        ToggleChip(label: model.state.episodesLabel, on: model.state.episodesOnly) {
+                            Haptics.select()
+                            model.send(CatalogIntentToggleEpisodes.shared)
+                        }
+                        .accessibilityIdentifier("catalog.episodes")
+                    }
                 }
             }
         }
@@ -211,6 +285,29 @@ private struct FilterButton: View {
     }
 }
 
+/// A filter that is on or off ("▶ Episodes"): red when on.
+struct ToggleChip: View {
+    let label: String
+    let on: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Text(label)
+                .lineLimit(1)
+                .font(.brandBody(15, weight: .bold))
+                .foregroundStyle(on ? Color.brandInk : Color.brandPaper)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background(on ? Color.brandRed : Color.brandInk2, in: Capsule())
+                .overlay(Capsule().stroke(on ? Color.brandRed : Color.brandLine, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(label)
+        .accessibilityAddTraits(on ? .isSelected : [])
+    }
+}
+
 /// Sources: "All", then each visible source (tap to add or remove it). Categories: one choice, then it closes.
 private struct FilterSheet: View {
     @ObservedObject var model: CatalogModel
@@ -236,10 +333,19 @@ private struct FilterSheet: View {
                         model.send(CatalogIntentSelectCategory(name: nil))
                         dismiss()
                     }
-                    ForEach(model.state.categories, id: \.name) { category in
-                        CheckRow(label: category.name, checked: category.selected) {
-                            model.send(CatalogIntentSelectCategory(name: category.name))
-                            dismiss()
+                    // The formats first (every source's comics and books), then each source's own categories under its name.
+                    ForEach(Array(model.state.categoryGroups.enumerated()), id: \.offset) { _, group in
+                        if let title = group.title {
+                            Text(title.uppercased())
+                                .font(.brandBody(12, weight: .bold)).tracking(1.2)
+                                .foregroundStyle(Color.brandMuted)
+                                .padding(.top, 14)
+                        }
+                        ForEach(group.choices, id: \.name) { category in
+                            CheckRow(label: category.name, checked: category.selected) {
+                                model.send(CatalogIntentSelectCategory(name: category.name))
+                                dismiss()
+                            }
                         }
                     }
                 }
@@ -297,17 +403,88 @@ private struct ResumeBanner: View {
     }
 }
 
+/// Under the search field while it has the focus: "Your searches" (↺), "Others searched", "Titles" (cover, name,
+/// "Popular ✦ source"). A search fills the field and runs; a title opens its page.
+private struct SuggestionList: View {
+    let sections: [SuggestionSection]
+    let onSearch: (String) -> Void
+    let onTitle: (String, String) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(sections, id: \.title) { section in
+                Text(section.title)
+                    .font(.brandBody(12, weight: .bold))
+                    .foregroundStyle(Color.brandMuted)
+                    .padding(.horizontal, 14)
+                    .padding(.top, 8)
+                    .padding(.bottom, 4)
+                ForEach(section.rows, id: \.key) { row in
+                    if row.kind == .title, let sourceKey = row.sourceKey, let titleId = row.titleId {
+                        Button { onTitle(sourceKey, titleId) } label: { line(row) }
+                            .buttonStyle(.plain)
+                    } else {
+                        Button { onSearch(row.text) } label: { line(row) }
+                            .buttonStyle(.plain)
+                    }
+                }
+            }
+        }
+        .padding(.vertical, 6)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.brandInk2, in: RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.brandLine, lineWidth: 1))
+        // Opaque to touches, gaps between rows included.
+        .contentShape(RoundedRectangle(cornerRadius: 12))
+        .shadow(color: .black.opacity(0.5), radius: 12, y: 6)
+        .accessibilityIdentifier("search-suggestions")
+    }
+
+    private func line(_ row: SuggestionRow) -> some View {
+        HStack(spacing: 12) {
+            switch row.kind {
+            case .title:
+                AsyncImage(url: row.coverUrl.flatMap(URL.init(string:))) { image in
+                    image.resizable().scaledToFill()
+                } placeholder: { Color.brandLine }
+                    .frame(width: 30, height: 40)
+                    .clipShape(RoundedRectangle(cornerRadius: 4))
+            case .recent:
+                Image(systemName: "arrow.counterclockwise").foregroundStyle(Color.brandMuted).frame(width: 30)
+            default:
+                Image(systemName: "magnifyingglass").foregroundStyle(Color.brandMuted).frame(width: 30)
+            }
+            VStack(alignment: .leading, spacing: 2) {
+                Text(row.text).font(.brandBody(15)).foregroundStyle(Color.brandPaper).lineLimit(1)
+                if let detail = row.detail, !detail.isEmpty {
+                    Text(detail).font(.brandBody(12)).foregroundStyle(Color.brandMuted).lineLimit(1)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .contentShape(Rectangle())
+    }
+}
+
 /// Title tile: cover, format and source badges, name.
 private struct TitleTile: View {
     let card: TitleCard
+    let popularLabel: String
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             ZStack(alignment: .topLeading) {
                 Color.brandLine
-                AsyncImage(url: card.coverUrl.flatMap(URL.init(string:))) { image in
-                    image.resizable().scaledToFill()
-                } placeholder: { Color.brandLine }
+                CoverImage(card: card)
+                if let badge = card.episodeBadge {
+                    // Under the heart (top right, drawn by the grid over the tile).
+                    EpisodeBadge(label: badge)
+                        .frame(maxWidth: .infinity, alignment: .topTrailing)
+                        .padding(.top, 54)
+                        .padding(.trailing, 8)
+                }
                 VStack(alignment: .leading, spacing: 4) {
                     Text(card.formatLabel)
                         .font(.brandBody(12, weight: .bold))
@@ -322,6 +499,15 @@ private struct TitleTile: View {
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2)
                         .background(Color.brandInk.opacity(0.85))
+                    if card.popular {
+                        Text(popularLabel)
+                            .font(.brandBody(11, weight: .bold))
+                            .foregroundStyle(Color.brandRed)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.brandInk.opacity(0.85))
+                            .overlay(Rectangle().stroke(Color.brandRed, lineWidth: 1))
+                    }
                     if card.started {
                         Text(L("catalog.started"))
                             .font(.brandBody(11, weight: .bold))
@@ -337,6 +523,13 @@ private struct TitleTile: View {
             .clipped()
             VStack(alignment: .leading, spacing: 2) {
                 Text(card.name).font(.brandBody(15)).foregroundStyle(Color.brandPaper).lineLimit(2)
+                if let more = card.moreSources {
+                    // One card per series: the other sources that carry it.
+                    Text(more).font(.brandBody(12, weight: .bold)).foregroundStyle(Color.brandMuted).lineLimit(1)
+                }
+                if card.ratingLine != nil || card.favoriteLine != nil {
+                    MarkLines(rating: card.ratingLine, favorite: card.favoriteLine, size: 12)
+                }
                 Text(card.status).font(.brandBody(13)).foregroundStyle(Color.brandMuted)
             }
             .padding(12)
@@ -346,5 +539,123 @@ private struct TitleTile: View {
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.brandLine, lineWidth: 2))
         .contentShape(RoundedRectangle(cornerRadius: 12))
         .accessibilityElement(children: .combine)
+    }
+}
+
+/// The heart: round, 40 pt, ink glass; red and filled when on, a pop when it changes (none under Reduce Motion), a
+/// haptic on every tap.
+struct HeartButton: View {
+    let on: Bool
+    let label: String
+    let action: () -> Void
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var pop = false
+
+    var body: some View {
+        Button {
+            Haptics.tap()
+            if !reduceMotion {
+                withAnimation(.spring(response: 0.22, dampingFraction: 0.45)) { pop = true }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) { withAnimation(.easeOut(duration: 0.15)) { pop = false } }
+            }
+            action()
+        } label: {
+            Image(systemName: on ? "heart.fill" : "heart")
+                .font(.system(size: 18, weight: .bold))
+                .foregroundStyle(on ? Color.brandRed : Color.brandPaper)
+                .scaleEffect(pop ? 1.3 : 1)
+                .frame(width: 40, height: 40)
+                .background(.ultraThinMaterial, in: Circle())
+                .background(Color.brandInk.opacity(0.55), in: Circle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(label)
+        .accessibilityAddTraits(on ? .isSelected : [])
+    }
+}
+
+/// "★ 4.3 (12)  ♥ 30": everyone's numbers, only those known (the yellow star, the red heart).
+struct MarkLines: View {
+    let rating: String?
+    let favorite: String?
+    var size: CGFloat = 13
+
+    var body: some View {
+        HStack(spacing: 10) {
+            if let rating { Text(rating).foregroundStyle(Color.brandYellow) }
+            if let favorite { Text(favorite).foregroundStyle(Color.brandRed) }
+        }
+        .font(.brandBody(size, weight: .bold))
+        .lineLimit(1)
+    }
+}
+
+/// "▶ 3": chapters with an episode, top right of a cover (text on red: ink).
+struct EpisodeBadge: View {
+    let label: String
+
+    var body: some View {
+        Text(label)
+            .font(.brandBody(12, weight: .bold))
+            .foregroundStyle(Color.brandInk)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(Color.brandRed)
+    }
+}
+
+/// A tile's cover. A load cancelled while the grid redraws (a result that changes its badges, the format the server
+/// learned) left AsyncImage failed for good, a grey tile: a cancelled load starts again (a few times, then it stays
+/// grey); another failure is logged once. A new link loads afresh.
+private struct CoverImage: View {
+    let card: TitleCard
+    @State private var attempt = 0
+
+    private static let maxAttempts = 3
+
+    var body: some View {
+        AsyncImage(url: card.coverUrl.flatMap(URL.init(string:))) { phase in
+            switch phase {
+            case let .success(image): image.resizable().scaledToFill()
+            case let .failure(error): Color.brandLine.onAppear { failed(error) }
+            default: Color.brandLine
+            }
+        }
+        .id(CoverLoad(url: card.coverUrl, attempt: attempt))
+        .onAppear { if card.coverUrl == nil { CoverLog.missing(card: card) } }
+        .onChange(of: card.coverUrl) { attempt = 0 }
+    }
+
+    private func failed(_ error: Error) {
+        if (error as? URLError)?.code == .cancelled || error is CancellationError, attempt < Self.maxAttempts {
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(150))
+                attempt += 1
+            }
+        } else {
+            CoverLog.failed(card: card, error: error)
+        }
+    }
+}
+
+private struct CoverLoad: Hashable {
+    let url: String?
+    let attempt: Int
+}
+
+/// Why a tile shows no cover, for checks on the simulator (`log stream --predicate 'category == "covers"'`): the host
+/// only (signed links carry their signature in the query), never the whole URL.
+enum CoverLog {
+    private static let log = Logger(subsystem: Bundle.main.bundleIdentifier ?? "vovoscan", category: "covers")
+
+    static func missing(card: TitleCard) {
+        log.info("cover none: \(card.key, privacy: .public)")
+    }
+
+    static func failed(card: TitleCard, error: Error) {
+        let host = card.coverUrl.flatMap { URL(string: $0)?.host } ?? "?"
+        let referer = card.coverUrl.flatMap { AppModulesKt.imageRefererFor(url: $0) } != nil
+        let code = (error as? URLError)?.code.rawValue ?? 0
+        log.info("cover failed: \(card.key, privacy: .public) host=\(host, privacy: .public) referer=\(referer) code=\(code)")
     }
 }

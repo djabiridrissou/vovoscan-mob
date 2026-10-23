@@ -1,12 +1,15 @@
 package com.vovoscan.feature.catalog.presentation
 
 import com.vovoscan.feature.catalog.domain.Chapter
+import com.vovoscan.feature.catalog.domain.ChapterTranslationBadge
+import com.vovoscan.feature.catalog.domain.ChapterTranslations
 import com.vovoscan.feature.catalog.domain.ContentKind
 import com.vovoscan.feature.catalog.domain.ReadingFormat
 import com.vovoscan.feature.catalog.domain.ReadingResume
 import com.vovoscan.feature.catalog.domain.ResumePoint
 import com.vovoscan.feature.catalog.domain.TitleDetail
 import com.vovoscan.feature.catalog.domain.TitleSummary
+import com.vovoscan.feature.catalog.domain.TitleTranslationBadges
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -61,6 +64,120 @@ class ContinueReadingTest {
     fun tearDown() = Dispatchers.resetMain()
 
     private fun repository() = FakeCatalog().apply { this.detail.value = this@ContinueReadingTest.detail }
+
+    @Test
+    fun aTitleSavedAsMangaWhoseGenresNameAStripShowsAsAWebtoon() =
+        runTest(dispatcher) {
+            val manga = summary.copy(format = ReadingFormat.Manga)
+            val saved = detail
+            val repository =
+                FakeCatalog().apply {
+                    this.detail.value =
+                        saved.copy(
+                            summary = manga,
+                            genres = listOf("Action", " Webtoons "),
+                        )
+                }
+            val vm = TitleDetailViewModel("inkwell", "dle", repository, resume)
+            advanceUntilIdle()
+            assertTrue(
+                vm.state.value.meta
+                    .startsWith("WEBTOON"),
+                vm.state.value.meta,
+            )
+
+            // Our own source's format is the server's word.
+            repository.detail.value = saved.copy(summary = manga.copy(sourceKey = "vovoscan"), genres = listOf("Webtoons"))
+            val ours = TitleDetailViewModel("vovoscan", "dle", repository, resume)
+            advanceUntilIdle()
+            assertTrue(
+                ours.state.value.meta
+                    .startsWith("MANGA"),
+                ours.state.value.meta,
+            )
+        }
+
+    @Test
+    fun aPluginChapterRowsTranslateAndEpisodePillsReachTheViewModelAndOpenOnce() =
+        runTest(dispatcher) {
+            val vm = TitleDetailViewModel("inkwell", "dle", repository(), resume)
+            advanceUntilIdle()
+            assertTrue(vm.state.value.offersTranslation)
+            assertTrue(vm.state.value.offersEpisodes)
+
+            vm.onIntent(TitleDetailIntent.Translate("k2"))
+            val translate = vm.state.value.open
+            assertEquals("k2", translate?.chapterId)
+            assertEquals(ChapterTarget.Translate, translate?.target)
+            // Tapped again before the screen opened it: a new command, never a lost tap.
+            vm.onIntent(TitleDetailIntent.Translate("k2"))
+            val again = vm.state.value.open
+            assertTrue(again != null && translate != null && again.seq > translate.seq)
+            // An older answer leaves the newer command alone.
+            vm.onIntent(TitleDetailIntent.OpenHandled(translate!!.seq))
+            assertEquals(again, vm.state.value.open)
+            vm.onIntent(TitleDetailIntent.OpenHandled(again!!.seq))
+            assertNull(vm.state.value.open)
+
+            vm.onIntent(TitleDetailIntent.Episode("k3"))
+            assertEquals(
+                ChapterTarget.Episode,
+                vm.state.value.open
+                    ?.target,
+            )
+            assertEquals(
+                "k3",
+                vm.state.value.open
+                    ?.chapterId,
+            )
+            // A chapter that is not on the page opens nothing.
+            vm.onIntent(
+                TitleDetailIntent.OpenHandled(
+                    vm.state.value.open!!
+                        .seq,
+                ),
+            )
+            vm.onIntent(TitleDetailIntent.Episode("gone"))
+            assertNull(vm.state.value.open)
+        }
+
+    @Test
+    fun eachRowsPillsCarryThatRowsOwnChapterInEitherOrder() =
+        runTest(dispatcher) {
+            val repository = repository()
+            val vm = TitleDetailViewModel("inkwell", "dle", repository, resume)
+            advanceUntilIdle()
+            for (newestFirst in listOf(false, true)) {
+                if (vm.state.value.newestFirst != newestFirst) {
+                    vm.onIntent(TitleDetailIntent.ToggleOrder)
+                    advanceUntilIdle()
+                }
+                val rows = vm.state.value.chapters
+                assertEquals(if (newestFirst) listOf("k3", "k2", "k1") else listOf("k1", "k2", "k3"), rows.map { it.id })
+                rows.forEach { row ->
+                    vm.onIntent(TitleDetailIntent.Translate(row.id))
+                    val open = vm.state.value.open!!
+                    assertEquals(row.id to ChapterTarget.Translate, open.chapterId to open.target)
+                    vm.onIntent(TitleDetailIntent.OpenHandled(open.seq))
+                    vm.onIntent(TitleDetailIntent.Episode(row.id))
+                    val episode = vm.state.value.open!!
+                    assertEquals(row.id to ChapterTarget.Episode, episode.chapterId to episode.target)
+                    vm.onIntent(TitleDetailIntent.OpenHandled(episode.seq))
+                }
+            }
+        }
+
+    @Test
+    fun aBookOffersNeitherPill() =
+        runTest(dispatcher) {
+            val book = detail.copy(summary = summary.copy(kind = ContentKind.Book))
+            val repository = FakeCatalog().apply { this.detail.value = book }
+            val vm = TitleDetailViewModel("inkwell", "dle", repository, resume)
+            advanceUntilIdle()
+            vm.onIntent(TitleDetailIntent.Translate("k1"))
+            vm.onIntent(TitleDetailIntent.Episode("k1"))
+            assertNull(vm.state.value.open)
+        }
 
     @Test
     fun chapterOneIsOnTopAndTheOrderIsRemembered() =
@@ -197,5 +314,45 @@ class ContinueReadingTest {
                     .associate { it.id to it.started },
             )
             assertEquals("Reading", vm.state.value.startedLabel)
+        }
+
+    @Test
+    fun eachChapterShowsItsTranslationInTheLanguageLastReadAndOpensInIt() =
+        runTest(dispatcher) {
+            val badges =
+                ChapterTranslations { _, _ ->
+                    TitleTranslationBadges(
+                        "fr",
+                        mapOf(
+                            "k1" to ChapterTranslationBadge(ready = true, progress = 100),
+                            "k2" to ChapterTranslationBadge(ready = false, progress = 42),
+                            "k3" to ChapterTranslationBadge(ready = false, progress = null),
+                        ),
+                    )
+                }
+            val vm = TitleDetailViewModel("inkwell", "dle", repository(), resume, badges)
+            advanceUntilIdle()
+            val rows = vm.state.value.chapters
+            assertEquals(listOf("Français ✓", "Français ✦ 42%", "Français ✦ preparing"), rows.map { it.translation })
+            assertEquals(listOf("fr", null, null), rows.map { it.openLanguage })
+            assertTrue(rows.first().translationReady)
+            // "Start reading" opens chapter 1 translated.
+            assertEquals(
+                "fr",
+                vm.state.value.readAction
+                    ?.language,
+            )
+
+            // No language read yet: no badge, chapters open as they are.
+            val plain = TitleDetailViewModel("inkwell", "dle", repository(), resume)
+            advanceUntilIdle()
+            assertTrue(
+                plain.state.value.chapters
+                    .all { it.translation == null && it.openLanguage == null },
+            )
+            assertNull(
+                plain.state.value.readAction
+                    ?.language,
+            )
         }
 }

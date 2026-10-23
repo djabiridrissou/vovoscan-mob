@@ -1,0 +1,4 @@
+-- v4 → v5: episodes (the `video` feature). Titles saved before have none known (0) and chapters no languages until the
+-- next refresh.
+ALTER TABLE title ADD COLUMN episode_count INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE chapter ADD COLUMN episode_languages TEXT;

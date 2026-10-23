@@ -1,0 +1,2 @@
+-- v3 → v4: each title's content rating (safe mode). Titles saved before it have none: unknown until the next refresh.
+ALTER TABLE title ADD COLUMN content_rating TEXT;

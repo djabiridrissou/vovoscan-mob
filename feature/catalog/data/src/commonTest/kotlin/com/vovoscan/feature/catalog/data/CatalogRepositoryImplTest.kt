@@ -53,15 +53,33 @@ class CatalogRepositoryImplTest {
             """"content":{"book":{"document":{"url":{"template":"https://books.e""" +
             """xample/files/{{id}}.epub"},"mediaType":"application/epub+zip"}}}}"""
 
+    /** A comic source whose catalog declares a format rule (it reads nothing for some titles), and one without. */
+    private val inkwellManifest =
+        """{"contractVersion":1,"key":"inkwell","name":"Inkwell","version":"1.0.0","kinds":["comic"],"langs":["en"],""" +
+            """"rights":{"basis":"public-domain","notes":"Test source."},"hosts":["inkwell.example"],""" +
+            """"catalog":{"request":{"url":"https://inkwell.example/strips","type":"json","query":{"page":"{{page}}"}},""" +
+            """"list":"${'$'}.items[*]","item":{"id":{"path":"${'$'}.id","then":["string"]},"name":"${'$'}.title",""" +
+            """"format":"${'$'}.format"}},""" +
+            """"title":{"request":{"url":"https://inkwell.example/t/{{id}}","type":"json"},"fields":{"name":"${'$'}.title"},""" +
+            """"units":{"single":{"id":"{{id}}"}}},"content":{"comic":{"request":{"url":"https://inkwell.example/r/{{unitId}}",""" +
+            """"type":"json"},"list":"${'$'}.pages[*]","item":{"url":"${'$'}.url"}}}}"""
+    private val quillManifest =
+        """{"contractVersion":1,"key":"quill","name":"Quill","version":"1.0.0","kinds":["comic"],"langs":["en"],""" +
+            """"rights":{"basis":"public-domain","notes":"Test source."},"hosts":["quill.example"],""" +
+            """"catalog":{"request":{"url":"https://quill.example/strips","type":"json","query":{"page":"{{page}}"}},""" +
+            """"list":"${'$'}.items[*]","item":{"id":{"path":"${'$'}.id","then":["string"]},"name":"${'$'}.title"}},""" +
+            """"title":{"request":{"url":"https://quill.example/t/{{id}}","type":"json"},"fields":{"name":"${'$'}.title"},""" +
+            """"units":{"single":{"id":"{{id}}"}}},"content":{"comic":{"request":{"url":"https://quill.example/r/{{unitId}}",""" +
+            """"type":"json"},"list":"${'$'}.pages[*]","item":{"url":"${'$'}.url"}}}}"""
+
     private val manifests =
         ManifestProvider { key ->
-            if (key ==
-                "books"
-            ) {
-                SourceManifest("books", Json.parseToJsonElement(booksManifest).jsonObject, emptyMap())
-            } else {
-                null
-            }
+            when (key) {
+                "books" -> booksManifest
+                "inkwell" -> inkwellManifest
+                "quill" -> quillManifest
+                else -> null
+            }?.let { SourceManifest(key, Json.parseToJsonElement(it).jsonObject, emptyMap()) }
         }
 
     /** The on-device source's site answers 503. */
@@ -69,19 +87,26 @@ class CatalogRepositoryImplTest {
     private val deviceRequests = mutableListOf<String>()
 
     private fun TestScope.repository(
+        local: SqlCatalogLocalDataSource =
+            SqlCatalogLocalDataSource(CatalogDatabase(inMemoryDriver(CatalogDatabase.Schema)), StandardTestDispatcher(testScheduler)),
         apiHandler:
             suspend io.ktor.client.engine.mock.MockRequestHandleScope.(
                 io.ktor.client.request.HttpRequestData,
             ) -> io.ktor.client.request.HttpResponseData,
     ): CatalogRepositoryImpl {
-        val local =
-            SqlCatalogLocalDataSource(CatalogDatabase(inMemoryDriver(CatalogDatabase.Schema)), StandardTestDispatcher(testScheduler))
         val device =
             MockEngine { request ->
                 if (deviceDown) return@MockEngine respond("", HttpStatusCode.ServiceUnavailable)
                 deviceRequests += request.url.toString()
                 val body =
                     when (request.url.encodedPath) {
+                        // Ink Road names no format although the rule is declared; Paper Kite says manga.
+                        "/strips" ->
+                            if (request.url.host == "inkwell.example") {
+                                """{"items":[{"id":1,"title":"Ink Road"},{"id":2,"title":"Paper Kite","format":"manga"}]}"""
+                            } else {
+                                """{"items":[{"id":5,"title":"Quill Tide"}]}"""
+                            }
                         "/list" ->
                             if (request.url.parameters["shelf"] == "poetry") {
                                 """{"items":[{"id":9,"title":"Odes"}],"next":"2"}"""
@@ -89,6 +114,7 @@ class CatalogRepositoryImplTest {
                                 """{"items":[{"id":7,"title":"Old Tales"}],"next":null}"""
                             }
                         "/book/7" -> """{"title":"Old Tales"}"""
+                        "/t/1" -> """{"title":"Ink Road"}"""
                         else -> return@MockEngine respond("", HttpStatusCode.NotFound)
                     }
                 respond(body, HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
@@ -101,6 +127,242 @@ class CatalogRepositoryImplTest {
             )
         return CatalogRepositoryImpl(remote, local)
     }
+
+    @Test
+    fun aStripReadFromItsGenresStaysAWebtoonWhateverTheListingsGuess() =
+        runTest {
+            val local =
+                SqlCatalogLocalDataSource(CatalogDatabase(inMemoryDriver(CatalogDatabase.Schema)), StandardTestDispatcher(testScheduler))
+            // The title page: no format named, genres say it is a strip.
+            local.saveDetail(
+                "inkwell",
+                TitleDetailDto(
+                    "ink-road",
+                    "Ink Road",
+                    format = "manga",
+                    status = "ongoing",
+                    genres = listOf("Action", "Webtoons"),
+                    formatKnown = false,
+                ),
+            )
+            assertEquals(mapOf("ink-road" to "webtoon"), local.savedFormats("inkwell", listOf("ink-road", "unknown")))
+            // A later listing or search from a source that names no format sends the default: it never wins.
+            local.saveSummaries(
+                "inkwell",
+                listOf(TitleSummaryDto("ink-road", "Ink Road", format = "manga", status = "ongoing", formatKnown = false)),
+            )
+            assertEquals(mapOf("ink-road" to "webtoon"), local.savedFormats("inkwell", listOf("ink-road")))
+            // A source's own "manga" never turns a strip known here back (its genres, or the server's word).
+            local.saveSummaries("inkwell", listOf(TitleSummaryDto("ink-road", "Ink Road", format = "manga", status = "ongoing")))
+            assertEquals(mapOf("ink-road" to "webtoon"), local.savedFormats("inkwell", listOf("ink-road")))
+            // A search answer without a cover keeps the cover the listing saved.
+            local.saveSummaries(
+                "inkwell",
+                listOf(
+                    TitleSummaryDto(
+                        "paper-kite",
+                        "Paper Kite",
+                        coverUrl = "https://inkwell.example/c.webp",
+                        format = "manga",
+                        status = "ongoing",
+                    ),
+                ),
+            )
+            local.saveSummaries("inkwell", listOf(TitleSummaryDto("paper-kite", "Paper Kite", format = "manga", status = "ongoing")))
+            assertEquals(
+                mapOf("paper-kite" to "https://inkwell.example/c.webp"),
+                local.savedCovers("inkwell", listOf("paper-kite", "ink-road")),
+            )
+            // Our own catalog's format is the server's word, whatever the genres.
+            local.saveDetail("vovoscan", TitleDetailDto("t1", "Griot", format = "manga", status = "ongoing", genres = listOf("Webtoon")))
+            assertEquals(mapOf("t1" to "manga"), local.savedFormats("vovoscan", listOf("t1")))
+        }
+
+    @Test
+    fun formatsAreAskedForEveryComicSourceAndTheServersWordBeatsTheMangaDefault() =
+        runTest {
+            val asked = mutableListOf<String>()
+            val local =
+                SqlCatalogLocalDataSource(CatalogDatabase(inMemoryDriver(CatalogDatabase.Schema)), StandardTestDispatcher(testScheduler))
+            val repo =
+                repository(local) { request ->
+                    val path = request.url.encodedPath
+                    if (!path.endsWith("/formats")) return@repository respond("", HttpStatusCode.NotFound)
+                    asked += path + "?" +
+                        request.url.parameters
+                            .getAll("ref")
+                            .orEmpty()
+                            .joinToString(",")
+                    when (path) {
+                        "/api/v1/source-reader/inkwell/formats" -> respondJson("""{"data":{"1":"webtoon","2":"webtoon"}}""")
+                        "/api/v1/source-reader/quill/formats" -> respondJson("""{"data":{"5":"webtoon"}}""")
+                        else -> respondJson("""{"data":{}}""")
+                    }
+                }
+            repo.refreshListing("inkwell")
+            repo.refreshListing("quill")
+            repo.refreshListing("books")
+            // A listing whose declared rule read nothing: the default, which a strip known on the device beats.
+            assertEquals(
+                listOf("1" to ReadingFormat.Manga, "2" to ReadingFormat.Manga),
+                repo.observeListing("inkwell").first().map { it.title.id to it.title.format },
+            )
+            assertEquals(mapOf("1" to ReadingFormat.Webtoon, "2" to ReadingFormat.Webtoon), repo.learnFormats("inkwell", listOf("1", "2")))
+            assertEquals(mapOf("5" to ReadingFormat.Webtoon), repo.learnFormats("quill", listOf("5")))
+            // Never a source without comics.
+            assertEquals(emptyMap(), repo.learnFormats("books", listOf("7")))
+            assertEquals(
+                listOf("/api/v1/source-reader/inkwell/formats?1,2", "/api/v1/source-reader/quill/formats?5"),
+                asked,
+            )
+            // Applied to every listing of the source, whatever the category, over the source's own "manga" too.
+            assertEquals(
+                listOf("1" to ReadingFormat.Webtoon, "2" to ReadingFormat.Webtoon),
+                repo.observeListing("inkwell").first().map { it.title.id to it.title.format },
+            )
+            // And to search results (typed query, no format filter: nothing more is asked).
+            assertEquals(
+                setOf("1" to ReadingFormat.Webtoon, "2" to ReadingFormat.Webtoon),
+                repo.search("inkwell", "a").titles.mapTo(HashSet()) { it.id to it.format },
+            )
+            assertEquals(
+                ReadingFormat.Webtoon,
+                repo
+                    .observeListing("quill")
+                    .first()
+                    .single()
+                    .title.format,
+            )
+            // Asked once each.
+            repo.learnFormats("inkwell", listOf("1", "2"))
+            assertEquals(2, asked.size)
+
+            // Kept on the device: the next launch (a new repository) and a listing that names no format still show it.
+            val relaunched = repository(local) { respond("", HttpStatusCode.NotFound) }
+            relaunched.refreshListing("inkwell")
+            assertEquals(
+                listOf("1" to ReadingFormat.Webtoon, "2" to ReadingFormat.Webtoon),
+                relaunched.observeListing("inkwell").first().map { it.title.id to it.title.format },
+            )
+            // This source answers nothing here: the saved rows are searched ("a" is in both names).
+            assertEquals(
+                setOf("1" to ReadingFormat.Webtoon, "2" to ReadingFormat.Webtoon),
+                relaunched.search("inkwell", "a").titles.mapTo(HashSet()) { it.id to it.format },
+            )
+            assertEquals(2, asked.size)
+        }
+
+    @Test
+    fun titlesWithAnEpisodeComeFromTheServerAndTheirCountsStayWhenTheDeviceListsThem() =
+        runTest {
+            val asked = mutableListOf<String>()
+            val local =
+                SqlCatalogLocalDataSource(CatalogDatabase(inMemoryDriver(CatalogDatabase.Schema)), StandardTestDispatcher(testScheduler))
+            val repo =
+                repository(local) { request ->
+                    val path = request.url.encodedPath
+                    val has = request.url.parameters["has"]
+                    asked += if (has == null) path else "$path?has=$has"
+                    when (path) {
+                        "/api/v1/catalog/sources/vovoscan/titles" ->
+                            if (has == "episode") {
+                                respondJson(
+                                    """{"data":[{"id":"t1","name":"Ink Road","kind":"comic","format":"webtoon","status":"ongoing",""" +
+                                        """"episodeCount":2}],"total":1,"page":1,"perPage":24,"pages":1}""",
+                                )
+                            } else {
+                                respondJson(page)
+                            }
+                        "/api/v1/catalog/titles/t1" ->
+                            respondJson(
+                                """{"data":{"id":"t1","name":"Ink Road","format":"webtoon","status":"ongoing","episodeCount":1,""" +
+                                    """"chapters":[{"id":"c2","number":2,"episodeLanguages":[]},""" +
+                                    """{"id":"c1","number":1,"episodeLanguages":["","en"]}]}}""",
+                            )
+                        "/api/v1/source-reader/inkwell/titles" ->
+                            respondJson(
+                                """{"data":{"items":[{"id":"1","name":"Ink Road","coverUrl":null,"kind":"comic","format":"webtoon",""" +
+                                    """"status":"ongoing","episodeCount":1}],"page":1,"hasNext":false,"total":1}}""",
+                            )
+                        "/api/v1/source-reader/inkwell/title" ->
+                            respondJson("""{"data":{"episodeCount":1,"units":[{"id":"1","episodeLanguages":["","fr"]}]}}""")
+                        else -> respond("", HttpStatusCode.NotFound)
+                    }
+                }
+
+            // Our catalog: its own listing of titles with an episode, apart from everything.
+            assertEquals(AppResult.Ok(false), repo.refreshListing("vovoscan", episodes = true))
+            assertEquals(
+                listOf("t1" to 2),
+                repo.observeListing("vovoscan", episodes = true).first().map {
+                    it.title.id to
+                        it.title.episodeCount
+                },
+            )
+            assertEquals(emptyList(), repo.observeListing("vovoscan").first())
+            assertEquals("/api/v1/catalog/sources/vovoscan/titles?has=episode", asked.last())
+
+            // A source read on the device: the server lists the titles imported from it that have one (not the site).
+            val sitesBefore = deviceRequests.size
+            assertEquals(AppResult.Ok(false), repo.refreshListing("inkwell", episodes = true))
+            assertEquals("/api/v1/source-reader/inkwell/titles?has=episode", asked.last())
+            assertEquals(sitesBefore, deviceRequests.size)
+            assertEquals(
+                listOf(Triple("1", 1, ReadingFormat.Webtoon)),
+                repo.observeListing("inkwell", episodes = true).first().map { Triple(it.title.id, it.title.episodeCount, it.title.format) },
+            )
+            // The device's own listing can't know: the server's count stays on the title, the others have none.
+            repo.refreshListing("inkwell")
+            assertEquals(
+                listOf("1" to 1, "2" to 0),
+                repo.observeListing("inkwell").first().map { it.title.id to it.title.episodeCount },
+            )
+            // Offline, a search under the filter keeps only those.
+            assertEquals(listOf("1"), local.searchLocal("inkwell", "", episodes = true).map { it.id })
+
+            // Its title page asks the server for the chapters' languages, because the server said it has an episode.
+            assertEquals(AppResult.Ok(Unit), repo.refreshTitle("inkwell", "1"))
+            assertEquals("/api/v1/source-reader/inkwell/title", asked.last())
+            val title = repo.observeTitle("inkwell", "1").first()!!
+            assertEquals(listOf(listOf("", "fr")), title.chapters.map { it.episodeLanguages })
+            assertEquals(1, title.summary.episodeCount)
+
+            // Our catalog's chapters come with theirs; "" (the original) is kept like any language.
+            repo.refreshTitle("vovoscan", "t1")
+            assertEquals(
+                listOf("c2" to emptyList(), "c1" to listOf("", "en")),
+                repo
+                    .observeTitle("vovoscan", "t1")
+                    .first()!!
+                    .chapters
+                    .map { it.id to it.episodeLanguages },
+            )
+
+            // The filter is remembered.
+            local.saveFilter(CatalogFilter(episodesOnly = true))
+            assertTrue(local.observeFilter().first().episodesOnly)
+        }
+
+    @Test
+    fun aTitleTheServerNeverSaidHasAnEpisodeTellsItNothing() =
+        runTest {
+            val asked = mutableListOf<String>()
+            val repo =
+                repository { request ->
+                    asked += request.url.encodedPath
+                    respond("", HttpStatusCode.NotFound)
+                }
+            assertEquals(AppResult.Ok(Unit), repo.refreshTitle("inkwell", "1"))
+            assertEquals(emptyList(), asked)
+            assertEquals(
+                listOf(emptyList()),
+                repo
+                    .observeTitle("inkwell", "1")
+                    .first()!!
+                    .chapters
+                    .map { it.episodeLanguages },
+            )
+        }
 
     @Test
     fun internalSourceThroughTheApi() =

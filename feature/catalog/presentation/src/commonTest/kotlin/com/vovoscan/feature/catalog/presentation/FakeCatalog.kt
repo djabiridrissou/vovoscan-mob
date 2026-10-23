@@ -13,6 +13,7 @@ import com.vovoscan.feature.catalog.domain.TitleDetail
 import com.vovoscan.feature.catalog.domain.TitleSummary
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 
 fun title(
@@ -35,6 +36,14 @@ fun title(
     "ongoing",
 )
 
+/** The titles with an episode have their own listing (the server's): `EPISODES + category id`. */
+const val EPISODES = "▶"
+
+private fun listing(
+    categoryId: String?,
+    episodes: Boolean,
+) = if (episodes) EPISODES + categoryId.orEmpty() else categoryId
+
 /**
  * Sources in memory: each has pages of titles per listing (category id or null), categories, and can fail with
  * `failures[key]`. The saved copy (`saved`) is what a refresh has written, like the real repository.
@@ -54,15 +63,47 @@ class FakeCatalog : CatalogRepository {
     var titleResult: AppResult<Unit> = AppResult.Ok(Unit)
     private val loadedPages = mutableMapOf<Pair<String, String?>, Int>()
 
+    /** What the server learned of titles read on the device ("<source>/<id>" → format), and what was asked of it. */
+    val serverFormats = mutableMapOf<String, ReadingFormat>()
+    val formatsAsked = mutableListOf<Pair<String, List<String>>>()
+    private val learned = MutableStateFlow<Map<String, ReadingFormat>>(emptyMap())
+
     override fun observeListing(
         sourceKey: String,
         categoryId: String?,
-    ): Flow<List<ListedTitle>> = saved.map { it[sourceKey to categoryId].orEmpty() }
+        episodes: Boolean,
+    ): Flow<List<ListedTitle>> =
+        saved.combine(learned) { all, known ->
+            all[sourceKey to listing(categoryId, episodes)].orEmpty().map { t ->
+                known["$sourceKey/${t.title.id}"]?.let { t.copy(title = t.title.copy(format = it)) } ?: t
+            }
+        }
+
+    override suspend fun learnFormats(
+        sourceKey: String,
+        ids: List<String>,
+    ): Map<String, ReadingFormat> {
+        val fresh = ids.filter { "$sourceKey/$it" !in learned.value && formatsAsked.none { (s, asked) -> s == sourceKey && it in asked } }
+        if (fresh.isNotEmpty()) {
+            formatsAsked += sourceKey to fresh
+            learned.value += fresh.mapNotNull { id -> serverFormats["$sourceKey/$id"]?.let { "$sourceKey/$id" to it } }
+        }
+        return ids.mapNotNull { id -> learned.value["$sourceKey/$id"]?.let { id to it } }.toMap()
+    }
+
+    override fun askFormatsAgain(sourceKey: String) {
+        for (i in formatsAsked.indices) {
+            val (s, asked) = formatsAsked[i]
+            if (s == sourceKey) formatsAsked[i] = s to asked.filter { "$s/$it" in learned.value }
+        }
+    }
 
     override suspend fun refreshListing(
         sourceKey: String,
-        categoryId: String?,
+        listingId: String?,
+        episodes: Boolean,
     ): AppResult<Boolean> {
+        val categoryId = listing(listingId, episodes)
         refreshed += sourceKey to categoryId
         failures[sourceKey]?.let { return AppResult.Err(it) }
         val pages = remote[sourceKey to categoryId].orEmpty()
@@ -74,9 +115,10 @@ class FakeCatalog : CatalogRepository {
     override suspend fun loadMoreListing(
         sourceKey: String,
         categoryId: String?,
+        episodes: Boolean,
     ): AppResult<Boolean> {
         failures[sourceKey]?.let { return AppResult.Err(it) }
-        val key = sourceKey to categoryId
+        val key = sourceKey to listing(categoryId, episodes)
         val pages = remote[key].orEmpty()
         val next = (loadedPages[key] ?: 0) + 1
         if (next > pages.size) return AppResult.Ok(false)
@@ -88,13 +130,16 @@ class FakeCatalog : CatalogRepository {
     override suspend fun hasMore(
         sourceKey: String,
         categoryId: String?,
-    ) = (loadedPages[sourceKey to categoryId] ?: 0) < remote[sourceKey to categoryId].orEmpty().size
+        episodes: Boolean,
+    ) = listing(categoryId, episodes).let { (loadedPages[sourceKey to it] ?: 0) < remote[sourceKey to it].orEmpty().size }
 
     override suspend fun search(
         sourceKey: String,
         query: String,
-        categoryId: String?,
+        listingId: String?,
+        episodes: Boolean,
     ): SearchResult {
+        val categoryId = listing(listingId, episodes)
         searched += Triple(sourceKey, query, categoryId)
         val pool = remote[sourceKey to categoryId].orEmpty().flatten().filter { it.name.contains(query, ignoreCase = true) }
         return when (val failure = failures[sourceKey]) {
@@ -142,12 +187,22 @@ class FakeCatalog : CatalogRepository {
     override fun observeTitle(
         sourceKey: String,
         id: String,
-    ): Flow<TitleDetail?> = detail
+    ): Flow<TitleDetail?> =
+        combine(detail, otherDetails) { d, others ->
+            d?.takeIf { it.summary.sourceKey == sourceKey && it.summary.id == id } ?: others["$sourceKey/$id"]
+        }
+
+    /** Other title pages saved on the device, by "<sourceKey>/<id>". */
+    val otherDetails = MutableStateFlow<Map<String, TitleDetail>>(emptyMap())
+    val titlesRefreshed = mutableListOf<String>()
 
     override suspend fun refreshTitle(
         sourceKey: String,
         id: String,
-    ) = titleResult
+    ): AppResult<Unit> {
+        titlesRefreshed += "$sourceKey/$id"
+        return titleResult
+    }
 
     override suspend fun clearLocal() = Unit
 

@@ -178,3 +178,45 @@ func submitAfterCommittingInput(_ submit: @escaping () -> Void) {
     let hadFocus = UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
     DispatchQueue.main.asyncAfter(deadline: .now() + (hadFocus ? 0.8 : 0.05)) { fire() }
 }
+
+/// Text screens on a wide window (iPad, Split View): the content keeps a readable column centred, the scroll and its
+/// background still span the window. On a phone it changes nothing.
+private struct ReadableWidth: ViewModifier {
+    var maxWidth: CGFloat = 720
+    @State private var width: CGFloat = 0
+
+    func body(content: Content) -> some View {
+        content
+            .contentMargins(.horizontal, max(0, (width - maxWidth) / 2), for: .scrollContent)
+            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
+    }
+}
+
+extension View {
+    func readableWidth(_ maxWidth: CGFloat = 720) -> some View { modifier(ReadableWidth(maxWidth: maxWidth)) }
+}
+
+/// The account's credit balance as a small chip ("1,240 credits"), on the reading screens: the title page, the episode
+/// card, the language pickers and docks. It reads the shared wallet, so a quote or a run anywhere updates every chip.
+/// Hidden on a server without credits; yellow on red when the wallet is empty.
+struct CreditChip: View {
+    @StateObject private var wallet = WalletModel()
+
+    var body: some View {
+        Group {
+            if wallet.state.shown && !wallet.state.badge.isEmpty {
+                Label(wallet.state.badge, systemImage: "sparkles")
+                    .font(.brandBody(12, weight: .bold))
+                    .foregroundStyle(wallet.state.empty ? Color.brandInk : Color.brandYellow)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background(wallet.state.empty ? Color.brandRed : Color.brandInk2, in: Capsule())
+                    .overlay(Capsule().stroke(wallet.state.empty ? Color.brandRed : Color.brandLine, lineWidth: 1))
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(wallet.state.badgeA11y)
+                    .accessibilityIdentifier("credits.chip")
+            }
+        }
+        .task { await wallet.observe() }
+    }
+}

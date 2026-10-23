@@ -1,9 +1,6 @@
 import Shared
 import SwiftUI
 
-/// Opens the Downloads screen (from the Library).
-struct DownloadsRoute: Hashable {}
-
 /// A chapter's download control, from its row: download (arrow), a progress ring with a stop square while queued,
 /// waiting or downloading (cyan: work in progress), downloaded (check), failed (retry). Nothing for a book not
 /// opened yet. The row says what a tap does (`action`); the screen confirms a delete first.
@@ -99,6 +96,7 @@ struct DownloadsView: View {
             }
             .padding(20)
         }
+        .readableWidth()
         .background(Color.brandInk)
         .task { await model.observe() }
         .alert(
@@ -131,7 +129,7 @@ struct DownloadsView: View {
         var body: some View {
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
-                    NavigationLink(value: TitleRoute(sourceKey: group.sourceKey, titleId: group.titleId)) {
+                    NavigationLink(value: AppRoute.title(TitleRoute(sourceKey: group.sourceKey, titleId: group.titleId))) {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(group.titleName).font(.brandDisplay(18)).foregroundStyle(Color.brandPaper)
                             Text(group.meta).font(.brandBody(13)).foregroundStyle(Color.brandMuted)

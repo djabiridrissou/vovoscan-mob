@@ -35,6 +35,7 @@ struct SettingsView: View {
             }
             .padding(20)
         }
+        .readableWidth()
         .background(Color.brandInk)
         .refreshable {
             wallet.send(WalletIntentRefresh.shared)
@@ -81,8 +82,44 @@ struct SettingsView: View {
                 .accessibilityAddTraits(option.selected ? .isSelected : [])
             }
             Text(reading.state.footnote).font(.brandBody(13)).foregroundStyle(Color.brandMuted)
+            if !reading.state.textRows.isEmpty { textOrder }
             if let notice = reading.state.notice { Text(notice).font(.brandBody(13)).foregroundStyle(Color.brandPaper) }
             if let error = reading.state.error { ErrorText(text: error) }
+        }
+    }
+
+    // The order text keys are tried in (Claude, Gemini, Kimi): one out of credit hands over to the next.
+    private var textOrder: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(reading.state.textOrderTitle).font(.brandBody(15)).foregroundStyle(Color.brandPaper).padding(.top, 8)
+            ForEach(reading.state.textRows, id: \.label) { row in
+                HStack(spacing: 12) {
+                    Text("\(row.position)").font(.brandBody(15)).foregroundStyle(Color.brandMuted).frame(width: 18)
+                    Text(row.label).font(.brandBody(15)).foregroundStyle(Color.brandPaper)
+                    Spacer()
+                    Button {
+                        reading.send(ReadingSettingsIntentMoveTextProvider(provider: row.provider, by: -1))
+                    } label: {
+                        Image(systemName: "chevron.up").frame(width: 36, height: 36)
+                    }
+                    .disabled(!row.canMoveUp)
+                    .accessibilityLabel("\(reading.state.moveUpLabel) \(row.label)")
+                    Button {
+                        reading.send(ReadingSettingsIntentMoveTextProvider(provider: row.provider, by: 1))
+                    } label: {
+                        Image(systemName: "chevron.down").frame(width: 36, height: 36)
+                    }
+                    .disabled(!row.canMoveDown)
+                    .accessibilityLabel("\(reading.state.moveDownLabel) \(row.label)")
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(Color.brandPaper)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 6)
+                .background(Color.brandInk2, in: RoundedRectangle(cornerRadius: 12))
+                .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.brandLine, lineWidth: 1))
+            }
+            Text(reading.state.textOrderHint).font(.brandBody(13)).foregroundStyle(Color.brandMuted)
         }
     }
 
@@ -187,6 +224,7 @@ struct KeysScreen: View {
         ScrollView {
             KeysSection(keys: keys).padding(20)
         }
+        .readableWidth()
         .background(Color.brandInk)
         .task { await keys.observe() }
         .keyRemovalAlert(keys)

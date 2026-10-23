@@ -51,6 +51,8 @@ data class ReaderSettingsSheet(
     val keepAwake: Boolean,
     val volumeKeys: Boolean,
     val volumeKeysInverted: Boolean,
+    /** Two pages side by side when the screen is wide enough (shown on every device: a phone can join a display). */
+    val doublePages: Boolean,
 ) {
     companion object {
         fun of(
@@ -61,13 +63,20 @@ data class ReaderSettingsSheet(
         ): ReaderSettingsSheet {
             val formatDefault = preferences.defaultFor(format) ?: format.defaultMode
 
-            fun modes(selected: ReadingMode) = ReadingMode.comicModes.map { ModeOption(it, ReaderText.mode(it), it == selected) }
+            fun modes(
+                selected: ReadingMode,
+                stripOnly: Boolean = false,
+            ) = ReadingMode.comicModes
+                .filter { !stripOnly || it.isStrip }
+                .map { ModeOption(it, ReaderText.mode(it), it == selected) }
+            // A webtoon only scrolls (reader/SPEC.md §1b): its choices are with or without gaps.
+            val webtoon = format == ComicFormat.Webtoon
             return ReaderSettingsSheet(
-                seriesModes = modes(mode),
+                seriesModes = modes(mode, stripOnly = webtoon),
                 seriesHint = t("reader.seriesHint", "mode" to ReaderText.mode(formatDefault)),
                 canResetSeries = seriesMode != null,
                 mangaModes = modes(preferences.mangaMode ?: ComicFormat.Manga.defaultMode),
-                webtoonModes = modes(preferences.webtoonMode ?: ComicFormat.Webtoon.defaultMode),
+                webtoonModes = modes(preferences.webtoonMode ?: ComicFormat.Webtoon.defaultMode, stripOnly = true),
                 layouts = TapLayout.entries.map { LayoutOption(it, ReaderText.layout(it), it == preferences.tapLayout) },
                 inverts = TapInvert.entries.map { InvertOption(it, ReaderText.invert(it), it == preferences.tapInvert) },
                 scrollAmounts = ScrollAmount.entries.map { ScrollOption(it, ReaderText.scroll(it), it == preferences.scrollAmount) },
@@ -76,6 +85,7 @@ data class ReaderSettingsSheet(
                 keepAwake = preferences.keepAwake,
                 volumeKeys = preferences.volumeKeys,
                 volumeKeysInverted = preferences.volumeKeysInverted,
+                doublePages = preferences.doublePages,
             )
         }
     }
@@ -102,6 +112,8 @@ object ReaderText {
     val VOLUME_KEYS: String get() = t("reader.volumeKeys")
     val VOLUME_KEYS_HELP: String get() = t("reader.volumeKeysHelp")
     val VOLUME_KEYS_INVERTED: String get() = t("reader.volumeKeysInverted")
+    val DOUBLE_PAGES: String get() = t("reader.doublePages")
+    val DOUBLE_PAGES_HELP: String get() = t("reader.doublePagesHelp")
 
     fun mode(mode: ReadingMode): String =
         when (mode) {

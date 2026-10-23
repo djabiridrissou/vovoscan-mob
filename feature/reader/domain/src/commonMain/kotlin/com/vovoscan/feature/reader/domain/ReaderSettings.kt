@@ -32,6 +32,10 @@ data class ReaderPreferences(
     val tapZonesSeen: Boolean = false,
     /** Continuous strips: the panel being read at full light, the rest dimmed (reader/SPEC.md §1). */
     val focus: Boolean = false,
+    /** The kinds whose "How to read" coach was already closed on this device (`CoachKind`). */
+    val coachSeen: Set<CoachKind> = emptySet(),
+    /** Paged modes on a wide reading area (iPad in landscape, an unfolded foldable): two pages side by side. */
+    val doublePages: Boolean = true,
 ) {
     fun defaultFor(format: ComicFormat): ReadingMode? =
         when (format) {
@@ -42,11 +46,61 @@ data class ReaderPreferences(
         }
 }
 
+/**
+ * What the "How to read" guide is about (reader SPEC §10): a reading format, on the account (`wire`, the server's
+ * `coached` values), or a book (on the device only). Seen once each.
+ */
+enum class CoachKind(
+    val wire: String,
+) {
+    Manga("manga"),
+    Webtoon("webtoon"),
+    Comic("comic"),
+    Book("book"),
+    ;
+
+    companion object {
+        fun of(
+            format: ComicFormat?,
+            book: Boolean,
+        ): CoachKind =
+            when {
+                book -> Book
+                format == ComicFormat.Webtoon -> Webtoon
+                format == ComicFormat.Comic -> Comic
+                else -> Manga
+            }
+
+        fun fromWire(value: String): CoachKind? = entries.firstOrNull { it.wire == value }
+    }
+}
+
+/**
+ * The account's side of the guide (`GET /settings/reading` → `coached`, `PUT /settings/reading/coached/{kind}`),
+ * wired in `shared` to the account slice. The device keeps its own list too, so the guide never flashes while the
+ * account's loads, offline included.
+ */
+interface CoachSync {
+    /** The kinds the account has seen; null when unknown (offline, an older server). */
+    suspend fun seen(): Set<CoachKind>?
+
+    suspend fun mark(kind: CoachKind)
+
+    companion object {
+        val None =
+            object : CoachSync {
+                override suspend fun seen(): Set<CoachKind>? = null
+
+                override suspend fun mark(kind: CoachKind) = Unit
+            }
+    }
+}
+
 object ReadingModes {
     /**
-     * Per-series override, then the user's default for the format, then the format rule. Books stay books. Pages
-     * shaped as a strip ([strip]) are always read continuously unless the series was set otherwise: a strip is never
-     * shrunk into a page.
+     * Per-series override, then the user's default for the format, then the format rule. Books stay books. A webtoon
+     * (declared, or pages shaped as a strip: [strip]) is always read continuously, whatever was chosen: a strip is
+     * never shrunk into a page (reader/SPEC.md §1b); only the gap between its pages is a choice.
      */
     fun resolve(
         chapterMode: ReadingMode,
@@ -56,12 +110,10 @@ object ReadingModes {
         strip: Boolean = false,
     ): ReadingMode {
         if (chapterMode == ReadingMode.Book) return ReadingMode.Book
+        val webtoon = strip || format == ComicFormat.Webtoon
+        if (webtoon) return seriesMode?.takeIf { it.isStrip } ?: preferences.webtoonMode?.takeIf { it.isStrip } ?: ReadingMode.LongStrip
         if (seriesMode != null && seriesMode != ReadingMode.Book) return seriesMode
-        val chosen = preferences.defaultFor(if (strip) ComicFormat.Webtoon else format)?.takeIf { it != ReadingMode.Book }
-        return when {
-            strip && chosen?.isStrip != true -> ReadingMode.LongStrip
-            else -> chosen ?: format.defaultMode
-        }
+        return preferences.defaultFor(format)?.takeIf { it != ReadingMode.Book } ?: format.defaultMode
     }
 }
 
@@ -76,12 +128,15 @@ interface ReaderSettingsRepository {
         titleId: String,
     ): Flow<ReadingMode?>
 
-    /** null: back to the default. */
+    /** null: back to the default. Kept on the device at once, sent to the account (again later if it can't go now). */
     suspend fun setSeriesMode(
         sourceKey: String,
         titleId: String,
         mode: ReadingMode?,
     )
+
+    /** Brings the device's series modes and the account's together (`SeriesModeMerge`); quiet offline. */
+    suspend fun syncSeriesModes() = Unit
 
     /** Where a chapter was left on this device (null: never opened, or erased). */
     suspend fun position(
@@ -99,6 +154,14 @@ interface ReaderSettingsRepository {
     fun observeHistory(): Flow<List<LastRead>> = flowOf(emptyList())
 
     suspend fun recordRead(read: LastRead) {}
+
+    /** Sends the places not on the account yet, then takes the account's newer ones (reader/SPEC.md §9). */
+    suspend fun syncHistory() = Unit
+
+    /** The language our catalog was last read in on this device (the series page's badges); erased with the account. */
+    suspend fun recordLanguage(code: String) {}
+
+    suspend fun lastLanguage(): String? = null
 }
 
 /** Where a title was left on this device: the chapter, the page, and when (ms). */

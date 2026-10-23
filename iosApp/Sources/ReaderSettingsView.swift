@@ -5,6 +5,8 @@ import SwiftUI
 /// key setting: the volume buttons can't turn pages here.
 struct ReaderSettingsSheetView: View {
     @ObservedObject var model: ReaderModel
+    /// "Always prepare the next chapter of this series in …" while reading in a language.
+    @ObservedObject var next: NextChapterModel
 
     var body: some View {
         let sheet = model.state.settings
@@ -24,6 +26,9 @@ struct ReaderSettingsSheetView: View {
                     if sheet.canResetSeries {
                         Button(ReaderText.shared.RESET_SERIES) { model.send(ReaderIntentResetSeriesMode.shared) }.buttonStyle(ChipStyle(selected: false))
                     }
+                }
+                if let auto = next.state.autoSwitch {
+                    NextAutoRow(auto: auto) { next.send(NextChapterIntentSetAuto(on: $0)) }
                 }
 
                 section(ReaderText.shared.DEFAULT_MODES)
@@ -69,6 +74,9 @@ struct ReaderSettingsSheetView: View {
 
                 toggle(ReaderText.shared.DOUBLE_TAP_ZOOM, ReaderText.shared.DOUBLE_TAP_ZOOM_HELP, sheet.doubleTapZoom) {
                     model.send(ReaderIntentSetDoubleTapZoom(enabled: $0))
+                }
+                toggle(ReaderText.shared.DOUBLE_PAGES, ReaderText.shared.DOUBLE_PAGES_HELP, sheet.doublePages) {
+                    model.send(ReaderIntentSetDoublePages(enabled: $0))
                 }
                 toggle(ReaderText.shared.KEEP_AWAKE, ReaderText.shared.KEEP_AWAKE_HELP, sheet.keepAwake) {
                     model.send(ReaderIntentSetKeepAwake(enabled: $0))

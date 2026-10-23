@@ -35,6 +35,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -53,6 +55,7 @@ import com.vovoscan.feature.account.presentation.ProviderKeysUiState
 import com.vovoscan.feature.account.presentation.ProviderKeysViewModel
 import com.vovoscan.feature.account.presentation.ProviderSlot
 import com.vovoscan.feature.account.presentation.ReadingSettingsIntent
+import com.vovoscan.feature.account.presentation.ReadingSettingsUiState
 import com.vovoscan.feature.account.presentation.ReadingSettingsViewModel
 import com.vovoscan.feature.account.presentation.UsageIntent
 import com.vovoscan.feature.account.presentation.UsageViewModel
@@ -131,6 +134,7 @@ fun SettingsScreen(
                     }
                 }
                 Text(readingState.footnote, style = MaterialTheme.typography.bodySmall)
+                if (readingState.textRows.isNotEmpty()) TextOrder(readingState, reading::onIntent)
                 readingState.notice?.let { Notice(it) }
                 readingState.error?.let { ErrorText(it) }
             }
@@ -414,5 +418,41 @@ private fun SettingsRow(
             Text(detail, style = MaterialTheme.typography.bodySmall)
         }
         Text("›", style = MaterialTheme.typography.titleMedium.copy(color = Brand.Muted))
+    }
+}
+
+/** The order text keys are tried in (Claude, Gemini, Kimi): one out of credit hands over to the next. */
+@Composable
+private fun TextOrder(
+    state: ReadingSettingsUiState,
+    send: (ReadingSettingsIntent) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(state.textOrderTitle, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 8.dp))
+        state.textRows.forEach { row ->
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .background(Brand.Ink2, RoundedCornerShape(12.dp))
+                    .border(1.dp, Brand.Line, RoundedCornerShape(12.dp))
+                    .padding(horizontal = 16.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("${row.position}", style = MaterialTheme.typography.bodyMedium, color = Brand.Muted, modifier = Modifier.width(18.dp))
+                Spacer(Modifier.width(12.dp))
+                Text(row.label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                TextButton(
+                    onClick = { send(ReadingSettingsIntent.MoveTextProvider(row.provider, -1)) },
+                    enabled = row.canMoveUp,
+                    modifier = Modifier.semantics { contentDescription = "${state.moveUpLabel} ${row.label}" },
+                ) { Text("↑") }
+                TextButton(
+                    onClick = { send(ReadingSettingsIntent.MoveTextProvider(row.provider, 1)) },
+                    enabled = row.canMoveDown,
+                    modifier = Modifier.semantics { contentDescription = "${state.moveDownLabel} ${row.label}" },
+                ) { Text("↓") }
+            }
+        }
+        Text(state.textOrderHint, style = MaterialTheme.typography.bodySmall)
     }
 }

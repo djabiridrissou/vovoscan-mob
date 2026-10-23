@@ -10,6 +10,10 @@ struct ReaderRoute: Hashable {
     let titleId: String
     let chapterId: String
     let startPage: Int
+    /// A source's chapter reopened on its translated copy (our catalog) shows this language at once.
+    var language: String? = nil
+    /// Opened from a chapter's "Translate": the language picker shows at once.
+    var pickLanguage = false
 }
 
 struct ReaderContainer: View {
@@ -18,6 +22,8 @@ struct ReaderContainer: View {
     var body: some View {
         ReaderView(route: route) { chapterId, startPage in
             route = ReaderRoute(sourceKey: route.sourceKey, titleId: route.titleId, chapterId: chapterId, startPage: startPage)
+        } onOpenCopy: { copy in
+            route = copy
         }
         .id(route)
     }
@@ -30,101 +36,448 @@ struct ReaderContainer: View {
 struct ReaderView: View {
     @StateObject private var model: ReaderModel
     @StateObject private var translation: TranslationModel
+    @StateObject private var next: NextChapterModel
+    /// The chapter's margin: pins over the pages, the sheet, the end of chapter (a chapter of the server only).
+    @StateObject private var margin: MarginModel
+    /// The reading circle on this chapter: a chapter of the server only, like the margin.
+    @StateObject private var together: TogetherModel
+    @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.openURL) private var openURL
     @Environment(\.dismiss) private var dismiss
+    /// The tab's path: ← and Escape pop it (the reader is always pushed on one; `dismiss` only as a fallback).
+    @Environment(\.pop) private var pop
     @State private var settingsOpen = false
     @State private var contentsOpen = false
     @State private var languagesOpen = false
+    /// The push that opened this reader has finished (a sheet waits for it), and the "Translate" picker was shown once.
+    @State private var pushSettled = false
+    @State private var pickerShown = false
+    @State private var keysOpen = false
+    /// The reader's height: the margin's panel is a share of it.
+    @State private var readerHeight: CGFloat = 0
+    /// The bottom bar's height: the language dock sits above it while the bars show.
+    @State private var bottomBarHeight: CGFloat = 0
     @State private var player: PlayerRoute?
+    /// "Watch from here" on a source's chapter: its card first (pages to the server, the cost, then Prepare).
+    @State private var sourceEpisode: SourceEpisode?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// A hardware keyboard (iPad, Magic Keyboard): arrows, space, page keys and Escape reach the reader.
+    @FocusState private var keysFocused: Bool
+    private let route: ReaderRoute
     /// The page under the slider's thumb while it is dragged.
     @State private var dragged: Int?
     let onOpenChapter: (String, Int) -> Void
+    /// A source's chapter, translated: its copy on the server replaces this reader, in that language, at the same share.
+    let onOpenCopy: (ReaderRoute) -> Void
 
-    init(route: ReaderRoute, onOpenChapter: @escaping (String, Int) -> Void) {
+    init(route: ReaderRoute, onOpenChapter: @escaping (String, Int) -> Void, onOpenCopy: @escaping (ReaderRoute) -> Void = { _ in }) {
+        self.route = route
         _model = StateObject(wrappedValue: ReaderModel(route: route))
         _translation = StateObject(wrappedValue: TranslationModel(route: route))
+        _next = StateObject(wrappedValue: NextChapterModel(route: route))
+        _margin = StateObject(wrappedValue: MarginModel(route: route))
+        _together = StateObject(wrappedValue: TogetherModel(route: route))
         self.onOpenChapter = onOpenChapter
+        self.onOpenCopy = onOpenCopy
     }
 
+    // The body is split into typed parts: as one expression it was more than the type checker would take.
     var body: some View {
+        withTogether(withSheets(withObservers(layers)))
+    }
+
+    /// Another chapter replaces this reader: a circle's host moves the circle there first.
+    private func openChapter(_ chapterId: String, _ startPage: Int) {
+        together.send(TogetherIntentMovingOn(chapterId: chapterId))
+        onOpenChapter(chapterId, startPage)
+    }
+
+    /// Every layer of the reader, back to front (the order of the ZStack is the order on screen).
+    private var layers: some View {
         ZStack {
             Color.brandInk.ignoresSafeArea()
-            if model.state.unavailable {
-                VStack(alignment: .leading, spacing: 12) {
-                    Text(L("reader.notSaved")).font(.brandBody(15)).foregroundStyle(Color.brandPaper)
-                    if let error = model.state.error { ErrorText(text: error) }
-                    Button(L("common.tryAgain")) { model.send(ReaderIntentRetry.shared) }.buttonStyle(GhostButtonStyle())
+            // The keyboard of the margin's composer never resizes the pages under it.
+            content.ignoresSafeArea(.keyboard)
+            floating
+            overlays
+        }
+        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { readerHeight = $0 }
+    }
+
+    /// The chapter itself: a book, a comic, or why it isn't here.
+    @ViewBuilder private var content: some View {
+        if model.state.unavailable {
+            unavailableNotice
+        } else if model.state.isBook {
+            BookReader(model: model) { openChapter($0, 0) }
+        } else if !model.state.items.isEmpty {
+            comicReader
+        }
+    }
+
+    private var unavailableNotice: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(L("reader.notSaved")).font(.brandBody(15)).foregroundStyle(Color.brandPaper)
+            if let error = model.state.error { ErrorText(text: error) }
+            Button(L("common.tryAgain")) { model.send(ReaderIntentRetry.shared) }.buttonStyle(GhostButtonStyle())
+        }
+        .padding(24)
+    }
+
+    /// The reader's language: each page draws its translated lettering, if any.
+    private var comicReader: some View {
+        ComicReader(model: model)
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel(model.state.chapterLabel)
+            .accessibilityHint(model.state.tapsHint)
+            .environment(\.pageLettering, pageLettering)
+            .environment(\.readerLanguageAction, languageAction)
+            .environment(\.readerNextChapter, nextChapter)
+            .environment(\.pageMargin, pageMargin)
+            .environment(\.readerMargin, margin.state.visible ? margin : nil)
+    }
+
+    private var marginOpen: Bool { margin.state.visible && margin.state.open }
+
+    /// The margin over each page while it is open: its pins, the mark being placed, and the surface that takes one.
+    private var pageMargin: PageMargin? {
+        let state: MarginUiState = margin.state
+        guard state.visible, state.open else { return nil }
+        let model: MarginModel = margin
+        return PageMargin(
+            pins: { index in state.pinsOn(pageIndex: Int32(index)) },
+            draft: { index in state.draftOn(pageIndex: Int32(index)) },
+            placing: state.placing,
+            tool: state.composer.tool,
+            send: { (intent: MarginIntent) in model.send(intent) }
+        )
+    }
+
+    private var pageLettering: (Int) -> [Lettering] {
+        let state: TranslationUiState = translation.state
+        return { index in state.letteringFor(index: Int32(index)) }
+    }
+
+    private var languageAction: ReaderLanguageAction? {
+        guard translation.state.available else { return nil }
+        return ReaderLanguageAction(label: translation.state.endCardLabel) { languagesOpen = true }
+    }
+
+    private var nextChapter: ReaderNextChapter? {
+        guard let end: NextEndCard = next.state.endCard else { return nil }
+        let model: NextChapterModel = next
+        return ReaderNextChapter(
+            end: end,
+            auto: next.state.autoSwitch,
+            tap: nextAction(NextChapterIntentPrepareNext.shared),
+            setAuto: { (on: Bool) in model.send(NextChapterIntentSetAuto(on: on)) }
+        )
+    }
+
+    /// Over the page: the language dock, the next-chapter bubble and the "ready" toast.
+    @ViewBuilder private var floating: some View {
+        if let dock = translation.state.dock, !model.state.isBook {
+            languageDock(dock)
+        }
+        if let bubble = next.state.bubble, translation.state.dock == nil, !model.state.isBook {
+            nextBubble(bubble)
+        }
+        if let toast = next.state.toast {
+            nextToast(toast)
+        }
+        if together.state.circle != nil { togetherLayers }
+    }
+
+    /// The circle over the page: the rail, the bursts, the toast and the dock (with the bars, or while a line is
+    /// typed, or folded to its stamps).
+    @ViewBuilder private var togetherLayers: some View {
+        let state: TogetherUiState = together.state
+        TogetherRail(together: together, interactive: model.state.chromeVisible) {
+            model.send(ReaderIntentToggleChrome.shared)
+        }
+        .zIndex(0.4)
+        TogetherBursts(together: together).zIndex(0.55)
+        TogetherToast(together: together)
+            .padding(.top, model.state.chromeVisible ? 64 : 8)
+            .zIndex(0.65)
+        // A language's offer or progress owns the bottom: the circle's dock steps aside, so "Translate" and "Add a key"
+        // are never under it, and comes back when that dock closes.
+        if translation.state.dock == nil && (model.state.chromeVisible || model.state.isBook || state.typing || state.collapsed) {
+            TogetherDock(together: together)
+                .frame(maxHeight: .infinity, alignment: .bottom)
+                .padding(.bottom, (model.state.chromeVisible || model.state.isBook ? bottomBarHeight : 0) + 8)
+                .zIndex(0.92)
+                .transition(reduceMotion ? .opacity : .move(edge: .bottom).combined(with: .opacity))
+        }
+    }
+
+    /// A language on its way: the page keeps its lettering, the dock shows the cost, then the progress.
+    private func languageDock(_ dock: TranslationDock) -> some View {
+        LanguageDock(
+            content: dock.content,
+            confirm: { translation.send(TranslationIntentConfirmOffer.shared) },
+            addKey: { keysOpen = true },
+            retry: { translation.send(TranslationIntentRetry.shared) },
+            close: { translation.send(TranslationIntentCloseDock.shared) }
+        )
+        // Above the page counter and the chapter buttons while they show: its buttons are never under the bar.
+        .padding(.bottom, model.state.chromeVisible || model.state.isBook ? bottomBarHeight : 0)
+        .zIndex(0.5)
+        .transition(.move(edge: .bottom).combined(with: .opacity))
+    }
+
+    /// Past 40 % in a language: the next chapter, then the next 5, then 10, prepared while reading.
+    private func nextBubble(_ bubble: NextBubble) -> some View {
+        NextBubbleView(
+            bubble: bubble,
+            tap: nextAction(NextChapterIntentAcceptOffer.shared),
+            cancel: { next.send(NextChapterIntentCancel.shared) },
+            hide: { next.send(NextChapterIntentHideBubble.shared) }
+        )
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+        .padding(.bottom, model.state.chromeVisible ? bottomBarHeight : 0)
+        .zIndex(0.5)
+        .transition(.move(edge: .bottom).combined(with: .opacity))
+    }
+
+    /// A chapter prepared ahead is ready.
+    private func nextToast(_ toast: NextToast) -> some View {
+        NextToastView(toast: toast, tap: nextAction(NextChapterIntentPrepareNext.shared)) {
+            next.send(NextChapterIntentDismissToast.shared)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .padding(.top, model.state.chromeVisible ? 64 : 8)
+        .zIndex(0.6)
+        .transition(.opacity)
+    }
+
+    /// The tap zones, the progress line, the title card, the bars, then the coach on top of everything.
+    @ViewBuilder private var overlays: some View {
+        if let overlay = model.state.tapOverlay {
+            TapZonesOverlay(overlay: overlay).transition(.opacity)
+        }
+        // While the bars are away: a 2 pt line of the share read, at the very top.
+        if !model.state.chromeVisible && !model.state.isBook { progressLine }
+        if let card = model.state.titleCard { titleCard(card) }
+        // A book keeps its bars: the web view receives the taps (text scrolling).
+        // Over the dock, the bubble and the toast (their full-height frames), under the coach.
+        if model.state.chromeVisible || model.state.isBook { chrome.transition(.opacity).zIndex(0.9) }
+        // The margin: a panel in the reader, never a presented sheet, so the pages are never dimmed (a sheet left its
+        // dimming and the muted tint over the pages once closed) and stay readable and markable above it. The switch
+        // in the top bar is the panel: on, it shows; off, it is gone.
+        if margin.state.visible && margin.state.open && !model.state.isBook {
+            MarginPanel(margin: margin, height: readerHeight)
+                .frame(maxHeight: .infinity, alignment: .bottom)
+                .transition(reduceMotion ? .identity : .move(edge: .bottom))
+                .zIndex(0.95)
+        }
+        // How to read, the first time a chapter of its kind opens: any tap closes it.
+        if let coach = model.state.coach {
+            ReaderCoachOverlay(coach: coach) { model.send(ReaderIntentDismissCoach.shared) }
+                .transition(.opacity)
+                .zIndex(1)
+        }
+    }
+
+    /// Animations, keys, the models' streams and what the screen answers to their commands.
+    private func withObservers(_ base: some View) -> some View {
+        let reduced: Bool = model.state.reducedMotion
+        return base
+            .animation(.easeInOut(duration: 0.2), value: model.state.tapOverlay == nil)
+            .animation(reduced ? nil : .easeOut(duration: 0.25), value: model.state.coach == nil)
+            .animation(reduced ? nil : .easeInOut(duration: 0.25), value: model.state.chromeVisible)
+            .animation(reduced ? nil : .easeInOut(duration: 0.4), value: model.state.titleCard)
+            .animation(reduced ? nil : .spring(response: 0.35, dampingFraction: 0.9), value: margin.state.visible && margin.state.open)
+            .toolbar(.hidden, for: .navigationBar)
+            .toolbar(.hidden, for: .tabBar)
+            .statusBarHidden(!model.state.chromeVisible)
+            // While the margin is open its fields take the keys: the reader neither holds the focus nor reads them.
+            .focusable(!marginOpen)
+            .focused($keysFocused)
+            .focusEffectDisabled()
+            .onAppear { keysFocused = true }
+            .onKeyPress(phases: .down) { (press: KeyPress) -> KeyPress.Result in
+                guard !marginOpen, let key = ReaderKeyMap.key(press) else { return .ignored }
+                model.send(ReaderIntentKey(key: key))
+                return .handled
+            }
+            .task { await model.observe() }
+            .task { await model.observeFollow() }
+            .task { await translation.observe() }
+            .task { await next.observe() }
+            .task { await margin.observe() }
+            .onChange(of: marginOpen) { _, open in keysFocused = !open }
+            .onChange(of: translation.state.shown, initial: true) { _, shown in next.send(NextChapterIntentLanguageShown(code: shown)) }
+            .onChange(of: model.state.readShare, initial: true) { _, share in next.send(NextChapterIntentReached(share: share)) }
+            .onChange(of: model.state.onEndCard, initial: true) { _, end in next.send(NextChapterIntentAtEnd(atEnd: end)) }
+            .animation(reduced ? nil : .spring(response: 0.35, dampingFraction: 0.85), value: next.state.bubble == nil)
+            .animation(reduced ? nil : .easeInOut(duration: 0.25), value: next.state.toast == nil)
+            .animation(.easeInOut(duration: 0.25), value: translation.state.translated)
+            .animation(reduced ? nil : .spring(response: 0.35, dampingFraction: 0.85), value: translation.state.dock == nil)
+            // Opening another chapter (a chapter card, or a tap past the end), whatever the mode.
+            .onChange(of: model.state.command?.seq) { _, _ in handleCommand() }
+            .onChange(of: translation.state.openCopy) { _, copy in openCopy(copy) }
+            // Reduce Motion: jumps instead of the spring, no spotlight glide, no fades.
+            .onChange(of: reduceMotion, initial: true) { _, on in model.send(ReaderIntentReducedMotion(on: on)) }
+            // VoiceOver: "Page 5 of 19" when the page changes, never on every frame.
+            .onChange(of: model.state.pageAnnouncement) { _, text in
+                if UIAccessibility.isVoiceOverRunning && !text.isEmpty {
+                    UIAccessibility.post(notification: .announcement, argument: text)
                 }
-                .padding(24)
-            } else if model.state.isBook {
-                BookReader(model: model) { onOpenChapter($0, 0) }
-            } else if !model.state.items.isEmpty {
-                // The reader's language: each page draws its translated lettering, if any.
-                ComicReader(model: model)
-                    .accessibilityElement(children: .contain)
-                    .accessibilityLabel(model.state.chapterLabel)
-                    .accessibilityHint(model.state.tapsHint)
-                    .environment(\.pageLettering, { [state = translation.state] index in state.letteringFor(index: Int32(index)) })
             }
-            if let overlay = model.state.tapOverlay {
-                TapZonesOverlay(overlay: overlay).transition(.opacity)
+            // Keep the screen awake while reading (setting, on by default).
+            .onChange(of: model.state.keepScreenOn, initial: true) { _, on in UIApplication.shared.isIdleTimerDisabled = on }
+            .onDisappear { UIApplication.shared.isIdleTimerDisabled = false }
+            // Opened from a chapter's "Translate": the picker once the push has settled and the languages are known. A
+            // sheet presented during the push transition left an invisible layer over the app (no tap, no Back).
+            .task {
+                try? await Task.sleep(for: .milliseconds(600))
+                pushSettled = true
             }
-            // While the bars are away: a 2 pt line of the share read, at the very top.
-            if !model.state.chromeVisible && !model.state.isBook { progressLine }
-            if let card = model.state.titleCard { titleCard(card) }
-            // A book keeps its bars: the web view receives the taps (text scrolling).
-            if model.state.chromeVisible || model.state.isBook { chrome.transition(.opacity) }
+            .onChange(of: pushSettled && translation.state.available) { _, ready in
+                if ready && route.pickLanguage && !pickerShown {
+                    pickerShown = true
+                    languagesOpen = true
+                }
+            }
+    }
+
+    /// The player, a source's episode card, the language picker, the keys and the settings, over the reader.
+    private func withSheets(_ base: some View) -> some View {
+        base
+            .fullScreenCover(item: $player) { (route: PlayerRoute) in PlayerView(route: route) { _, _ in player = nil } }
+            .sheet(item: $sourceEpisode) { (episode: SourceEpisode) in SourceEpisodeSheet(episode: episode) }
+            .sheet(isPresented: $languagesOpen) {
+                LanguageSheet(translation: translation)
+                    .presentationDetents([.medium, .large])
+                    .presentationBackground(Color.brandInk2)
+            }
+            // "Add a key" from the dock: the keys over the reader, which stays where it was.
+            .sheet(isPresented: $keysOpen) {
+                NavigationStack { KeysScreen() }
+                    .presentationBackground(Color.brandInk2)
+            }
+            .sheet(isPresented: $settingsOpen, onDismiss: { model.send(ReaderIntentSettingsClosed.shared) }) {
+                // Books have their own settings (typography, page colours), applied to the page behind the sheet.
+                Group {
+                    if model.state.isBook { BookSettingsSheetView(model: model) } else { ReaderSettingsSheetView(model: model, next: next) }
+                }
+                .presentationDetents([.medium, .large])
+                .presentationBackground(Color.brandInk2)
+            }
+            .sheet(isPresented: $contentsOpen) {
+                BookContentsSheet(model: model)
+                    .presentationDetents([.medium, .large])
+                    .presentationBackground(Color.brandInk2)
+            }
+    }
+
+    /// The circle's sheet, the host's menu on a reader, its stream, and the reader's place and gestures forwarded to it.
+    private func withTogether(_ base: some View) -> some View {
+        let state: TogetherUiState = together.state
+        let menu: MemberMenuUi? = state.memberMenu
+        return base
+            .sheet(
+                isPresented: Binding(get: { together.state.sheet != nil }, set: { if !$0 { together.send(TogetherIntentCloseSheet.shared) } })
+            ) {
+                TogetherSheetView(together: together)
+                    .presentationDetents([.medium, .large])
+                    .presentationBackground(Color.brandInk2)
+            }
+            .confirmationDialog(
+                menu?.name ?? "",
+                isPresented: Binding(get: { together.state.memberMenu != nil }, set: { if !$0 { together.send(TogetherIntentCloseMenu.shared) } }),
+                titleVisibility: .visible
+            ) {
+                if let menu {
+                    Button(menu.handOverLabel) { together.send(TogetherIntentHandOver(userId: menu.userId)) }
+                    Button(menu.removeLabel, role: .destructive) { together.send(TogetherIntentRemove(userId: menu.userId)) }
+                }
+            }
+            .task { await together.observe() }
+            .onAppear { together.send(TogetherIntentStart.shared) }
+            .onDisappear { together.send(TogetherIntentStop.shared) }
+            // In the background the heartbeat stops: the others see this reader away, then back.
+            .onChange(of: scenePhase) { _, phase in
+                together.send(phase == .active ? TogetherIntentStart.shared : TogetherIntentStop.shared)
+            }
+            .onChange(of: reduceMotion, initial: true) { _, on in together.send(TogetherIntentReducedMotion(on: on)) }
+            .onChange(of: model.state.place) { _, place in
+                guard let place else { return }
+                together.send(
+                    TogetherIntentPlaceChanged(
+                        book: place.book, page: place.page, fraction: place.fraction, panel: place.panel, section: place.section, count: place.count
+                    )
+                )
+            }
+            // The reader's own gesture: a follower lets go of the host (the shared reader never counts a glide it played).
+            .onChange(of: model.state.userMoves) { _, _ in
+                if together.state.circle?.following == true { together.send(TogetherIntentLetGo.shared) }
+            }
+            .onChange(of: together.state.command?.seq) { _, _ in handleTogether() }
+            .animation(model.state.reducedMotion ? nil : .spring(response: 0.35, dampingFraction: 0.85), value: state.toast?.id)
+    }
+
+    /// The circle's command: go to the host's (or a reader's) place, or open the chapter the circle moved to.
+    private func handleTogether() {
+        let command: TogetherCommand? = together.state.command
+        if let go = command as? TogetherCommandGoToPlace {
+            together.send(TogetherIntentCommandHandled(seq: go.seq))
+            model.send(ReaderIntentGoToPlace(page: go.page, fraction: go.fraction, section: go.section, animated: go.animated))
         }
-        .animation(.easeInOut(duration: 0.2), value: model.state.tapOverlay == nil)
-        .animation(model.state.reducedMotion ? nil : .easeInOut(duration: 0.25), value: model.state.chromeVisible)
-        .animation(model.state.reducedMotion ? nil : .easeInOut(duration: 0.4), value: model.state.titleCard)
-        .toolbar(.hidden, for: .navigationBar)
-        .toolbar(.hidden, for: .tabBar)
-        .statusBarHidden(!model.state.chromeVisible)
-        .task { await model.observe() }
-        .task { await translation.observe() }
-        .animation(.easeInOut(duration: 0.25), value: translation.state.translated)
-        // Opening another chapter (a chapter card, or a tap past the end), whatever the mode.
-        .onChange(of: model.state.command?.seq) { _, _ in
-            if let open = model.state.command as? ReaderCommandOpenChapter {
-                model.send(ReaderIntentCommandHandled(seq: open.seq))
-                onOpenChapter(open.chapterId, Int(open.startPage))
-            }
-            // "Watch from here": the episode from the first beat of the page being read.
-            if let episode = model.state.command as? ReaderCommandOpenEpisode {
-                model.send(ReaderIntentCommandHandled(seq: episode.seq))
+        if let open = command as? TogetherCommandOpenChapter {
+            together.send(TogetherIntentCommandHandled(seq: open.seq))
+            onOpenChapter(open.chapterId, 0)
+        }
+    }
+
+    /// A command of the shared reader that leaves this screen: another chapter, back, or the episode.
+    private func handleCommand() {
+        let command: ReaderCommand? = model.state.command
+        if let open = command as? ReaderCommandOpenChapter {
+            model.send(ReaderIntentCommandHandled(seq: open.seq))
+            openChapter(open.chapterId, Int(open.startPage))
+        }
+        if let back = command as? ReaderCommandClose {
+            model.send(ReaderIntentCommandHandled(seq: back.seq))
+            close()
+        }
+        // "Watch from here": the episode from the first beat of the page being read.
+        if let episode = command as? ReaderCommandOpenEpisode {
+            model.send(ReaderIntentCommandHandled(seq: episode.seq))
+            if route.sourceKey == "vovoscan" {
                 player = PlayerRoute(chapterId: episode.chapterId, nextChapterId: nil, startPage: Int(episode.page))
+            } else {
+                sourceEpisode = SourceEpisode(sourceKey: route.sourceKey, titleId: route.titleId, chapterId: episode.chapterId)
             }
         }
-        .fullScreenCover(item: $player) { route in PlayerView(route: route) { _ in player = nil } }
-        // Reduce Motion: jumps instead of the spring, no spotlight glide, no fades.
-        .onChange(of: reduceMotion, initial: true) { _, on in model.send(ReaderIntentReducedMotion(on: on)) }
-        // VoiceOver: "Page 5 of 19" when the page changes, never on every frame.
-        .onChange(of: model.state.pageAnnouncement) { _, text in
-            if UIAccessibility.isVoiceOverRunning && !text.isEmpty {
-                UIAccessibility.post(notification: .announcement, argument: text)
+    }
+
+    /// A source's chapter, translated: its copy on the server replaces this reader, in that language, at the same share.
+    private func openCopy(_ copy: TranslatedCopy?) {
+        guard let copy else { return }
+        translation.send(TranslationIntentCopyOpened.shared)
+        let start: Int32 = copy.startPage(page: model.state.currentIndex, pages: Int32(model.state.pages.count))
+        onOpenCopy(
+            ReaderRoute(sourceKey: "vovoscan", titleId: copy.titleId, chapterId: copy.chapterId, startPage: Int(start), language: copy.language)
+        )
+    }
+
+    /// A button of the next-chapter UI: open a chapter (in the language when it is translated), prepare, the keys, a link.
+    private func nextAction(_ prepare: NextChapterIntent) -> (NextButton) -> Void {
+        { button in
+            switch button.kind {
+            case .open:
+                guard let id = button.chapterId else { return }
+                if let language = button.language {
+                    onOpenCopy(ReaderRoute(sourceKey: route.sourceKey, titleId: route.titleId, chapterId: id, startPage: 0, language: language))
+                } else {
+                    openChapter(id, 0)
+                }
+            case .prepare: next.send(prepare)
+            case .addKey: keysOpen = true
+            case .openUrl: if let url = button.url.flatMap(URL.init(string:)) { openURL(url) }
             }
-        }
-        // Keep the screen awake while reading (setting, on by default).
-        .onChange(of: model.state.keepScreenOn, initial: true) { _, on in UIApplication.shared.isIdleTimerDisabled = on }
-        .onDisappear { UIApplication.shared.isIdleTimerDisabled = false }
-        .sheet(isPresented: $languagesOpen) {
-            LanguageSheet(translation: translation)
-                .presentationDetents([.medium, .large])
-                .presentationBackground(Color.brandInk2)
-        }
-        .sheet(isPresented: $settingsOpen, onDismiss: { model.send(ReaderIntentSettingsClosed.shared) }) {
-            // Books have their own settings (typography, page colours), applied to the page behind the sheet.
-            Group {
-                if model.state.isBook { BookSettingsSheetView(model: model) } else { ReaderSettingsSheetView(model: model) }
-            }
-            .presentationDetents([.medium, .large])
-            .presentationBackground(Color.brandInk2)
-        }
-        .sheet(isPresented: $contentsOpen) {
-            BookContentsSheet(model: model)
-                .presentationDetents([.medium, .large])
-                .presentationBackground(Color.brandInk2)
         }
     }
 
@@ -155,14 +508,27 @@ struct ReaderView: View {
             .transition(.opacity)
     }
 
+    /// Back to the screen under the reader: the tab's path, else the presentation.
+    private func close() {
+        if let pop { pop() } else { dismiss() }
+    }
+
     private var chrome: some View {
         VStack(spacing: 0) {
             HStack(spacing: 16) {
-                Button { dismiss() } label: { Text("←").font(.brandDisplay(18)).foregroundStyle(Color.brandPaper) }
-                    .accessibilityLabel(L("common.back"))
+                // A full 44 pt target: a tap just off the glyph used to reach the page's tap zones (and turn chapters).
+                Button { close() } label: {
+                    Text("←").font(.brandDisplay(18)).foregroundStyle(Color.brandPaper)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .padding(.leading, -12)
+                .accessibilityLabel(L("common.back"))
+                .accessibilityIdentifier("reader.back")
                 VStack(alignment: .leading, spacing: 2) {
                     Text(model.state.titleName).font(.brandBody(15)).foregroundStyle(Color.brandPaper).lineLimit(1)
                     Text(model.state.subtitle).font(.brandBody(13)).foregroundStyle(Color.brandMuted).lineLimit(1)
+                        .accessibilityIdentifier("reader.chapter")
                 }
                 Spacer()
                 if model.state.voiceAvailable {
@@ -173,9 +539,19 @@ struct ReaderView: View {
                     }
                     .accessibilityLabel(model.state.voiceLabel)
                 }
+                if together.state.visible {
+                    TogetherButton(together: together)
+                }
+                if !model.state.isBook && margin.state.visible {
+                    MarginButton(margin: margin)
+                }
                 if !model.state.isBook && translation.state.available {
                     LanguageButton(translation: translation) { languagesOpen = true }
                 }
+                Button { model.send(ReaderIntentShowCoach.shared) } label: {
+                    Image(systemName: "questionmark.circle").font(.system(size: 18)).foregroundStyle(Color.brandMuted)
+                }
+                .accessibilityLabel(L("reader.coach.show"))
                 if model.state.isBook && !model.state.book.contents.isEmpty {
                     Button { contentsOpen = true } label: {
                         Image(systemName: "list.bullet").font(.system(size: 18)).foregroundStyle(Color.brandPaper)
@@ -194,6 +570,14 @@ struct ReaderView: View {
             .padding(.vertical, 12)
             .background(Color.brandInk.opacity(0.92))
             Spacer()
+            bottomBar
+        }
+    }
+
+    /// The slider (comics) over the counter and the chapter buttons, measured as one: whatever floats above the bars
+    /// (the language dock, the next-chapter bubble, the circle's dock) sits above both, never under the slider.
+    private var bottomBar: some View {
+        VStack(spacing: 0) {
             if model.state.showsSlider {
                 PageSlider(model: model, dragged: $dragged)
                     .padding(.horizontal, 16)
@@ -229,17 +613,35 @@ struct ReaderView: View {
                     Button(L("reader.nextSection")) { model.send(ReaderIntentNext.shared) }
                         .font(.brandBody(16, weight: .bold)).foregroundStyle(Color.brandRed)
                 } else {
-                    if let previous = model.state.previousChapterId {
-                        Button(L("reader.previousArrow")) { onOpenChapter(previous, 0) }.font(.brandBody(13)).foregroundStyle(Color.brandMuted)
-                    }
-                    if let next = model.state.nextChapterId {
-                        Button(L("reader.nextArrow")) { onOpenChapter(next, 0) }.font(.brandBody(16, weight: .bold)).foregroundStyle(Color.brandRed)
+                    // Chapters, not pages (pages turn with taps and swipes); right to left puts the next one on the left.
+                    ForEach(model.state.chapterButtons, id: \.chapterId) { button in
+                        Button(button.label) { openChapter(button.chapterId, 0) }
+                            .font(.brandBody(button.forward ? 16 : 13, weight: button.forward ? .bold : .regular))
+                            .foregroundStyle(button.forward ? Color.brandRed : Color.brandMuted)
                     }
                 }
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
             .background(Color.brandInk.opacity(0.92))
+        }
+        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { bottomBarHeight = $0 }
+    }
+}
+
+/// A key press as the shared reader names it (directions are decided there, from the reading mode).
+enum ReaderKeyMap {
+    static func key(_ press: KeyPress) -> ReaderKey? {
+        switch press.key {
+        case .leftArrow: return .left
+        case .rightArrow: return .right
+        case .upArrow: return .up
+        case .downArrow: return .down
+        case .pageUp: return .pageUp
+        case .pageDown: return .pageDown
+        case .escape: return .escape
+        case .space: return press.modifiers.contains(.shift) ? .shiftSpace : .space
+        default: return press.characters == "?" ? .help : nil
         }
     }
 }
@@ -305,6 +707,7 @@ private struct PageSlider: View {
 /// a possible second tap.
 private struct ComicReader: View {
     @ObservedObject var model: ReaderModel
+    @Environment(\.pageMargin) private var pageMargin
     @Environment(\.displayScale) private var displayScale
     @State private var zoom = PageZoom.shared.None
     @State private var pinchStart: ZoomTransform?
@@ -323,15 +726,17 @@ private struct ComicReader: View {
             }
             // Pages are decoded for the screen's pixels (never above their own).
             .environment(\.pageDecodeWidth, size.width * displayScale)
-            .scrollDisabled(zoom.zoomed || pinchStart != nil)
+            // A margin tool armed (the page hatched): a drag places the mark at once and never scrolls.
+            .scrollDisabled(zoom.zoomed || pinchStart != nil || pageMargin?.placing == true)
             .scaleEffect(CGFloat(zoom.scale), anchor: .topLeading)
             .offset(x: CGFloat(zoom.x), y: CGFloat(zoom.y))
             .frame(width: size.width, height: size.height, alignment: .topLeading)
             .clipped()
             .contentShape(Rectangle())
             .gesture(taps(size: size))
-            .gesture(pan(size: size), including: zoom.zoomed ? .all : .subviews)
-            .simultaneousGesture(pinch(size: size))
+            .gesture(pan(size: size), including: zoom.zoomed && pageMargin?.placing != true ? .all : .subviews)
+            // A margin tool armed: the fingers are the mark's, never the zoom's.
+            .simultaneousGesture(pinch(size: size), including: pageMargin?.placing == true ? .subviews : .all)
         }
         .ignoresSafeArea()
         // Another page (a volume key), a jump or another mode: back to 1× at once.
@@ -487,29 +892,30 @@ private struct HorizontalPages: View {
         self.ratios = ratios
         self.scroller = scroller
         self.zoomed = zoomed
-        _position = State(initialValue: Int(model.state.currentItem))
+        _position = State(initialValue: Int(model.state.currentSpread))
     }
 
     var body: some View {
-        let items = model.state.items
+        let spreads = model.state.spreads
         ScrollView(.horizontal) {
             LazyHStack(spacing: 0) {
-                ForEach(Array(items.enumerated()), id: \.offset) { index, item in
+                ForEach(Array(spreads.enumerated()), id: \.offset) { screen, spread in
                     Group {
-                        if let page = item as? ReaderItemPage {
-                            let detail = zoomed && index == Int(model.state.currentItem)
-                            if ratios.isTall(page.page, in: size) {
-                                TallPageView(model: model, page: page.page, index: index, size: size, scroller: scroller, detail: detail)
-                            } else {
-                                PageImage(page: page.page, fit: true, detail: detail) { ratios.set(page.page.url, $0) }
+                        if let second = spread.second?.intValue {
+                            // Two facing pages, against the spine: the first on the right in a manga.
+                            let first = Int(spread.first)
+                            let (left, right) = model.state.rightToLeft ? (second, first) : (first, second)
+                            HStack(spacing: 0) {
+                                item(left, alignment: .trailing).frame(width: size.width / 2)
+                                item(right, alignment: .leading).frame(width: size.width / 2)
                             }
-                        } else if let transition = item as? ReaderItemTransition {
-                            TransitionCardView(card: transition.card, model: model)
+                        } else {
+                            item(Int(spread.first), alignment: .center)
                         }
                     }
                     .environment(\.layoutDirection, .leftToRight)
                     .frame(width: size.width, height: size.height)
-                    .id(index)
+                    .id(screen)
                 }
             }
             .scrollTargetLayout()
@@ -519,40 +925,66 @@ private struct HorizontalPages: View {
         .scrollIndicators(.hidden)
         .scrollTargetBehavior(.paging)
         .scrollPosition(id: $position)
-        // The page on screen comes from what is visible, not from the position binding alone: a pager made while the
+        // The screen shown comes from what is visible, not from the position binding alone: a pager made while the
         // chapter is open (Continuous → Right to left from the settings) could keep its first position and never
         // report a swipe, so the counter, the slider and the saved page stayed where the strip had left them.
         .onScrollTargetVisibilityChange(idType: Int.self, threshold: 0.6) { ids in
-            guard let item = ids.first else { return }
-            if position != item { position = item }
-            if item != Int(model.state.currentItem) { model.send(ReaderIntentItemVisible(item: Int32(item))) }
-        }
-        .id(model.state.mode)
-        .onAppear {
-            // Placed once laid out, and again once the lazy stack has measured its neighbours: a pager made mid-chapter
-            // may not have reached the current page yet.
-            let item = Int(model.state.currentItem)
-            DispatchQueue.main.async { position = item }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                if position != item, Int(model.state.currentItem) == item { position = item }
+            guard let screen = ids.first else { return }
+            if position != screen { position = screen }
+            if screen != Int(model.state.currentSpread), let spread = model.state.spreads[safe: screen] {
+                model.send(ReaderIntentItemVisible(item: spread.first))
             }
         }
-        .onChange(of: position) { _, item in
-            if let item { model.send(ReaderIntentItemVisible(item: Int32(item))) }
+        .id("\(model.state.mode)-\(model.state.twoPages)")
+        .onAppear {
+            // Placed once laid out, and again once the lazy stack has measured its neighbours: a pager made mid-chapter
+            // may not have reached the current screen yet.
+            let screen = Int(model.state.currentSpread)
+            DispatchQueue.main.async { position = screen }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                if position != screen, Int(model.state.currentSpread) == screen { position = screen }
+            }
         }
+        .onChange(of: position) { _, screen in
+            if let screen, let spread = model.state.spreads[safe: screen] {
+                model.send(ReaderIntentItemVisible(item: spread.first))
+            }
+        }
+        // Turned sideways or back, a window resized: one or two pages per screen, the same page kept.
+        .onChange(of: size, initial: true) { _, size in
+            model.send(ReaderIntentViewport(width: Float(size.width), height: Float(size.height), verticalHinge: false))
+        }
+        .onChange(of: model.state.twoPages) { _, _ in position = Int(model.state.currentSpread) }
         .onChange(of: model.state.command?.seq) { _, _ in
             // The page slider: that page at once (a tall page shows its top, `TallPageView`).
             if let jump = model.state.command as? ReaderCommandJumpTo {
                 model.send(ReaderIntentCommandHandled(seq: jump.seq))
-                position = Int(jump.item)
+                position = Int(model.state.spreadOf(item: jump.item))
             }
             guard let go = model.state.command as? ReaderCommandGoToItem else { return }
             model.send(ReaderIntentCommandHandled(seq: go.seq))
+            let screen = Int(model.state.spreadOf(item: go.item))
             if go.animated {
-                withAnimation(.easeInOut(duration: 0.25)) { position = Int(go.item) }
+                withAnimation(.easeInOut(duration: 0.25)) { position = screen }
             } else {
-                position = Int(go.item)
+                position = screen
             }
+        }
+    }
+
+    /// One item of a screen: a page (a tall one scrolls inside itself, alone on its screen), or a chapter card. The
+    /// page read, zoomed, is decoded with all its pixels.
+    @ViewBuilder
+    private func item(_ index: Int, alignment: Alignment) -> some View {
+        if let page = model.state.items[safe: index] as? ReaderItemPage {
+            let detail = zoomed && index == Int(model.state.currentItem)
+            if alignment == .center && ratios.isTall(page.page, in: size) {
+                TallPageView(model: model, page: page.page, index: index, size: size, scroller: scroller, detail: detail)
+            } else {
+                PageImage(page: page.page, fit: true, alignment: alignment, detail: detail, onLoaded: { ratios.set(page.page.url, $0) })
+            }
+        } else if let transition = model.state.items[safe: index] as? ReaderItemTransition {
+            TransitionCardView(card: transition.card, model: model)
         }
     }
 }
@@ -672,7 +1104,7 @@ private struct VerticalPages: View {
                             if ratios.isTall(page.page, in: size), let ratio = ratios.ratio(page.page) {
                                 PageImage(page: page.page, active: active, detail: detail).frame(width: size.width, height: size.width / ratio)
                             } else {
-                                PageImage(page: page.page, fit: true, active: active, detail: detail) { ratios.set(page.page.url, $0) }
+                                PageImage(page: page.page, fit: true, active: active, detail: detail, onLoaded: { ratios.set(page.page.url, $0) })
                                     .frame(width: size.width, height: size.height)
                             }
                         } else if let transition = item as? ReaderItemTransition {
@@ -935,12 +1367,18 @@ private struct TallPaging: ScrollTargetBehavior {
     }
 }
 
+extension Array {
+    subscript(safe index: Int) -> Element? { indices.contains(index) ? self[index] : nil }
+}
+
 /// The continuous strip (`flow`, reader/SPEC.md): every page stacked at the screen's width, no gap. It reports its
 /// width, height and scroll (from the first page's top, in points) and plays the view model's `GlideTo` with the shared
 /// spring, solved from each display frame's own time (60 or 120 Hz alike). A finger stops the spring at once and the
 /// scroll view's own momentum takes over. Focus dims everything but the panel being read.
 private struct FlowStrip: View {
     @ObservedObject var model: ReaderModel
+    /// Non-nil while the margin is open: Focus dims nothing then.
+    @Environment(\.pageMargin) private var pageMargin
     let scroller: ZoomScroller
     @State private var scroll = ScrollPosition(idType: Int.self)
     @State private var geometry = StripGeometry()
@@ -1099,7 +1537,8 @@ private struct FlowStrip: View {
     /// Focus: the panel being read at full light, the rest at `otherLight`. The spotlight glides in strip
     /// coordinates (`focusMs`); the scroll moves it at once.
     @ViewBuilder private var focusDim: some View {
-        if let focus = model.state.focus, measured.width > 0 {
+        // Never while the margin is open: its marks sit on the art at full light.
+        if let focus = model.state.spotlight, pageMargin == nil, measured.width > 0 {
             let pages = model.state.pages
             let width = measured.width
             let index = Int(focus.page)
@@ -1299,17 +1738,45 @@ private enum Luminance {
 private struct TransitionCardView: View {
     let card: TransitionCard
     @ObservedObject var model: ReaderModel
+    @Environment(\.readerLanguageAction) private var language
+    @Environment(\.readerNextChapter) private var nextChapter
+    @Environment(\.readerMargin) private var margin
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(card.heading).font(.brandBody(13)).foregroundStyle(Color.brandMuted)
-            Text(card.target).font(.brandDisplay(18)).foregroundStyle(Color.brandPaper)
-            if let label = card.actionLabel {
+            HStack(alignment: .top) {
+                Text(card.target).font(.brandDisplay(18)).foregroundStyle(Color.brandPaper)
+                Spacer(minLength: 8)
+                // "Finished: Chapter 3": the heart next to the way on.
+                if card.forward, !model.state.titleName.isEmpty {
+                    HeartButton(on: model.follow.favorite, label: model.follow.favoriteAction) { model.toggleFavorite() }
+                        .accessibilityIdentifier("reader.heart")
+                }
+            }
+            // Reading in a language: the way on in it (prepare, follow, the original), never a dead end.
+            if card.forward, let nextChapter {
+                NextEndContent(next: nextChapter)
+            } else if let label = card.actionLabel {
                 if card.forward {
                     Button(label) { model.send(ReaderIntentOpenNextChapter.shared) }.buttonStyle(PrimaryButtonStyle()).padding(.top, 4)
                 } else {
                     Button(label) { model.send(ReaderIntentOpenPreviousChapter.shared) }.buttonStyle(GhostButtonStyle()).padding(.top, 4)
                 }
+            }
+            // Reader SPEC §11: the language is one tap away here too.
+            if card.forward, let language {
+                Button {
+                    Haptics.select()
+                    language.open()
+                } label: {
+                    Label(language.label, systemImage: "character.bubble")
+                }
+                .buttonStyle(GhostButtonStyle())
+            }
+            // The chapter's margin: how many read this far, its best notes, a way into it.
+            if card.forward, let margin {
+                MarginEndCard(margin: margin).padding(.top, 6)
             }
         }
         .padding(20)
@@ -1318,6 +1785,70 @@ private struct TransitionCardView: View {
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.brandLine, lineWidth: 1))
         .padding(24)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+/// "How to read": the reader's real tap zones under a card of gesture lines. Static, no timer: the first tap anywhere
+/// closes it (and is not a page turn); the "?" in the bars brings it back.
+private struct ReaderCoachOverlay: View {
+    let coach: ReaderCoach
+    let dismiss: () -> Void
+
+    var body: some View {
+        ZStack {
+            Color.brandInk.opacity(coach.zones == nil ? 0.82 : 0.5).ignoresSafeArea()
+            if let zones = coach.zones { TapZonesOverlay(overlay: zones) }
+            VStack(alignment: .leading, spacing: 14) {
+                Text(coach.kicker.uppercased())
+                    .font(.brandBody(12, weight: .bold))
+                    .tracking(1.6)
+                    .foregroundStyle(Color.brandInk)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(Color.brandYellow)
+                Text(coach.title).font(.brandDisplay(24)).foregroundStyle(Color.brandPaper)
+                ForEach(Array(coach.hints.enumerated()), id: \.offset) { _, hint in
+                    HStack(alignment: .top, spacing: 12) {
+                        Image(systemName: symbol(hint.gesture))
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundStyle(hint.gesture == .help ? Color.brandMuted : Color.brandRed)
+                            .frame(width: 26)
+                        Text(hint.text)
+                            .font(.brandBody(15))
+                            .foregroundStyle(hint.gesture == .help ? Color.brandMuted : Color.brandPaper)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                Text(coach.dismiss)
+                    .font(.brandBody(15, weight: .bold))
+                    .foregroundStyle(Color.brandInk)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(Color.brandRed)
+                    .background(Rectangle().fill(Color.brandPaper).offset(x: 3, y: 3))
+                    .padding(.top, 4)
+            }
+            .padding(22)
+            .frame(maxWidth: 420, alignment: .leading)
+            .background(Color.brandInk.opacity(0.94), in: RoundedRectangle(cornerRadius: 14))
+            .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.brandPaper.opacity(0.85), lineWidth: 2))
+            .padding(24)
+        }
+        .contentShape(Rectangle())
+        .onTapGesture { dismiss() }
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isButton)
+        .accessibilityAction { dismiss() }
+    }
+
+    private func symbol(_ gesture: CoachGesture) -> String {
+        switch gesture {
+        case .tap: return "hand.tap"
+        case .swipe: return "hand.draw"
+        case .doubleTap: return "plus.magnifyingglass"
+        case .pull: return "arrow.down.to.line"
+        default: return "questionmark.circle"
+        }
     }
 }
 
@@ -1371,9 +1902,12 @@ private struct TapZonesOverlay: View {
 private struct PageImage: View {
     let page: ReaderPage
     var fit = false
+    /// Two facing pages: each against the spine (the page on the left aligned trailing, on the right leading).
+    var alignment: Alignment = .center
     /// A page the source gave no size for: the image's own size once loaded (the strip lays out from it).
     var onSize: ((CGSize) -> Void)? = nil
     @Environment(\.pageLettering) private var lettering
+    @Environment(\.pageMargin) private var margin
     /// Holds its image (false: a page far from the one read lets its image go).
     var active = true
     /// The page read, zoomed: decoded with all its pixels (sharp up to 4×), else for the screen's width.
@@ -1409,7 +1943,11 @@ private struct PageImage: View {
             let items = lettering(Int(page.index))
             if !items.isEmpty { LetteringOverlay(items: items) }
         }
-        .frame(maxWidth: .infinity, maxHeight: fit ? .infinity : nil)
+        // Over the lettering: the margin's pins and, with a tool chosen, the surface that takes the mark.
+        .overlay {
+            if let margin { MarginPinsOverlay(pageIndex: Int(page.index), margin: margin) }
+        }
+        .frame(maxWidth: .infinity, maxHeight: fit ? .infinity : nil, alignment: alignment)
         .onAppear {
             loader.maxWidth = detail ? 0 : decodeWidth
             if active { loader.show(page.url) }
@@ -1854,5 +2392,47 @@ private struct BookWebView: UIViewRepresentable {
             let height = scroll.bounds.height
             return height > 0 ? drag * Self.resistance / height : 0
         }
+    }
+}
+
+/// A source's chapter whose episode was asked from the reader.
+struct SourceEpisode: Identifiable {
+    let sourceKey: String
+    let titleId: String
+    let chapterId: String
+    var id: String { "\(sourceKey)/\(chapterId)" }
+}
+
+/// The episode card of a source's chapter over the reader: the title page's state gives its label and next chapter.
+private struct SourceEpisodeSheet: View {
+    @StateObject private var title: TitleModel
+    @State private var chapterId: String
+    @State private var language = ""
+    private let episode: SourceEpisode
+
+    init(episode: SourceEpisode) {
+        self.episode = episode
+        _title = StateObject(wrappedValue: TitleModel(sourceKey: episode.sourceKey, titleId: episode.titleId))
+        _chapterId = State(initialValue: episode.chapterId)
+    }
+
+    var body: some View {
+        NavigationStack {
+            EpisodeView(
+                route: EpisodeRoute(
+                    chapterId: chapterId,
+                    title: title.state,
+                    language: language,
+                    sourceKey: episode.sourceKey,
+                    titleId: episode.titleId
+                ),
+                inSheet: true
+            ) { next, lang in
+                chapterId = next
+                language = lang
+            }
+            .id("\(chapterId)~\(language)")
+        }
+        .task { await title.observe() }
     }
 }

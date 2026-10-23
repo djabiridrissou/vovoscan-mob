@@ -19,6 +19,13 @@ object EpisodeText {
     val READY: String get() = t("episode.ready")
     val FAILED: String get() = t("episode.failed")
     val LOADING: String get() = t("episode.loading")
+    val IMPORTING: String get() = t("episode.importing")
+    val IMPORTING_DETAIL: String get() = t("episode.importingDetail")
+    val IMPORT_NOTE: String get() = t("episode.importNote")
+    val IMPORTED: String get() = t("episode.imported")
+
+    fun importedPages(count: Int): String = t("episode.importedPages", "count" to count)
+
     val OFFLINE_COPY: String get() = t("episode.offlineCopy")
     val UNAVAILABLE_OFFLINE: String get() = t("episode.unavailableOffline")
     val PREPARE: String get() = t("episode.prepare")
@@ -41,9 +48,18 @@ object EpisodeText {
     // Languages (`?lang=`): the original, or the episode dubbed / subtitled in another language.
     val ORIGINAL: String get() = t("episode.original")
     val ORIGINAL_DETAIL: String get() = t("episode.originalDetail")
+    val READY_FREE: String get() = t("episode.readyFree")
     val DUBBED: String get() = t("episode.dubbed")
     val SUBTITLED: String get() = t("episode.subtitled")
     val BETA: String get() = t("episode.beta")
+    val CHECKING: String get() = t("translation.offer.checking")
+    val KEEP_WATCHING: String get() = t("player.lang.keepWatching")
+    val NOT_NOW: String get() = t("translation.offer.cancel")
+    val CANCEL: String get() = t("common.cancel")
+    val CLOSE: String get() = t("common.close")
+
+    /** "Switching to Français…". */
+    fun switching(code: String): String = t("player.lang.switching", "language" to (Language.of(code)?.native ?: ORIGINAL))
 
     fun languageDetail(language: Language): String =
         listOfNotNull(language.displayTitle(), if (language.dub) DUBBED else SUBTITLED, BETA.takeIf { language.beta }).joinToString(" ✦ ")
@@ -73,13 +89,14 @@ object EpisodeText {
     /** Codes saying the feature isn't open to this account (the server's feature flags). */
     val FEATURE_OFF_CODES = setOf("FEATURE_DISABLED", "FEATURE_COMING_SOON")
 
-    /** Who reads the bubbles: the account's key, the platform's (credits), or nobody. */
-    fun anthropicLine(
+    /** The reading step: the account's first text key ([provider]: Anthropic, Gemini, Kimi), the platform's, or none. */
+    fun textLine(
         hint: String?,
+        provider: String = "Anthropic",
         funding: ProviderFunding = ProviderFunding.None,
     ): String =
         when {
-            hint != null -> t("episode.anthropicOwn", "hint" to hint)
+            hint != null -> t("episode.textOwn", "provider" to provider, "hint" to hint)
             funding == ProviderFunding.Platform -> t("episode.anthropicPlatform")
             else -> t("episode.anthropicNone")
         }
@@ -122,9 +139,27 @@ object EpisodeText {
         when {
             cost.alreadyAvailable -> t("episode.costAlreadyMade")
             cost.coveredByOwnKeys -> t("episode.costOwnKeys")
+            // Nobody funds it yet: its price, and the keys that make it free (the contract's `unfunded` with a price).
+            !cost.fundable && !cost.meteredRun && cost.maxCredits > 0 && !cost.unfunded.isNullOrEmpty() ->
+                unfundedLine(cost.unfunded.orEmpty(), cost.maxCredits)
             !cost.meteredRun -> null
-            !cost.fundable -> t("episode.costShort", "count" to cost.maxCredits)
+            // A price of 0 on an unfundable quote is no price (a server that leaves it out): the balance and what to do.
+            !cost.fundable && cost.maxCredits <= 0 ->
+                cost.balance?.let { t("episode.costShortNoPrice", "balance" to it) } ?: t("episode.noCredits")
+            !cost.fundable ->
+                cost.balance?.let { t("episode.costShortBalance", "count" to cost.maxCredits, "balance" to it) }
+                    ?: t("episode.costShort", "count" to cost.maxCredits)
             else -> t("episode.costCredits", "count" to cost.credits)
+        }
+
+    private fun unfundedLine(
+        unfunded: Set<String>,
+        count: Long,
+    ): String =
+        when {
+            unfunded.any { it in RunCost.TEXT } && RunCost.ELEVENLABS in unfunded -> t("episode.costUnfunded.both", "count" to count)
+            RunCost.ELEVENLABS in unfunded -> t("episode.costUnfunded.elevenlabs", "count" to count)
+            else -> t("episode.costUnfunded.anthropic", "count" to count)
         }
 
     /** The credits wallet refused a run on the platform's keys; null for any other error. */

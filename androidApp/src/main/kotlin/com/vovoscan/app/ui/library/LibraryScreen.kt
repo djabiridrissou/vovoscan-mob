@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -33,7 +34,9 @@ import coil3.compose.AsyncImage
 import com.vovoscan.app.ui.common.EmptyStateCard
 import com.vovoscan.app.ui.common.ErrorText
 import com.vovoscan.app.ui.common.GhostButton
+import com.vovoscan.app.ui.common.HeartButton
 import com.vovoscan.app.ui.common.Kicker
+import com.vovoscan.app.ui.common.NewChaptersBadge
 import com.vovoscan.app.ui.common.OfflineNotice
 import com.vovoscan.app.ui.theme.Brand
 import com.vovoscan.core.common.i18n.I18n
@@ -92,27 +95,43 @@ fun LibraryScreen(
                 }
             }
         }
-        items(state.rows, key = { it.sourceKey + "/" + it.titleId }) { row ->
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .alpha(if (row.sourceRemoved) 0.5f else 1f)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(Brand.Ink2)
-                    .border(1.dp, Brand.Line, RoundedCornerShape(12.dp))
-                    .clickable(enabled = !row.sourceRemoved) { onOpenTitle(row.sourceKey, row.titleId) },
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                AsyncImage(row.coverUrl, null, contentScale = ContentScale.Crop, modifier = Modifier.size(64.dp).background(Brand.Line))
-                Spacer(Modifier.width(14.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(row.name, style = MaterialTheme.typography.bodyMedium)
-                    Text(row.progress, style = MaterialTheme.typography.bodySmall)
-                    row.sourceNotice?.let { Text(it, style = MaterialTheme.typography.bodySmall.copy(color = Brand.Danger)) }
+        // Favourites first (most recently favourited first), then Following.
+        state.sections.forEach { section ->
+            item(key = "section:" + section.title) { Kicker(section.title) }
+            items(section.rows, key = { it.key }) { row ->
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .alpha(if (row.sourceRemoved) 0.5f else 1f)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Brand.Ink2)
+                        .border(1.dp, Brand.Line, RoundedCornerShape(12.dp))
+                        .clickable(enabled = !row.sourceRemoved) { onOpenTitle(row.sourceKey, row.titleId) },
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Box {
+                        AsyncImage(
+                            row.coverUrl,
+                            null,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.size(64.dp).background(Brand.Line),
+                        )
+                        // "+3 new": chapters out after the last one read.
+                        row.newBadge?.let { NewChaptersBadge(it, Modifier.align(Alignment.TopStart).padding(top = 4.dp)) }
+                    }
+                    Spacer(Modifier.width(14.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(row.name, style = MaterialTheme.typography.bodyMedium)
+                        Text(row.progress, style = MaterialTheme.typography.bodySmall)
+                        row.sourceNotice?.let { Text(it, style = MaterialTheme.typography.bodySmall.copy(color = Brand.Danger)) }
+                    }
+                    // Cyan: action waiting to be sent (the brand reserves cyan for work in progress).
+                    if (row.pendingSync) Box(Modifier.size(10.dp).background(Brand.Cyan, CircleShape))
+                    // Its own tap: the heart never opens the title.
+                    HeartButton(row.favorite, row.favoriteAction, Modifier.padding(horizontal = 8.dp)) {
+                        viewModel.onIntent(LibraryIntent.ToggleFavorite(row.sourceKey, row.titleId))
+                    }
                 }
-                // Cyan: action waiting to be sent (the brand reserves cyan for work in progress).
-                if (row.pendingSync) Box(Modifier.size(10.dp).background(Brand.Cyan, CircleShape))
-                Spacer(Modifier.width(14.dp))
             }
         }
         item { GhostButton(I18n.text("library.syncNow"), { viewModel.onIntent(LibraryIntent.Sync) }) }

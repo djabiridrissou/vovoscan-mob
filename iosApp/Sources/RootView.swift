@@ -46,8 +46,12 @@ struct LocaleRoot: View {
 struct RootView: View {
     @StateObject private var session = SessionModel()
     @State private var tab: AppTab = .catalog
-    /// The catalog's navigation: the tutorial ends by opening a title there.
-    @State private var catalogPath = NavigationPath()
+    /// Each tab's navigation, one typed path (see `AppRoute`): the tutorial ends by opening a title in the catalog's.
+    @State private var catalogPath: [AppRoute] = []
+    @State private var libraryPath: [AppRoute] = []
+    /// A reading circle's invite (`vovoscan://together/CODE`): its card over the app, then the reader, following.
+    @State private var invite: InviteLink?
+    @State private var joined: JoinedChapter?
 
     init() { Self.styleBars() }
 
@@ -55,20 +59,29 @@ struct RootView: View {
         ZStack {
             Color.brandInk.ignoresSafeArea()
             if let current = session.session {
+                // iPhone: the tab bar. iPad: the floating tab bar, which turns into a sidebar (same tabs, same state).
                 TabView(selection: $tab) {
-                    NavigationStack(path: $catalogPath) { CatalogView() }
-                        .tabItem { Label(L("nav.catalog"), systemImage: "square.grid.2x2") }
-                        .tag(AppTab.catalog)
-                    NavigationStack { LibraryView(onSignOut: session.signOut) }
-                        .tabItem { Label(L("nav.library"), systemImage: "books.vertical") }
-                        .tag(AppTab.library)
-                    NavigationStack { SourcesView() }
-                        .tabItem { Label(L("nav.sources"), systemImage: "square.stack.3d.up") }
-                        .tag(AppTab.sources)
-                    NavigationStack { SettingsView(session: current, onSignOut: session.signOut, onReplayTutorial: session.replayTutorial) }
-                        .tabItem { Label(L("nav.settings"), systemImage: "gearshape") }
-                        .tag(AppTab.settings)
+                    Tab(L("nav.catalog"), systemImage: "square.grid.2x2", value: AppTab.catalog) {
+                        NavigationStack(path: $catalogPath) { CatalogView() }
+                            .environment(\.push, PushAction { catalogPath.append($0) })
+                            .environment(\.pop, PopAction { if !catalogPath.isEmpty { catalogPath.removeLast() } })
+                    }
+                    Tab(L("nav.library"), systemImage: "books.vertical", value: AppTab.library) {
+                        NavigationStack(path: $libraryPath) { LibraryView(onSignOut: session.signOut) }
+                            .environment(\.push, PushAction { libraryPath.append($0) })
+                            .environment(\.pop, PopAction { if !libraryPath.isEmpty { libraryPath.removeLast() } })
+                    }
+                    Tab(L("nav.sources"), systemImage: "square.stack.3d.up", value: AppTab.sources) {
+                        NavigationStack { SourcesView() }
+                    }
+                    Tab(L("nav.settings"), systemImage: "gearshape", value: AppTab.settings) {
+                        NavigationStack { SettingsView(session: current, onSignOut: session.signOut, onReplayTutorial: session.replayTutorial) }
+                    }
                 }
+                .tabViewStyle(.sidebarAdaptable)
+                .tint(Color.brandRed)
+                // A hardware keyboard: ⌘1 to ⌘4 open the tabs (listed when ⌘ is held on iPad).
+                .background { TabShortcuts(tab: $tab) }
                 .environment(\.openTab, OpenTabAction { tab = $0 })
                 .sensoryFeedback(.selection, trigger: tab)
                 .safeAreaInset(edge: .top, spacing: 0) {
@@ -77,8 +90,17 @@ struct RootView: View {
                 .fullScreenCover(isPresented: Binding(get: { session.showTutorial }, set: { if !$0 { session.tutorialClosed() } })) {
                     OnboardingView(onClose: session.tutorialClosed, openTab: { tab = $0 }, openTitle: { route in
                         tab = .catalog
-                        catalogPath = NavigationPath([route])
+                        catalogPath = [.title(route)]
                     })
+                }
+                // The reader is pushed once the card is gone: a push under a closing sheet can be lost.
+                .sheet(item: $invite, onDismiss: openJoined) { (link: InviteLink) in
+                    TogetherInviteView(link: link.url, onJoined: { chapter in
+                        joined = chapter
+                        invite = nil
+                    }, onClose: { invite = nil })
+                    .presentationDetents([.medium])
+                    .presentationBackground(Color.brandInk2)
                 }
                 .transition(.opacity)
             } else {
@@ -86,9 +108,21 @@ struct RootView: View {
             }
         }
         .animation(.easeInOut(duration: 0.3), value: session.session == nil)
+        // Signed out, the link waits for nothing: the card needs an account (it opens again from the link later).
+        .onOpenURL { url in
+            if session.session != nil, let link = InviteLink(url) { invite = link }
+        }
         .task { await session.observe() }
         .task { await session.observeTutorial() }
         .task { await session.observeDeletion() }
+    }
+
+    /// The circle's chapter, joined from an invite: the reader in the catalog's tab, already following the host.
+    private func openJoined() {
+        guard let chapter = joined else { return }
+        joined = nil
+        tab = .catalog
+        catalogPath.append(.reader(ReaderRoute(sourceKey: "vovoscan", titleId: chapter.titleRef, chapterId: chapter.chapterId, startPage: 0)))
     }
 
     /// Ink bars with a hairline, brand fonts in the navigation titles: the system chrome follows the brand.
@@ -116,6 +150,27 @@ struct RootView: View {
         UINavigationBar.appearance().scrollEdgeAppearance = nav
         UINavigationBar.appearance().compactAppearance = nav
         UINavigationBar.appearance().tintColor = UIColor(Color.brandRed)
+    }
+}
+
+/// ⌘1 to ⌘4: one invisible button per tab, so the keyboard shortcuts are registered with the system.
+private struct TabShortcuts: View {
+    @Binding var tab: AppTab
+
+    var body: some View {
+        ZStack {
+            shortcut(.catalog, "1", "nav.catalog")
+            shortcut(.library, "2", "nav.library")
+            shortcut(.sources, "3", "nav.sources")
+            shortcut(.settings, "4", "nav.settings")
+        }
+        .frame(width: 0, height: 0)
+        .opacity(0)
+        .accessibilityHidden(true)
+    }
+
+    private func shortcut(_ target: AppTab, _ key: KeyEquivalent, _ label: String) -> some View {
+        Button(L(label)) { tab = target }.keyboardShortcut(key, modifiers: .command)
     }
 }
 

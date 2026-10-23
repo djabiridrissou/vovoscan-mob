@@ -4,11 +4,14 @@ import com.vovoscan.core.common.AppResult
 import com.vovoscan.feature.reader.domain.Book
 import com.vovoscan.feature.reader.domain.ChapterHeading
 import com.vovoscan.feature.reader.domain.ChapterHeadings
+import com.vovoscan.feature.reader.domain.CoachKind
 import com.vovoscan.feature.reader.domain.ComicFormat
 import com.vovoscan.feature.reader.domain.ReaderChapter
+import com.vovoscan.feature.reader.domain.ReaderKey
 import com.vovoscan.feature.reader.domain.ReaderPage
 import com.vovoscan.feature.reader.domain.ReaderPreferences
 import com.vovoscan.feature.reader.domain.ReaderRepository
+import com.vovoscan.feature.reader.domain.ReaderSpread
 import com.vovoscan.feature.reader.domain.ReadingMode
 import com.vovoscan.feature.reader.domain.ScrollAmount
 import com.vovoscan.feature.reader.domain.TapAction
@@ -102,7 +105,8 @@ class ReaderTapsTest {
 
     // Overlay already seen: the tests that are not about it start without it. Manga read as right-to-left pages (the
     // default is now the continuous strip, `ImmersiveReaderTest`).
-    private val paged = ReaderPreferences(mangaMode = ReadingMode.PagedRightToLeft)
+    // The first-open coach already closed for every kind (`ReaderCoachTest`).
+    private val paged = ReaderPreferences(mangaMode = ReadingMode.PagedRightToLeft, coachSeen = CoachKind.entries.toSet())
     private val seen = paged.copy(tapZonesSeen = true)
 
     // Vertical pages, where a tall page scrolls inside its page (`TallPages`).
@@ -312,21 +316,27 @@ class ReaderTapsTest {
             // A webtoon reads continuously by default (reader/SPEC.md §1b).
             assertEquals(ReadingMode.LongStrip, vm.state.value.mode)
             assertEquals(4, vm.state.value.currentItem)
+            assertEquals(0, vm.state.value.pageGap)
+            // A webtoon only scrolls (reader/SPEC.md §1b): its sheet offers the strip modes, a paged choice is ignored.
+            assertEquals(
+                listOf(ReadingMode.LongStrip, ReadingMode.LongStripGaps),
+                vm.state.value.settings.seriesModes
+                    .map { it.mode },
+            )
             vm.onIntent(ReaderIntent.SetMode(ReadingMode.PagedVertical))
             advanceUntilIdle()
-            assertEquals(ReadingMode.PagedVertical, vm.state.value.mode)
-            vm.onIntent(ReaderIntent.SetMode(ReadingMode.LongStrip))
-            advanceUntilIdle()
             assertEquals(ReadingMode.LongStrip, vm.state.value.mode)
-            assertEquals(0, vm.state.value.pageGap)
-            assertEquals(ReadingMode.LongStrip, settings.series.value["vovoscan/t1"])
+            vm.onIntent(ReaderIntent.SetMode(ReadingMode.LongStripGaps))
+            advanceUntilIdle()
+            assertEquals(ReadingMode.LongStripGaps, vm.state.value.mode)
+            assertEquals(ReadingMode.LongStripGaps, settings.series.value["vovoscan/t1"])
             assertEquals(3, vm.state.value.currentIndex)
             assertEquals(4, vm.state.value.currentItem)
             assertTrue(vm.state.value.settings.canResetSeries)
             assertTrue(
                 vm.state.value.settings.seriesModes
                     .single { it.selected }
-                    .mode == ReadingMode.LongStrip,
+                    .mode == ReadingMode.LongStripGaps,
             )
             assertEquals("Default for this series: Continuous.", vm.state.value.settings.seriesHint)
             // The format default applies once the series goes back to it.
@@ -446,11 +456,11 @@ class ReaderTapsTest {
             settings.setSeriesMode("vovoscan", "t1", null)
             settings.updatePreferences { it.copy(webtoonMode = ReadingMode.LongStripGaps) }
             assertEquals(ReadingMode.LongStripGaps, reader(webtoon, settings = settings).state.value.mode)
-            // Manga: continuous by the format rule (reader/SPEC.md §1b), right to left once chosen as the manga default.
+            // Manga: pages right to left by the format rule (reader/SPEC.md §1b), continuous once chosen as the manga default.
             settings.updatePreferences { it.copy(mangaMode = null) }
-            assertEquals(ReadingMode.LongStrip, reader(manga, settings = settings).state.value.mode)
-            settings.updatePreferences { it.copy(mangaMode = ReadingMode.PagedRightToLeft) }
             assertEquals(ReadingMode.PagedRightToLeft, reader(manga, settings = settings).state.value.mode)
+            settings.updatePreferences { it.copy(mangaMode = ReadingMode.LongStrip) }
+            assertEquals(ReadingMode.LongStrip, reader(manga, settings = settings).state.value.mode)
         }
 
     @Test
@@ -550,5 +560,96 @@ class ReaderTapsTest {
             advanceUntilIdle()
             assertTrue(vm.state.value.doubleTapZoom)
             assertFalse(vm.state.value.keepScreenOn)
+        }
+
+    @Test
+    fun aWideScreenShowsFacingPagesAndNextTurnsTwo() =
+        runTest(dispatcher) {
+            // Previous card, 5 pages, next card. Upright: one item per screen.
+            val vm = reader(startPage = 0)
+            assertFalse(vm.state.value.twoPages)
+            assertEquals(7, vm.state.value.spreads.size)
+            // Turned sideways (iPad 11"): the cover alone, then pages 2-3 and 4-5 face each other.
+            vm.onIntent(ReaderIntent.Viewport(1180f, 820f))
+            assertTrue(vm.state.value.twoPages)
+            assertEquals(
+                listOf(ReaderSpread(0), ReaderSpread(1), ReaderSpread(2, 3), ReaderSpread(4, 5), ReaderSpread(6)),
+                vm.state.value.spreads,
+            )
+            assertEquals("1 / 5", vm.state.value.positionLabel)
+            vm.onIntent(ReaderIntent.Next)
+            assertEquals(2, (vm.command as ReaderCommand.GoToItem).item)
+            assertEquals("2–3 / 5", vm.state.value.positionLabel)
+            vm.onIntent(ReaderIntent.Next)
+            assertEquals(4, (vm.command as ReaderCommand.GoToItem).item)
+            assertEquals(3, vm.state.value.currentSpread)
+            vm.onIntent(ReaderIntent.Previous)
+            assertEquals(2, (vm.command as ReaderCommand.GoToItem).item)
+            // The native pager reports the screen's first item; a page inside a spread maps to its screen.
+            assertEquals(2, vm.state.value.spreadOf(3))
+            // Upright again: one page per screen, on the same page.
+            vm.onIntent(ReaderIntent.Viewport(820f, 1180f))
+            assertFalse(vm.state.value.twoPages)
+            assertEquals(2, vm.state.value.currentItem)
+            assertEquals("2 / 5", vm.state.value.positionLabel)
+        }
+
+    @Test
+    fun twoPagesFollowTheSettingTheHingeAndTheMode() =
+        runTest(dispatcher) {
+            val settings = FakeSettings(seen.copy(doublePages = false))
+            val vm = reader(settings = settings)
+            vm.onIntent(ReaderIntent.Viewport(1180f, 820f))
+            assertFalse(vm.state.value.twoPages)
+            assertFalse(vm.state.value.settings.doublePages)
+            vm.onIntent(ReaderIntent.SetDoublePages(true))
+            advanceUntilIdle()
+            assertTrue(vm.state.value.twoPages)
+            assertTrue(settings.preferences.value.doublePages)
+            assertTrue(vm.state.value.settings.doublePages)
+            // A foldable in book posture: the hinge splits an upright area, a page on each side.
+            vm.onIntent(ReaderIntent.Viewport(673f, 841f, verticalHinge = true))
+            assertTrue(vm.state.value.twoPages)
+            // Vertical pages never pair: one page per screen, top to bottom.
+            vm.onIntent(ReaderIntent.SetMode(ReadingMode.PagedVertical))
+            advanceUntilIdle()
+            assertEquals(ReadingMode.PagedVertical, vm.state.value.mode)
+            assertTrue(
+                vm.state.value.spreads
+                    .none { it.double },
+            )
+            // A strip has no screens at all.
+            vm.onIntent(ReaderIntent.SetMode(ReadingMode.LongStrip))
+            advanceUntilIdle()
+            assertEquals(emptyList(), vm.state.value.spreads)
+        }
+
+    @Test
+    fun aWidePageStandsAloneInTheSpreads() =
+        runTest(dispatcher) {
+            val pages = manga.pages.toMutableList()
+            pages[2] = pages[2].copy(width = 3000, height = 1500)
+            val vm = reader(manga.copy(pages = pages))
+            vm.onIntent(ReaderIntent.Viewport(1366f, 1024f))
+            // Items: card, p0 (cover), p1, p2 (wide), p3, p4, card.
+            assertEquals(
+                listOf(ReaderSpread(0), ReaderSpread(1), ReaderSpread(2), ReaderSpread(3), ReaderSpread(4, 5), ReaderSpread(6)),
+                vm.state.value.spreads,
+            )
+        }
+
+    @Test
+    fun hardwareKeysFollowTheMangaDirectionAndEscapeLeaves() =
+        runTest(dispatcher) {
+            val vm = reader(startPage = 1)
+            // Right to left: the next page is on the left.
+            vm.onIntent(ReaderIntent.Key(ReaderKey.Left))
+            assertEquals(3, (vm.command as ReaderCommand.GoToItem).item)
+            vm.onIntent(ReaderIntent.Key(ReaderKey.Right))
+            assertEquals(2, (vm.command as ReaderCommand.GoToItem).item)
+            vm.onIntent(ReaderIntent.Key(ReaderKey.Space))
+            assertEquals(3, (vm.command as ReaderCommand.GoToItem).item)
+            vm.onIntent(ReaderIntent.Key(ReaderKey.Escape))
+            assertIs<ReaderCommand.Close>(vm.command)
         }
 }

@@ -1,4 +1,4 @@
-package com.vovoscan.feature.episodes.data
+package com.vovoscan.core.network
 
 /** One server-sent event: its `event:` name ("message" when none) and its `data:` lines joined by "\n". */
 data class SseEvent(

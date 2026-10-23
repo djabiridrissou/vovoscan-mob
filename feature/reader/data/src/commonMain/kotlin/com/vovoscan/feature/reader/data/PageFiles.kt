@@ -75,9 +75,21 @@ internal fun imageExtension(bytes: ByteArray): String {
         at(0, 0x89) && at(1, 0x50) && at(2, 0x4E) && at(3, 0x47) -> "png"
         at(0, 0x47) && at(1, 0x49) && at(2, 0x46) -> "gif"
         at(0, 0x52) && at(1, 0x49) && at(2, 0x46) && at(3, 0x46) && at(8, 0x57) && at(9, 0x45) && at(10, 0x42) && at(11, 0x50) -> "webp"
+        // ISO BMFF `ftyp` box with an AVIF brand (`avif`, `avis` for sequences).
+        at(4, 0x66) &&
+            at(5, 0x74) &&
+            at(6, 0x79) &&
+            at(7, 0x70) &&
+            at(8, 0x61) &&
+            at(9, 0x76) &&
+            at(10, 0x69) &&
+            (at(11, 0x66) || at(11, 0x73)) -> "avif"
         else -> "img"
     }
 }
+
+/** Bytes a page can be: a known image signature. An empty body or an HTML error page is not one. */
+internal fun isImage(bytes: ByteArray): Boolean = imageExtension(bytes) != "img"
 
 /** `file://` URL of an absolute path, percent-encoded ("Application Support" has a space). */
 internal fun fileUrl(path: String): String {

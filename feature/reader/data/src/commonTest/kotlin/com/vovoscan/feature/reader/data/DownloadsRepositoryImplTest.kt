@@ -262,27 +262,62 @@ class DownloadsRepositoryImplTest {
             assertEquals(4, s.ruleRequests.size)
         }
 
+    /** Rules whose chapter 12 shows one page at [image]; the image host answers with [imageBody]. */
+    private fun pageAt(
+        image: String,
+        imageBody: ByteArray,
+    ): suspend MockRequestHandleScope.(HttpRequestData) -> HttpResponseData =
+        { request ->
+            when {
+                request.url.host == "comics.inkwell.example" && request.url.encodedPath == "/series/ink-road" ->
+                    respond(seriesPage, HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "text/html"))
+                request.url.host == "comics.inkwell.example" && request.url.encodedPath == "/read/12" ->
+                    respond(
+                        """<div class="reader"><img data-src="$image"></div>""",
+                        HttpStatusCode.OK,
+                        headersOf(HttpHeaders.ContentType, "text/html"),
+                    )
+                request.url.toString() == image -> respond(imageBody, HttpStatusCode.OK)
+                else -> respond("", HttpStatusCode.NotFound)
+            }
+        }
+
+    private val inkRoad =
+        DownloadableTitle("inkwell", "ink-road", "Ink Road", false, listOf(DownloadableChapter("12", 2.0, "Chapter 2")), null)
+
     @Test
-    fun aPageOnAnUndeclaredHostIsNotDownloaded() =
+    fun aPageOnALocalNetworkHostIsNeverRequested() =
         runTest {
-            val s =
-                setup(
-                    rules = { request ->
-                        val html =
-                            when (request.url.encodedPath) {
-                                "/series/ink-road" -> seriesPage
-                                "/read/12" -> """<div class="reader"><img data-src="https://tracker.elsewhere.example/1.png"></div>"""
-                                else -> ""
-                            }
-                        respond(html, HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "text/html"))
-                    },
-                ) { error("unused") }
-            val inkRoad =
-                DownloadableTitle("inkwell", "ink-road", "Ink Road", false, listOf(DownloadableChapter("12", 2.0, "Chapter 2")), null)
+            val s = setup(rules = pageAt("http://192.168.1.10/1.png", png)) { error("unused") }
             s.downloads.enqueue(inkRoad, inkRoad.chapters)
             val failed = s.awaitState(DownloadState.Failed)
-            assertEquals("This source can't reach tracker.elsewhere.example.", failed.error)
-            assertTrue(s.ruleRequests.none { it.url.host == "tracker.elsewhere.example" })
+            assertEquals("This source can't reach 192.168.1.10.", failed.error)
+            assertTrue(s.ruleRequests.none { it.url.host == "192.168.1.10" })
+            assertEquals(emptyList(), files())
+        }
+
+    @Test
+    fun aPageOnAnUndeclaredPublicHostIsDownloadedWithoutTheReferer() =
+        runTest {
+            val s = setup(rules = pageAt("https://img7.elsewhere.example/1.png", png)) { error("unused") }
+            s.downloads.enqueue(inkRoad, inkRoad.chapters)
+            s.awaitState(DownloadState.Done)
+            assertEquals(listOf("0000.png"), files().map { it.name })
+            val image = s.ruleRequests.single { it.url.host == "img7.elsewhere.example" }
+            assertNull(image.headers[HttpHeaders.Referrer])
+            assertNull(image.headers[HttpHeaders.Authorization])
+            assertNull(image.headers[HttpHeaders.Cookie])
+        }
+
+    @Test
+    fun aPageThatIsNotAnImageFailsAtOnceAndIsNotSaved() =
+        runTest {
+            // An empty body (or an HTML error page) answered with 200: refused, never retried, never saved.
+            val s = setup(rules = pageAt("https://comics.inkwell.example/img/1.png", ByteArray(0))) { error("unused") }
+            s.downloads.enqueue(inkRoad, inkRoad.chapters)
+            val failed = s.awaitState(DownloadState.Failed)
+            assertEquals("The source sent a page that can\u2019t be read.", failed.error)
+            assertEquals(1, s.ruleRequests.count { it.url.encodedPath == "/img/1.png" })
             assertEquals(emptyList(), files())
         }
 
@@ -625,6 +660,10 @@ class DownloadsRepositoryImplTest {
         )
         assertEquals("jpg" to "png", imageExtension(jpeg) to imageExtension(png))
         assertEquals("img", imageExtension(byteArrayOf(1, 2)))
+        val avif = byteArrayOf(0, 0, 0, 0x1C, 0x66, 0x74, 0x79, 0x70, 0x61, 0x76, 0x69, 0x66)
+        assertEquals("avif", imageExtension(avif))
+        assertFalse(isImage(ByteArray(0)))
+        assertFalse(isImage("<html>".encodeToByteArray()))
         assertTrue("/x".toPath().isAbsolute)
     }
 }

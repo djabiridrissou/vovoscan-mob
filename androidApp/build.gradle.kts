@@ -16,10 +16,15 @@ android {
             // -Pvovoscan.apiBaseUrl=…; defaults to the local API, as seen from the emulator.
             val apiBaseUrl = providers.gradleProperty("vovoscan.apiBaseUrl").getOrElse("http://10.0.2.2:8000/")
             buildConfigField("String", "API_BASE_URL", "\"$apiBaseUrl\"")
+            // The website (a circle's shared link): -Pvovoscan.webBaseUrl=…; the local web app, as seen from the emulator.
+            val webBaseUrl = providers.gradleProperty("vovoscan.webBaseUrl").getOrElse("http://10.0.2.2:3000/")
+            buildConfigField("String", "WEB_BASE_URL", "\"$webBaseUrl\"")
         }
         release {
             val apiBaseUrl = providers.gradleProperty("vovoscan.releaseApiBaseUrl").getOrElse("https://vovoscan.yieldgrowth.org/")
             buildConfigField("String", "API_BASE_URL", "\"$apiBaseUrl\"")
+            val webBaseUrl = providers.gradleProperty("vovoscan.releaseWebBaseUrl").getOrElse("https://vovoscan.yieldgrowth.org/")
+            buildConfigField("String", "WEB_BASE_URL", "\"$webBaseUrl\"")
             isMinifyEnabled = false
         }
     }
@@ -39,5 +44,6 @@ dependencies {
     implementation(libs.coil.network.okhttp)
     implementation(libs.media3.exoplayer)
     implementation(libs.androidx.work.runtime)
+    implementation(libs.androidx.window)
     debugImplementation(libs.androidx.compose.ui.tooling)
 }

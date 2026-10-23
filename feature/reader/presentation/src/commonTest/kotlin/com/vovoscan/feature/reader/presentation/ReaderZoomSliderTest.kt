@@ -3,6 +3,7 @@ package com.vovoscan.feature.reader.presentation
 import com.vovoscan.core.common.AppResult
 import com.vovoscan.feature.reader.domain.Book
 import com.vovoscan.feature.reader.domain.ChapterHeadings
+import com.vovoscan.feature.reader.domain.CoachKind
 import com.vovoscan.feature.reader.domain.ComicFormat
 import com.vovoscan.feature.reader.domain.ReaderChapter
 import com.vovoscan.feature.reader.domain.ReaderPage
@@ -84,7 +85,8 @@ class ReaderZoomSliderTest {
         override suspend fun clearSource(sourceKey: String) = Unit
     }
 
-    private val seen = ReaderPreferences(tapZonesSeen = true)
+    // The first-open coach already closed for every kind (`ReaderCoachTest`).
+    private val seen = ReaderPreferences(tapZonesSeen = true, coachSeen = CoachKind.entries.toSet())
     private val rtl = seen.copy(mangaMode = ReadingMode.PagedRightToLeft)
     private val strip = seen.copy(mangaMode = ReadingMode.LongStrip)
     private val saved = mutableListOf<Int>()

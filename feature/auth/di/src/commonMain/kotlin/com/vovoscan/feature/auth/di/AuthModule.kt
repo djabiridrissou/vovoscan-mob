@@ -35,6 +35,6 @@ val authModule =
         viewModelOf(::SignInViewModel)
         viewModelOf(::SessionViewModel)
         viewModelOf(::AccountViewModel)
-        viewModel { PreferencesViewModel(get(), get()) }
+        viewModel { PreferencesViewModel(get(), get(), get()) }
         viewModel { OnboardingViewModel(get(), get(), get(), get()) }
     }

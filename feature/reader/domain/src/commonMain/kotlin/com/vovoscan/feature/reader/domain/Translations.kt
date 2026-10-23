@@ -187,6 +187,36 @@ object LetteringLayout {
     ) = PageRect(r.x / page.width, r.y / page.height, r.w / page.width, r.h / page.height)
 }
 
+/** What making a translation would cost this account (`POST /quotes`, kind `translation`). */
+data class TranslationQuote(
+    val credits: Long,
+    val maxCredits: Long,
+    val coveredByOwnKeys: Boolean,
+    /** Already made (shared): reading it is free and nothing runs. */
+    val alreadyAvailable: Boolean,
+    /** Own key, or credits the wallet can hold. */
+    val fundable: Boolean,
+    /** The wallet's balance when quoted; null when unknown (no wallet read). */
+    val balance: Long? = null,
+    /** Nobody funds the reading (no own key, platform funding off): [maxCredits] is still its price. */
+    val unfunded: Boolean = false,
+)
+
+/** Quotes come from the account slice (wired in `shared`); null: no quote (a server without credits, offline). */
+fun interface TranslationQuotes {
+    suspend fun quote(
+        chapterId: String,
+        lang: String,
+    ): TranslationQuote?
+
+    /** A translation was asked for, made or refused: the balance may have moved (the wallet reads it again). */
+    fun changed() {}
+
+    companion object {
+        val None = TranslationQuotes { _, _ -> null }
+    }
+}
+
 /**
  * Translations of a chapter of our catalog (`api/v1/translations/chapters/…`): made once per language and shared by
  * everyone; asking for one that exists costs nothing. Online only: a translation is read fresh.

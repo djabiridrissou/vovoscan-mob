@@ -2,6 +2,7 @@ package com.vovoscan.app
 
 import android.Manifest
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -13,14 +14,18 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -32,6 +37,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
@@ -42,7 +49,9 @@ import androidx.lifecycle.repeatOnLifecycle
 import com.vovoscan.app.ui.account.AccountScreen
 import com.vovoscan.app.ui.account.PreferencesScreen
 import com.vovoscan.app.ui.catalog.CatalogScreen
+import com.vovoscan.app.ui.common.AdaptiveWindow
 import com.vovoscan.app.ui.common.AppIcons
+import com.vovoscan.app.ui.common.LocalAdaptive
 import com.vovoscan.app.ui.downloads.DownloadsScreen
 import com.vovoscan.app.ui.episode.EpisodeScreen
 import com.vovoscan.app.ui.library.LibraryScreen
@@ -57,11 +66,16 @@ import com.vovoscan.app.ui.sources.SourcesScreen
 import com.vovoscan.app.ui.theme.Brand
 import com.vovoscan.app.ui.theme.VovoscanTheme
 import com.vovoscan.app.ui.title.TitleScreen
+import com.vovoscan.app.ui.together.TogetherInviteSheet
+import com.vovoscan.app.ui.together.inviteLinkOf
+import com.vovoscan.core.common.INTERNAL_SOURCE_KEY
+import com.vovoscan.core.common.Navigation
 import com.vovoscan.core.common.i18n.I18n
 import com.vovoscan.feature.auth.presentation.DeletionBannerUi
 import com.vovoscan.feature.auth.presentation.SessionViewModel
 import com.vovoscan.feature.catalog.presentation.TitleDetailViewModel
 import com.vovoscan.feature.reader.domain.DownloadsRepository
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -74,6 +88,9 @@ class MainActivity : ComponentActivity() {
     var volumeKeys: ((up: Boolean) -> Boolean)? = null
     private var volumeKeyTaken = false
     private val downloads: DownloadsRepository by inject()
+
+    /** A reading circle's invite opened from outside (`vovoscan://together/CODE`), until its card is closed. */
+    private val invite = MutableStateFlow<String?>(null)
 
     // Android 13+: the downloads notification needs the permission, asked once at the first download. Refused, the
     // downloads go on all the same (the foreground service shows in the system's task manager only).
@@ -108,9 +125,11 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (savedInstanceState == null) invite.value = inviteLinkOf(intent)
         setContent {
             VovoscanTheme {
-                Root()
+                val link by invite.collectAsStateWithLifecycle()
+                AdaptiveWindow { Root(invite = link, onInviteDone = { invite.value = null }) }
             }
         }
         // A new app language rebuilds every screen in it (the ViewModels survive; their labels are read on draw).
@@ -123,6 +142,11 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        inviteLinkOf(intent)?.let { invite.value = it }
     }
 
     override fun onStart() {
@@ -165,7 +189,11 @@ private enum class Tab(
  * reader, an episode card and the full-screen episode player on top.
  */
 @Composable
-private fun Root(session: SessionViewModel = koinViewModel()) {
+private fun Root(
+    invite: String? = null,
+    onInviteDone: () -> Unit = {},
+    session: SessionViewModel = koinViewModel(),
+) {
     val user by session.session.collectAsStateWithLifecycle()
     val tutorial by session.tutorial.collectAsStateWithLifecycle()
     val deletion by session.deletionBanner.collectAsStateWithLifecycle()
@@ -178,7 +206,8 @@ private fun Root(session: SessionViewModel = koinViewModel()) {
     var openDownloads by rememberSaveable { mutableStateOf(false) }
     // Open sources screen (Sources tab): "add-source", "add-source|repository id" or "source-detail|source key".
     var openSource by rememberSaveable { mutableStateOf<String?>(null) }
-    // Open reader: "source|title|chapter|start page" (`ReaderViewModel.START_AT_END`: from its last page).
+    // Open reader: "source|title|chapter|start page|language" (`ReaderViewModel.START_AT_END`: from its last page; the
+    // language, optional, for a source's chapter reopened on its translated copy).
     var openReader by rememberSaveable { mutableStateOf<String?>(null) }
     // Open episode card (over the title page): "chapter|language" (language empty = the original).
     var openEpisode by rememberSaveable { mutableStateOf<String?>(null) }
@@ -218,10 +247,10 @@ private fun Root(session: SessionViewModel = koinViewModel()) {
             language = language,
             startPage = player.getOrNull(3)?.toIntOrNull(),
             onClose = { openPlayer = null },
-            onNextChapter = {
+            onNextChapter = { next, watched ->
                 // The next chapter's episode card, in the language just watched: watch it from there, or prepare it.
                 openPlayer = null
-                openEpisode = "$it|$language"
+                openEpisode = "$next|$watched"
             },
         )
         return
@@ -238,6 +267,14 @@ private fun Root(session: SessionViewModel = koinViewModel()) {
             return@Column
         }
         deletion?.let { DeletionBanner(it, session::keepAccount) }
+        // A circle's invite: its card over the app (signed in only), then the reader there, already following the host.
+        invite?.let { link ->
+            TogetherInviteSheet(link, onJoined = { chapter ->
+                onInviteDone()
+                openPlayer = null
+                openReader = "$INTERNAL_SOURCE_KEY|${chapter.titleRef}|${chapter.chapterId}|0"
+            }, onClose = onInviteDone)
+        }
         val reader = openReader?.split("|")
         if (reader != null) {
             BackHandler { openReader = null }
@@ -248,118 +285,231 @@ private fun Root(session: SessionViewModel = koinViewModel()) {
                 startPage = reader[3].toInt(),
                 onBack = { openReader = null },
                 onOpenChapter = { chapter, page -> openReader = "${reader[0]}|${reader[1]}|$chapter|$page" },
-                // The episode from the page being read; closing it comes back to the reader where it was.
-                onWatch = { chapter, page -> openPlayer = "$chapter|||$page" },
+                onWatch = { chapter, page ->
+                    if (reader[0] == INTERNAL_SOURCE_KEY) {
+                        // The episode from the page being read; closing it comes back to the reader where it was.
+                        openPlayer = "$chapter|||$page"
+                    } else {
+                        // A source's chapter: its card first (its pages go to the server, then the cost, then Prepare).
+                        openReader = null
+                        openTitle = "${reader[0]}|${reader[1]}"
+                        openEpisode = chapter
+                    }
+                },
+                language = reader.getOrNull(4)?.ifEmpty { null },
+                openLanguages = reader.getOrNull(5) == "pick",
+                // A source's chapter translated: its copy on the server, in that language, at the same share.
+                onOpenCopy = { title, chapter, language, page -> openReader = "$INTERNAL_SOURCE_KEY|$title|$chapter|$page|$language" },
             )
             return@Column
         }
-        Column(Modifier.weight(1f)) {
-            val title = openTitle?.split("|")
-            val source = openSource?.split("|", limit = 2)
-            val episodeRoute = openEpisode?.split("|")
-            val episode = episodeRoute?.first()
-            if (title != null && episode != null) {
-                BackHandler { openEpisode = null }
-                // The title page's own ViewModel (same key): chapter label and the next chapter in reading order.
-                val detail: TitleDetailViewModel =
-                    koinViewModel(key = "title:${title[0]}/${title[1]}") { parametersOf(title[0], title[1]) }
-                val titleState by detail.state.collectAsStateWithLifecycle()
-                EpisodeScreen(
-                    chapterId = episode,
-                    titleName = titleState.name,
-                    chapterLabel = titleState.chapterLabel(episode),
-                    onBack = { openEpisode = null },
-                    onWatch = { language -> openPlayer = "$episode|${titleState.nextChapterId(episode).orEmpty()}|$language" },
-                    language = episodeRoute.getOrNull(1).orEmpty(),
-                )
-            } else if (title != null) {
-                BackHandler { openTitle = null }
-                TitleScreen(
-                    sourceKey = title[0],
-                    titleId = title[1],
-                    onBack = { openTitle = null },
-                    onRead = { chapter, page -> openReader = "${title[0]}|${title[1]}|$chapter|$page" },
-                    onEpisode = { openEpisode = it },
-                )
-            } else if (tab == Tab.Library && openDownloads) {
-                BackHandler { openDownloads = false }
-                DownloadsScreen(onBack = { openDownloads = false }, onOpenTitle = { source, id -> openTitle = "$source|$id" })
-            } else if (tab == Tab.Sources && source != null) {
-                BackHandler { openSource = null }
-                when (source[0]) {
-                    "add-source" ->
-                        AddSourceScreen(
-                            repositoryId = source.getOrNull(1),
-                            onBack = { openSource = null },
-                            onOpenSource = { openSource = "source-detail|$it" },
-                        )
-                    else -> SourceDetailScreen(sourceKey = source[1], onBack = { openSource = null })
-                }
-            } else {
-                when (tab) {
-                    Tab.Catalog ->
-                        CatalogScreen(
-                            onOpenTitle = { source, id -> openTitle = "$source|$id" },
-                            onOpenSources = { tab = Tab.Sources },
-                            onResume = { source, id, chapter, page -> openReader = "$source|$id|$chapter|$page" },
-                        )
-                    Tab.Library ->
-                        LibraryScreen(
-                            onOpenTitle = { source, id -> openTitle = "$source|$id" },
-                            onOpenDownloads = { openDownloads = true },
-                            onOpenSources = { tab = Tab.Sources },
-                            onOpenCatalog = { tab = Tab.Catalog },
-                            onSignOut = session::signOut,
-                        )
-                    Tab.Sources ->
-                        SourcesScreen(
-                            onAdd = { repository -> openSource = if (repository == null) "add-source" else "add-source|$repository" },
-                            onOpenSource = { openSource = "source-detail|$it" },
-                        )
-                    Tab.Settings ->
-                        when (openSettings) {
-                            "account" -> {
-                                BackHandler { openSettings = null }
-                                AccountScreen(onBack = { openSettings = null })
+        val adaptive = LocalAdaptive.current
+        val select: (Tab) -> Unit = { entry ->
+            tab = entry
+            openTitle = null
+            openEpisode = null
+            openSource = null
+            openDownloads = false
+            openSettings = null
+        }
+        val isSelected: (Tab) -> Boolean = { entry -> entry == tab && openTitle == null && (entry != Tab.Sources || openSource == null) }
+        Row(Modifier.weight(1f)) {
+            // A tablet or an unfolded foldable: the tabs on the side (a rail, or a sidebar when wide).
+            if (adaptive.navigation != Navigation.BottomBar) {
+                SideTabs(adaptive.navigation == Navigation.Sidebar, isSelected, select)
+            }
+            Column(Modifier.weight(1f)) {
+                val title = openTitle?.split("|")
+                val source = openSource?.split("|", limit = 2)
+                val episodeRoute = openEpisode?.split("|")
+                val episode = episodeRoute?.first()
+                if (title != null && episode != null) {
+                    BackHandler { openEpisode = null }
+                    // The title page's own ViewModel (same key): chapter label and the next chapter in reading order.
+                    val detail: TitleDetailViewModel =
+                        koinViewModel(key = "title:${title[0]}/${title[1]}") { parametersOf(title[0], title[1]) }
+                    val titleState by detail.state.collectAsStateWithLifecycle()
+                    EpisodeScreen(
+                        chapterId = episode,
+                        titleName = titleState.name,
+                        chapterLabel = titleState.chapterLabel(episode),
+                        onBack = { openEpisode = null },
+                        // The player plays our chapter (a source's: its copy); "Next chapter →" comes back to this title.
+                        onWatch = { played, language ->
+                            openPlayer = "$played|${titleState.nextChapterId(episode).orEmpty()}|$language"
+                        },
+                        language = episodeRoute.getOrNull(1).orEmpty(),
+                        sourceKey = title[0],
+                        titleId = title[1],
+                    )
+                } else if (title != null) {
+                    BackHandler { openTitle = null }
+                    TitleScreen(
+                        sourceKey = title[0],
+                        titleId = title[1],
+                        onBack = { openTitle = null },
+                        onRead = { readSource, readTitle, chapter, page, language ->
+                            openReader = "$readSource|$readTitle|$chapter|$page" + language?.let { "|$it" }.orEmpty()
+                        },
+                        onEpisode = { openEpisode = it },
+                        onTranslate = { chapter -> openReader = "${title[0]}|${title[1]}|$chapter|0||pick" },
+                        onOpenTitle = { source, id -> openTitle = "$source|$id" },
+                    )
+                } else if (tab == Tab.Library && openDownloads) {
+                    BackHandler { openDownloads = false }
+                    DownloadsScreen(onBack = { openDownloads = false }, onOpenTitle = { source, id -> openTitle = "$source|$id" })
+                } else if (tab == Tab.Sources && source != null) {
+                    BackHandler { openSource = null }
+                    when (source[0]) {
+                        "add-source" ->
+                            AddSourceScreen(
+                                repositoryId = source.getOrNull(1),
+                                onBack = { openSource = null },
+                                onOpenSource = { openSource = "source-detail|$it" },
+                            )
+                        else -> SourceDetailScreen(sourceKey = source[1], onBack = { openSource = null })
+                    }
+                } else {
+                    when (tab) {
+                        Tab.Catalog ->
+                            CatalogScreen(
+                                onOpenTitle = { source, id -> openTitle = "$source|$id" },
+                                onOpenSources = { tab = Tab.Sources },
+                                onResume = { source, id, chapter, page -> openReader = "$source|$id|$chapter|$page" },
+                            )
+                        Tab.Library ->
+                            LibraryScreen(
+                                onOpenTitle = { source, id -> openTitle = "$source|$id" },
+                                onOpenDownloads = { openDownloads = true },
+                                onOpenSources = { tab = Tab.Sources },
+                                onOpenCatalog = { tab = Tab.Catalog },
+                                onSignOut = session::signOut,
+                            )
+                        Tab.Sources ->
+                            SourcesScreen(
+                                onAdd = { repository -> openSource = if (repository == null) "add-source" else "add-source|$repository" },
+                                onOpenSource = { openSource = "source-detail|$it" },
+                            )
+                        Tab.Settings ->
+                            when (openSettings) {
+                                "account" -> {
+                                    BackHandler { openSettings = null }
+                                    AccountScreen(onBack = { openSettings = null })
+                                }
+                                "preferences" -> {
+                                    BackHandler { openSettings = null }
+                                    PreferencesScreen(onBack = { openSettings = null }, onReplayTutorial = session::replayTutorial)
+                                }
+                                else ->
+                                    SettingsScreen(
+                                        onSignOut = session::signOut,
+                                        accountDetail = user?.email.orEmpty(),
+                                        onOpenAccount = { openSettings = "account" },
+                                        onOpenPreferences = { openSettings = "preferences" },
+                                    )
                             }
-                            "preferences" -> {
-                                BackHandler { openSettings = null }
-                                PreferencesScreen(onBack = { openSettings = null }, onReplayTutorial = session::replayTutorial)
-                            }
-                            else ->
-                                SettingsScreen(
-                                    onSignOut = session::signOut,
-                                    accountDetail = user?.email.orEmpty(),
-                                    onOpenAccount = { openSettings = "account" },
-                                    onOpenPreferences = { openSettings = "preferences" },
-                                )
-                        }
+                    }
                 }
             }
         }
-        Row(Modifier.fillMaxWidth().background(Brand.Ink2)) {
-            Tab.entries.forEach { entry ->
-                val selected = entry == tab && openTitle == null && (entry != Tab.Sources || openSource == null)
-                val color = if (selected) Brand.Red else Brand.Muted
-                Column(
-                    Modifier
-                        .weight(1f)
-                        .clickable {
-                            tab = entry
-                            openTitle = null
-                            openEpisode = null
-                            openSource = null
-                            openDownloads = false
-                            openSettings = null
-                        }.padding(top = 10.dp, bottom = 8.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(3.dp),
-                ) {
-                    Icon(entry.icon(), contentDescription = null, tint = color, modifier = Modifier.size(24.dp))
-                    Text(
-                        entry.label,
-                        style = MaterialTheme.typography.labelSmall.copy(color = color, fontSize = 11.sp, letterSpacing = 0.4.sp),
+        if (adaptive.navigation == Navigation.BottomBar) BottomTabs(isSelected, select)
+    }
+}
+
+/** Phones: the tabs along the bottom, an icon over each label. */
+@Composable
+private fun BottomTabs(
+    isSelected: (Tab) -> Boolean,
+    onSelect: (Tab) -> Unit,
+) {
+    Row(Modifier.fillMaxWidth().background(Brand.Ink2)) {
+        Tab.entries.forEach { entry ->
+            val color = if (isSelected(entry)) Brand.Red else Brand.Muted
+            Column(
+                Modifier
+                    .weight(1f)
+                    .clickable { onSelect(entry) }
+                    .padding(top = 10.dp, bottom = 8.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(3.dp),
+            ) {
+                Icon(entry.icon(), contentDescription = null, tint = color, modifier = Modifier.size(24.dp))
+                Text(
+                    entry.label,
+                    style = MaterialTheme.typography.labelSmall.copy(color = color, fontSize = 11.sp, letterSpacing = 0.4.sp),
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Tablets and unfolded foldables: the same tabs down the start edge, a rail (icon over label) or, when the window is
+ * wide, a sidebar (icon beside label). The selected tab carries a red bar on its edge.
+ */
+@Composable
+private fun SideTabs(
+    wide: Boolean,
+    isSelected: (Tab) -> Boolean,
+    onSelect: (Tab) -> Unit,
+) {
+    Column(
+        Modifier
+            .fillMaxHeight()
+            .width(if (wide) 220.dp else 84.dp)
+            .background(Brand.Ink2)
+            .padding(top = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        if (wide) {
+            Text(
+                "vovoscan",
+                style = MaterialTheme.typography.titleLarge.copy(color = Brand.Paper),
+                modifier = Modifier.padding(start = 20.dp, bottom = 16.dp),
+            )
+        }
+        Tab.entries.forEach { entry ->
+            val selected = isSelected(entry)
+            val color = if (selected) Brand.Red else Brand.Muted
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .clickable(onClickLabel = entry.label) { onSelect(entry) }
+                    .semantics { this.selected = selected },
+            ) {
+                if (selected) {
+                    Box(
+                        Modifier
+                            .align(Alignment.CenterStart)
+                            .width(3.dp)
+                            .height(28.dp)
+                            .background(Brand.Red),
                     )
+                }
+                if (wide) {
+                    Row(
+                        Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(14.dp),
+                    ) {
+                        Icon(entry.icon(), contentDescription = null, tint = color, modifier = Modifier.size(24.dp))
+                        Text(
+                            entry.label,
+                            style = MaterialTheme.typography.labelLarge.copy(color = if (selected) Brand.Paper else Brand.Muted),
+                        )
+                    }
+                } else {
+                    Column(
+                        Modifier.fillMaxWidth().padding(vertical = 12.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(3.dp),
+                    ) {
+                        Icon(entry.icon(), contentDescription = null, tint = color, modifier = Modifier.size(24.dp))
+                        Text(
+                            entry.label,
+                            style = MaterialTheme.typography.labelSmall.copy(color = color, fontSize = 11.sp, letterSpacing = 0.4.sp),
+                        )
+                    }
                 }
             }
         }

@@ -28,6 +28,7 @@ struct AccountView: View {
             }
             .padding(20)
         }
+        .readableWidth()
         .scrollDismissesKeyboard(.interactively)
         .background(Color.brandInk)
         .refreshable { model.send(AccountIntentRefreshDevices.shared) }
@@ -210,6 +211,7 @@ struct PreferencesView: View {
     let onReplayTutorial: () -> Void
     @StateObject private var model = PreferencesModel()
     @StateObject private var reading = ReadingSettingsModel()
+    @StateObject private var search = SearchPrivacyModel()
     @State private var regionsOpen = false
     @State private var readingOpen = false
 
@@ -232,6 +234,39 @@ struct PreferencesView: View {
                     if let error = reading.state.error { ErrorText(text: error) }
                 }
                 Card {
+                    HStack(alignment: .center, spacing: 12) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            SectionTitle(text: state.safeModeTitle)
+                            Text(state.safeModeHelp).font(.brandBody(13)).foregroundStyle(Color.brandMuted)
+                        }
+                        Spacer(minLength: 0)
+                        // Off asks first (age confirmation); on applies at once. Saved on the account, online only.
+                        BrandSwitch(isOn: state.safeMode, label: state.safeModeTitle) {
+                            model.send(PreferencesIntentSetSafeMode(on: !state.safeMode))
+                        }
+                        .disabled(state.savingSafeMode)
+                    }
+                }
+                // Search learned from picks: whether this account takes part, and its history (online only).
+                Card {
+                    SectionTitle(text: search.state.title)
+                    Text(search.state.privacy).font(.brandBody(13)).foregroundStyle(Color.brandMuted)
+                    if let status = search.state.status { Text(status).font(.brandBody(15)).foregroundStyle(Color.brandPaper) }
+                    if let notice = search.state.notice { Notice(text: notice) }
+                    if let error = search.state.error { ErrorText(text: error) }
+                    if search.state.learning == nil && !search.state.busy {
+                        Button(L("common.retry")) { search.send(SearchPrivacyIntentLoad.shared) }
+                            .buttonStyle(GhostButtonStyle())
+                    } else {
+                        Button(search.state.toggleLabel) { search.send(SearchPrivacyIntentToggle.shared) }
+                            .buttonStyle(GhostButtonStyle())
+                            .disabled(!search.state.canAct)
+                        Button(search.state.clearLabel) { search.send(SearchPrivacyIntentClearHistory.shared) }
+                            .buttonStyle(GhostButtonStyle())
+                            .disabled(!search.state.canAct)
+                    }
+                }
+                Card {
                     SectionTitle(text: state.tourTitle)
                     Text(state.tourLead).font(.brandBody(13)).foregroundStyle(Color.brandMuted)
                     Button(state.tourAction) {
@@ -243,7 +278,14 @@ struct PreferencesView: View {
             }
             .padding(20)
         }
+        .readableWidth()
         .background(Color.brandInk)
+        .alert(state.adultTitle, isPresented: Binding(get: { model.state.confirmingAdult }, set: { _ in })) {
+            Button(state.adultAction, role: .destructive) { model.send(PreferencesIntentConfirmAdult.shared) }
+            Button(L("common.cancel"), role: .cancel) { model.send(PreferencesIntentCancelAdult.shared) }
+        } message: {
+            Text(state.adultBody)
+        }
         .sheet(isPresented: $regionsOpen) {
             RegionSheet(choice: state.language,
                         query: { model.send(PreferencesIntentRegionQuery(text: $0)) },
@@ -259,6 +301,7 @@ struct PreferencesView: View {
         }
         .task { await model.observe() }
         .task { await reading.observe() }
+        .task { await search.observe() }
     }
 }
 

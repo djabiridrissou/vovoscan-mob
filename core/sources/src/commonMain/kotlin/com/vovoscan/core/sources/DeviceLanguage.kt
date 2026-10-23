@@ -5,3 +5,6 @@ package com.vovoscan.core.sources
  * variable so sources can filter by the reader's language. Empty when the platform can't tell.
  */
 internal expect fun deviceLanguage(): String
+
+/** The `{{lang}}` the device reads its sources in, for a server that reads the same source for us (imports). */
+fun sourceLanguage(): String = deviceLanguage()

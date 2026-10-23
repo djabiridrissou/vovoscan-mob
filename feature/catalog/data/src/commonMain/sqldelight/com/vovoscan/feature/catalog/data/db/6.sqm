@@ -1,0 +1,10 @@
+-- v6 → v7: series across sources (dedup by page content), kept for offline display.
+-- The series a title belongs to, as the server last said (`series/resolve`): one row per title asked about that is in a
+-- series, with every member of it (JSON `[{sourceKey, titleRef, name, chapters}]`, the primary first).
+CREATE TABLE series_link (
+    source_key TEXT NOT NULL,
+    title_ref TEXT NOT NULL,
+    series_id TEXT NOT NULL,
+    members TEXT NOT NULL,
+    PRIMARY KEY (source_key, title_ref)
+);

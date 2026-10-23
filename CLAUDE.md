@@ -86,15 +86,17 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   category)`: `{{category}}` is the chosen category's id (empty, so not sent, while browsing everything); `categories()`
   reads the manifest's fixed list or its own request (`list` + `item {id, name}`).
 - Page images' Referer (`content.comic.referer`, `SourceManifest.imageReferer`: settings and `{{lang}}` only, http(s)):
-  `RulesSource.downloadImage` sends it (downloads: `ReaderRemoteDataSource.downloadPage`); a book file
-  (`download`) never does. Image loaders that know nothing of sources ask `ImageReferers.refererFor(url)` (shared
+  `RulesSource.downloadImage` sends it (downloads: `ReaderRemoteDataSource.downloadPage`), to the declared hosts only,
+  hop by hop; a book file (`download`) never does. Page images themselves may come from any public http(s) host the
+  rules produce (per-chapter image servers built with `let` and `format`, like the server's FETCH:
+  `RulesHttp.get(anyPublicHost = true)`), still never the local network nor the session. Image loaders that know nothing of sources ask `ImageReferers.refererFor(url)` (shared
   `imageRefererFor`), a host → Referer table of the rule-based sources (first in the user's order wins a host),
   kept up to date by `ImageRefererSync` (started at launch by `VovoscanApplication` / `initKoin`): Android's Coil
   `ImageLoader` has an interceptor (`ui/common/ImageLoading.kt`), iOS registers `SourceRefererProtocol` (a `URLProtocol`
   for the shared session behind AsyncImage, replaying the request with `Referer` on a cookie-less session of its own).
   Only those hosts get it, covers included; never the API.
 - `RulesHttp`: a separate client, **without the vovoscan session or cookies**, redirects followed by hand and
-  limited to declared hosts (manifest + URL-type settings), rate capped by the manifest. Limits by what is fetched
+  limited to declared hosts (manifest + URL-type settings; page images excepted, above), rate capped by the manifest. Limits by what is fetched
   (`Transfer`): a page of the source (JSON, HTML, XML) 30 s and 5 MB, an image 2 min and 30 MB, a book file 10 min and
   100 MB; 30 s without a byte fails any of them. Responses are streamed: a file announced too large is refused from its
   headers, and a body is read at most one byte past the limit. Never the local network
@@ -109,11 +111,37 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
 - Regexes in shared code: escape `{` and `}` (`\{\{…\}\}`). Android's ICU engine rejects a bare `}` that the JVM
   tests and iOS accept: `Template`'s placeholder regex made every rule-based source crash the Android app.
 - Catalog, title pages and chapters are keyed by `(sourceKey, id)`: two sources never mix.
+- Chapters of a source on the server (translation and episodes of any comic): `ChapterImports` (`core/common`, port;
+  `ApiChapterImports` in `core/network`): `find` (the title's units, `GET api/v1/source-reader/{key}/title?ref=&lang=`,
+  a unit already brought in carries its `chapterId`), `import` (`POST …/{key}/import?lang=` `{titleRef, unitRef}`), polled
+  every 2 s (`GET …/source-reader/chapters/{id}`, 10 minutes at most, a network blip keeps waiting) through `bringIn`;
+  a copy followed from before (remembered, or found) that failed since is asked for again once (the server re-arms it),
+  never shown as the old failure.
+  `{{lang}}` is the device's (`sourceLanguage()`). Nothing is paid by an import: the quote comes after, and runs only
+  on the user's explicit confirm. Errors `SOURCE_UNAVAILABLE`, `HOST_NOT_ALLOWED`, `NO_PAGES`, `INVALID_IMAGE`… have
+  their calm lines (`errors.*`). `EpisodeViewModel(sourceKey, titleId, imports)` looks the chapter up on opening
+  ("Watch" plays `EpisodeUiState.chapterId`, our id); from a source's reader "Watch from here" opens the card (Android
+  over the title page, iOS a sheet, `SourceEpisodeSheet`).
+- Format filter for sources: our categories carry `format` (`manga`, `webtoon`, `text`); a rule-based source without
+  the chosen category is read unfiltered and its titles kept by format (`CatalogViewModel` readings); every such comic
+  source (one that declares `catalog.item.format` too: a rule that reads nothing for a title leaves it a manga by
+  default, `RulesTitleSummary.formatRead` false) asks `GET api/v1/source-reader/{key}/formats?ref=…`
+  (`CatalogRepository.learnFormats`, 100 refs a call, each title once; the server learns a few unopened titles per
+  call, so pull to refresh and Load more ask again for those still unknown, `askFormatsAgain`), else manga: only while
+  such a filter needs it, so browsing a source never tells the server what it lists; a typed search (already sent to
+  the server for suggestions) asks for its results too, and a suggestion's webtoon beats a result's manga default. A learned webtoon beats the manga
+  default in every listing of that source, every category included, and is saved over it (`title.format`, query
+  `learnFormat`, only where it says manga; no schema change), so "All categories", search results (typed query, no filter: nothing more asked) and the next launch show it; a
+  listing's "manga" never turns a saved webtoon back, nor a search answer without a cover drops the saved one. The
+  chosen category is kept in memory.
 - Tests: `core/sources/src/commonTest/.../Fixtures.kt` copies the manifests (change them with `vovo-plugin`).
 - Third-party sources (user plugins, spec v1): added from a link (single manifest or `repo.json`, GitHub pages
   resolved to raw files) or a `.vovo` file, private to the user, not reviewed by vovoscan. `core/sources` has the
   pure parts (`PluginLinks`, `PluginFetcher`: https only, no session, ≤ 3 redirects, byte limits; `RepositoryIndex`,
-  `ManifestCheck`, `Semver`, `VovoPackageReader`, `sha256Hex`). `feature/sources` stores them in the same `source`
+  `ManifestCheck`, `Semver`, `VovoPackageReader`, `sha256Hex`). A repository entry is reviewed before anything is installed
+  (`AddSourceUiState.review`: hosts, `rateLimit.requestsPerMinute`, rights, the third-party warning; `ConfirmReview` /
+  `CancelReview`; an update's review names its new hosts and stands for their confirmation), like a link's or a file's
+  preview; every source's details show its request cap. `feature/sources` stores them in the same `source`
   table (so `ManifestProvider` serves them), queues writes in `plugin_outbox` (`PUT/DELETE api/v1/plugins`,
   `api/v1/plugin-repositories`), keeps verified updates in `plugin_extra`. Removal goes through the
   `SourceRemovedListener` port, wired in `shared` to the catalog and reader caches.
@@ -138,6 +166,24 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   name, trimmed and case-insensitive (`CategoryUnion`), each source asked with its own id for that name; sources
   without it are left out while the filter is on (`categoryNote`: "Project Gutenberg has no “Webtoon” category, so
   it's left out.").
+  The formats come first whatever sources are on (`CategoryUnion.formatsFirst`: Manga, Webtoon, Book; our own
+  category for it when a source has one by format or name, else one that files every source's titles by format, plugin
+  comics included), then each source's own categories under its name (`categoryGroups`, the sheet's sections). With our
+  source switched off the sheet used to show only the first source's genres, so no format filter was reachable.
+- Episodes filter (backend `has=episode`, only with the `video` feature: the `EpisodeFeature` port, wired in `shared` to
+  the session): a "▶ Episodes" chip next to the source and category filters (`CatalogIntent.ToggleEpisodes`,
+  `CatalogFilter.episodesOnly`, remembered as `episodes` in `catalog_setting`), the suggestions and results asked with
+  `has=episode` too. The server alone knows which titles have one: our source's listing gets `has=episode`, a source read
+  on the device is asked of the server (`GET api/v1/source-reader/{key}/titles?has=episode&page=&search=&lang=`, the
+  titles imported from it, any category; a curated category leaves it out, a format one keeps its format). Those
+  listings are their own `catalog_entry` rows (listing `\u0002episodes:<category>`). `episodeCount` is saved on the
+  title (`title.episode_count`, migration `4.sqm`) only from the server's answers: a listing read on the device never
+  resets it; cards show "▶ n" in red, top right of the cover (`TitleCard.episodeBadge`). Title page: each chapter row
+  carries its episode languages (`chapter.episode_languages`, JSON, `""` = the original) as badges, "▶ Original" first,
+  three then "+n" (`ChapterRow.episodes`), and "▶ Episodes (n)" (shown only when a chapter has one) lists only those
+  (`TitleDetailIntent.ToggleEpisodes`; reading order and "Start reading" still see every chapter). A title of a source
+  read on the device asks the server for its chapters' languages (`GET …/source-reader/{key}/title?ref=`) only when the
+  server already said it has an episode, so opening a title page tells it nothing new.
 - Errors per source never break the page: `problems` (one `SourceProblem` per failing source, `StaleReason`) make one
   notice line (`CatalogNotices`): no network → the offline line; one source read → its own line as before; several →
   "Project Gutenberg isn't answering right now." / "X couldn't be read. It may need an update." (Retry when one is
@@ -151,6 +197,23 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   reading order whatever the list's order. The catalog shows the last title read on top (`resume`) and marks started
   cards ("Reading"). Scrolled past the search field, it folds into a floating magnifier (bottom right) that floats the
   field over the top of the catalog (iOS `onScrollGeometryChange`, Android the grid's first visible item).
+- Search learned from picks (server `search`, `SearchRepository` in catalog domain, `SearchRepositoryImpl` in data): the
+  field is a combobox. With the focus (`CatalogIntent.SearchFocused`) it shows `suggestions` (150 ms debounce, `GET
+  api/v1/search/suggest?q=&lang=&limit=8&format=`): "Your searches" (↺), "Others searched", "Titles" ("Popular" / "You
+  opened it" ✦ source; only sources read now, safe mode applied). A search there fills the field and runs at once
+  (`UseSearch`); a title opens (`TitleOpened` closes the list at once). The list outlives the field's focus by
+  `BLUR_GRACE_MS` (300 ms): a tap on a row takes the focus first and must still land on the row. iOS draws it over the
+  catalog (an overlay that takes every tap on it, never in the grid's flow) and pushes the title itself, once. Results ask the same with `limit=50` alongside the sources: learned titles first, in
+  their order and once each, then the sources' mix (`SearchRules.order`; a title no source returned for this spelling
+  shows too, except under a curated category), with the "Popular" badge (`TitleCard.popular`). `format` is the category
+  filter's format, so suggestions and results follow it. Opening a title from results or a suggestion with 2+ characters
+  typed is a pick (`TitleOpened`; plain browsing never is): `POST api/v1/search/picks` with the title's name for a source
+  read on the device and its format only when known (the server's word, the filter's, or a book's; never the manga
+  default). Picks wait in `catalog_setting` (`search/pending`, no schema change) while offline, are sent with the next
+  pick, suggestion or catalog opening, and are dropped when refused or older than 7 days. Offline, suggestions are the
+  searches kept here (`search/recent`, from picks) and the saved titles. Settings › Preferences "Search" card
+  (`SearchPrivacyViewModel`): learning on/off (`PUT api/v1/search/preferences`; off keeps nothing here either) and "Clear
+  my search history" (`DELETE api/v1/search/history`), online only.
 - Cards carry the source's name (small badge under the format badge). Screens: a "All sources ▾" / "2 sources ▾" /
   name button and a category button (red when they narrow the catalog) open a sheet (Android `ModalBottomSheet`, iOS
   `.sheet`): "All" + the sources with checkmarks, or "All categories" + the categories.
@@ -257,6 +320,8 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   forgets what is not on the device yet. Each chapter is fetched again first (`remote.chapter`, saved for
   the reader), then its pages through `ReaderRemoteDataSource.downloadPage`: signed API links (internal source) or the
   source's hosts through `RulesHttp` (allowed hosts only, never the session; with the source's page-image Referer).
+  A page whose bytes are no known image (an empty body, an HTML error page) fails the chapter at once (`INVALID_IMAGE`,
+  not retried) and is never saved.
   Every change to a chapter's rows and files happens under one lock: a chapter removed while it downloads leaves nothing
   behind.
 - Network: no connection, or "Wi-Fi only" on a metered network (`NetworkState.unmetered`: Android `NOT_METERED`, iOS not
@@ -346,8 +411,15 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
 - Modes (`ReadingMode`): `PagedRightToLeft`, `PagedLeftToRight`, `PagedVertical` (one page at a time), `LongStrip`
   (continuous, no gap: webtoons), `LongStripGaps` (16 dp/pt between pages); `Book` for books. `ReadingModes.resolve`:
   the mode chosen for the series (`series_mode`, per `(sourceKey, titleId)`), else the user's default for the format
-  (manga / webtoon), else `LongStrip` for every format ("Continuous", reader/SPEC.md shared with the web reader).
+  (manga / webtoon), else the format's own style (reader/SPEC.md §1b, shared with the web reader): a webtoon
+  `LongStrip` ("Continuous"), a manga `PagedRightToLeft`, a comic `PagedLeftToRight`.
   Switching keeps the page.
+- A rule-based title page that names no format is a webtoon when its genres say so (`formatHint`: "long strip",
+  "longstrip", "webtoon(s)", "manhwa", "manhua", "vertical", "vertical scroll", trimmed, any case; `StripGenres` in
+  `core/common`, the server's `STRIP_TAGS`). A listing of a source that names no format (`TitleSummaryDto.formatKnown`
+  false) never overwrites the format the title page read, nor does the server's learned format; a title saved before
+  shows as a webtoon on its page when its genres say so. Search results (kept in memory) follow the saved row's format
+  live (`followResultFormats`), so a card turns WEBTOON as soon as its page has read it.
 - Format recognition (`ComicFormat`: `Manga` right to left, `Webtoon`, `Comic` left to right when paged): the source's
   word first (our API's `format`; a plugin's own labels "Long Strip", "Web Comic", manhwa, manhua, BD; an original
   language `ko` / `zh` = webtoon), then the pages' shape: most sized pages taller than 2.5 × their width
@@ -365,9 +437,13 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   taps retarget keeping the velocity; a finger stops it. Past the last stop: the end card (`GoToItem`). Bars hide
   2.5 s after a Next or a scroll down, come back on a scroll up of 0.25 × the screen; a 2 pt red progress line while
   hidden; immersive system bars (Android), hidden status bar (iOS). Title card for 1.6 s on opening. Focus (off by
-  default, `ReaderPreferences.focus`): the panel at full light, the rest at 0.72, gliding 380 ms. Position
-  `{page, offset}` (share of the page) in `reader_setting` (`pos/<source>/<chapter>`, at most every 500 ms),
-  restored when the chapter opens at its saved page. The next 3 pages are prefetched. Our catalogue's comics have
+  default, `ReaderPreferences.focus`; the bottom bar's left control): the panel at full light, the rest at 0.72, gliding
+  380 ms (`spotlight`: never on the end card, never while the margin is open). Position
+  `{page, offset}` in `reader_setting` (`pos/<source>/<chapter>`, at most every 500 ms): the reading line (a third of
+  the screen down) as a share of its page. "Continue reading" (`Resume`, reader SPEC §9): the stop whose panel holds
+  that line is the anchor; the strip opens one stop before it (a third of a screen back without stops, or when that
+  stop is more than a screen up), the anchor panel lit for 1.2 s; the placement is not saved back until the reader
+  moves (no drift). The next 3 pages are prefetched. Our catalogue's comics have
   "Watch from here" (`ReadWithVoice` → `OpenEpisode(chapterId, page)` → `PlayerViewModel(…, startPage)`, the first
   beat of that page). Reduce Motion / Remove animations: jumps, no glide, no fades.
 - Tall pages in the paged modes (`TallPages`, as Mihon's paged viewer): a page whose height / width is more than
@@ -424,11 +500,25 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   that page at once, its top at the top of the screen, in every mode (a tall page from its top); the zoom goes back to
   1× and the bars stay. A strip counts the jump as moved (its next reports follow from there). TalkBack / VoiceOver
   adjustments jump at once.
-- Overlay (red next, cyan previous, ink menu, ~1.5 s): on the reader's first opening on the device, then when the
-  zones change (layout, invert, or a mode that changes them), after the settings sheet closes; "Show tap zones" off
+- "How to read" guide (reader SPEC §10, `ReaderCoach`, `CoachKind` Manga / Webtoon / Comic / Book): the first chapter
+  of each format the account opens shows a static card (the real tap zones, one line per gesture for the mode it
+  reads in); the first tap anywhere closes it and is not a page turn; the "?" in the top bar (`ShowCoach`) brings it
+  back. Seen once per format per account (`CoachSync`, wired in `shared` to `GET /settings/reading` `coached` and
+  `PUT /settings/reading/coached/{kind}`; books stay on the device), kept on the device too (`ReaderPreferences.
+  coachSeen`, `reader_setting` "coachSeen") so it never flashes while the account's list loads; seen offline is told
+  to the account when a reader next opens.
+- Overlay (red next, cyan previous, ink menu, ~1.5 s): on the first chapter of a kind whose coach was already seen,
+  then when the zones change (layout, invert, or a mode that changes them), after the settings sheet closes; "Show tap zones" off
   never shows it.
+- Mode per series on the account (reader/SPEC.md §1): `GET /settings/reading` `seriesModes`
+  (`"<sourceKey>:<titleRef>"` → `long-strip | long-strip-gaps | paged-rtl | paged-ltr | paged-vertical`),
+  `PUT /settings/reading/series-mode {sourceKey, titleRef, mode|null}`; `SeriesModeSync` port (reader domain, wired in
+  `shared` to the account slice). `series_mode` is the account's cache: a choice is kept at once and sent, or kept as
+  pending (`seriesPending/…` rows) and sent at the next sync (each reader opening, `syncSeriesModes`); the account wins
+  everywhere else, a series reset elsewhere included; the device's choices from before are sent once
+  (`seriesMigrated`). Rules in `SeriesModeMerge` (pure). A server without the slot: the device's choices stand.
 - Settings sheet (gear in the top bar), kept on the device in the reader's database (`reader_setting` key-value
-  table, `series_mode`; migration `2.sqm`), no backend: mode for this series (+ Reset to default; "Default for this
+  table, `series_mode`; migration `2.sqm`), the series mode also on the account: mode for this series (+ Reset to default; "Default for this
   series: Vertical pages." unless a format default was chosen), default mode for manga / webtoon, tap zones, invert,
   show tap zones (on), tap scroll amount (75 %, strips and tall pages), double tap to zoom (off), keep screen awake
   (on), Android only: volume keys turn pages (off; down = next, up = previous) and invert them (off).
@@ -492,6 +582,26 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   the placeholder's grey beside a wide xkcd strip). The reader's back, settings and previous-section controls have
   TalkBack / VoiceOver labels ("Back", "Reader settings", "Previous section"), not "left arrow".
 
+## Large screens (iPad, tablets, foldables)
+
+- Shared rules, never the device's name: `core/common/Adaptive.kt` (`Adaptive.of(width, height, hinge)` → width class at
+  600 / 840 dp, navigation BottomBar / Rail / Sidebar, tile width, readable width 720, two panes, posture Flat / Book /
+  Tabletop, a separating vertical hinge) and `feature/reader/domain/Spreads.kt` (`Spreads.fit`: two pages from 600 wide
+  and 1.15 width / height, or across a vertical hinge; `Spreads.of`: the cover, chapter cards, double spreads and strips
+  (`STRIP_ALONE`, height ≥ 2 × width) stand alone, other pages pair; `ReaderKeys`: arrows follow the page direction,
+  space / page keys turn, Escape closes).
+- Reader: paged horizontal modes show `ReaderUiState.spreads` (setting "Two pages side by side", `doublePages`, on);
+  the native side reports `Viewport(width, height, verticalHinge)` and keys as `ReaderIntent.Key`; `positionLabel`
+  "4–5 / 19"; `ReaderCommand.Close` for Escape.
+- iOS: native on iPad (`TARGETED_DEVICE_FAMILY` 1,2, every orientation), `TabView` with `Tab` and `.sidebarAdaptable`,
+  ⌘1-4 (`TabShortcuts`), `.readableWidth()` on text screens, cards lift under the pointer (`.hoverEffect(.lift)`),
+  spreads in `HorizontalPages`, keys through `onKeyPress` (`ReaderKeyMap`).
+- Android: `AdaptiveWindow` (`ui/common/WindowLayout.kt`: window size + Jetpack WindowManager `FoldingFeature`, the only
+  way to know the hinge; `androidx.window`) provides `LocalAdaptive`; tabs as a rail or a sidebar (`SideTabs`) from
+  600 dp; the activity handles size, orientation and fold changes itself (`configChanges`), so folding or unfolding
+  keeps the screen and the reading position; spreads in `HorizontalPager` with the hinge's gap between the pages;
+  keys through `onPreviewKeyEvent`.
+
 ## Account (keys, reading model, costs)
 
 - `feature/account`: the user's own AI settings, one slice for the backend modules `provider-keys` and `settings`
@@ -539,7 +649,7 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
 - Languages (`?lang=` on every episode call, "" = the original; `EpisodeDto.language`, `audio` `dub | sub`): the card
   has a searchable language picker (`EpisodeIntent.ChooseLanguage`, `LanguageQuery`; `Language.ALL` in `core/common`,
   the server's `core/languages.py` with its `dub` / `mp4` / `beta` flags): "Dubbed" when ElevenLabs speaks it, else
-  "Subtitled" (the original voices, captions in it). Each language is its own episode, stored under `<chapterId>~<lang>`
+  "Subtitled" (the original voices, captions in it). Languages already made (the chapter's `episode_languages` in the catalog, `MadeEpisodeLanguages` port) come first, marked "Ready ✦ free". Each language is its own episode, stored under `<chapterId>~<lang>`
   (`storeKey`; the original keeps the bare chapter id), quoted with its `lang`, run with a TRANSLATE stage
   (`translating`). The player opens in the card's `language`, and "Next chapter →" opens the next card in it.
 
@@ -567,6 +677,15 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
 - `/auth/me` (`UserDto`) reads both server generations: `displayName`/`roleName` (v1) and `name`/`role` (unified API),
   plus `isSuperAdmin`, `permissions`, `features`, `emailVerified`. `Session.has(feature)`: a super-admin has every
   feature. `Session.isCreator` = `titles:create`.
+- Safe mode (per account, on by default): `showAdult` on `/auth/me`, switched in Settings › Preferences (`PreferencesViewModel`:
+  on applies at once; off asks "I'm 18 or older" first, then `PUT api/v1/settings/content {showAdult, confirmAdult}`;
+  online only, never queued). Ratings: `ContentRating` (`core/common`: `safe | suggestive | erotica | pornographic`,
+  null = unknown); the rule `ContentRating.shown`: safe mode shows only `safe` (unknown hidden too). The server filters
+  what it serves; the device applies the same rule to titles read on the device: `RulesSource` reads
+  `catalog.item.contentRating` (mapped by the manifest's `ratings.map`, a value off the scale and unmapped = unknown;
+  nothing read = `ratings.default`), stored in `title.content_rating` (catalog `3.sqm`), and `CatalogViewModel` filters
+  listings and search through the `ContentPolicy` port (wired in `shared` to the session; signed out = safe) with one
+  line when titles were hidden (`safeNote`). A manifest without ratings has every title unknown, so hidden in safe mode.
 - `video` gates episodes: the `EpisodeAccess` port (episodes domain, wired in `shared` to the session) turns the
   episode card into "Episodes are coming soon." with no action (`EpisodeUiState.comingSoon`); a server answer
   `FEATURE_DISABLED` / `FEATURE_COMING_SOON` does the same. The server checks every call again.
@@ -579,6 +698,11 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   credits" when the wallet can't hold `maxCredits`).
   Errors: `402 INSUFFICIENT_CREDITS`, `503 PLATFORM_PAUSED`, `429 DAILY_CAP` (kept as `Rejected`, not a rate limit,
   by `errorOf`), each with a calm line (`EpisodeText.creditError`). `WalletViewModel` = the credits card in Settings.
+  The same wallet feeds the balance chip (`WalletUiState.badge`, iOS `CreditChip` in `Components.swift`, Android
+  `ui/common/CreditChip.kt`) on the title page, the episode card, both language pickers and the language dock (reader
+  and player); red when empty. Quotes carry the balance (`TranslationQuote.balance`, `RunCost.balance`): short of the
+  price, the offer says what it costs and what is held ("About 12 credits; you have 3.") with "Add a key"; a step nobody funds (`unfunded`, priced by the server since the quote contract carries every price) says its price and the key that makes it free ("About 40 credits. Add your own Anthropic key in Settings › Keys, or ask the owner for credits.") (an unfundable quote priced 0, a server that leaves the price out, shows the balance alone: "You have 0 credits: not enough…"); every quote,
+  run asked, run finished or credit refusal reads the wallet again (`changed()` on the quote ports), so every chip moves.
 - The creator studio is web only: Settings links to `WEB_BASE_URL` + `contribute` (`project.yml`), "Creator studio"
   for creators, "Publish your own series" otherwise. The apps never upload, translate or schedule releases.
 - A new account has no source turned on (the official one starts hidden): `SourcesUiState.needsSource` (no source, or
@@ -598,10 +722,14 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   `SpeedLines` (deterministic, drawn with `Canvas`). Ink tab and navigation bars, red selection, a selection haptic per
   tab. Every animation is skipped under Reduce Motion.
 
-## Translated reader (`TranslationViewModel`, `iosApp/Sources/TranslationViews.swift`)
+## Translated reader (`TranslationViewModel`, iOS `TranslationViews.swift`, Android `ui/reader/{Lettering,TranslationSheet}.kt`)
 
-- Chapters of our catalog only (`sourceKey == "vovoscan"`): a language button in the reader's top bar opens a
-  searchable picker (own name, English name or code), languages already made first ("Ready": shared, free).
+- Any comic chapter: a language button in the reader's top bar opens a searchable picker (own name, English name or
+  code), languages already made first ("Ready ✦ free": shared, free; a source's chapter already on the server is looked up when the picker opens, `TranslationIntent.PickerOpened`), those being made next. A chapter of a source read on the device is brought to
+  the server first (see "Chapters of a source on the server"); once translated, its server copy (a strip may be re-cut
+  there, so the lettering never lands on the device's pages) replaces the reader in that language at the same share of
+  the chapter (`TranslationUiState.openCopy`, `TranslatedCopy.startPage`, `CopyOpened`; Android `onOpenCopy`, iOS
+  `ReaderView.onOpenCopy` / `ReaderRoute.language`).
 - `TranslationsRepository` (reader slice, online only): `GET api/v1/translations/chapters/{id}` (`{translations:
   [{language, status, progress…}]}`), `POST …/{id} {language}` (200 exists or runs: shared, free; 202 queued; 402 / 429
   / 503 from credits), `GET …/{id}/read?lang=` (pages `width`/`height` + `texts` `{id, bbox, text, fill, ink, round,
@@ -612,6 +740,166 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   fractions of the page. iOS draws them in `LetteringOverlay` over each `PageImage` (any mode, any zoom). `Language.ALL`
   (`core/common`) mirrors the server's `LANGUAGES` (48 entries).
 
+- Any time, from the reader's bar: a language already made switches at once (free); one nobody made yet is quoted first
+  (`TranslationQuotes` port, wired in `shared` to `POST api/v1/quotes` kind `translation`): `TranslationOffer` "Translate
+  into Yorùbá?" with "Your own key pays for it", "About 12 credits", or, when nobody can pay, "Add a key" (the keys open
+  inside the sheet, the reader stays); nothing is asked before "Translate". Then progress, and the page swaps its
+  lettering. Android draws it with `LetteringOverlay` over every page (`LocalPageLettering`, in a box of the page's
+  shape).
+
+## Next chapter in the reading language (`NextChapterViewModel`, iOS `NextChapterViews.swift`, Android `ui/reader/NextChapter.kt`)
+
+- The next-chapter contract (shared with the web: `next-logic.ts` / `next.tsx`)
+  for our catalog's chapters read in a language (the language on the page, `TranslationUiState.shown`). Rules in
+  `NextChapterRules` (domain, pure, the web's tests ported): `endState`, `priceOf`, `offer` (1, then 5, then 10, from
+  the data), `shouldAuto`, `newlyReady`. API `NextChaptersRepository`: `GET api/v1/translations/chapters/{id}/next?lang=`,
+  `POST …/prefetch {language, count, maxCredits, auto}` (the server refuses to spend above `maxCredits`: `409
+  QUOTE_CHANGED` shows "The price changed…" and the new price), `DELETE …/prefetch?lang=`, `PUT …/prefetch/auto`.
+- End card: always a way on, in place of the card's own "Next chapter" (`NextEndCard`): the next chapter in the language
+  (translated) or in the original, "Prepare it ✦ 12 credits", its progress while prepared, "Read it in the original",
+  "Needs your own key" (opens the keys), a link the source gives, or "This is the latest chapter for now". In the
+  original, or before the list is known, the reader's own card stands.
+- Balloon past 40 % (`ReaderUiState.readShare`; hidden on the end card, `onEndCard`, under the language dock, and once
+  closed for this chapter): the next chapter, then the next 5, then 10, at the price shown; what is prepared, with
+  Cancel for what has not started. The list is read again every 3 s while something is prepared. Toast "Chapter 4 is
+  ready in Français." with "Read it →" for 8 s. Series setting ("Always prepare the next chapter of this series in …",
+  settings sheet and end card): at 70 % the next chapter is prepared once, quietly; the switch moves at once and a
+  refusal puts it back. Opening a chapter in the language goes through the copy route (`onOpenCopy`), so the reader
+  opens it translated. Online only.
+- Series page badges: the language our catalog was last read in on this device (`ReaderSettingsRepository.
+  recordLanguage`, `reader_setting` "readLanguage", erased with the account) and `GET api/v1/translations/titles/{id}?lang=`
+  give each chapter row "Français ✓" / "Français ✦ 42%" / "Français ✦ preparing" (`ChapterTranslations` port in the
+  catalog, wired in `shared`); a chapter ready in it, and "Continue / Start reading" on it, open translated
+  (`ChapterRow.openLanguage`, `ReadAction.language`).
+
+## Favourites and ratings
+
+- The heart is the library's (`LibraryEntry.favorite`, its own clock `favorite_updated_at`): `LibraryRepository.setFavorite`
+  applies it at once, queues it in `favorite_outbox` (one per title, the latest wins; library migration `2.sqm`) and
+  `sync()` sends it (`PUT`/`DELETE api/v1/favorites/{key}/{ref}`, never `library/favorites/…`: "favorites" is a valid
+  source key). Giving it follows the title; taking it back keeps it followed; removing the title takes it away. A refusal
+  puts the heart back and answers Err ("Could not update your favourites."); `FAVORITE_NOT_FOUND` on a removal is done.
+  A progress write never undoes a heart (the library's answers keep the heart's own clock).
+- Hearts on catalog cards (round, 40 pt/dp, top right, the episode badge under it; never opens the card), on the title
+  page (`FollowUiState.favoriteLabel`: "Add to favourites" / "Favourite"), on the reader's end card (the app puts a
+  `FollowViewModel` next to the reader) and on library rows. The catalog reaches the library through the `Favorites` port.
+- Library: Favourites first (most recently favourited first), then Following (`LibraryUiState.sections`); "+3 new"
+  (`LibraryRow.newBadge`, yellow, tilted): the server's `newChapters` for our catalog, else the `NewChapters` port
+  (chapters numbered after the last one read, from the device's copy of the title page).
+- Ratings (catalog slice, `RatingsRepository`): 1 to 5 stars in half steps (`Stars`: the half under the finger, steps,
+  fills), `my_rating` is its own queue (`pending`, `previous_score` put back on a refusal), `PUT`/`DELETE
+  api/v1/ratings/{key}/{ref}`, `GET ratings?updatedSince=` pulled on each sync (catalog opening, every rating).
+- Everyone's numbers (`title_stats`, catalog migration `5.sqm`): null below 3 accounts, shown only when known
+  ("★ 4.3 (12)", "♥ 30", `MarkText.compactCount`: 1.2k, 46k, 2M). Our catalog's listings carry them; `POST
+  ratings/stats` (100 a call) is asked for a source read on the device only for titles the server already knows from this
+  account: followed, rated, or a typed search's results. Browsing a source never tells the server what it lists.
+- Title page stars: a tap rates the half under the finger, a drag previews (`previewFills`) and rates where it is let go,
+  "Clear" takes it back; VoiceOver an adjustable element, TalkBack a slider, both "4.5 out of 5 stars".
+
+## One series across sources (dedup by page content)
+
+- Only page content makes two titles one series (the server compares the pages of imported chapters); a name never
+  does. `GET api/v1/series/resolve?ref=<key>:<ref>&ref=…` (100 refs a call; `SeriesRepository`, catalog slice) answers
+  the series of the titles asked about, kept in `series_link` (catalog migration `6.sqm`; a title asked and left out is
+  forgotten), so everything stays folded offline. `members[0]` is the primary (most chapters, ours on a tie).
+- Asked under the ratings' rule: our own titles, and for a source read on the device only titles the server already
+  knows from this account (followed, rated, a typed search's results). Browsing never tells the server what it lists.
+- Catalog: one card per series (`SeriesMerge.fold`): the first member in the series' order that is on screen and at a
+  source turned on stands for it, at its own place, with "+ N sources" (`TitleCard.moreSources`, members at sources
+  turned on); started and the heart count at any member; turning the heart off takes it from every member.
+- Title page (comics): chapters merged by number (`SeriesMerge.chapters`): each number once, this page's source first,
+  else the first member that has it; such a row carries its source's name (`ChapterRow.sourceBadge`) and opens the
+  reader at that title (`ChapterRow.sourceKey`/`titleId`, also `ReadAction`); Translate, Episode and downloads only on
+  this page's own chapters (`ownChapter`). Each other member's page is read once, from where it lives (a source read on
+  the device: from the device). "Also on" (`alsoOn`) opens the series at another source. Members at a source the account
+  turned off are left out (`EnabledSources` port, wired in `shared` to the sources slice).
+- Library: one row per series (`LibrarySeries` port, wired in `shared` to `SeriesRepository`; the library's titles are
+  asked about, the server knows them): the most recent progress wins, the heart is the series', unfollowing a row
+  unfollows every member.
+- The title page's and the reader end card's heart (`FollowViewModel`, given `LibrarySeries`) is the series' too: red
+  when any member is hearted (a row the library shows under Favourites never opens on an empty heart), off takes it
+  from every member, on gives it to the title on screen.
+
+## Margin (notes, theories and salon of a chapter)
+
+- `feature/forum` (backend `api/v1/forum`, flag `forum`, off by default: the `ForumAccess` port, wired in `shared` to
+  `Session.has("forum")`; `FEATURE_UNAVAILABLE` / `FEATURE_DISABLED` / `FEATURE_COMING_SOON` hide it too). Only a chapter
+  of the server has a margin (`sourceKey` `vovoscan`, or a source's chapter reopened on its server copy): a chapter read
+  on the device is never brought in for it, so browsing a source tells the server nothing.
+- `ForumViewModel(chapterId)` (`MarginUiState`, `MarginIntent`): the "Margin" switch in the reader's bar ("La marge" in French) (with the
+  chapter's count: pins + notes, which the server sends disjoint; the chapter's list shows both, pins first), pins over
+  the pages while it is open (`pinsOn(page)`, `draftOn(page)`: sticker glyph on yellow, "?"
+  on a note masked as a spoiler for this reader, "✎" for words only; frames and strokes drawn in red), three tabs
+  (this chapter's notes, theories with their verdict votes, the weekly salon with its 8 latest weeks), orders best /
+  new / old, replies, eight sticker reactions (the same again takes it back), reveal, translate into the writing
+  language (`WritingLanguage` port: the reading language, else the UI's; polled every 2 s), edit within 15 minutes,
+  delete, report (reasons), mute (hides the author here at once). The end card shows "Read this far" ("Lu jusqu’ici"), how
+  many readers got there and the best three visible notes.
+- Marks (`Anchors`, domain, pure): a point, a frame (two corners; under 0.02 of the page it is a point) or a stroke
+  (thinned with Ramer-Douglas-Peucker to at most 64 points), fractions of the page rounded to 4 decimals. With a tool
+  chosen (`placing`), the page takes the finger before the pager, the strip or the tap zones (scrolling is off
+  until the tool is turned off, so a quick drag draws at once), and shows a faint red
+  hatch (5 %) with a 2 pt dashed red outline until the mark is placed or the tool turned off.
+- Stickers (`Sticker`, the forum contract; the circles use the same eight): the keys never change on the wire (`doki`,
+  `don`, `zawa`, `gogogo`, `kusu`, `gaan`, `kira`, `shiin`), the glyphs are Latin onomatopoeia (DOKI, BOOM, BZZZ, GRRR,
+  HAHA, GASP, BLING, SHHH) and each has a label in the UI language (`sticker.<key>`: "Heart racing" / "Cœur qui bat"…)
+  for screen readers. No Japanese anywhere in the UI: every label goes through the catalogues.
+- Rules (`ForumRules`): control and bidirectional characters dropped, one blank line at most, 500 / 1500 / 1000
+  characters (note / theory / salon), 500 for a reply, at most 2 links; a sticker or a stroke is content on its own.
+- Online only: nothing is queued (spoilers and moderation are the server's). The last margin read per chapter is kept
+  (`margin_cache`, the 50 latest) and shown offline with the offline line; erased on sign-out. Moderation stays in the
+  web console.
+- iOS `ForumViews.swift` (`MarginModel`, `MarginButton`, `MarginPinsOverlay` over each `PageImage` through the
+  `pageMargin` environment, `MarginPanel` docked in the reader's own layers, 45 % or 90 % of its height (handle: tap,
+  drag up or down, down again closes; a thread opens in place with ←), `MarginEndCard` in the forward chapter card).
+  Never a presented sheet: a sheet's dimming and muted tint stayed over the pages once it was closed, so the switch
+  is the panel and nothing dims the pages. While it is open the reader gives up the keyboard focus and its key
+  shortcuts (a letter typed into the composer never turns a page). Android `ui/forum/Margin.kt` (`LocalPageMargin`, a non-modal `MarginPanel` docked at the
+  bottom, 45 % or 90 % of the height; Back closes the replies, then the panel).
+
+## Reading circles (reading live together)
+
+- `feature/together` (backend `api/v1/reading-rooms`, flag `shared_reading`, gated by default: the `TogetherAccess` port,
+  wired in `shared` to `Session.has("shared_reading")`; without it nothing shows, no "coming soon"). Two to eight
+  accounts read one chapter of the server at once, each on their own device, mode and language. Only a chapter of the
+  server (`sourceKey` `vovoscan`, or a source's chapter reopened on its server copy), like the margin.
+- Domain (`Together.kt`, pure): `Place` (comic `{page, fraction, panel?}` at the reading line, a third of the screen
+  down; book `{section, block, offset}`), `Room`, `Member`, `Signal`, `InviteCode` (normalise, `ABCD-EFGH`, from a
+  `vovoscan://together/CODE` or `https://…/together/CODE` link or a bare code), `Lines.check` (280 characters, no link),
+  `Presence` (away after 45 s without a heartbeat; heartbeat every 20 s). Ports `TogetherLanguage` (the reading
+  language), `MutedReaders` (the margin's mutes), `ThisDevice`.
+- Data (`TogetherRepositoryImpl`, online only, nothing queued): REST `{data}`; `live()` reads `GET …/{id}/events` (the
+  bare room as `event: snapshot`, `SseParser` now in `core/network`, shared with episodes): reconnects at once when the
+  server ends the stream, backoff 1 → 30 s on failures, after 3 failures polls `GET …/{id}` every 5 s and tries the
+  stream again after 12 polls; ROOM_NOT_FOUND / CLOSED / REMOVED / CHAPTER_HIDDEN, 401, 403 and the flag off are final.
+- `TogetherSession` (app scope): the room this account reads in, outliving reader screens (the next chapter replaces
+  the reader), with what was shown and applied (the newest `positionSeq`, a local follow choice until a snapshot agrees,
+  300 signal ids). A host opening another chapter moves the circle first (`PUT …/chapter`, in the app scope). Cleared on
+  sign-out.
+- `TogetherViewModel(chapterId)`: attaches to the open room on this chapter (the session's, else `GET /reading-rooms`
+  once per launch); while started (screen on and visible) the stream, the heartbeat and a 5 s tick. The "Together" ("Ensemble") button
+  and sheet (read together / join with a code with its preview / the admission ticket: code, share and copy the website's
+  `/together/CODE` link, the host's lock, new code, end; a reader's leave), the dock (hanko stamps in each reader's ink:
+  the eight slot colours of the web, host ringed red with a star, away dashed; the host's menu on a stamp: hand over, remove;
+  follow / on your own, Gather for the host, Wait for a reader, the log, eight stickers from the margin, a line), the rail
+  (each reader's share of the chapter, a tap goes there), bursts (1.6 s, 6 at most then "×n"), balloons (5 s) and one
+  toast at a time (4 s, 8 s with an action). The dock steps aside while a language's offer or progress is docked, so its buttons are never under it; the rail takes taps only with the bars. Followers glide only to a newer `positionSeq`; their own gesture
+  (`ReaderUiState.userMoves`: taps, swipes, a strip drag, a section change, never a glide the reader played) lets go.
+  Places sent: the host every 300 ms (trailing), a reader on their own every second, a follower never. A circle moved
+  on: a follower's reader opens that chapter (`TogetherCommand.OpenChapter`), others get "Go".
+- Reader hooks (`ReaderViewModel`): `place` (`ReaderPlace`, throttled 200 ms) and `ReaderIntent.GoToPlace` (strip: the
+  reading line glides to the fraction; paged: the spread of that page; book: the section; kept pending until laid out).
+- Invites: `vovoscan://together/CODE` (iOS `CFBundleURLTypes` in `project.yml`, `RootView.onOpenURL`; Android an
+  intent filter on `MainActivity`, `singleTop`, `onNewIntent`) opens `TogetherInviteViewModel`'s card over the app
+  (signed in), then the reader there, already following. The share link is the website's (`AppEnvironment.webBaseUrl`,
+  Android `BuildConfig.WEB_BASE_URL`, `-Pvovoscan.webBaseUrl`), whose page hands over to the app.
+- Native: iOS `TogetherViews.swift` (`TogetherModel` next to `ReaderView`, its layers, sheet and `confirmationDialog`),
+  Android `ui/together/Together.kt` (wired in `ReaderScreen`, `TogetherEffects`). Start / Stop with the screen (iOS
+  appear and scene phase, Android `ON_START` / `ON_STOP`).
+- v1 limits: stickers from the dock burst at the reading line (no point placed on the page by a long press); a tall
+  paged page opens at its top, not at the fraction; books place by section only (block and offset sent as 0); no https
+  universal links (the website hands over through `vovoscan://`).
+
 ## Screens (account and episodes)
 
 - Settings (4th tab, gear on both): Keys (two provider slots, add / replace / remove with a confirmation, privacy note;
@@ -619,9 +907,13 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   `secretFieldResets` changes), Reading model (three options), Costs (period chips, totals, entries), Sign out (also
   still in Library).
 - Title page of a comic of our catalog (`TitleDetailUiState.offersEpisodes`): each chapter row has an "Episode" chip
-  next to reading it → Episode card → Watch → full-screen player. `nextChapterId(…)` (reading order) gives "Next
+  next to reading it → Episode card → Watch → full-screen player. Any comic, any source: a "Translate" chip per row
+  (`offersTranslation`) opens the reader on its language picker (iOS `ReaderRoute.pickLanguage`, Android
+  `ReaderScreen(openLanguages = true)`). Both pills go through the view model (`TitleDetailIntent.Translate` /
+  `Episode` → `state.open` → the screen opens it once and answers `OpenHandled(seq)`); iOS pushes them on the tab's path. `nextChapterId(…)` (reading order) gives "Next
   chapter →"; at the end it swaps the card for the next chapter's (Android `openEpisode`, iOS `EpisodeContainer`).
-- Episode card: Start / Stop on start / stop (Android lifecycle) or appear / disappear (iOS): live events only while it
+- Episode card: always a way out (iOS shows its navigation bar explicitly, so the back button and the edge swipe stay
+  after the reader hid the bar; in the source's sheet, Close, `episode.close`). Start / Stop on start / stop (Android lifecycle) or appear / disappear (iOS): live events only while it
   is visible. Video: Android saves through `DownloadManager` (`Movies/vovoscan`, Android 10+; the app's own Movies
   folder on 8-9); iOS downloads to a temporary file and opens the share sheet (Save Video needs
   `NSPhotoLibraryAddUsageDescription`, set in `project.yml`).
@@ -694,6 +986,25 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   binding computed from a dictionary), copies every keystroke into the form's `[name: text]` record, does not resend
   a value Kotlin already has (a field filled on appear would mark the form edited), and Save / Confirm resend every
   recorded value before the intent.
+- Navigation (`iosApp/Sources/Navigation.swift`): one typed path per tab (`[AppRoute]`: title, reader, episode,
+  downloads; catalog and library, owned by `RootView`), one `navigationDestination(for: AppRoute.self)` at the stack's
+  root, links of `AppRoute` values and `\.push` for pushes from code. No destination is registered inside a pushed view
+  (`navigationDestination(item:)` on the title page mixed with the path: later opens did nothing). A sheet is never
+  presented while a push runs (the reader's "Translate" picker waits 600 ms): one shown in `onAppear` left an
+  invisible layer over the app, no tap and no Back. The reader's ← and Escape pop the tab's path (`\.pop`); ← is a
+  44 pt target and the bars sit over the dock and the bubble (`zIndex` 0.9): a tap just off the glyph reached the
+  page's tap zones and turned chapters.
+- Grids and lists are keyed by the title (`TitleCard.key`, the library's `rowKey`), never by the whole card: a title page saving its format or
+  status replaced the catalog tile that was its zoom transition's source while the page opened, and the page then took
+  no tap (only Back worked).
+- AsyncImage cancelled mid-load (the grid redrawing a tile, e.g. a search result turning WEBTOON when `/formats` answers,
+  `NSURLErrorCancelled` -999) stays failed for good: catalog covers go through `CoverImage`, which loads a cancelled
+  cover again (3 times at most) and logs any other failure (`CoverLog`).
+- Checks on the simulator tap elements by accessibility identifier, never by screen position (a tap placed from a
+  screenshot of another scale lands rows below): `chapter.<id>.read|translate|episode`, `library.row.<source>/<title>`,
+  `reader.back`, `reader.chapter` (the chapter the reader shows).
+- A view body the type checker gives up on ("unable to type-check this expression in reasonable time"): split it into
+  typed parts, as `ReaderView` (layers, `@ViewBuilder` groups, `withObservers`, `withSheets`).
 - No Kotlin property named `description` in an exported state: on iOS it is `toString()` (NSObject).
 - Simulator: build signed (`CODE_SIGN_IDENTITY="-"`, which Xcode does by default), otherwise the Keychain
   refuses to write and the session does not persist.

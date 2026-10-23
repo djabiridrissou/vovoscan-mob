@@ -14,6 +14,7 @@ import com.vovoscan.feature.reader.domain.ReaderRepository
 import com.vovoscan.feature.reader.domain.ReaderSettingsRepository
 import com.vovoscan.feature.reader.domain.ReadingMode
 import com.vovoscan.feature.reader.domain.ReadingPosition
+import com.vovoscan.feature.reader.domain.Resume
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -32,6 +33,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
+import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -113,7 +115,14 @@ class ImmersiveReaderTest {
     }
 
     private fun TestScope.reader(
-        settings: PositionSettings = PositionSettings(ReaderPreferences(tapZonesSeen = true)),
+        settings: PositionSettings =
+            PositionSettings(
+                ReaderPreferences(
+                    coachSeen = ALL_COACHES,
+                    tapZonesSeen = true,
+                    mangaMode = CONTINUOUS,
+                ),
+            ),
         panels: ChapterPanels = ChapterPanels.None,
         sourceKey: String = "vovoscan",
         startPage: Int = 0,
@@ -159,7 +168,7 @@ class ImmersiveReaderTest {
     fun tearDown() = Dispatchers.resetMain()
 
     @Test
-    fun everyFormatReadsAsOneContinuousStrip() =
+    fun aMangaReadContinuouslyIsOneStrip() =
         runTest(dispatcher) {
             val vm = reader()
             assertTrue(vm.state.value.isStrip)
@@ -167,11 +176,20 @@ class ImmersiveReaderTest {
         }
 
     @Test
+    fun aMangaOpensInPagesRightToLeftUntilTheReaderChoosesOtherwise() =
+        runTest(dispatcher) {
+            val vm = reader(settings = PositionSettings(ReaderPreferences(coachSeen = ALL_COACHES, tapZonesSeen = true)))
+            assertEquals(ReadingMode.PagedRightToLeft, vm.state.value.mode)
+            assertFalse(vm.state.value.isStrip)
+        }
+
+    @Test
     fun aStripIsRecognisedFromItsImagesAndNeverReadAsPages() =
         runTest(dispatcher) {
             // The source calls it a manga and the reader chose paged manga: until the images arrive, that is the mode.
             val unsized = manga.copy(sourceKey = "inkwell-press", pages = manga.pages.map { it.copy(width = 0, height = 0) })
-            val settings = PositionSettings(ReaderPreferences(tapZonesSeen = true, mangaMode = ReadingMode.PagedRightToLeft))
+            val settings =
+                PositionSettings(ReaderPreferences(coachSeen = ALL_COACHES, tapZonesSeen = true, mangaMode = ReadingMode.PagedRightToLeft))
             val vm = reader(settings = settings, sourceKey = "inkwell-press", chapter = unsized)
             assertEquals(ReadingMode.PagedRightToLeft, vm.state.value.mode)
             assertEquals("Manga ✦ right to left", vm.state.value.formatLabel)
@@ -271,7 +289,8 @@ class ImmersiveReaderTest {
         runTest(dispatcher) {
             // Page 1: two panels side by side (right first: a manga), then one below.
             val row = listOf(PanelBox(1, 0.5f, 0f, 0.5f, 0.4f), PanelBox(1, 0f, 0f, 0.5f, 0.4f), PanelBox(1, 0f, 0.5f, 1f, 0.5f))
-            val settings = PositionSettings(ReaderPreferences(tapZonesSeen = true, focus = true))
+            val settings =
+                PositionSettings(ReaderPreferences(coachSeen = ALL_COACHES, tapZonesSeen = true, focus = true, mangaMode = CONTINUOUS))
             val vm = reader(settings = settings, panels = ChapterPanels { _, _ -> mapOf(1 to row) })
             assertEquals(PanelBox.page(0), vm.state.value.focus)
             vm.next()
@@ -328,9 +347,22 @@ class ImmersiveReaderTest {
         }
 
     @Test
+    fun aPreviousTapGlidingBackKeepsTheBarsHidden() =
+        runTest(dispatcher) {
+            val vm = reader()
+            vm.onIntent(ReaderIntent.StripScrolled(900f, byUser = true, settled = true))
+            vm.onIntent(ReaderIntent.Previous)
+            assertFalse(vm.state.value.chromeVisible)
+            // The glide back is the reader's own playing, not a scroll up of the reader's.
+            vm.onIntent(ReaderIntent.StripScrolled(500f, byUser = false, settled = false))
+            vm.onIntent(ReaderIntent.StripScrolled(100f, byUser = false, settled = true))
+            assertFalse(vm.state.value.chromeVisible)
+        }
+
+    @Test
     fun progressPositionAndPrefetch() =
         runTest(dispatcher) {
-            val settings = PositionSettings(ReaderPreferences(tapZonesSeen = true))
+            val settings = PositionSettings(ReaderPreferences(coachSeen = ALL_COACHES, tapZonesSeen = true, mangaMode = CONTINUOUS))
             val vm = reader(settings = settings)
             assertEquals(listOf("https://api.test/p1", "https://api.test/p2", "https://api.test/p3"), vm.state.value.prefetch)
             vm.onIntent(ReaderIntent.StripScrolled(1500f, byUser = true, settled = true))
@@ -338,25 +370,68 @@ class ImmersiveReaderTest {
             assertEquals(2, vm.state.value.currentIndex)
             assertEquals(listOf("https://api.test/p3", "https://api.test/p4"), vm.state.value.prefetch)
             advanceTimeBy(600)
-            assertEquals(ReadingPosition(2, 0.5f), settings.positions["vovoscan/c3"])
+            // The reading line, a third of the screen down (1500 + 800 / 3), as a share of page 2 (1200 to 1800).
+            val saved = assertNotNull(settings.positions["vovoscan/c3"])
+            assertEquals(2, saved.page)
+            assertEquals((1500f + 800f / 3f - 1200f) / 600f, saved.offset, 0.001f)
         }
 
     @Test
     fun aSavedPositionIsRestoredInsideItsPage() =
         runTest(dispatcher) {
-            val settings = PositionSettings(ReaderPreferences(tapZonesSeen = true))
+            val settings = PositionSettings(ReaderPreferences(coachSeen = ALL_COACHES, tapZonesSeen = true, mangaMode = CONTINUOUS))
             settings.positions["vovoscan/c3"] = ReadingPosition(2, 0.25f)
             val vm = reader(settings = settings, startPage = 2)
             val restore = vm.glide()
-            assertEquals(1350f, restore.offset)
+            // The reading line in page 2 (stop 1100): one stop back, page 1's.
+            assertEquals(500f, restore.offset, 0.01f)
             assertFalse(restore.animated)
+            // The panel read there is marked for a moment, then the mark goes.
+            assertEquals(
+                2,
+                vm.state.value.focus
+                    ?.page,
+            )
+            advanceTimeBy(Resume.MARK_MS + 1)
+            assertNull(vm.state.value.focus)
+        }
+
+    @Test
+    fun aResumeNeverSavesItsOwnPlacementBack() =
+        runTest(dispatcher) {
+            val settings = PositionSettings(ReaderPreferences(coachSeen = ALL_COACHES, tapZonesSeen = true, mangaMode = CONTINUOUS))
+            settings.positions["vovoscan/c3"] = ReadingPosition(2, 0.25f)
+            val vm = reader(settings = settings, startPage = 2)
+            val restore = vm.glide()
+            vm.onIntent(ReaderIntent.CommandHandled(restore.seq))
+            vm.onIntent(ReaderIntent.StripScrolled(restore.offset, byUser = false, settled = true))
+            advanceUntilIdle()
+            assertEquals(ReadingPosition(2, 0.25f), settings.positions["vovoscan/c3"])
+            // The reader moves on: from then on the position follows.
+            vm.onIntent(ReaderIntent.StripScrolled(1700f, byUser = true, settled = true))
+            advanceUntilIdle()
+            assertNotEquals(ReadingPosition(2, 0.25f), settings.positions["vovoscan/c3"])
         }
 
     @Test
     fun theTitleCardShowsForAMoment() =
         runTest(dispatcher) {
             val vm =
-                ReaderViewModel("vovoscan", "t1", manga.id, 0, StaticReader(manga), FakeSettings(), ChapterHeadings { _, _, _ -> null }) {
+                ReaderViewModel(
+                    "vovoscan",
+                    "t1",
+                    manga.id,
+                    0,
+                    StaticReader(manga),
+                    FakeSettings(ReaderPreferences(coachSeen = ALL_COACHES, mangaMode = CONTINUOUS)),
+                    ChapterHeadings {
+                        _,
+                        _,
+                        _,
+                        ->
+                        null
+                    },
+                ) {
                     _,
                     _,
                     _,
@@ -370,7 +445,7 @@ class ImmersiveReaderTest {
         }
 
     @Test
-    fun ourComicsHandOverToTheEpisodeAtThePageBeingRead() =
+    fun comicsHandOverToTheEpisodeAtThePageBeingRead() =
         runTest(dispatcher) {
             val vm = reader()
             assertTrue(vm.state.value.voiceAvailable)
@@ -378,8 +453,71 @@ class ImmersiveReaderTest {
             vm.onIntent(ReaderIntent.ReadWithVoice)
             val open = assertIs<ReaderCommand.OpenEpisode>(vm.state.value.command)
             assertEquals("c3" to 2, open.chapterId to open.page)
-            assertFalse(reader(sourceKey = "gutenberg").state.value.voiceAvailable)
+            // A source's comic too: its episode card brings its pages to the server first.
+            assertTrue(reader(sourceKey = "inkwell").state.value.voiceAvailable)
             assertNotNull(vm.state.value.pageAnnouncement)
+        }
+
+    // Reading circles: the place reported, the circle's place reached, and the reader's own gestures counted.
+
+    @Test
+    fun aCirclesPlaceIsPutOnThisScreensReadingLine() =
+        runTest(dispatcher) {
+            val vm = reader()
+            // Page 2 (1200 to 1800), half way down: 1500 on the reading line, a third of the 800 screen down.
+            vm.onIntent(ReaderIntent.GoToPlace(page = 2, fraction = 0.5f, section = 0, animated = true))
+            val glide = vm.glide()
+            assertEquals(1500f - 800f / 3f, glide.offset, 0.01f)
+            assertTrue(glide.animated)
+            // The glide's own scrolling is not a gesture of the reader's.
+            vm.onIntent(ReaderIntent.StripScrolled(glide.offset, byUser = false, settled = true))
+            advanceTimeBy(250)
+            assertEquals(0, vm.state.value.userMoves)
+            val place = assertNotNull(vm.state.value.place)
+            assertEquals(2, place.page)
+            assertEquals(0.5f, place.fraction, 0.001f)
+            assertFalse(place.book)
+            // A drag (and its fling) counts once; a tap zone once more.
+            vm.onIntent(ReaderIntent.StripScrolled(1300f, byUser = true, settled = false))
+            vm.onIntent(ReaderIntent.StripScrolled(1400f, byUser = true, settled = true))
+            assertEquals(1, vm.state.value.userMoves)
+            vm.next()
+            assertEquals(2, vm.state.value.userMoves)
+        }
+
+    @Test
+    fun aCirclesPlaceWaitsForTheStripToBeLaidOut() =
+        runTest(dispatcher) {
+            val vm = reader()
+            vm.onIntent(ReaderIntent.StripMeasured(width = 0f, viewport = 0f))
+            vm.onIntent(ReaderIntent.StripMeasured(width = 400f, viewport = 600f))
+            vm.onIntent(ReaderIntent.GoToPlace(page = 4, fraction = 1f, section = 0, animated = false))
+            // The end of the strip at most.
+            assertEquals(3000f - 600f, vm.glide().offset, 0.01f)
+            assertFalse(vm.glide().animated)
+        }
+
+    @Test
+    fun pagedReadersTurnToTheCirclesPageAndThePagerOnTheWayIsNotTheirs() =
+        runTest(dispatcher) {
+            val vm = reader(settings = PositionSettings(ReaderPreferences(coachSeen = ALL_COACHES, tapZonesSeen = true)))
+            assertTrue(vm.state.value.isPaged)
+            vm.onIntent(ReaderIntent.GoToPlace(page = 3, fraction = 0.4f, section = 0, animated = true))
+            val go = assertIs<ReaderCommand.GoToItem>(vm.state.value.command)
+            assertEquals(4, go.item)
+            assertEquals(3, vm.state.value.currentIndex)
+            vm.onIntent(ReaderIntent.ItemVisible(2))
+            vm.onIntent(ReaderIntent.ItemVisible(4))
+            assertEquals(0, vm.state.value.userMoves)
+            advanceTimeBy(250)
+            assertEquals(
+                3,
+                vm.state.value.place
+                    ?.page,
+            )
+            // A swipe of their own.
+            vm.onIntent(ReaderIntent.ItemVisible(5))
+            assertEquals(1, vm.state.value.userMoves)
         }
 }
 

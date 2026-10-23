@@ -13,9 +13,12 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.rememberSplineBasedDecay
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.ScrollableState
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -24,6 +27,7 @@ import androidx.compose.foundation.gestures.calculatePan
 import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.DragInteraction
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -31,13 +35,18 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.VerticalPager
 import androidx.compose.foundation.pager.rememberPagerState
@@ -58,6 +67,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -65,12 +75,24 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEvent
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isShiftPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.key.utf16CodePoint
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerInputScope
 import androidx.compose.ui.input.pointer.pointerInput
@@ -82,6 +104,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
@@ -93,10 +116,13 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.util.lerp
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
 import coil3.memory.MemoryCache
@@ -110,15 +136,41 @@ import com.vovoscan.app.MainActivity
 import com.vovoscan.app.ui.common.AppIcons
 import com.vovoscan.app.ui.common.ErrorText
 import com.vovoscan.app.ui.common.GhostButton
+import com.vovoscan.app.ui.common.HeartButton
+import com.vovoscan.app.ui.common.LanguageDock
+import com.vovoscan.app.ui.common.LocalAdaptive
 import com.vovoscan.app.ui.common.PrimaryButton
+import com.vovoscan.app.ui.common.content
+import com.vovoscan.app.ui.forum.LocalPageMargin
+import com.vovoscan.app.ui.forum.MarginButton
+import com.vovoscan.app.ui.forum.MarginEndCard
+import com.vovoscan.app.ui.forum.MarginPanel
+import com.vovoscan.app.ui.forum.MarginPinsOverlay
+import com.vovoscan.app.ui.forum.PageMargin
 import com.vovoscan.app.ui.theme.Brand
+import com.vovoscan.app.ui.together.TogetherBursts
+import com.vovoscan.app.ui.together.TogetherButton
+import com.vovoscan.app.ui.together.TogetherDock
+import com.vovoscan.app.ui.together.TogetherRail
+import com.vovoscan.app.ui.together.TogetherSheetView
+import com.vovoscan.app.ui.together.TogetherToast
 import com.vovoscan.core.common.i18n.I18n
+import com.vovoscan.feature.forum.presentation.ForumViewModel
+import com.vovoscan.feature.forum.presentation.MarginIntent
+import com.vovoscan.feature.library.presentation.FollowViewModel
 import com.vovoscan.feature.reader.domain.PageZoom
+import com.vovoscan.feature.reader.domain.ReaderKey
 import com.vovoscan.feature.reader.domain.ReaderPage
 import com.vovoscan.feature.reader.domain.TallPages
 import com.vovoscan.feature.reader.domain.TapAction
 import com.vovoscan.feature.reader.domain.ZoomTransform
 import com.vovoscan.feature.reader.presentation.BookText
+import com.vovoscan.feature.reader.presentation.CoachGesture
+import com.vovoscan.feature.reader.presentation.NextActionKind
+import com.vovoscan.feature.reader.presentation.NextButton
+import com.vovoscan.feature.reader.presentation.NextChapterIntent
+import com.vovoscan.feature.reader.presentation.NextChapterViewModel
+import com.vovoscan.feature.reader.presentation.ReaderCoach
 import com.vovoscan.feature.reader.presentation.ReaderCommand
 import com.vovoscan.feature.reader.presentation.ReaderIntent
 import com.vovoscan.feature.reader.presentation.ReaderItem
@@ -126,6 +178,12 @@ import com.vovoscan.feature.reader.presentation.ReaderUiState
 import com.vovoscan.feature.reader.presentation.ReaderViewModel
 import com.vovoscan.feature.reader.presentation.TapOverlay
 import com.vovoscan.feature.reader.presentation.TransitionCard
+import com.vovoscan.feature.reader.presentation.TranslationIntent
+import com.vovoscan.feature.reader.presentation.TranslationViewModel
+import com.vovoscan.feature.together.presentation.TogetherCommand
+import com.vovoscan.feature.together.presentation.TogetherIntent
+import com.vovoscan.feature.together.presentation.TogetherUiState
+import com.vovoscan.feature.together.presentation.TogetherViewModel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -151,12 +209,87 @@ fun ReaderScreen(
     onOpenChapter: (String, Int) -> Unit,
     /** "Watch the episode from here": the episode of this chapter, from that page. */
     onWatch: (chapterId: String, page: Int) -> Unit = { _, _ -> },
+    /** The language to show at once (a source's chapter reopened on its translated copy); null: the original. */
+    language: String? = null,
+    /** A source's chapter, translated: open its copy on the server (title, chapter, language, page). */
+    onOpenCopy: (titleId: String, chapterId: String, language: String, page: Int) -> Unit = { _, _, _, _ -> },
+    /** Opened from a chapter's "Translate": the language picker shows at once. */
+    openLanguages: Boolean = false,
     viewModel: ReaderViewModel =
         koinViewModel(key = "reader:$sourceKey/$chapterId") { parametersOf(sourceKey, titleId, chapterId, startPage) },
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val onIntent = viewModel::onIntent
+    // The library's heart for this title, on the end card (two features side by side, unaware of each other).
+    val follow: FollowViewModel = koinViewModel(key = "follow:$sourceKey/$titleId") { parametersOf(sourceKey, titleId) }
+    val followState by follow.state.collectAsStateWithLifecycle()
+    val heart =
+        state.titleName.takeIf { it.isNotEmpty() }?.let { name ->
+            EndCardHeart(followState.favorite, followState.favoriteAction) { follow.toggleFavorite(name, null) }
+        }
     var settingsOpen by rememberSaveable { mutableStateOf(false) }
+    // The reader's language, any comic: any time from the bar, free when already made, quoted first. A source's chapter
+    // is translated on its copy on the server, which then opens here in that language.
+    val translation: TranslationViewModel =
+        koinViewModel(key = "translation:$sourceKey/$chapterId") { parametersOf(sourceKey, chapterId, titleId, language) }
+    val translationState by translation.state.collectAsStateWithLifecycle()
+    val copy = translationState.openCopy
+    LaunchedEffect(copy) {
+        if (copy == null) return@LaunchedEffect
+        translation.onIntent(TranslationIntent.CopyOpened)
+        onOpenCopy(copy.titleId, copy.chapterId, copy.language, copy.startPage(state.currentIndex, state.pages.size))
+    }
+    var languagesOpen by rememberSaveable { mutableStateOf(openLanguages && translationState.available) }
+    var keysOpen by rememberSaveable { mutableStateOf(false) }
+    // What comes after this chapter in the language on the page (our catalog): end card, balloon, toast, series setting.
+    val next: NextChapterViewModel = koinViewModel(key = "next:$sourceKey/$chapterId") { parametersOf(sourceKey, chapterId) }
+    val nextState by next.state.collectAsStateWithLifecycle()
+    // The chapter's margin: a chapter of the server only (a source's chapter read on the device has none).
+    val forum: ForumViewModel? =
+        if (sourceKey == OUR_SOURCE) koinViewModel(key = "forum:$chapterId") { parametersOf(chapterId) } else null
+    val marginState = forum?.state?.collectAsStateWithLifecycle()?.value
+    val pageMargin = forum?.let { vm -> marginState?.takeIf { it.visible }?.let { PageMargin(it, vm::onIntent) } }
+    // The reading circle on this chapter: a chapter of the server only, like the margin.
+    val together: TogetherViewModel? =
+        if (sourceKey == OUR_SOURCE) koinViewModel(key = "together:$chapterId") { parametersOf(chapterId) } else null
+    val togetherState = together?.state?.collectAsStateWithLifecycle()?.value
+    val sendTogether: (TogetherIntent) -> Unit = { together?.onIntent(it) }
+    // Another chapter replaces this reader: a circle's host moves the circle there first.
+    val openChapter: (String, Int) -> Unit = { chapter, page ->
+        sendTogether(TogetherIntent.MovingOn(chapter))
+        onOpenChapter(chapter, page)
+    }
+    TogetherEffects(state, togetherState, sendTogether, onIntent, onOpenChapter)
+    LaunchedEffect(translationState.shown) { next.onIntent(NextChapterIntent.LanguageShown(translationState.shown)) }
+    LaunchedEffect(state.readShare) { next.onIntent(NextChapterIntent.Reached(state.readShare)) }
+    LaunchedEffect(state.onEndCard) { next.onIntent(NextChapterIntent.AtEnd(state.onEndCard)) }
+    val uriHandler = LocalUriHandler.current
+    val nextAction: (NextChapterIntent) -> (NextButton) -> Unit = { prepare ->
+        { button ->
+            when (button.kind) {
+                NextActionKind.Open ->
+                    button.chapterId?.let { id ->
+                        // In the language: our catalog's chapter opens in it, as a translated copy does.
+                        button.language?.let { onOpenCopy(titleId, id, it, 0) } ?: openChapter(id, 0)
+                    }
+                NextActionKind.Prepare -> next.onIntent(prepare)
+                NextActionKind.AddKey -> keysOpen = true
+                NextActionKind.OpenUrl -> button.url?.let { runCatching { uriHandler.openUri(it) } }
+            }
+        }
+    }
+    val nextUi =
+        nextState.endCard?.let { end ->
+            NextChapterUi(end, nextState.autoSwitch, nextAction(NextChapterIntent.PrepareNext)) {
+                next.onIntent(NextChapterIntent.SetAuto(it))
+            }
+        }
+    // The bottom bar's height: the language dock sits above it while the bars show.
+    var bottomBarPx by remember { mutableIntStateOf(0) }
+    val languageAction =
+        remember(translationState.available) {
+            if (translationState.available) ReaderLanguageAction(translationState.endCardLabel) { languagesOpen = true } else null
+        }
     var contentsOpen by rememberSaveable { mutableStateOf(false) }
 
     // Keep the screen awake while reading (setting, on by default).
@@ -176,13 +309,21 @@ fun ReaderScreen(
     LaunchedEffect(command) {
         if (command is ReaderCommand.OpenChapter) {
             onIntent(ReaderIntent.CommandHandled(command.seq))
-            onOpenChapter(command.chapterId, command.startPage)
+            openChapter(command.chapterId, command.startPage)
         }
         if (command is ReaderCommand.OpenEpisode) {
             onIntent(ReaderIntent.CommandHandled(command.seq))
             onWatch(command.chapterId, command.page)
         }
+        // Escape on a keyboard.
+        if (command is ReaderCommand.Close) {
+            onIntent(ReaderIntent.CommandHandled(command.seq))
+            onBack()
+        }
     }
+    // A hardware keyboard (tablet, Chromebook, a foldable's keyboard cover): the reader holds the focus.
+    val keys = remember { FocusRequester() }
+    LaunchedEffect(keys) { runCatching { keys.requestFocus() } }
     // Remove animations (developer options, accessibility): jumps instead of the spring, no glide, no fades.
     val context = LocalContext.current
     LaunchedEffect(Unit) {
@@ -202,7 +343,18 @@ fun ReaderScreen(
         onDispose { controller?.show(WindowInsetsCompat.Type.systemBars()) }
     }
 
-    Box(Modifier.fillMaxSize().background(Brand.Ink)) {
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(Brand.Ink)
+            .focusRequester(keys)
+            .focusable()
+            .onPreviewKeyEvent { event ->
+                val key = readerKey(event) ?: return@onPreviewKeyEvent false
+                onIntent(ReaderIntent.Key(key))
+                true
+            },
+    ) {
         when {
             state.unavailable ->
                 Column(Modifier.align(Alignment.Center).padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -210,9 +362,18 @@ fun ReaderScreen(
                     state.error?.let { ErrorText(it) }
                     GhostButton(I18n.text("common.tryAgain"), { onIntent(ReaderIntent.Retry) })
                 }
-            state.isBook -> BookReader(state, onIntent) { onOpenChapter(it, 0) }
+            state.isBook -> BookReader(state, onIntent) { openChapter(it, 0) }
             state.items.isEmpty() -> Unit
-            else -> ComicReader(state, onIntent)
+            else ->
+                CompositionLocalProvider(
+                    LocalPageLettering provides { translationState.letteringFor(it) },
+                    LocalReaderLanguageAction provides languageAction,
+                    LocalNextChapter provides nextUi,
+                    LocalEndCardHeart provides heart,
+                    LocalPageMargin provides pageMargin,
+                ) {
+                    ComicReader(state, onIntent)
+                }
         }
         state.tapOverlay.let { overlay ->
             AnimatedVisibility(overlay != null, enter = fadeIn(), exit = fadeOut()) {
@@ -254,7 +415,8 @@ fun ReaderScreen(
             )
         }
         // A book keeps its bars: the web view receives the taps (text scrolling).
-        if (state.chromeVisible || state.isBook) {
+        val barsShown = state.chromeVisible || state.isBook
+        if (barsShown) {
             TopBar(
                 state,
                 onBack,
@@ -265,12 +427,130 @@ fun ReaderScreen(
                 { contentsOpen = true },
                 Modifier.align(Alignment.TopCenter),
                 onWatch = { onIntent(ReaderIntent.ReadWithVoice) },
+                onHelp = { onIntent(ReaderIntent.ShowCoach) },
+                language = {
+                    if (togetherState?.visible == true) TogetherButton(togetherState, sendTogether)
+                    if (!state.isBook && pageMargin != null) {
+                        MarginButton(pageMargin.state) { pageMargin.send(MarginIntent.Toggle) }
+                    }
+                    if (!state.isBook && translationState.available) LanguageButton(translationState) { languagesOpen = true }
+                },
             )
-            BottomBar(state, onIntent, { onOpenChapter(it, 0) }, Modifier.align(Alignment.BottomCenter))
+            BottomBar(
+                state,
+                onIntent,
+                { openChapter(it, 0) },
+                Modifier.align(Alignment.BottomCenter).onSizeChanged { bottomBarPx = it.height },
+            )
+        }
+        // A language on its way: the page keeps its lettering, the dock shows the cost, then the progress.
+        AnimatedVisibility(
+            translationState.dock != null && !state.isBook,
+            enter = if (state.reducedMotion) EnterTransition.None else slideInVertically { it } + fadeIn(),
+            exit = if (state.reducedMotion) ExitTransition.None else slideOutVertically { it } + fadeOut(),
+            // Above the page counter and the chapter buttons while they show: its buttons are never under the bar.
+            modifier =
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = if (barsShown) with(LocalDensity.current) { bottomBarPx.toDp() } else 0.dp),
+        ) {
+            var shown by remember { mutableStateOf(translationState.dock) }
+            translationState.dock?.let { shown = it }
+            shown?.let { dock ->
+                LanguageDock(
+                    dock.content(),
+                    onConfirm = { translation.onIntent(TranslationIntent.ConfirmOffer) },
+                    onAddKey = { keysOpen = true },
+                    onRetry = { translation.onIntent(TranslationIntent.Retry) },
+                    onClose = { translation.onIntent(TranslationIntent.CloseDock) },
+                )
+            }
+        }
+        // Past 40 % in a language: the next chapter, then the next 5, then 10, prepared while reading.
+        val bubble = nextState.bubble?.takeIf { translationState.dock == null && !state.isBook }
+        AnimatedVisibility(
+            bubble != null,
+            enter = if (state.reducedMotion) EnterTransition.None else slideInVertically { it } + fadeIn(),
+            exit = if (state.reducedMotion) ExitTransition.None else slideOutVertically { it } + fadeOut(),
+            modifier =
+                Modifier
+                    .align(Alignment.BottomEnd)
+                    .navigationBarsPadding()
+                    .padding(bottom = if (barsShown) with(LocalDensity.current) { bottomBarPx.toDp() } else 0.dp),
+        ) {
+            var shown by remember { mutableStateOf(bubble) }
+            bubble?.let { shown = it }
+            shown?.let {
+                NextBubbleView(
+                    it,
+                    onButton = nextAction(NextChapterIntent.AcceptOffer),
+                    onCancel = { next.onIntent(NextChapterIntent.Cancel) },
+                    onHide = { next.onIntent(NextChapterIntent.HideBubble) },
+                )
+            }
+        }
+        // A chapter prepared ahead is ready.
+        AnimatedVisibility(
+            nextState.toast != null,
+            enter = if (state.reducedMotion) EnterTransition.None else fadeIn(),
+            exit = if (state.reducedMotion) ExitTransition.None else fadeOut(),
+            modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = if (barsShown) 56.dp else 0.dp),
+        ) {
+            var shown by remember { mutableStateOf(nextState.toast) }
+            nextState.toast?.let { shown = it }
+            shown?.let {
+                NextToastView(it, nextAction(NextChapterIntent.PrepareNext), onDismiss = { next.onIntent(NextChapterIntent.DismissToast) })
+            }
+        }
+        // The circle over the page: the rail, the bursts, the toast, and the dock (with the bars, or while a line is
+        // typed, or folded to its stamps).
+        if (togetherState?.circle != null) {
+            TogetherRail(
+                togetherState,
+                sendTogether,
+                Modifier.align(Alignment.CenterEnd),
+                interactive = state.chromeVisible,
+                wake = { onIntent(ReaderIntent.ToggleChrome) },
+            )
+            TogetherBursts(togetherState)
+            TogetherToast(
+                togetherState,
+                sendTogether,
+                Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = if (barsShown) 56.dp else 8.dp),
+            )
+            // A language's offer or progress owns the bottom: the circle's dock steps aside, so "Translate" and "Add a
+            // key" are never under it, and comes back when that dock closes.
+            if (translationState.dock == null && (barsShown || togetherState.typing || togetherState.collapsed)) {
+                TogetherDock(
+                    togetherState,
+                    sendTogether,
+                    Modifier
+                        .align(Alignment.BottomCenter)
+                        .imePadding()
+                        .padding(bottom = (if (barsShown) with(LocalDensity.current) { bottomBarPx.toDp() } else 0.dp) + 8.dp),
+                )
+            }
+        }
+        // The margin, docked at the bottom and not modal: the pages above stay readable and take a mark.
+        if (pageMargin != null && pageMargin.state.open && !state.isBook) {
+            MarginPanel(pageMargin.state, pageMargin.send, Modifier.align(Alignment.BottomCenter))
+        }
+        // How to read, the first time a chapter of its kind opens: any tap closes it.
+        AnimatedVisibility(
+            state.coach != null,
+            enter = if (state.reducedMotion) EnterTransition.None else fadeIn(tween(250)),
+            exit = if (state.reducedMotion) ExitTransition.None else fadeOut(tween(250)),
+        ) {
+            var shown by remember { mutableStateOf(state.coach) }
+            state.coach?.let { shown = it }
+            shown?.let { CoachOverlay(it) { onIntent(ReaderIntent.DismissCoach) } }
         }
     }
+    if (togetherState?.sheet != null) TogetherSheetView(togetherState, sendTogether)
+    if (languagesOpen) TranslationSheet(translationState, translation::onIntent) { languagesOpen = false }
+    if (keysOpen) KeysSheet { keysOpen = false }
     if (settingsOpen && !state.isBook) {
-        ReaderSettingsSheet(state.settings, onIntent) {
+        ReaderSettingsSheet(state.settings, onIntent, nextState.autoSwitch, { next.onIntent(NextChapterIntent.SetAuto(it)) }) {
             settingsOpen = false
             onIntent(ReaderIntent.SettingsClosed)
         }
@@ -284,6 +564,47 @@ fun ReaderScreen(
     }
     if (contentsOpen && state.isBook) {
         BookContentsSheet(state.book.contents, onIntent) { contentsOpen = false }
+    }
+}
+
+/**
+ * The circle's links with the reader: its stream while the screen is started, the reader's place and own gestures
+ * sent to it, and its commands (go to a place, open the chapter the circle moved to) played by the reader.
+ */
+@Composable
+private fun TogetherEffects(
+    state: ReaderUiState,
+    together: TogetherUiState?,
+    send: (TogetherIntent) -> Unit,
+    onIntent: (ReaderIntent) -> Unit,
+    onOpenChapter: (String, Int) -> Unit,
+) {
+    if (together == null) return
+    LifecycleEventEffect(Lifecycle.Event.ON_START) { send(TogetherIntent.Start) }
+    LifecycleEventEffect(Lifecycle.Event.ON_STOP) { send(TogetherIntent.Stop) }
+    LaunchedEffect(state.reducedMotion) { send(TogetherIntent.ReducedMotion(state.reducedMotion)) }
+    LaunchedEffect(state.place) {
+        state.place?.let { send(TogetherIntent.PlaceChanged(it.book, it.page, it.fraction, it.panel, it.section, it.count)) }
+    }
+    // The reader's own gesture: a follower lets go of the host (the shared reader never counts a glide it played).
+    var moves by remember { mutableIntStateOf(state.userMoves) }
+    LaunchedEffect(state.userMoves) {
+        if (state.userMoves != moves && together.circle?.following == true) send(TogetherIntent.LetGo)
+        moves = state.userMoves
+    }
+    val command = together.command
+    LaunchedEffect(command) {
+        when (command) {
+            is TogetherCommand.GoToPlace -> {
+                send(TogetherIntent.CommandHandled(command.seq))
+                onIntent(ReaderIntent.GoToPlace(command.page, command.fraction, command.section, command.animated))
+            }
+            is TogetherCommand.OpenChapter -> {
+                send(TogetherIntent.CommandHandled(command.seq))
+                onOpenChapter(command.chapterId, 0)
+            }
+            null -> Unit
+        }
     }
 }
 
@@ -307,13 +628,15 @@ private fun ComicReader(
         snapshotFlow { zoom.transform.zoomed }.distinctUntilChanged().collect { onIntent(ReaderIntent.ZoomChanged(it)) }
     }
     val zoomed = zoom.transform.zoomed
+    // A margin tool armed (the page hatched): the finger is the mark's, never the zoom's.
+    val placing = LocalPageMargin.current?.state?.placing == true
 
     Box(
         Modifier
             .fillMaxSize()
             // Measured outside the zoom: taps are fractions of the reading area as the reader sees it.
             .onSizeChanged { size = it }
-            .pointerInput(Unit) { zoomGestures(zoom, { size }, scope, decay) }
+            .pointerInput(placing) { if (!placing) zoomGestures(zoom, { size }, scope, decay) }
             .pointerInput(state.doubleTapZoom) {
                 detectTapGestures(
                     onDoubleTap =
@@ -347,11 +670,12 @@ private fun ComicReader(
                     translationY = transform.y
                 },
         ) {
-            // Zoomed: the pager or the strip stays still under the fingers (the zoom moves it).
+            // Zoomed, or a margin tool armed (the page hatched: a drag places the mark at once): the pager or the
+            // strip stays still under the fingers.
             if (state.isPaged) {
-                PagedReader(state, onIntent, zoom, scrollEnabled = !zoomed)
+                PagedReader(state, onIntent, zoom, scrollEnabled = !zoomed && !placing)
             } else {
-                FlowStrip(state, onIntent, scrollEnabled = !zoomed)
+                FlowStrip(state, onIntent, scrollEnabled = !zoomed && !placing)
             }
         }
     }
@@ -486,73 +810,133 @@ private fun PagedReader(
     zoom: ComicZoom,
     scrollEnabled: Boolean,
 ) {
-    val pager = rememberPagerState(initialPage = state.currentItem) { state.items.size }
-    val scope = rememberCoroutineScope()
-    // A tall page asked to show its bottom (going back), until it has.
-    var bottomRequest by remember { mutableStateOf<Int?>(null) }
-    LaunchedEffect(pager) {
-        snapshotFlow { pager.settledPage }.distinctUntilChanged().collect { onIntent(ReaderIntent.ItemVisible(it)) }
-    }
-    val command = state.command
-    LaunchedEffect(command) {
-        if (command is ReaderCommand.GoToItem) {
-            if (command.atBottom) bottomRequest = command.item
-            // Its own scope: the animation goes on once the command is cleared.
-            scope.launch { if (command.animated) pager.animateScrollToPage(command.item) else pager.scrollToPage(command.item) }
-            onIntent(ReaderIntent.CommandHandled(command.seq))
+    val adaptive = LocalAdaptive.current
+    // A screen is one item, or two facing pages on a wide area or across a foldable's hinge (`spreads`, shared rules).
+    val screens = state.spreads
+    // One or two pages per screen: a new pager, opened on the screen of the page being read.
+    key(state.twoPages, state.pagedHorizontally) {
+        val pager = rememberPagerState(initialPage = state.spreadOf(state.currentItem)) { screens.size }
+        val scope = rememberCoroutineScope()
+        // A tall page asked to show its bottom (going back), until it has.
+        var bottomRequest by remember { mutableStateOf<Int?>(null) }
+        LaunchedEffect(pager) {
+            snapshotFlow { pager.settledPage }
+                .distinctUntilChanged()
+                .collect { screen -> state.spreads.getOrNull(screen)?.let { onIntent(ReaderIntent.ItemVisible(it.first)) } }
         }
-        // The page slider: that page at once, from its top.
-        if (command is ReaderCommand.JumpTo) {
-            bottomRequest = null
-            scope.launch { pager.scrollToPage(command.item) }
-            onIntent(ReaderIntent.CommandHandled(command.seq))
+        val command = state.command
+        LaunchedEffect(command) {
+            if (command is ReaderCommand.GoToItem) {
+                if (command.atBottom) bottomRequest = command.item
+                val screen = state.spreadOf(command.item)
+                // Its own scope: the animation goes on once the command is cleared.
+                scope.launch { if (command.animated) pager.animateScrollToPage(screen) else pager.scrollToPage(screen) }
+                onIntent(ReaderIntent.CommandHandled(command.seq))
+            }
+            // The page slider: that page's screen at once, from its top.
+            if (command is ReaderCommand.JumpTo) {
+                bottomRequest = null
+                val screen = state.spreadOf(command.item)
+                scope.launch { pager.scrollToPage(screen) }
+                onIntent(ReaderIntent.CommandHandled(command.seq))
+            }
         }
-    }
-    BoxWithConstraints(Modifier.fillMaxSize()) {
-        val area = IntSize(constraints.maxWidth, constraints.maxHeight)
-        val page: @Composable (Int) -> Unit = { index ->
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                when (val item = state.items[index]) {
-                    is ReaderItem.Page ->
-                        PagedPage(
-                            item.page,
-                            index,
-                            state,
-                            onIntent,
-                            area,
-                            zoom,
-                            scrollEnabled,
-                            showBottom = bottomRequest == index,
-                            onBottomShown = { if (bottomRequest == index) bottomRequest = null },
-                        )
-                    is ReaderItem.Transition -> {
-                        if (index == state.currentItem) {
-                            LaunchedEffect(index) { onIntent(ReaderIntent.PageScroll(index, tall = false, atTop = true, atBottom = true)) }
+        BoxWithConstraints(Modifier.fillMaxSize()) {
+            // Turned, unfolded, folded, half opened, a window resized: one or two pages per screen, the same page kept.
+            LaunchedEffect(maxWidth, maxHeight, adaptive.verticalHinge) {
+                onIntent(ReaderIntent.Viewport(maxWidth.value, maxHeight.value, adaptive.verticalHinge))
+            }
+            val area = IntSize(constraints.maxWidth, constraints.maxHeight)
+            val item: @Composable (Int) -> Unit = { index ->
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    when (val item = state.items[index]) {
+                        is ReaderItem.Page ->
+                            PagedPage(
+                                item.page,
+                                index,
+                                state,
+                                onIntent,
+                                area,
+                                zoom,
+                                scrollEnabled,
+                                showBottom = bottomRequest == index,
+                                onBottomShown = { if (bottomRequest == index) bottomRequest = null },
+                            )
+                        is ReaderItem.Transition -> {
+                            if (index == state.currentItem) {
+                                LaunchedEffect(
+                                    index,
+                                ) { onIntent(ReaderIntent.PageScroll(index, tall = false, atTop = true, atBottom = true)) }
+                            }
+                            TransitionCardView(item.card, onIntent, Modifier.fillMaxSize())
                         }
-                        TransitionCardView(item.card, onIntent, Modifier.fillMaxSize())
                     }
                 }
             }
+            val screen: @Composable (Int) -> Unit = { position ->
+                val spread = screens[position]
+                val second = spread.second
+                if (second == null) {
+                    item(spread.first)
+                } else {
+                    // Reading order on screen: the first page on the right in a manga; both against the spine, which
+                    // sits on the hinge of a half-open foldable.
+                    val (left, right) = if (state.rightToLeft) second to spread.first else spread.first to second
+                    Row(Modifier.fillMaxSize()) {
+                        SpreadPage(state.items[left], Alignment.CenterEnd, Modifier.weight(1f))
+                        if (adaptive.hingeGap > 0f) Spacer(Modifier.width(adaptive.hingeGap.dp))
+                        SpreadPage(state.items[right], Alignment.CenterStart, Modifier.weight(1f))
+                    }
+                }
+            }
+            if (state.pagedHorizontally) {
+                // reverseLayout: the first page is on the right, swiping right moves forward (manga direction).
+                HorizontalPager(
+                    state = pager,
+                    reverseLayout = state.rightToLeft,
+                    beyondViewportPageCount = 1,
+                    userScrollEnabled = scrollEnabled,
+                    key = { screens[it].let { s -> state.items[s.first].key + (s.second?.let { i -> "+" + state.items[i].key } ?: "") } },
+                    modifier = Modifier.fillMaxSize(),
+                ) { screen(it) }
+            } else {
+                VerticalPager(
+                    state = pager,
+                    beyondViewportPageCount = 1,
+                    userScrollEnabled = scrollEnabled,
+                    key = { state.items[screens[it].first].key },
+                    modifier = Modifier.fillMaxSize(),
+                ) { screen(it) }
+            }
         }
-        if (state.pagedHorizontally) {
-            // reverseLayout: the first page is on the right, swiping right moves forward (manga direction).
-            HorizontalPager(
-                state = pager,
-                reverseLayout = state.rightToLeft,
-                beyondViewportPageCount = 1,
-                userScrollEnabled = scrollEnabled,
-                key = { state.items[it].key },
-                modifier = Modifier.fillMaxSize(),
-            ) { page(it) }
-        } else {
-            VerticalPager(
-                state = pager,
-                beyondViewportPageCount = 1,
-                userScrollEnabled = scrollEnabled,
-                key = { state.items[it].key },
-                modifier = Modifier.fillMaxSize(),
-            ) { page(it) }
-        }
+    }
+}
+
+/** A key press as the shared reader names it (directions are decided there, from the reading mode). */
+private fun readerKey(event: KeyEvent): ReaderKey? {
+    if (event.type != KeyEventType.KeyDown) return null
+    return when (event.key) {
+        Key.DirectionLeft -> ReaderKey.Left
+        Key.DirectionRight -> ReaderKey.Right
+        Key.DirectionUp -> ReaderKey.Up
+        Key.DirectionDown -> ReaderKey.Down
+        Key.PageUp -> ReaderKey.PageUp
+        Key.PageDown -> ReaderKey.PageDown
+        Key.Escape -> ReaderKey.Escape
+        Key.Spacebar -> if (event.isShiftPressed) ReaderKey.ShiftSpace else ReaderKey.Space
+        else -> if (event.utf16CodePoint == '?'.code) ReaderKey.Help else null
+    }
+}
+
+/** One of two facing pages: fitted to its half, against the spine. */
+@Composable
+private fun SpreadPage(
+    item: ReaderItem,
+    alignment: Alignment,
+    modifier: Modifier,
+) {
+    Box(modifier.fillMaxHeight(), contentAlignment = alignment) {
+        if (item is ReaderItem.Page) PageImage(item.page, Modifier.fillMaxHeight(), ContentScale.Fit)
     }
 }
 
@@ -641,6 +1025,15 @@ private fun PagedPage(
     }
 }
 
+/** The title's heart on the end card: on or off, what a tap does (for TalkBack), the toggle. */
+class EndCardHeart(
+    val on: Boolean,
+    val label: String,
+    val toggle: () -> Unit,
+)
+
+val LocalEndCardHeart = staticCompositionLocalOf<EndCardHeart?> { null }
+
 /** "Finished: Chapter 3" / "Next: Chapter 4 · The last gate" and "Next chapter →". */
 @Composable
 internal fun TransitionCardView(
@@ -658,8 +1051,15 @@ internal fun TransitionCardView(
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Text(card.heading, style = MaterialTheme.typography.bodySmall.copy(color = Brand.Muted))
-            Text(card.target, style = MaterialTheme.typography.titleMedium)
-            card.actionLabel?.let { label ->
+            Row(verticalAlignment = Alignment.Top) {
+                Text(card.target, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                // "Finished: Chapter 3": the heart next to the way on.
+                LocalEndCardHeart.current?.takeIf { card.forward }?.let { HeartButton(it.on, it.label, onClick = it.toggle) }
+            }
+            // Reading in a language: the way on in it (prepare, follow, the original), never a dead end.
+            val nextUi = LocalNextChapter.current?.takeIf { card.forward }
+            nextUi?.let { NextEndContent(it) }
+            card.actionLabel?.takeIf { nextUi == null }?.let { label ->
                 Spacer(Modifier.size(4.dp))
                 if (card.forward) {
                     PrimaryButton(label, { onIntent(ReaderIntent.OpenNextChapter) })
@@ -667,9 +1067,89 @@ internal fun TransitionCardView(
                     GhostButton(label, { onIntent(ReaderIntent.OpenPreviousChapter) })
                 }
             }
+            // Reader SPEC §11: the language is one tap away here too.
+            val language = LocalReaderLanguageAction.current
+            if (card.forward && language != null) GhostButton(language.label, language.open)
+            // The chapter's margin: how many read this far, its best notes, a way into it.
+            LocalPageMargin.current?.takeIf { card.forward }?.let { MarginEndCard(it) }
         }
     }
 }
+
+/**
+ * "How to read": the reader's real tap zones under a card of gesture lines. Static, no timer: the first tap anywhere
+ * closes it (and is not a page turn); the "?" in the bars brings it back.
+ */
+@Composable
+private fun CoachOverlay(
+    coach: ReaderCoach,
+    onDismiss: () -> Unit,
+) {
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(Brand.Ink.copy(alpha = if (coach.zones == null) 0.82f else 0.5f))
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClickLabel = coach.dismiss,
+                onClick = onDismiss,
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
+        coach.zones?.let { TapZonesOverlay(it) }
+        Column(
+            Modifier
+                .padding(24.dp)
+                .widthIn(max = 420.dp)
+                .background(Brand.Ink.copy(alpha = 0.94f), RoundedCornerShape(14.dp))
+                .border(2.dp, Brand.Paper.copy(alpha = 0.85f), RoundedCornerShape(14.dp))
+                .padding(22.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            Text(
+                coach.kicker.uppercase(),
+                style = MaterialTheme.typography.labelMedium.copy(color = Brand.Ink, letterSpacing = 1.6.sp),
+                modifier = Modifier.background(Brand.Yellow).padding(horizontal = 8.dp, vertical = 3.dp),
+            )
+            Text(coach.title, style = MaterialTheme.typography.headlineSmall.copy(color = Brand.Paper))
+            coach.hints.forEach { hint ->
+                val help = hint.gesture == CoachGesture.Help
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(
+                        coachGlyph(hint.gesture),
+                        style = MaterialTheme.typography.titleMedium.copy(color = if (help) Brand.Muted else Brand.Red),
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.width(26.dp),
+                    )
+                    Text(hint.text, style = MaterialTheme.typography.bodyMedium.copy(color = if (help) Brand.Muted else Brand.Paper))
+                }
+            }
+            Text(
+                coach.dismiss,
+                style = MaterialTheme.typography.labelLarge.copy(color = Brand.Ink),
+                modifier =
+                    Modifier
+                        .padding(top = 4.dp)
+                        .drawBehind {
+                            val shift = 3.dp.toPx()
+                            drawRect(Brand.Paper, topLeft = Offset(shift, shift), size = size)
+                            drawRect(Brand.Red, size = size)
+                        }.padding(horizontal = 16.dp, vertical = 10.dp),
+            )
+        }
+    }
+}
+
+/** A text pictogram per gesture (no icon library on Android). */
+private fun coachGlyph(gesture: CoachGesture): String =
+    when (gesture) {
+        CoachGesture.Tap -> "●"
+        CoachGesture.Swipe -> "⇆"
+        CoachGesture.DoubleTap -> "⊕"
+        CoachGesture.Pull -> "↧"
+        CoachGesture.Help -> "?"
+    }
 
 /** The tap zones for a moment: red goes forward, cyan goes back, ink opens the menu. */
 @Composable
@@ -760,6 +1240,9 @@ private fun decodedBytes(
 /** Content pixels per second under which a zoomed pan's fling does not go on. */
 private const val MIN_FLING = 50f
 
+/** The internal source: its chapters are the server's, so they have a margin. */
+private const val OUR_SOURCE = "vovoscan"
+
 private fun zoneColor(action: TapAction): Color =
     when (action) {
         TapAction.Next -> Brand.Red
@@ -837,6 +1320,9 @@ internal fun PageImage(
         }
         return
     }
+    // The reader's language: the translated lettering over the page, in a box of the page's own shape (the image
+    // may be fitted inside a larger area).
+    val lettering = LocalPageLettering.current(page.index)
     // A page fitted to the screen keeps the reader's black around it once loaded (as on iOS), not the placeholder's grey.
     Box(sized.background(if (loading || reserve) Brand.Ink2 else Color.Transparent)) {
         AsyncImage(
@@ -860,6 +1346,11 @@ internal fun PageImage(
             },
             modifier = Modifier.matchParentSize(),
         )
+        if (lettering.isNotEmpty()) {
+            Box(Modifier.matchParentSize(), contentAlignment = Alignment.Center) {
+                LetteringOverlay(lettering, Modifier.aspectRatio(ratio))
+            }
+        }
         // Still loading: says so (a slow source left a blank page). Near the top of a tall page, where it is seen.
         if (loading) {
             CircularProgressIndicator(
@@ -872,6 +1363,12 @@ internal fun PageImage(
                         .size(32.dp),
             )
         }
+        // Over the lettering: the margin's pins and, with a tool chosen, the surface that takes the mark.
+        LocalPageMargin.current?.let { margin ->
+            Box(Modifier.matchParentSize(), contentAlignment = Alignment.Center) {
+                MarginPinsOverlay(page.index, margin, Modifier.aspectRatio(ratio))
+            }
+        }
     }
 }
 
@@ -883,6 +1380,8 @@ private fun TopBar(
     onContents: () -> Unit,
     modifier: Modifier,
     onWatch: () -> Unit = {},
+    onHelp: () -> Unit = {},
+    language: @Composable () -> Unit = {},
 ) {
     Row(
         modifier.fillMaxWidth().background(Brand.Ink.copy(alpha = 0.92f)).padding(horizontal = 16.dp, vertical = 12.dp),
@@ -913,6 +1412,17 @@ private fun TopBar(
                         .padding(start = 16.dp, top = 4.dp, bottom = 4.dp),
             )
         }
+        language()
+        val help = I18n.text("reader.coach.show")
+        Text(
+            "?",
+            style = MaterialTheme.typography.titleMedium.copy(color = Brand.Muted),
+            modifier =
+                Modifier
+                    .clickable(onClickLabel = help, onClick = onHelp)
+                    .semantics { contentDescription = help }
+                    .padding(start = 16.dp, top = 4.dp, bottom = 4.dp),
+        )
         if (state.isBook && state.book.contents.isNotEmpty()) {
             Icon(
                 AppIcons.Contents,
@@ -1041,22 +1551,18 @@ private fun BottomBarRow(
             )
             return@Row
         }
-        state.previousChapterId?.let { previous ->
+        // Chapters, not pages (pages turn with taps and swipes); right to left puts the next one on the left.
+        state.chapterButtons.forEachIndexed { index, button ->
+            if (index > 0) Spacer(Modifier.width(20.dp))
             Text(
-                I18n.text("reader.previousArrow"),
-                style = MaterialTheme.typography.bodySmall,
-                modifier =
-                    Modifier.clickable {
-                        onOpenChapter(previous)
+                button.label,
+                style =
+                    if (button.forward) {
+                        MaterialTheme.typography.labelLarge.copy(color = Brand.Red)
+                    } else {
+                        MaterialTheme.typography.bodySmall
                     },
-            )
-            Spacer(Modifier.width(20.dp))
-        }
-        state.nextChapterId?.let { next ->
-            Text(
-                I18n.text("reader.nextArrow"),
-                style = MaterialTheme.typography.labelLarge.copy(color = Brand.Red),
-                modifier = Modifier.clickable { onOpenChapter(next) },
+                modifier = Modifier.clickable { onOpenChapter(button.chapterId) },
             )
         }
     }

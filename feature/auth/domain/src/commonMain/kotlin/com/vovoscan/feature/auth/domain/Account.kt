@@ -61,4 +61,11 @@ interface AccountRepository {
     suspend fun scheduleDeletion(password: String): AppResult<Long>
 
     suspend fun cancelDeletion(): AppResult<Unit>
+
+    /**
+     * Safe mode (`PUT /settings/content {showAdult}`), online only: titles rated above `safe`, or not rated, show only
+     * once the account chose to see them, confirming its age (`confirmAdult`; else `422 ADULT_NOT_CONFIRMED`). The
+     * session's `showAdult` follows.
+     */
+    suspend fun setShowAdult(on: Boolean): AppResult<Session>
 }

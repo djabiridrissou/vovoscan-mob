@@ -133,6 +133,34 @@ object AppIcons {
         }
     }
 
+    /** A language: a speech balloon with an "A" (the iOS `character.bubble`). */
+    val Translate: ImageVector by lazy {
+        icon("Translate") {
+            roundRect(3f, 3.5f, 18f, 13.5f, 3f)
+            moveTo(8f, 17f)
+            lineTo(7f, 21f)
+            lineTo(12.5f, 17f)
+            moveTo(9f, 14f)
+            lineTo(12f, 6.5f)
+            lineTo(15f, 14f)
+            moveTo(10.2f, 11.2f)
+            lineTo(13.8f, 11.2f)
+        }
+    }
+
+    /** An admission ticket: a card with its stub. */
+    val Ticket: ImageVector by lazy {
+        icon("Ticket") {
+            roundRect(3f, 6f, 18f, 12f, 2f)
+            moveTo(15f, 8f)
+            lineTo(15f, 9.5f)
+            moveTo(15f, 11.25f)
+            lineTo(15f, 12.75f)
+            moveTo(15f, 14.5f)
+            lineTo(15f, 16f)
+        }
+    }
+
     private fun icon(
         name: String,
         draw: PathBuilder.() -> Unit,

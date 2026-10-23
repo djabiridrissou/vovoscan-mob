@@ -9,6 +9,10 @@ struct EpisodeRoute: Hashable {
     let title: TitleDetailUiState
     /// The episode's language when the card opens: "" = the original; the next chapter keeps the one just watched.
     var language: String = ""
+    /// The chapter's source and title (default: the title page's). A source read on the device has its pages brought to
+    /// the server first; the card then plays that copy.
+    var sourceKey: String? = nil
+    var titleId: String? = nil
 }
 
 /// "Next chapter →" at the end of the player swaps the card for the next chapter's, like the reader does.
@@ -16,7 +20,9 @@ struct EpisodeContainer: View {
     @State var route: EpisodeRoute
 
     var body: some View {
-        EpisodeView(route: route) { route = EpisodeRoute(chapterId: $0, title: route.title, language: $1) }
+        EpisodeView(route: route) {
+            route = EpisodeRoute(chapterId: $0, title: route.title, language: $1, sourceKey: route.sourceKey, titleId: route.titleId)
+        }
             .id(route.chapterId)
     }
 }
@@ -28,14 +34,25 @@ struct EpisodeView: View {
     @State private var player: PlayerRoute?
     @State private var share: SharedVideo?
     @State private var choosingLanguage = false
+    @Environment(\.dismiss) private var dismiss
     private let route: EpisodeRoute
+    /// Presented in a sheet (a source's "Watch from here"): a Close button, since there is no stack to go back in.
+    private let inSheet: Bool
     /// The next chapter's id and the language to open it in.
     let onOpenChapter: (String, String) -> Void
 
-    init(route: EpisodeRoute, onOpenChapter: @escaping (String, String) -> Void) {
+    init(route: EpisodeRoute, inSheet: Bool = false, onOpenChapter: @escaping (String, String) -> Void) {
         self.route = route
+        self.inSheet = inSheet
         self.onOpenChapter = onOpenChapter
-        _model = StateObject(wrappedValue: EpisodeModel(chapterId: route.chapterId, language: route.language))
+        _model = StateObject(
+            wrappedValue: EpisodeModel(
+                chapterId: route.chapterId,
+                language: route.language,
+                sourceKey: route.sourceKey ?? route.title.sourceKey,
+                titleId: route.titleId ?? route.title.titleId
+            )
+        )
     }
 
     var body: some View {
@@ -52,7 +69,24 @@ struct EpisodeView: View {
             }
             .padding(20)
         }
+        .readableWidth()
         .background(Color.brandInk)
+        // Always a way out: the bar with its back button (and the edge swipe) when pushed, Close in a sheet. Shown
+        // explicitly, so a screen that hid it before (the reader) never leaves the card without one.
+        .toolbar(.visible, for: .navigationBar)
+        .toolbarBackground(Color.brandInk, for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
+        .toolbarColorScheme(.dark, for: .navigationBar)
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) { CreditChip() }
+            if inSheet {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(L("common.close")) { dismiss() }
+                        .foregroundStyle(Color.brandPaper)
+                        .accessibilityIdentifier("episode.close")
+                }
+            }
+        }
         .refreshable { model.send(EpisodeIntentRefresh.shared) }
         .task { await model.observe() }
         // Live progress only while the card is on screen.
@@ -72,9 +106,9 @@ struct EpisodeView: View {
         }
         .sheet(item: $share) { ShareSheet(items: [$0.url]) }
         .fullScreenCover(item: $player) { route in
-            PlayerView(route: route) { next in
+            PlayerView(route: route) { next, language in
                 player = nil
-                onOpenChapter(next, route.language)
+                onOpenChapter(next, language)
             }
         }
         .sheet(isPresented: $choosingLanguage) {
@@ -115,8 +149,9 @@ struct EpisodeView: View {
 
             if state.canWatch {
                 Button(state.watchLabel) {
+                    // Our chapter id: a source's chapter plays its copy on the server.
                     player = PlayerRoute(
-                        chapterId: route.chapterId,
+                        chapterId: state.chapterId,
                         nextChapterId: route.title.nextChapterId(chapterId: route.chapterId),
                         language: state.language
                     )
@@ -221,26 +256,43 @@ struct EpisodeView: View {
 /// The episode's languages, searchable (own name, English name or code); the rows come from `EpisodeViewModel`.
 private struct EpisodeLanguageSheet: View {
     @ObservedObject var model: EpisodeModel
+
+    var body: some View {
+        EpisodeLanguageList(
+            options: model.state.languageOptions,
+            initialQuery: model.state.languageQuery,
+            onQuery: { model.send(EpisodeIntentLanguageQuery(text: $0)) },
+            onChoose: { model.send(EpisodeIntentChooseLanguage(code: $0)) }
+        )
+    }
+}
+
+/// A searchable list of an episode's languages (the card's picker and the player's): a pick closes it.
+struct EpisodeLanguageList: View {
+    let options: [EpisodeLanguageOption]
+    let initialQuery: String
+    let onQuery: (String) -> Void
+    let onChoose: (String?) -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var query = ""
 
     var body: some View {
-        let state = model.state
         NavigationStack {
             List {
-                if state.languageOptions.isEmpty {
+                if options.isEmpty {
                     Text(L("common.noLanguage")).font(.brandBody(13)).foregroundStyle(Color.brandMuted).listRowBackground(Color.brandInk2)
                 }
-                ForEach(state.languageOptions, id: \.self) { option in
+                ForEach(options, id: \.self) { option in
                     Button {
                         Haptics.select()
-                        model.send(EpisodeIntentChooseLanguage(code: option.code))
+                        onChoose(option.code)
                         dismiss()
                     } label: {
                         HStack(spacing: 12) {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(option.label).font(.brandBody(16, weight: .bold)).foregroundStyle(Color.brandPaper)
-                                Text(option.detail).font(.brandBody(13)).foregroundStyle(Color.brandMuted)
+                                Text(option.detail).font(.brandBody(13))
+                                    .foregroundStyle(option.ready ? Color.brandYellow : Color.brandMuted)
                             }
                             Spacer()
                             if option.selected { Image(systemName: "checkmark").foregroundStyle(Color.brandRed) }
@@ -255,15 +307,16 @@ private struct EpisodeLanguageSheet: View {
             .scrollContentBackground(.hidden)
             .background(Color.brandInk2)
             .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: L("common.searchLanguage"))
-            .onChange(of: query) { _, text in model.send(EpisodeIntentLanguageQuery(text: text)) }
+            .onChange(of: query) { _, text in onQuery(text) }
             .navigationTitle(L("episode.languageTitle"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) { CreditChip() }
                 ToolbarItem(placement: .confirmationAction) { Button(L("common.done")) { dismiss() } }
             }
         }
-        .onAppear { query = state.languageQuery }
-        .onDisappear { model.send(EpisodeIntentLanguageQuery(text: "")) }
+        .onAppear { query = initialQuery }
+        .onDisappear { onQuery("") }
     }
 }
 

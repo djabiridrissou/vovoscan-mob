@@ -147,7 +147,51 @@ fun AddSourceScreen(
             onCancel = { send(AddSourceIntent.CancelHosts) },
         )
     }
+    if (state.review != null) ReviewSheet(state, send)
     if (state.showsSettingsForm) SettingsSheet(state, send)
+}
+
+/** A repository entry, reviewed before anything is installed: hosts, request cap, rights. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ReviewSheet(
+    state: AddSourceUiState,
+    send: (AddSourceIntent) -> Unit,
+) {
+    val review = state.review ?: return
+    ModalBottomSheet(
+        onDismissRequest = { send(AddSourceIntent.CancelReview) },
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        containerColor = Brand.Ink2,
+    ) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .navigationBarsPadding()
+                .padding(horizontal = 20.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            Text(I18n.text("sources.reviewTitle"), style = MaterialTheme.typography.titleMedium)
+            SourceInfoBlock(review.info)
+            review.newHostsLabel?.let { Text(it, style = MaterialTheme.typography.bodySmall.copy(color = Brand.Yellow)) }
+            Warning(state.warning)
+            PrimaryButton(
+                I18n.text(
+                    if (review.newHostsLabel != null ||
+                        review.statusLabel != null
+                    ) {
+                        "sources.reviewUpdate"
+                    } else {
+                        "sources.reviewConfirm"
+                    },
+                ),
+                { send(AddSourceIntent.ConfirmReview) },
+                enabled = !state.installing,
+            )
+            GhostButton(I18n.text("common.cancel"), { send(AddSourceIntent.CancelReview) })
+        }
+    }
 }
 
 @Composable

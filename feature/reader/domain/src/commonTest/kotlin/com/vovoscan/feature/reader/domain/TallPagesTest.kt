@@ -48,6 +48,14 @@ class TallPagesTest {
         assertTrue(TallPages.fitsWidth(800f / 12_000f, 2400f, 1000f))
     }
 
+    @Test
+    fun anAreaThatTakesTwoPagesNeverCropsAPage() {
+        // An unfolded foldable (841 × 701 dp): a manga page, even a long one, fits the height; only a strip scrolls.
+        assertFalse(TallPages.fitsWidth(800f / 1280f, 841f, 701f))
+        assertFalse(TallPages.fitsWidth(800f / 1700f, 841f, 701f))
+        assertTrue(TallPages.fitsWidth(800f / 14_000f, 841f, 701f))
+    }
+
     // A tall page from 1000 to 8000 (its last screen starts at 8000 - 874 = 7126).
     private fun rest(
         release: Float,

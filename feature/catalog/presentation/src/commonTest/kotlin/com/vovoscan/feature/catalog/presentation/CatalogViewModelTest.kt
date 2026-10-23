@@ -1,13 +1,16 @@
 package com.vovoscan.feature.catalog.presentation
 
 import com.vovoscan.core.common.AppError
+import com.vovoscan.core.common.ContentRating
 import com.vovoscan.core.common.Freshness
 import com.vovoscan.feature.catalog.domain.CatalogFilter
 import com.vovoscan.feature.catalog.domain.ListedTitle
 import com.vovoscan.feature.catalog.domain.ReadingFormat
 import com.vovoscan.feature.catalog.domain.SourceCategory
+import com.vovoscan.feature.catalog.domain.TitleDetail
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
@@ -99,6 +102,40 @@ class CatalogViewModelTest {
         }
 
     @Test
+    fun safeModeShowsOnlyTitlesRatedForEveryone() =
+        runTest(dispatcher) {
+            val repository =
+                FakeCatalog().apply {
+                    remote["gutenberg" to null] =
+                        listOf(
+                            listOf(
+                                title("gutenberg", "safe").copy(contentRating = ContentRating.Safe),
+                                title("gutenberg", "suggestive").copy(contentRating = ContentRating.Suggestive),
+                                title("gutenberg", "unrated"),
+                            ),
+                        )
+                }
+            val adult = MutableStateFlow(false)
+            val vm = CatalogViewModel(repository, content = { adult })
+            vm.onIntent(CatalogIntent.SourcesChanged(listOf(gutenberg)))
+            advanceUntilIdle()
+            assertEquals(listOf("safe"), ids(vm))
+            assertEquals("Safe mode hides titles not rated for all audiences.", vm.state.value.safeNote)
+            // Search follows the same rule.
+            vm.onIntent(CatalogIntent.Query("gutenberg"))
+            advanceUntilIdle()
+            assertEquals(listOf("safe"), ids(vm))
+            // Turned off in Settings: everything, the note gone.
+            adult.value = true
+            advanceUntilIdle()
+            assertEquals(setOf("safe", "suggestive", "unrated"), ids(vm).toSet())
+            vm.onIntent(CatalogIntent.Query(""))
+            advanceUntilIdle()
+            assertEquals(3, ids(vm).size)
+            assertNull(vm.state.value.safeNote)
+        }
+
+    @Test
     fun pickingSourcesNarrowsTheGridAndIsRemembered() =
         runTest(dispatcher) {
             val repository = twoSources()
@@ -172,20 +209,245 @@ class CatalogViewModelTest {
             assertEquals("Project Gutenberg has no “Webtoon” category, so it's left out.", vm.state.value.categoryNote)
             assertEquals(1, vm.state.value.sourcesRead)
 
-            // One source selected: its own categories only.
+            // One source selected: the formats first (its "book" stands for Book), then its own categories.
             vm.onIntent(CatalogIntent.SelectSource("gutenberg"))
             advanceUntilIdle()
             assertEquals(
-                listOf("Fiction", "book"),
+                listOf("Manga", "Webtoon", "book", "Fiction"),
                 vm.state.value.categories
                     .map { it.name },
             )
-            assertNull(vm.state.value.category)
-            assertEquals("All categories", vm.state.value.categoryFilterLabel)
+            // A format is offered whatever the sources: the choice stays.
+            assertEquals("Webtoon", vm.state.value.category)
 
             vm.onIntent(CatalogIntent.SelectCategory(null))
             advanceUntilIdle()
             assertNull(repository.filter.value.categoryName)
+            assertEquals("All categories", vm.state.value.categoryFilterLabel)
+        }
+
+    @Test
+    fun theFormatsComeFirstWhateverSourcesAreOnThenEachSourcesOwnCategories() =
+        runTest(dispatcher) {
+            // Our own source switched off: a book source with genres comes first, then a comic source with none.
+            val shelf = CatalogSource("shelf", "Shelf")
+            val inkwell = CatalogSource("inkwell", "Inkwell")
+            val repository =
+                FakeCatalog().apply {
+                    categories["shelf"] =
+                        listOf(SourceCategory("f", "Fiction"), SourceCategory("p", "Poetry"), SourceCategory("d", "Drama"))
+                    remote["shelf" to null] = listOf(listOf(title("shelf", "s1", ReadingFormat.Text)))
+                    remote["inkwell" to null] =
+                        listOf(listOf(title("inkwell", "i1", ReadingFormat.Webtoon), title("inkwell", "i2", ReadingFormat.Manga)))
+                }
+            val vm = CatalogViewModel(repository)
+            vm.onIntent(CatalogIntent.SourcesChanged(listOf(shelf, inkwell)))
+            advanceUntilIdle()
+
+            val groups = vm.state.value.categoryGroups
+            assertEquals(listOf(null, "Shelf"), groups.map { it.title })
+            assertEquals(listOf("Manga", "Webtoon", "Book"), groups[0].choices.map { it.name })
+            assertEquals(listOf("Fiction", "Poetry", "Drama"), groups[1].choices.map { it.name })
+            assertEquals(
+                listOf("Manga", "Webtoon", "Book", "Fiction", "Poetry", "Drama"),
+                vm.state.value.categories
+                    .map { it.name },
+            )
+
+            // A format files every source's titles by their format, plugin comics included.
+            vm.onIntent(CatalogIntent.SelectCategory("Webtoon"))
+            advanceUntilIdle()
+            assertEquals(listOf("i1"), ids(vm))
+            assertEquals(
+                listOf(false, true, false),
+                vm.state.value.categoryGroups[0]
+                    .choices
+                    .map { it.selected },
+            )
+            assertNull(vm.state.value.categoryNote)
+
+            // A source's own category: that source only, the other one is left out.
+            vm.onIntent(CatalogIntent.SelectCategory("Poetry"))
+            advanceUntilIdle()
+            assertTrue(("shelf" to "p") in repository.refreshed)
+            assertEquals("Inkwell has no “Poetry” category, so it's left out.", vm.state.value.categoryNote)
+        }
+
+    @Test
+    fun ourOwnCategoriesStandForTheFormatsWhicheverSourceComesFirst() =
+        runTest(dispatcher) {
+            val vm = CatalogViewModel(twoSources())
+            vm.onIntent(CatalogIntent.SourcesChanged(listOf(gutenberg, vovoscan)))
+            advanceUntilIdle()
+            val groups = vm.state.value.categoryGroups
+            // Gutenberg's "book" is the Book format (one choice), its Fiction under its name.
+            assertEquals(listOf(null, "Project Gutenberg"), groups.map { it.title })
+            assertEquals(listOf("Manga", "Webtoon", "book"), groups[0].choices.map { it.name })
+            assertEquals(listOf("Fiction"), groups[1].choices.map { it.name })
+        }
+
+    @Test
+    fun ourFormatCategoriesFileASourcesTitlesByTheirFormat() =
+        runTest(dispatcher) {
+            val inkwell = CatalogSource("inkwell", "Inkwell")
+            val repository =
+                FakeCatalog().apply {
+                    remote["vovoscan" to null] = listOf(listOf(title("vovoscan", "v1", ReadingFormat.Webtoon)))
+                    remote["vovoscan" to "manga"] = listOf(listOf(title("vovoscan", "v2", ReadingFormat.Manga)))
+                    remote["vovoscan" to "webtoon"] = listOf(listOf(title("vovoscan", "v1", ReadingFormat.Webtoon)))
+                    // A source with no categories, whose catalog names no format (manga by default): one title is a strip
+                    // the server learned from imported pages.
+                    remote["inkwell" to null] =
+                        listOf(listOf(title("inkwell", "i1", ReadingFormat.Manga), title("inkwell", "i2", ReadingFormat.Manga)))
+                    serverFormats["inkwell/i2"] = ReadingFormat.Webtoon
+                    categories["vovoscan"] =
+                        listOf(
+                            SourceCategory("manga", "Manga", ReadingFormat.Manga),
+                            SourceCategory("webtoon", "Webtoon", ReadingFormat.Webtoon),
+                            SourceCategory("staff", "Staff picks"),
+                        )
+                }
+            val vm = CatalogViewModel(repository)
+            vm.onIntent(CatalogIntent.SourcesChanged(listOf(vovoscan, inkwell)))
+            advanceUntilIdle()
+            // Browsing everything never tells the server what a source on the device lists.
+            assertEquals(emptyList(), repository.formatsAsked)
+
+            vm.onIntent(CatalogIntent.SelectCategory("Manga"))
+            advanceUntilIdle()
+            assertEquals(setOf("v2", "i1"), ids(vm).toSet())
+            assertNull(vm.state.value.categoryNote)
+            assertEquals(2, vm.state.value.sourcesRead)
+
+            // Only the titles of the source filed by format were asked, once each.
+            assertEquals(listOf("inkwell" to listOf("i1", "i2")), repository.formatsAsked)
+
+            vm.onIntent(CatalogIntent.SelectCategory("Webtoon"))
+            advanceUntilIdle()
+            assertEquals(setOf("v1", "i2"), ids(vm).toSet())
+            assertEquals(1, repository.formatsAsked.size)
+
+            // A curated category stands for no format: a source without it is left out, as before.
+            vm.onIntent(CatalogIntent.SelectCategory("Staff picks"))
+            advanceUntilIdle()
+            assertEquals("Inkwell has no “Staff picks” category, so it's left out.", vm.state.value.categoryNote)
+
+            vm.onIntent(CatalogIntent.SelectCategory("Manga"))
+            vm.onIntent(CatalogIntent.Query("inkwell"))
+            advanceUntilIdle()
+            assertEquals(
+                listOf("i1"),
+                vm.state.value.results
+                    ?.map { it.id },
+            )
+        }
+
+    @Test
+    fun pullToRefreshAsksAgainForTheFormatsTheServerDidNotKnow() =
+        runTest(dispatcher) {
+            val inkwell = CatalogSource("inkwell", "Inkwell")
+            val repository =
+                FakeCatalog().apply {
+                    remote["vovoscan" to null] = listOf(listOf(title("vovoscan", "v1", ReadingFormat.Webtoon)))
+                    remote["vovoscan" to "webtoon"] = listOf(listOf(title("vovoscan", "v1", ReadingFormat.Webtoon)))
+                    remote["inkwell" to null] =
+                        listOf(listOf(title("inkwell", "i1", ReadingFormat.Manga), title("inkwell", "i2", ReadingFormat.Manga)))
+                    serverFormats["inkwell/i2"] = ReadingFormat.Webtoon
+                    categories["vovoscan"] = listOf(SourceCategory("webtoon", "Webtoon", ReadingFormat.Webtoon))
+                }
+            val vm = CatalogViewModel(repository)
+            vm.onIntent(CatalogIntent.SourcesChanged(listOf(vovoscan, inkwell)))
+            advanceUntilIdle()
+            vm.onIntent(CatalogIntent.SelectCategory("Webtoon"))
+            advanceUntilIdle()
+            assertEquals(setOf("v1", "i2"), ids(vm).toSet())
+
+            // The server learns a few more titles on each call: pull to refresh asks again for the one it didn't know.
+            repository.serverFormats["inkwell/i1"] = ReadingFormat.Webtoon
+            vm.onIntent(CatalogIntent.Refresh)
+            advanceUntilIdle()
+            assertEquals("inkwell" to listOf("i1"), repository.formatsAsked.last())
+            assertEquals(setOf("v1", "i1", "i2"), ids(vm).toSet())
+        }
+
+    @Test
+    fun theWebtoonFilterAsksEveryThirdPartySourceAndItsWordShowsInEveryCategory() =
+        runTest(dispatcher) {
+            val inkwell = CatalogSource("inkwell", "Inkwell")
+            val quill = CatalogSource("quill", "Quill")
+            val repository =
+                FakeCatalog().apply {
+                    remote["vovoscan" to null] = listOf(listOf(title("vovoscan", "v1", ReadingFormat.Webtoon)))
+                    remote["vovoscan" to "webtoon"] = listOf(listOf(title("vovoscan", "v1", ReadingFormat.Webtoon)))
+                    remote["inkwell" to null] =
+                        listOf(listOf(title("inkwell", "i1", ReadingFormat.Manga), title("inkwell", "i2", ReadingFormat.Manga)))
+                    remote["quill" to null] =
+                        listOf(listOf(title("quill", "q1", ReadingFormat.Manga), title("quill", "q2", ReadingFormat.Manga)))
+                    serverFormats["inkwell/i2"] = ReadingFormat.Webtoon
+                    serverFormats["quill/q1"] = ReadingFormat.Webtoon
+                    categories["vovoscan"] = listOf(SourceCategory("webtoon", "Webtoon", ReadingFormat.Webtoon))
+                }
+            val vm = CatalogViewModel(repository)
+            vm.onIntent(CatalogIntent.SourcesChanged(listOf(vovoscan, inkwell, quill)))
+            advanceUntilIdle()
+            // Browsing every category tells the server nothing.
+            assertTrue(repository.formatsAsked.isEmpty())
+
+            vm.onIntent(CatalogIntent.SelectCategory("Webtoon"))
+            advanceUntilIdle()
+            assertEquals(
+                setOf("inkwell" to listOf("i1", "i2"), "quill" to listOf("q1", "q2")),
+                repository.formatsAsked.toSet(),
+            )
+            assertEquals(setOf("v1", "i2", "q1"), ids(vm).toSet())
+
+            // Back to every category: the learned strips keep their badge.
+            vm.onIntent(CatalogIntent.SelectCategory(null))
+            advanceUntilIdle()
+            val labels =
+                vm.state.value.cards
+                    .associate { it.id to it.formatLabel }
+            assertEquals("WEBTOON", labels["i2"])
+            assertEquals("WEBTOON", labels["q1"])
+            assertEquals("MANGA", labels["i1"])
+
+            // Refresh under the filter asks both sources again for what the server didn't know.
+            repository.serverFormats["quill/q2"] = ReadingFormat.Webtoon
+            vm.onIntent(CatalogIntent.SelectCategory("Webtoon"))
+            advanceUntilIdle()
+            vm.onIntent(CatalogIntent.Refresh)
+            advanceUntilIdle()
+            assertTrue("inkwell" to listOf("i1") in repository.formatsAsked)
+            assertTrue("quill" to listOf("q2") in repository.formatsAsked)
+            assertEquals(setOf("v1", "i2", "q1", "q2"), ids(vm).toSet())
+        }
+
+    @Test
+    fun aSearchResultFollowsTheFormatItsTitlePageLearned() =
+        runTest(dispatcher) {
+            val inkwell = CatalogSource("inkwell", "Inkwell")
+            val strip = title("inkwell", "i1", ReadingFormat.Manga)
+            val repository = FakeCatalog().apply { remote["inkwell" to null] = listOf(listOf(strip)) }
+            val vm = CatalogViewModel(repository)
+            vm.onIntent(CatalogIntent.SourcesChanged(listOf(inkwell)))
+            advanceUntilIdle()
+            vm.onIntent(CatalogIntent.Query("i1"))
+            advanceUntilIdle()
+            assertEquals(
+                listOf("MANGA"),
+                vm.state.value.results
+                    ?.map { it.formatLabel },
+            )
+
+            // Its page opened from the results: its genres say it is a strip, saved as such.
+            repository.detail.value =
+                TitleDetail(strip.copy(format = ReadingFormat.Webtoon), "", emptyList(), listOf("Webtoons"), emptyList())
+            advanceUntilIdle()
+            assertEquals(
+                listOf("WEBTOON"),
+                vm.state.value.results
+                    ?.map { it.formatLabel },
+            )
         }
 
     @Test
