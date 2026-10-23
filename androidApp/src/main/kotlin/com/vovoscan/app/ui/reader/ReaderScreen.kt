@@ -1109,12 +1109,12 @@ internal fun PageImage(
                 failed = true
             },
             modifier = Modifier.matchParentSize(),
-            if (lettering.isNotEmpty()) {
-                Box(Modifier.matchParentSize(), contentAlignment = Alignment.Center) {
-                    LetteringOverlay(lettering, Modifier.aspectRatio(ratio))
-                }
-            },
         )
+        if (lettering.isNotEmpty()) {
+            Box(Modifier.matchParentSize(), contentAlignment = Alignment.Center) {
+                LetteringOverlay(lettering, Modifier.aspectRatio(ratio))
+            }
+        }
         // Still loading: says so (a slow source left a blank page). Near the top of a tall page, where it is seen.
         if (loading) {
             CircularProgressIndicator(
