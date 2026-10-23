@@ -486,6 +486,7 @@ fun appModules(
                                 it.alreadyAvailable,
                                 it.fundable,
                                 wallet.balance(),
+                                unfunded = it.unfunded?.isNotEmpty() == true,
                             )
                         }
 

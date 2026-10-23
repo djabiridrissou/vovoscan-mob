@@ -957,10 +957,14 @@
   "sticker.kira": "Gorgeous art",
   "sticker.shiin": "Speechless",
   "translation.readyFree": "Ready ✦ free",
-  "translation.offer.shortBalance": "This one needs about {credits, plural, one {# credit} other {# credits}} and you have {balance, plural, one {# credit} other {# credits}}. Add your own Anthropic key (no credits needed), or ask the owner for a top-up.",
+  "translation.offer.shortBalance": "About {credits, plural, one {# credit} other {# credits}}; you have {balance, plural, one {# credit} other {# credits}}. Add your own Anthropic key (no credits needed), or ask the owner for a top-up.",
   "episode.readyFree": "Ready ✦ free",
-  "episode.costShortBalance": "Not enough credits: this run needs {count, plural, one {# credit} other {# credits}} and you have {balance, plural, one {# credit} other {# credits}}. Add your own keys (no credits needed), or ask the owner for a top-up.",
+  "episode.costShortBalance": "About {count, plural, one {# credit} other {# credits}}; you have {balance, plural, one {# credit} other {# credits}}. Add your own keys (no credits needed), or ask the owner for a top-up.",
   "wallet.badgeA11y": "Your credits: {balance}",
   "translation.offer.shortNoPrice": "You have {balance, plural, one {# credit} other {# credits}}: not enough for this one. Add your own Anthropic key (no credits needed), or ask the owner for a top-up.",
-  "episode.costShortNoPrice": "You have {balance, plural, one {# credit} other {# credits}}: not enough for this run. Add your own keys (no credits needed), or ask the owner for a top-up."
+  "episode.costShortNoPrice": "You have {balance, plural, one {# credit} other {# credits}}: not enough for this run. Add your own keys (no credits needed), or ask the owner for a top-up.",
+  "translation.offer.unfunded": "About {credits, plural, one {# credit} other {# credits}}. Add your own Anthropic key in Settings › Keys, or ask the owner for credits.",
+  "episode.costUnfunded.anthropic": "About {count, plural, one {# credit} other {# credits}}. Add your own Anthropic key in Settings › Keys, or ask the owner for credits.",
+  "episode.costUnfunded.elevenlabs": "About {count, plural, one {# credit} other {# credits}}. Add your own ElevenLabs key in Settings › Keys, or ask the owner for credits.",
+  "episode.costUnfunded.both": "About {count, plural, one {# credit} other {# credits}}. Add your own Anthropic and ElevenLabs keys in Settings › Keys, or ask the owner for credits."
 }

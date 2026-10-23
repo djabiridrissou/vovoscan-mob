@@ -335,13 +335,23 @@ class TranslationViewModel(
                                         else ->
                                             // A price of 0 on an unfundable quote is no price (a server that leaves it out):
                                             // the balance and what to do, never "needs about 0 credits".
-                                            quote.balance?.let { balance ->
-                                                if (quote.maxCredits <= 0) {
-                                                    t("translation.offer.shortNoPrice", "balance" to balance)
-                                                } else {
-                                                    t("translation.offer.shortBalance", "credits" to quote.maxCredits, "balance" to balance)
-                                                }
-                                            } ?: t("translation.offer.short")
+                                            when {
+                                                // Nobody funds it: its price, and the key that makes it free.
+                                                quote.unfunded && quote.maxCredits > 0 ->
+                                                    t("translation.offer.unfunded", "credits" to quote.maxCredits)
+                                                else ->
+                                                    quote.balance?.let { balance ->
+                                                        if (quote.maxCredits <= 0) {
+                                                            t("translation.offer.shortNoPrice", "balance" to balance)
+                                                        } else {
+                                                            t(
+                                                                "translation.offer.shortBalance",
+                                                                "credits" to quote.maxCredits,
+                                                                "balance" to balance,
+                                                            )
+                                                        }
+                                                    } ?: t("translation.offer.short")
+                                            }
                                     },
                                 canTranslate = quote.fundable || quote.coveredByOwnKeys,
                                 translateLabel = t("translation.offer.translate"),

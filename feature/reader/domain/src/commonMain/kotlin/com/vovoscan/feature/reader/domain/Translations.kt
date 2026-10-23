@@ -198,6 +198,8 @@ data class TranslationQuote(
     val fundable: Boolean,
     /** The wallet's balance when quoted; null when unknown (no wallet read). */
     val balance: Long? = null,
+    /** Nobody funds the reading (no own key, platform funding off): [maxCredits] is still its price. */
+    val unfunded: Boolean = false,
 )
 
 /** Quotes come from the account slice (wired in `shared`); null: no quote (a server without credits, offline). */

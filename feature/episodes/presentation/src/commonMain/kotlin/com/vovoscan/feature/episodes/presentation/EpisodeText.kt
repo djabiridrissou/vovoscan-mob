@@ -138,6 +138,9 @@ object EpisodeText {
         when {
             cost.alreadyAvailable -> t("episode.costAlreadyMade")
             cost.coveredByOwnKeys -> t("episode.costOwnKeys")
+            // Nobody funds it yet: its price, and the keys that make it free (the contract's `unfunded` with a price).
+            !cost.fundable && !cost.meteredRun && cost.maxCredits > 0 && !cost.unfunded.isNullOrEmpty() ->
+                unfundedLine(cost.unfunded, cost.maxCredits)
             !cost.meteredRun -> null
             // A price of 0 on an unfundable quote is no price (a server that leaves it out): the balance and what to do.
             !cost.fundable && cost.maxCredits <= 0 ->
@@ -146,6 +149,16 @@ object EpisodeText {
                 cost.balance?.let { t("episode.costShortBalance", "count" to cost.maxCredits, "balance" to it) }
                     ?: t("episode.costShort", "count" to cost.maxCredits)
             else -> t("episode.costCredits", "count" to cost.credits)
+        }
+
+    private fun unfundedLine(
+        unfunded: Set<String>,
+        count: Long,
+    ): String =
+        when {
+            RunCost.ANTHROPIC in unfunded && RunCost.ELEVENLABS in unfunded -> t("episode.costUnfunded.both", "count" to count)
+            RunCost.ELEVENLABS in unfunded -> t("episode.costUnfunded.elevenlabs", "count" to count)
+            else -> t("episode.costUnfunded.anthropic", "count" to count)
         }
 
     /** The credits wallet refused a run on the platform's keys; null for any other error. */

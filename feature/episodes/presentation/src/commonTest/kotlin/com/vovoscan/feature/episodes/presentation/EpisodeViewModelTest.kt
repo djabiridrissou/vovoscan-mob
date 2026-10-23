@@ -116,6 +116,27 @@ class EpisodeViewModelTest {
         }
 
     @Test
+    fun anUnfundedRunWithItsPriceSaysWhichKeyMakesItFree() =
+        runTest(dispatcher) {
+            val unfunded =
+                RunCost(
+                    30,
+                    false,
+                    false,
+                    maxCredits = 40,
+                    fundable = false,
+                    metered = emptySet(),
+                    unfunded = setOf("anthropic", "elevenlabs"),
+                )
+            val vm = EpisodeViewModel("c1", FakeEpisodes(), noKeys, EpisodeAccess.Open, RunQuotes { _, _ -> unfunded })
+            advanceUntilIdle()
+            assertEquals(
+                "About 40 credits. Add your own Anthropic and ElevenLabs keys in Settings › Keys, or ask the owner for credits.",
+                vm.state.value.costLine,
+            )
+        }
+
+    @Test
     fun eachProviderSaysWhoPaysForIt() =
         runTest(dispatcher) {
             // Reading on credits, voice unfunded (the server lists both).
@@ -446,7 +467,7 @@ class EpisodeViewModelTest {
             val vm = EpisodeViewModel("c1", FakeEpisodes(), noKeys, EpisodeAccess.Open, RunQuotes { _, _ -> short })
             advanceUntilIdle()
             assertEquals(
-                "Not enough credits: this run needs 20 credits and you have 4 credits. Add your own keys (no credits needed), or ask the owner for a top-up.",
+                "About 20 credits; you have 4 credits. Add your own keys (no credits needed), or ask the owner for a top-up.",
                 vm.state.value.costLine,
             )
         }

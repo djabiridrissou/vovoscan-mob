@@ -424,13 +424,32 @@ class TranslationViewModelTest {
             advanceUntilIdle()
             val dock = assertNotNull(vm.state.value.dock)
             assertEquals(
-                "This one needs about 15 credits and you have 3 credits. Add your own Anthropic key (no credits needed), or ask the owner for a top-up.",
+                "About 15 credits; you have 3 credits. Add your own Anthropic key (no credits needed), or ask the owner for a top-up.",
                 dock.line,
             )
             assertNull(dock.confirmLabel)
             assertEquals("Add a key", dock.addKeyLabel)
             assertEquals(0, repo.requests)
             assertEquals(0, changes)
+        }
+
+    @Test
+    fun anUnfundedQuoteShowsItsPriceAndTheKeyThatMakesItFree() =
+        runTest(dispatcher) {
+            val quotes =
+                TranslationQuotes {
+                    _,
+                    _,
+                    ->
+                    TranslationQuote(12, 15, false, false, fundable = false, balance = 0, unfunded = true)
+                }
+            val vm = TranslationViewModel("vovoscan", "c1", FakeTranslations(), quotes)
+            advanceUntilIdle()
+            vm.onIntent(TranslationIntent.Choose("yo"))
+            advanceUntilIdle()
+            val dock = assertNotNull(vm.state.value.dock)
+            assertEquals("About 15 credits. Add your own Anthropic key in Settings › Keys, or ask the owner for credits.", dock.line)
+            assertEquals("Add a key", dock.addKeyLabel)
         }
 
     @Test

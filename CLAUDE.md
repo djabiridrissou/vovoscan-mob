@@ -701,7 +701,7 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   The same wallet feeds the balance chip (`WalletUiState.badge`, iOS `CreditChip` in `Components.swift`, Android
   `ui/common/CreditChip.kt`) on the title page, the episode card, both language pickers and the language dock (reader
   and player); red when empty. Quotes carry the balance (`TranslationQuote.balance`, `RunCost.balance`): short of the
-  price, the offer says what it costs and what is held ("About 12 credits, you have 3.") with "Add a key" (an unfundable quote priced 0, a server that leaves the price out, shows the balance alone: "You have 0 credits: not enough…"); every quote,
+  price, the offer says what it costs and what is held ("About 12 credits; you have 3.") with "Add a key"; a step nobody funds (`unfunded`, priced by the server since the quote contract carries every price) says its price and the key that makes it free ("About 40 credits. Add your own Anthropic key in Settings › Keys, or ask the owner for credits.") (an unfundable quote priced 0, a server that leaves the price out, shows the balance alone: "You have 0 credits: not enough…"); every quote,
   run asked, run finished or credit refusal reads the wallet again (`changed()` on the quote ports), so every chip moves.
 - The creator studio is web only: Settings links to `WEB_BASE_URL` + `contribute` (`project.yml`), "Creator studio"
   for creators, "Publish your own series" otherwise. The apps never upload, translate or schedule releases.
