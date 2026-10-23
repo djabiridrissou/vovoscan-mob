@@ -390,7 +390,8 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   taps retarget keeping the velocity; a finger stops it. Past the last stop: the end card (`GoToItem`). Bars hide
   2.5 s after a Next or a scroll down, come back on a scroll up of 0.25 × the screen; a 2 pt red progress line while
   hidden; immersive system bars (Android), hidden status bar (iOS). Title card for 1.6 s on opening. Focus (off by
-  default, `ReaderPreferences.focus`): the panel at full light, the rest at 0.72, gliding 380 ms. Position
+  default, `ReaderPreferences.focus`; the bottom bar's left control): the panel at full light, the rest at 0.72, gliding
+  380 ms (`spotlight`: never on the end card, never while the margin is open). Position
   `{page, offset}` in `reader_setting` (`pos/<source>/<chapter>`, at most every 500 ms): the reading line (a third of
   the screen down) as a share of its page. "Continue reading" (`Resume`, reader SPEC §9): the stop whose panel holds
   that line is the anchor; the strip opens one stop before it (a third of a screen back without stops, or when that
@@ -755,7 +756,8 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   `pageMargin` environment, `MarginPanel` docked in the reader's own layers, 45 % or 90 % of its height (handle: tap,
   drag up or down, down again closes; a thread opens in place with ←), `MarginEndCard` in the forward chapter card).
   Never a presented sheet: a sheet's dimming and muted tint stayed over the pages once it was closed, so the switch
-  is the panel and nothing dims the pages. Android `ui/forum/Margin.kt` (`LocalPageMargin`, a non-modal `MarginPanel` docked at the
+  is the panel and nothing dims the pages. While it is open the reader gives up the keyboard focus and its key
+  shortcuts (a letter typed into the composer never turns a page). Android `ui/forum/Margin.kt` (`LocalPageMargin`, a non-modal `MarginPanel` docked at the
   bottom, 45 % or 90 % of the height; Back closes the replies, then the panel).
 
 ## Screens (account and episodes)

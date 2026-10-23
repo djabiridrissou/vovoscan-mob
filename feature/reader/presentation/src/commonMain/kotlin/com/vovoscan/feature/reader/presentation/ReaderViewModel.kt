@@ -348,6 +348,9 @@ data class ReaderUiState(
                 else -> ((currentIndex + 1).toFloat() / count).coerceIn(0f, 1f)
             }
 
+    /** What Focus lights: the panel read, never past the last page (the end card is never dimmed). */
+    val spotlight: PanelBox? get() = focus?.takeUnless { onEndCard }
+
     /** The card after the last page is on screen (or the strip's end). */
     val onEndCard: Boolean get() = items.isNotEmpty() && (currentItem == items.lastIndex || (isStrip && progress >= 1f))
 

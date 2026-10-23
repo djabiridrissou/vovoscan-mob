@@ -124,6 +124,8 @@ struct ReaderView: View {
             .environment(\.readerMargin, margin.state.visible ? margin : nil)
     }
 
+    private var marginOpen: Bool { margin.state.visible && margin.state.open }
+
     /// The margin over each page while it is open: its pins, the mark being placed, and the surface that takes one.
     private var pageMargin: PageMargin? {
         let state: MarginUiState = margin.state
@@ -252,12 +254,13 @@ struct ReaderView: View {
             .toolbar(.hidden, for: .navigationBar)
             .toolbar(.hidden, for: .tabBar)
             .statusBarHidden(!model.state.chromeVisible)
-            .focusable()
+            // While the margin is open its fields take the keys: the reader neither holds the focus nor reads them.
+            .focusable(!marginOpen)
             .focused($keysFocused)
             .focusEffectDisabled()
             .onAppear { keysFocused = true }
             .onKeyPress(phases: .down) { (press: KeyPress) -> KeyPress.Result in
-                guard let key = ReaderKeyMap.key(press) else { return .ignored }
+                guard !marginOpen, let key = ReaderKeyMap.key(press) else { return .ignored }
                 model.send(ReaderIntentKey(key: key))
                 return .handled
             }
@@ -266,6 +269,7 @@ struct ReaderView: View {
             .task { await translation.observe() }
             .task { await next.observe() }
             .task { await margin.observe() }
+            .onChange(of: marginOpen) { _, open in keysFocused = !open }
             .onChange(of: translation.state.shown, initial: true) { _, shown in next.send(NextChapterIntentLanguageShown(code: shown)) }
             .onChange(of: model.state.readShare, initial: true) { _, share in next.send(NextChapterIntentReached(share: share)) }
             .onChange(of: model.state.onEndCard, initial: true) { _, end in next.send(NextChapterIntentAtEnd(atEnd: end)) }
@@ -1027,6 +1031,8 @@ extension Array {
 /// scroll view's own momentum takes over. Focus dims everything but the panel being read.
 private struct FlowStrip: View {
     @ObservedObject var model: ReaderModel
+    /// Non-nil while the margin is open: Focus dims nothing then.
+    @Environment(\.pageMargin) private var pageMargin
     @State private var scroll = ScrollPosition(idType: Int.self)
     @State private var geometry = StripGeometry()
     @State private var phase: ScrollPhase = .idle
@@ -1170,7 +1176,8 @@ private struct FlowStrip: View {
     /// Focus: the panel being read at full light, the rest at `otherLight`. The spotlight glides in strip
     /// coordinates (`focusMs`); the scroll moves it at once.
     @ViewBuilder private var focusDim: some View {
-        if let focus = model.state.focus, measured.width > 0 {
+        // Never while the margin is open: its marks sit on the art at full light.
+        if let focus = model.state.spotlight, pageMargin == nil, measured.width > 0 {
             let pages = model.state.pages
             let width = measured.width
             let index = Int(focus.page)
