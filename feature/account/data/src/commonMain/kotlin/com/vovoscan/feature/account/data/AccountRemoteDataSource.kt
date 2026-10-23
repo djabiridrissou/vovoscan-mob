@@ -59,6 +59,8 @@ data class ReadingSettingsDto(
     val coached: List<String>? = null,
     /** Read only: `"<sourceKey>:<titleRef>"` → reading mode (kebab case), the account's choices per series. */
     val seriesModes: Map<String, String?>? = null,
+    /** The order text providers are tried in (`anthropic`, `google`, `moonshot`); absent from an older server. */
+    val textProviders: List<String>? = null,
 )
 
 @Serializable
@@ -115,6 +117,7 @@ interface AccountRemoteDataSource {
     suspend fun setReadingSettings(
         ocrModel: String? = null,
         targetLanguage: String? = null,
+        textProviders: List<String>? = null,
     ): AppResult<ReadingSettingsDto>
 
     suspend fun usage(
@@ -172,12 +175,13 @@ class KtorAccountRemoteDataSource(
     override suspend fun setReadingSettings(
         ocrModel: String?,
         targetLanguage: String?,
+        textProviders: List<String>?,
     ): AppResult<ReadingSettingsDto> =
         http
             .apiCall<ApiData<ReadingSettingsDto>> {
                 put("api/v1/settings/reading") {
                     contentType(ContentType.Application.Json)
-                    setBody(ReadingSettingsDto(ocrModel, targetLanguage))
+                    setBody(ReadingSettingsDto(ocrModel, targetLanguage, textProviders = textProviders))
                 }
             }.map { it.data }
 

@@ -283,7 +283,7 @@ fun appModules(
                 }
             }
             // Episodes show which of the user's keys a run would use, without knowing the account slice.
-            single<KeyStatusProvider> { AccountKeyStatus(get()) }
+            single<KeyStatusProvider> { AccountKeyStatus(get(), get()) }
             // Episodes open to the account (the `video` feature flag, every feature for a super-admin), else "coming
             // soon": read from the session, without episodes knowing the auth slice.
             single<EpisodeAccess> {
@@ -544,10 +544,15 @@ private const val SHARED_READING_FEATURE = "shared_reading"
 /** The episodes' `KeyStatusProvider` port, served by the account slice's key list (hints only, never a secret). */
 private class AccountKeyStatus(
     private val keys: ProviderKeysRepository,
+    private val reading: ReadingSettingsRepository,
 ) : KeyStatusProvider {
+    // The reading step runs on the first text key in the account's order (Claude, Gemini, Kimi; ADR-0060).
     override fun observe(): Flow<KeyStatus?> =
-        keys.observeKeys().map { list ->
-            list?.let { KeyStatus(it.enabled, it.keyFor(Provider.Anthropic)?.hint, it.keyFor(Provider.ElevenLabs)?.hint) }
+        combine(keys.observeKeys(), reading.observeTextProviders()) { list, order ->
+            list?.let {
+                val text = (order ?: Provider.TEXT_DEFAULT).firstNotNullOfOrNull(it::keyFor)
+                KeyStatus(it.enabled, text?.hint, it.keyFor(Provider.ElevenLabs)?.hint, (text?.provider ?: Provider.Anthropic).label)
+            }
         }
 
     override suspend fun refresh() {

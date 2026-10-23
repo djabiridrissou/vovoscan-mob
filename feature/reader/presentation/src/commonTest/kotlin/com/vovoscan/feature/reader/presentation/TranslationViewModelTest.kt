@@ -424,7 +424,7 @@ class TranslationViewModelTest {
             advanceUntilIdle()
             val dock = assertNotNull(vm.state.value.dock)
             assertEquals(
-                "About 15 credits; you have 3 credits. Add your own Anthropic key (no credits needed), or ask the owner for a top-up.",
+                "About 15 credits; you have 3 credits. Add your own Claude, Gemini or Kimi key (no credits needed), or ask the owner for a top-up.",
                 dock.line,
             )
             assertNull(dock.confirmLabel)
@@ -448,7 +448,10 @@ class TranslationViewModelTest {
             vm.onIntent(TranslationIntent.Choose("yo"))
             advanceUntilIdle()
             val dock = assertNotNull(vm.state.value.dock)
-            assertEquals("About 15 credits. Add your own Anthropic key in Settings › Keys, or ask the owner for credits.", dock.line)
+            assertEquals(
+                "About 15 credits. Add your own Claude, Gemini or Kimi key in Settings › Keys, or ask the owner for credits.",
+                dock.line,
+            )
             assertEquals("Add a key", dock.addKeyLabel)
         }
 
@@ -463,7 +466,7 @@ class TranslationViewModelTest {
             advanceUntilIdle()
             val dock = assertNotNull(vm.state.value.dock)
             assertEquals(
-                "You have 0 credits: not enough for this one. Add your own Anthropic key (no credits needed), or ask the owner for a top-up.",
+                "You have 0 credits: not enough for this one. Add your own Claude, Gemini or Kimi key (no credits needed), or ask the owner for a top-up.",
                 dock.line,
             )
             assertEquals("Add a key", dock.addKeyLabel)

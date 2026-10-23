@@ -30,6 +30,7 @@ import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -90,14 +91,18 @@ class AccountViewModelsTest {
             val state = vm.state.value
             assertTrue(state.loaded)
             assertEquals(Freshness.Fresh, state.freshness)
-            val (first, second) = state.slots
+            // The text providers first (Claude, Gemini, Kimi: tried in the account's order), then the voices.
+            assertEquals(listOf("Anthropic", "Gemini", "Kimi", "ElevenLabs"), state.slots.map { it.providerLabel })
+            val (first, gemini, _, voices) = state.slots
             assertEquals("•••• abcd", first.key?.hintLabel)
             assertEquals("Added Oct 20, 2026", first.key?.addedLabel)
             assertEquals("Not used yet", first.key?.lastUsedLabel)
             assertEquals("Replace", first.actionLabel)
-            assertNull(second.key)
-            assertEquals("Add a key", second.actionLabel)
-            assertEquals("Voices the lines, sounds and music (VOICE).", second.purpose)
+            assertNull(gemini.key)
+            assertEquals("Add a key", gemini.actionLabel)
+            assertTrue(gemini.purpose.contains("aistudio.google.com/apikey"))
+            assertNull(voices.key)
+            assertEquals("Voices the lines, sounds and music (VOICE).", voices.purpose)
         }
 
     @Test
@@ -128,7 +133,13 @@ class AccountViewModelsTest {
             val state = vm.state.value
             assertFalse(state.formOpen)
             assertEquals("Key saved.", state.notice)
-            assertEquals("•••• 9876", state.slots[1].key?.hintLabel)
+            assertEquals(
+                "•••• 9876",
+                state.slots
+                    .single { it.provider == Provider.ElevenLabs }
+                    .key
+                    ?.hintLabel,
+            )
             assertFalse(state.toString().contains(secret))
             // Submitting again sends nothing: the secret is gone.
             vm.onIntent(ProviderKeysIntent.OpenForm(Provider.ElevenLabs))
@@ -257,6 +268,78 @@ class AccountViewModelsTest {
 
         override suspend fun setTargetLanguage(code: String): AppResult<String> =
             targetResult ?: AppResult.Ok(code).also { target.value = code }
+
+        val order = MutableStateFlow<List<Provider>?>(null)
+        var orderResult: AppResult<List<Provider>>? = null
+        val sentOrders = mutableListOf<List<Provider>>()
+
+        override fun observeTextProviders(): Flow<List<Provider>?> = order
+
+        override suspend fun setTextProviders(order: List<Provider>): AppResult<List<Provider>> {
+            sentOrders += order
+            return orderResult ?: AppResult.Ok(order).also { this.order.value = order }
+        }
+    }
+
+    @Test
+    fun theTextKeysAreTriedInTheOrderTheAccountSets() =
+        runTest(dispatcher) {
+            val repo = FakeReading()
+            val vm = ReadingSettingsViewModel(repo)
+            advanceUntilIdle()
+            // An older server never says an order: nothing to show.
+            assertTrue(
+                vm.state.value.textRows
+                    .isEmpty(),
+            )
+            repo.order.value = Provider.TEXT_DEFAULT
+            advanceUntilIdle()
+            assertEquals(
+                listOf("Anthropic", "Gemini", "Kimi"),
+                vm.state.value.textRows
+                    .map { it.label },
+            )
+            assertFalse(
+                vm.state.value.textRows[0]
+                    .canMoveUp,
+            )
+            assertFalse(
+                vm.state.value.textRows[2]
+                    .canMoveDown,
+            )
+            // Gemini first: Claude out of credit no longer matters.
+            vm.onIntent(ReadingSettingsIntent.MoveTextProvider(Provider.Google, -1))
+            advanceUntilIdle()
+            assertEquals(listOf(listOf(Provider.Google, Provider.Anthropic, Provider.Moonshot)), repo.sentOrders)
+            assertEquals(
+                listOf("Gemini", "Anthropic", "Kimi"),
+                vm.state.value.textRows
+                    .map { it.label },
+            )
+            assertEquals("Saved.", vm.state.value.notice)
+            // Offline: the order stays as it was.
+            repo.orderResult = AppResult.Err(AppError.Network)
+            vm.onIntent(ReadingSettingsIntent.MoveTextProvider(Provider.Moonshot, -1))
+            advanceUntilIdle()
+            assertEquals(
+                listOf("Gemini", "Anthropic", "Kimi"),
+                vm.state.value.textRows
+                    .map { it.label },
+            )
+            assertNotNull(vm.state.value.error)
+            // Nothing moves past an end.
+            vm.onIntent(ReadingSettingsIntent.MoveTextProvider(Provider.Google, -1))
+            advanceUntilIdle()
+            assertEquals(2, repo.sentOrders.size)
+        }
+
+    @Test
+    fun theServersOrderIsCompletedAndNeverRepeats() {
+        assertEquals(
+            listOf(Provider.Google, Provider.Anthropic, Provider.Moonshot),
+            Provider.textOrder(listOf("google", "elevenlabs", "google", "unknown")),
+        )
+        assertEquals(Provider.TEXT_DEFAULT, Provider.textOrder(null))
     }
 
     @Test

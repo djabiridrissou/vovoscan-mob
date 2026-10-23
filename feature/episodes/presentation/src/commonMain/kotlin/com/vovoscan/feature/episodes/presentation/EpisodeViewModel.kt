@@ -610,7 +610,7 @@ class EpisodeViewModel(
         // The quote says, per provider, whether the platform's keys (and the wallet) run what the account's own keys
         // don't, or whether that step is skipped. Without a quote, nothing is promised.
         val quote = cost
-        val anthropic = quote?.funding(RunCost.ANTHROPIC) ?: ProviderFunding.None
+        val text = quote?.textFunding ?: ProviderFunding.None
         val elevenLabs = quote?.funding(RunCost.ELEVENLABS) ?: ProviderFunding.None
         val platform = quote?.meteredRun == true
         val keyLines =
@@ -619,7 +619,7 @@ class EpisodeViewModel(
                 !status.enabled && !platform -> listOf(EpisodeText.KEYS_DISABLED)
                 else ->
                     listOf(
-                        EpisodeText.anthropicLine(status.anthropicHint.takeIf { status.enabled }, anthropic),
+                        EpisodeText.textLine(status.textHint.takeIf { status.enabled }, status.textProvider, text),
                         EpisodeText.elevenLabsLine(status.elevenLabsHint.takeIf { status.enabled }, elevenLabs),
                     )
             }
@@ -628,7 +628,7 @@ class EpisodeViewModel(
                 ?.takeIf { it.enabled }
                 ?.let {
                     listOfNotNull(
-                        anthropic.takeIf { _ -> it.anthropicHint == null },
+                        text.takeIf { _ -> it.textHint == null },
                         elevenLabs.takeIf { _ -> it.elevenLabsHint == null },
                     )
                 }.orEmpty()

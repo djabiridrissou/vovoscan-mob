@@ -8,6 +8,7 @@ import com.vovoscan.core.common.Freshness
 import com.vovoscan.core.common.i18n.LanguagePicker
 import com.vovoscan.core.common.i18n.LanguageRow
 import com.vovoscan.core.common.i18n.t
+import com.vovoscan.feature.account.domain.Provider
 import com.vovoscan.feature.account.domain.ReadingModel
 import com.vovoscan.feature.account.domain.ReadingSettingsRepository
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -25,6 +26,15 @@ data class ModelOption(
     val selected: Boolean,
 )
 
+/** One text provider in the account's order: "1  Gemini", with its moves. */
+data class TextProviderRow(
+    val provider: Provider,
+    val label: String,
+    val position: Int,
+    val canMoveUp: Boolean,
+    val canMoveDown: Boolean,
+)
+
 data class ReadingSettingsUiState(
     /** The server's choice (kept on the device), Haiku until it is known. */
     val selected: ReadingModel = ReadingModel.Default,
@@ -38,7 +48,31 @@ data class ReadingSettingsUiState(
     /** The language being saved, shown as chosen meanwhile. */
     val savingLanguage: String? = null,
     val languageQuery: String = "",
+    /** The order text providers are tried in; null until the server said it (an older server never does). */
+    val textOrder: List<Provider>? = null,
+    /** The order being saved, shown meanwhile. */
+    val savingOrder: List<Provider>? = null,
 ) {
+    /** Empty while the server's order is unknown: nothing to show. */
+    val textRows: List<TextProviderRow>
+        get() =
+            (savingOrder ?: textOrder).orEmpty().let { order ->
+                order.mapIndexed { i, p ->
+                    TextProviderRow(
+                        p,
+                        p.label,
+                        i + 1,
+                        i > 0 && savingOrder == null,
+                        i < order.lastIndex && savingOrder == null,
+                    )
+                }
+            }
+
+    val textOrderTitle: String get() = t("keys.textOrder")
+    val textOrderHint: String get() = t("keys.textOrderHint")
+    val moveUpLabel: String get() = t("keys.moveUp")
+    val moveDownLabel: String get() = t("keys.moveDown")
+
     val options: List<ModelOption>
         get() = ReadingModel.entries.map { ModelOption(it, it.label, it == (saving ?: selected)) }
 
@@ -72,6 +106,12 @@ sealed interface ReadingSettingsIntent {
         val code: String,
     ) : ReadingSettingsIntent
 
+    /** Moves a text provider one place up (-1) or down (+1) in the order they are tried in. */
+    data class MoveTextProvider(
+        val provider: Provider,
+        val by: Int,
+    ) : ReadingSettingsIntent
+
     data object DismissMessage : ReadingSettingsIntent
 }
 
@@ -96,6 +136,10 @@ class ReadingSettingsViewModel(
                 }
             }.launchIn(viewModelScope)
         repository
+            .observeTextProviders()
+            .onEach { order -> if (order != null) mutableState.update { it.copy(textOrder = order) } }
+            .launchIn(viewModelScope)
+        repository
             .observeTargetLanguage()
             .onEach { code -> if (code != null) mutableState.update { it.copy(targetLanguage = code) } }
             .launchIn(viewModelScope)
@@ -108,6 +152,7 @@ class ReadingSettingsViewModel(
             is ReadingSettingsIntent.Select -> select(intent.model)
             is ReadingSettingsIntent.LanguageQuery -> mutableState.update { it.copy(languageQuery = intent.text) }
             is ReadingSettingsIntent.ChooseLanguage -> chooseLanguage(intent.code)
+            is ReadingSettingsIntent.MoveTextProvider -> move(intent.provider, intent.by)
             ReadingSettingsIntent.DismissMessage -> mutableState.update { it.copy(notice = null, error = null) }
         }
     }
@@ -138,6 +183,30 @@ class ReadingSettingsViewModel(
                 when (result) {
                     is AppResult.Ok -> it.copy(savingLanguage = null, targetLanguage = result.value, notice = t("common.saved"))
                     is AppResult.Err -> it.copy(savingLanguage = null, error = AccountText.modelError(result.error))
+                }
+            }
+        }
+    }
+
+    private fun move(
+        provider: Provider,
+        by: Int,
+    ) {
+        val current = state.value
+        val order = current.textOrder ?: return
+        if (current.savingOrder != null) return
+        val from = order.indexOf(provider)
+        val to = from + by
+        if (from < 0 || to !in order.indices) return
+        val next = order.toMutableList().apply { add(to, removeAt(from)) }
+        mutableState.update { it.copy(savingOrder = next, notice = null, error = null) }
+        viewModelScope.launch {
+            val result = repository.setTextProviders(next)
+            mutableState.update {
+                when (result) {
+                    is AppResult.Ok -> it.copy(savingOrder = null, textOrder = result.value, notice = t("common.saved"))
+                    // The previous order stays.
+                    is AppResult.Err -> it.copy(savingOrder = null, error = AccountText.modelError(result.error))
                 }
             }
         }

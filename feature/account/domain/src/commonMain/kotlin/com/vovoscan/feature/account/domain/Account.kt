@@ -4,18 +4,40 @@ import com.vovoscan.core.common.AppError
 import com.vovoscan.core.common.AppResult
 import com.vovoscan.core.common.i18n.t
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
 
-/** A paid provider the user brings their own key for (`core/providers.py` on the server). */
+/**
+ * A paid provider the user brings their own key for (`core/providers.py` on the server). [text]: it reads and
+ * translates (Claude, Gemini, Kimi), tried in the account's order, the next one taking over when a key runs out of
+ * credit or quota (backend ADR-0060).
+ */
 enum class Provider(
     val wire: String,
     val label: String,
+    val text: Boolean,
 ) {
-    Anthropic("anthropic", "Anthropic"),
-    ElevenLabs("elevenlabs", "ElevenLabs"),
+    Anthropic("anthropic", "Anthropic", true),
+    Google("google", "Gemini", true),
+    Moonshot("moonshot", "Kimi", true),
+    ElevenLabs("elevenlabs", "ElevenLabs", false),
     ;
 
     companion object {
         fun from(wire: String): Provider? = entries.firstOrNull { it.wire == wire }
+
+        /** The order the server tries text providers in until the account sets its own. */
+        val TEXT_DEFAULT: List<Provider> = listOf(Anthropic, Google, Moonshot)
+
+        /** The server's order, completed with the text providers it leaves out (a newer one first), never twice. */
+        fun textOrder(wires: List<String>?): List<Provider> {
+            val known =
+                wires
+                    .orEmpty()
+                    .mapNotNull(::from)
+                    .filter { it.text }
+                    .distinct()
+            return known + TEXT_DEFAULT.filterNot { it in known }
+        }
     }
 }
 
@@ -172,6 +194,13 @@ interface ReadingSettingsRepository {
         titleRef: String,
         mode: String?,
     ): AppResult<Unit> = AppResult.Err(AppError.Rejected(SERIES_MODES_UNSUPPORTED, ""))
+
+    /** The order text providers are tried in, as the server last said it; null until read (or an older server). */
+    fun observeTextProviders(): Flow<List<Provider>?> = flowOf(null)
+
+    /** Needs the network, like the model; `Rejected(TEXT_ORDER_UNSUPPORTED)` from a server without the setting. */
+    suspend fun setTextProviders(order: List<Provider>): AppResult<List<Provider>> =
+        AppResult.Err(AppError.Rejected(TEXT_ORDER_UNSUPPORTED, ""))
 }
 
 interface UsageRepository {
@@ -184,6 +213,9 @@ interface UsageRepository {
 
 /** A server without the account's reader-guide slot (`coached`): nothing to read there, nothing to send. */
 const val COACHED_UNSUPPORTED = "COACHED_UNSUPPORTED"
+
+/** A server without the text providers' order (`textProviders`): Claude only, nothing to order. */
+const val TEXT_ORDER_UNSUPPORTED = "TEXT_ORDER_UNSUPPORTED"
 
 /** A server without the per-series reading modes (`seriesModes`): the device's own choices stand. */
 const val SERIES_MODES_UNSUPPORTED = "SERIES_MODES_UNSUPPORTED"

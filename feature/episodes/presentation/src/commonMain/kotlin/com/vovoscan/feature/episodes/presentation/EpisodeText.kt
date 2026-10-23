@@ -89,13 +89,14 @@ object EpisodeText {
     /** Codes saying the feature isn't open to this account (the server's feature flags). */
     val FEATURE_OFF_CODES = setOf("FEATURE_DISABLED", "FEATURE_COMING_SOON")
 
-    /** Who reads the bubbles: the account's key, the platform's (credits), or nobody. */
-    fun anthropicLine(
+    /** The reading step: the account's first text key ([provider]: Anthropic, Gemini, Kimi), the platform's, or none. */
+    fun textLine(
         hint: String?,
+        provider: String = "Anthropic",
         funding: ProviderFunding = ProviderFunding.None,
     ): String =
         when {
-            hint != null -> t("episode.anthropicOwn", "hint" to hint)
+            hint != null -> t("episode.textOwn", "provider" to provider, "hint" to hint)
             funding == ProviderFunding.Platform -> t("episode.anthropicPlatform")
             else -> t("episode.anthropicNone")
         }
@@ -156,7 +157,7 @@ object EpisodeText {
         count: Long,
     ): String =
         when {
-            RunCost.ANTHROPIC in unfunded && RunCost.ELEVENLABS in unfunded -> t("episode.costUnfunded.both", "count" to count)
+            unfunded.any { it in RunCost.TEXT } && RunCost.ELEVENLABS in unfunded -> t("episode.costUnfunded.both", "count" to count)
             RunCost.ELEVENLABS in unfunded -> t("episode.costUnfunded.elevenlabs", "count" to count)
             else -> t("episode.costUnfunded.anthropic", "count" to count)
         }

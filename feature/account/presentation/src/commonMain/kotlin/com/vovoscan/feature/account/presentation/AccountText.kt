@@ -39,6 +39,8 @@ object AccountText {
     fun purpose(provider: Provider): String =
         when (provider) {
             Provider.Anthropic -> t("keys.purposeAnthropic")
+            Provider.Google -> t("keys.purposeGoogle")
+            Provider.Moonshot -> t("keys.purposeMoonshot")
             Provider.ElevenLabs -> t("keys.purposeElevenLabs")
         }
 
@@ -51,7 +53,7 @@ object AccountText {
 
     fun removeMessage(provider: Provider): String =
         when (provider) {
-            Provider.Anthropic -> t("keys.removeAnthropic")
+            Provider.Anthropic, Provider.Google, Provider.Moonshot -> t("keys.removeText")
             Provider.ElevenLabs -> t("keys.removeElevenLabs")
         }
 

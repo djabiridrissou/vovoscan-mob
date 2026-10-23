@@ -192,8 +192,11 @@ data class Watch(
 data class KeyStatus(
     /** False: the server stores no keys at all. */
     val enabled: Boolean,
-    val anthropicHint: String?,
+    /** The first key in the account's text order (Claude, Gemini or Kimi): the one that reads the bubbles. */
+    val textHint: String?,
     val elevenLabsHint: String?,
+    /** Whose key [textHint] is: "Anthropic", "Gemini", "Kimi". */
+    val textProvider: String = "Anthropic",
 )
 
 /**
@@ -231,7 +234,7 @@ data class RunCost(
     val maxCredits: Long = credits,
     /** Every paid step can run: own keys, or platform credits the wallet can hold. */
     val fundable: Boolean = true,
-    /** Providers (`anthropic`, `elevenlabs`) run on the platform's keys and paid in credits; null: not said. */
+    /** Providers (`anthropic`, `google`, `moonshot`, `elevenlabs`) run on the platform's keys and paid in credits; null: not said. */
     val metered: Set<String>? = null,
     /** Providers nobody pays for: that step is skipped (bubbles unread, lines silent); null: not said. */
     val unfunded: Set<String>? = null,
@@ -239,23 +242,39 @@ data class RunCost(
     val balance: Long? = null,
 ) {
     /** Who runs [provider] when the account has no key for it. Never inferred from a zero charge. */
-    fun funding(provider: String): ProviderFunding =
+    fun funding(provider: String): ProviderFunding = funding(setOf(provider))
+
+    /**
+     * Who runs the step one of [providers] serves: the reading step is whichever text provider the server starts
+     * with ([TEXT]: Claude, Gemini or Kimi, in the account's order), so the quote lists that one.
+     */
+    fun funding(providers: Set<String>): ProviderFunding =
         when {
             alreadyAvailable || coveredByOwnKeys -> ProviderFunding.Own
-            metered != null -> if (provider in metered) ProviderFunding.Platform else ProviderFunding.None
-            unfunded != null -> if (provider in unfunded) ProviderFunding.None else ProviderFunding.Platform
+            metered != null -> if (providers.any { it in metered }) ProviderFunding.Platform else ProviderFunding.None
+            unfunded != null -> if (providers.any { it in unfunded }) ProviderFunding.None else ProviderFunding.Platform
             // A server that lists neither: only a positive charge says the platform pays.
             else -> if (fundable && maxCredits > 0) ProviderFunding.Platform else ProviderFunding.None
         }
 
+    /** The step that reads the bubbles (and translates). */
+    val textFunding: ProviderFunding get() = funding(TEXT)
+
     /** Something is paid in credits from the wallet. */
     val meteredRun: Boolean
-        get() = !alreadyAvailable && !coveredByOwnKeys && PROVIDERS.any { funding(it) == ProviderFunding.Platform }
+        get() =
+            !alreadyAvailable &&
+                !coveredByOwnKeys &&
+                (textFunding == ProviderFunding.Platform || funding(ELEVENLABS) == ProviderFunding.Platform)
 
     companion object {
         const val ANTHROPIC = "anthropic"
+        const val GOOGLE = "google"
+        const val MOONSHOT = "moonshot"
         const val ELEVENLABS = "elevenlabs"
-        val PROVIDERS = listOf(ANTHROPIC, ELEVENLABS)
+
+        /** The providers that read and translate (backend ADR-0060). */
+        val TEXT = setOf(ANTHROPIC, GOOGLE, MOONSHOT)
     }
 }
 

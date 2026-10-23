@@ -98,7 +98,7 @@ class EpisodeViewModelTest {
             val state = vm.state.value
             assertNull(state.costLine)
             assertEquals(
-                listOf("No Anthropic key: the bubbles stay unread.", "No ElevenLabs key: the episode stays silent."),
+                listOf("No Claude, Gemini or Kimi key: the bubbles stay unread.", "No ElevenLabs key: the episode stays silent."),
                 state.keyLines,
             )
             assertEquals(EpisodeText.UNFUNDED_WARNING, state.keyWarning)
@@ -107,7 +107,7 @@ class EpisodeViewModelTest {
             val bare = EpisodeViewModel("c2", FakeEpisodes(), noKeys)
             advanceUntilIdle()
             assertEquals(
-                "No Anthropic key: the bubbles stay unread.",
+                "No Claude, Gemini or Kimi key: the bubbles stay unread.",
                 bare.state.value.keyLines
                     .first(),
             )
@@ -131,7 +131,7 @@ class EpisodeViewModelTest {
             val vm = EpisodeViewModel("c1", FakeEpisodes(), noKeys, EpisodeAccess.Open, RunQuotes { _, _ -> unfunded })
             advanceUntilIdle()
             assertEquals(
-                "About 40 credits. Add your own Anthropic and ElevenLabs keys in Settings › Keys, or ask the owner for credits.",
+                "About 40 credits. Add your own text key (Claude, Gemini or Kimi) and ElevenLabs key in Settings › Keys, or ask the owner for credits.",
                 vm.state.value.costLine,
             )
         }
@@ -159,6 +159,29 @@ class EpisodeViewModelTest {
             state = both.state.value
             assertEquals("Costs 7 credits from your wallet.", state.costLine)
             assertEquals("The platform's key voices the lines, paid in credits.", state.keyLines[1])
+            assertNull(state.keyWarning)
+        }
+
+    @Test
+    fun geminiOrKimiReadTheBubblesLikeClaude() =
+        runTest(dispatcher) {
+            // The server starts the reading step on Gemini (the account's order, ADR-0060): metered on the platform's key.
+            val gemini = RunCost(5, false, false, maxCredits = 12, fundable = true, metered = setOf("google", "elevenlabs"))
+            val vm = EpisodeViewModel("c1", FakeEpisodes(), noKeys, EpisodeAccess.Open, RunQuotes { _, _ -> gemini })
+            advanceUntilIdle()
+            var state = vm.state.value
+            assertEquals("The platform's key reads the bubbles, paid in credits.", state.keyLines[0])
+            assertEquals("Costs 5 credits from your wallet.", state.costLine)
+            // The account's own Gemini key: it reads, nothing is said missing for the reading step.
+            val ownGemini = FakeKeyStatus(KeyStatus(true, "wxyz", null, "Gemini"))
+            val voiceOnCredits = RunCost(3, false, false, maxCredits = 8, fundable = true, metered = setOf("elevenlabs"))
+            val own = EpisodeViewModel("c2", FakeEpisodes(), ownGemini, EpisodeAccess.Open, RunQuotes { _, _ -> voiceOnCredits })
+            advanceUntilIdle()
+            state = own.state.value
+            assertEquals(
+                listOf("Your Gemini key (•••• wxyz) reads the bubbles.", "The platform's key voices the lines, paid in credits."),
+                state.keyLines,
+            )
             assertNull(state.keyWarning)
         }
 

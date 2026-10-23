@@ -12,12 +12,15 @@ import com.vovoscan.feature.account.domain.ProviderKeysRepository
 import com.vovoscan.feature.account.domain.ReadingModel
 import com.vovoscan.feature.account.domain.ReadingSettingsRepository
 import com.vovoscan.feature.account.domain.SERIES_MODES_UNSUPPORTED
+import com.vovoscan.feature.account.domain.TEXT_ORDER_UNSUPPORTED
 import com.vovoscan.feature.account.domain.UnitType
 import com.vovoscan.feature.account.domain.Usage
 import com.vovoscan.feature.account.domain.UsageEntry
 import com.vovoscan.feature.account.domain.UsageRepository
 import com.vovoscan.feature.account.domain.UsageTotal
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 
 /**
@@ -30,6 +33,10 @@ class AccountRepositoryImpl(
 ) : ProviderKeysRepository,
     ReadingSettingsRepository,
     UsageRepository {
+    // The text providers' order, as the server last said it. In memory: it is read again with the reading settings, and
+    // changing it needs the network anyway.
+    private val textOrder = MutableStateFlow<List<Provider>?>(null)
+
     override fun observeKeys(): Flow<ProviderKeys?> = local.observeKeys()
 
     override suspend fun refreshKeys(): AppResult<Unit> = remote.keys().also { if (it is AppResult.Ok) local.saveKeys(it.value) }.map { }
@@ -63,7 +70,10 @@ class AccountRepositoryImpl(
         return AppResult.Ok(Unit)
     }
 
-    override suspend fun clearLocal() = local.clear()
+    override suspend fun clearLocal() {
+        textOrder.value = null
+        local.clear()
+    }
 
     // Reading model.
 
@@ -82,6 +92,7 @@ class AccountRepositoryImpl(
                         ?.let(ReadingModel::from)
                         ?.let { local.saveReadingModel(it) }
                     if (!stillPending) result.value.targetLanguage?.let { local.saveTargetLanguage(it) }
+                    result.value.textProviders?.let { textOrder.value = Provider.textOrder(it) }
                 }
             }.map { }
     }
@@ -137,6 +148,19 @@ class AccountRepositoryImpl(
         titleRef: String,
         mode: String?,
     ): AppResult<Unit> = remote.putSeriesMode(sourceKey, titleRef, mode)
+
+    override fun observeTextProviders(): Flow<List<Provider>?> = textOrder.asStateFlow()
+
+    override suspend fun setTextProviders(order: List<Provider>): AppResult<List<Provider>> {
+        val result = remote.setReadingSettings(textProviders = order.filter { it.text }.distinct().map { it.wire })
+        if (result !is AppResult.Ok) return result as AppResult.Err
+        // A server that answers without the field does not keep an order.
+        val saved =
+            result.value.textProviders?.let(Provider::textOrder)
+                ?: return AppResult.Err(AppError.Rejected(TEXT_ORDER_UNSUPPORTED, ""))
+        textOrder.value = saved
+        return AppResult.Ok(saved)
+    }
 
     // The current model goes with it: a server without `targetLanguage` (it requires `ocrModel` and ignores the rest)
     // takes the request, a newer one keeps both.
