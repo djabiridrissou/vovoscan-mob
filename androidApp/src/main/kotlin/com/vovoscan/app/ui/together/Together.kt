@@ -144,7 +144,7 @@ fun TogetherButton(
         horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         val ink = if (inCircle) Brand.Ink else Brand.Paper
-        Text(state.buttonLabel, style = MaterialTheme.typography.labelLarge.copy(color = ink))
+        Text(state.buttonLabel, style = MaterialTheme.typography.labelLarge.copy(color = ink), maxLines = 1, softWrap = false)
         state.circle?.stamps?.size?.takeIf { it > 0 }?.let {
             Text("$it", style = MaterialTheme.typography.labelSmall.copy(color = ink, fontWeight = FontWeight.Bold))
         }
@@ -602,12 +602,16 @@ private fun Hanko(
     }
 }
 
-/** The rail at the right edge: one dot per reader at their place in the chapter; tap a dot to go there. */
+/**
+ * The rail at the right edge: one dot per reader at their place in the chapter; tap a dot to go there. Only with the
+ * bars ([interactive]): hidden bars leave every tap to the page, so a tap meant to show them never lands on a dot.
+ */
 @Composable
 fun TogetherRail(
     state: TogetherUiState,
     send: (TogetherIntent) -> Unit,
     modifier: Modifier = Modifier,
+    interactive: Boolean = true,
 ) {
     val rail = state.circle?.rail.orEmpty()
     if (rail.isEmpty()) return
@@ -627,7 +631,7 @@ fun TogetherRail(
                 Modifier
                     .offset(y = track * dot.share)
                     .size(44.dp)
-                    .clickable { send(TogetherIntent.JumpTo(dot.userId)) },
+                    .then(if (interactive) Modifier.clickable { send(TogetherIntent.JumpTo(dot.userId)) } else Modifier),
                 contentAlignment = Alignment.Center,
             ) {
                 Box(

@@ -45,6 +45,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.vovoscan.app.ui.common.BrandField
+import com.vovoscan.app.ui.common.CreditChip
 import com.vovoscan.app.ui.common.ErrorText
 import com.vovoscan.app.ui.common.GhostButton
 import com.vovoscan.app.ui.common.Kicker
@@ -102,7 +103,11 @@ fun EpisodeScreen(
     ) {
         item {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                GhostButton(I18n.text("common.backArrow"), onBack)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    GhostButton(I18n.text("common.backArrow"), onBack)
+                    Spacer(Modifier.weight(1f))
+                    CreditChip()
+                }
                 Kicker(I18n.text("episode.kicker"))
                 if (titleName.isNotEmpty()) Text(titleName, style = MaterialTheme.typography.bodySmall)
                 if (chapterLabel.isNotEmpty()) Text(chapterLabel, style = MaterialTheme.typography.headlineSmall)
@@ -231,11 +236,10 @@ fun EpisodeLanguageSheet(
         containerColor = Brand.Ink2,
     ) {
         Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 20.dp, vertical = 8.dp)) {
-            Text(
-                I18n.text("episode.languageTitle"),
-                style = MaterialTheme.typography.titleMedium,
-                modifier = Modifier.padding(bottom = 8.dp),
-            )
+            Row(Modifier.padding(bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(I18n.text("episode.languageTitle"), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                CreditChip()
+            }
             BrandField(
                 label = I18n.text("common.search"),
                 value = query,
@@ -257,7 +261,10 @@ fun EpisodeLanguageSheet(
                     ) {
                         Column(Modifier.weight(1f)) {
                             Text(option.label, style = MaterialTheme.typography.bodyLarge.copy(color = Brand.Paper))
-                            Text(option.detail, style = MaterialTheme.typography.bodySmall)
+                            Text(
+                                option.detail,
+                                style = MaterialTheme.typography.bodySmall.copy(color = if (option.ready) Brand.Yellow else Brand.Muted),
+                            )
                         }
                         if (option.selected) Text("✓", style = MaterialTheme.typography.titleMedium.copy(color = Brand.Red))
                     }

@@ -955,5 +955,10 @@
   "sticker.kusu": "Drôle",
   "sticker.gaan": "Stupeur",
   "sticker.kira": "Dessin superbe",
-  "sticker.shiin": "Sans voix"
+  "sticker.shiin": "Sans voix",
+  "translation.readyFree": "Prête ✦ gratuite",
+  "translation.offer.shortBalance": "Celle-ci demande environ {credits, plural, one {# crédit} other {# crédits}} et vous avez {balance, plural, one {# crédit} other {# crédits}}. Ajoutez votre propre clé Anthropic (sans crédits), ou demandez une recharge au propriétaire.",
+  "episode.readyFree": "Prêt ✦ gratuit",
+  "episode.costShortBalance": "Crédits insuffisants : cette préparation demande {count, plural, one {# crédit} other {# crédits}} et vous avez {balance, plural, one {# crédit} other {# crédits}}. Ajoutez vos propres clés (sans crédits), ou demandez une recharge au propriétaire.",
+  "wallet.badgeA11y": "Vos crédits : {balance}"
 }

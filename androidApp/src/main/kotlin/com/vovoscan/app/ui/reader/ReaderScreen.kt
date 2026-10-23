@@ -505,7 +505,7 @@ fun ReaderScreen(
         // The circle over the page: the rail, the bursts, the toast, and the dock (with the bars, or while a line is
         // typed, or folded to its stamps).
         if (togetherState?.circle != null) {
-            TogetherRail(togetherState, sendTogether, Modifier.align(Alignment.CenterEnd))
+            TogetherRail(togetherState, sendTogether, Modifier.align(Alignment.CenterEnd), interactive = state.chromeVisible)
             TogetherBursts(togetherState)
             TogetherToast(
                 togetherState,

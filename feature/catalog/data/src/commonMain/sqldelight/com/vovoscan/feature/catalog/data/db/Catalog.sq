@@ -158,6 +158,9 @@ SELECT * FROM title WHERE source_key = ? AND id = ?;
 chaptersOf:
 SELECT * FROM chapter WHERE source_key = ? AND title_id = ? ORDER BY number DESC;
 
+chaptersById:
+SELECT * FROM chapter WHERE source_key = ? AND id = ?;
+
 deleteChaptersOf:
 DELETE FROM chapter WHERE source_key = ? AND title_id = ?;
 

@@ -51,10 +51,15 @@ class TranslationViewModelTest {
 
     private class Imports(
         val result: AppResult<ImportedChapter> = AppResult.Ok(ImportedChapter("title-1", "server-1", ImportStatus.Ready, 18)),
+        val existing: ImportedChapter? = null,
     ) : ChapterImports {
         val asked = mutableListOf<SourceUnit>()
+        var finds = 0
 
-        override suspend fun find(unit: SourceUnit): ImportedChapter? = null
+        override suspend fun find(unit: SourceUnit): ImportedChapter? {
+            finds += 1
+            return existing
+        }
 
         override suspend fun import(unit: SourceUnit): AppResult<ImportedChapter> {
             asked += unit
@@ -161,7 +166,7 @@ class TranslationViewModelTest {
             val options = vm.state.value.options
             assertNull(options[0].code)
             assertEquals("fr", options[1].code)
-            assertEquals("Ready", options[1].statusLabel)
+            assertEquals("Ready ✦ free", options[1].statusLabel)
             vm.onIntent(TranslationIntent.Choose("fr"))
             advanceUntilIdle()
             assertEquals(0, repo.requests)
@@ -343,6 +348,118 @@ class TranslationViewModelTest {
             advanceUntilIdle()
             assertNull(vm.state.value.dock)
             assertTrue(vm.state.value.translated)
+        }
+
+    @Test
+    fun madeLanguagesComeFirstThenThoseBeingMade() =
+        runTest(dispatcher) {
+            val repo =
+                FakeTranslations(
+                    languages =
+                        listOf(
+                            ChapterTranslation("yo", TranslationStatus.Running, 30),
+                            ChapterTranslation("fr", TranslationStatus.Ready, null),
+                        ),
+                )
+            val vm = TranslationViewModel("vovoscan", "c1", repo)
+            advanceUntilIdle()
+            val codes =
+                vm.state.value.options
+                    .map { it.code }
+            assertEquals(listOf(null, "fr", "yo"), codes.take(3))
+            assertTrue(
+                vm.state.value.options[1]
+                    .ready,
+            )
+        }
+
+    @Test
+    fun aSourcesChapterAlreadyOnTheServerListsItsLanguagesOnceThePickerOpens() =
+        runTest(dispatcher) {
+            val repo = FakeTranslations(languages = listOf(ChapterTranslation("fr", TranslationStatus.Ready, null)))
+            val imports = Imports(existing = ImportedChapter("title-1", "server-1", ImportStatus.Ready, 18))
+            val vm = TranslationViewModel("inkwell", "u3", repo, titleId = "t9", imports = imports)
+            advanceUntilIdle()
+            // Reading alone tells the server nothing.
+            assertEquals(0, imports.finds)
+            vm.onIntent(TranslationIntent.PickerOpened)
+            advanceUntilIdle()
+            assertEquals(1, imports.finds)
+            assertEquals(
+                "fr",
+                vm.state.value.options[1]
+                    .code,
+            )
+            // Opening the picker again asks nothing more; nothing was imported.
+            vm.onIntent(TranslationIntent.PickerOpened)
+            advanceUntilIdle()
+            assertEquals(1, imports.finds)
+            assertTrue(imports.asked.isEmpty())
+            // A made language opens on the copy at once, free.
+            vm.onIntent(TranslationIntent.Choose("fr"))
+            advanceUntilIdle()
+            assertEquals(0, repo.requests)
+            assertEquals(TranslatedCopy("title-1", "server-1", "fr", 18), vm.state.value.openCopy)
+        }
+
+    @Test
+    fun aWalletShortOfTheCostSaysWhatIsNeededAndHeldAndLeadsToTheKeys() =
+        runTest(dispatcher) {
+            val repo = FakeTranslations()
+            var changes = 0
+            val quotes =
+                object : TranslationQuotes {
+                    override suspend fun quote(
+                        chapterId: String,
+                        lang: String,
+                    ) = TranslationQuote(12, 15, false, false, fundable = false, balance = 3)
+
+                    override fun changed() {
+                        changes += 1
+                    }
+                }
+            val vm = TranslationViewModel("vovoscan", "c1", repo, quotes)
+            advanceUntilIdle()
+            vm.onIntent(TranslationIntent.Choose("yo"))
+            advanceUntilIdle()
+            val dock = assertNotNull(vm.state.value.dock)
+            assertEquals(
+                "This one needs about 15 credits and you have 3 credits. Add your own Anthropic key (no credits needed), or ask the owner for a top-up.",
+                dock.line,
+            )
+            assertNull(dock.confirmLabel)
+            assertEquals("Add a key", dock.addKeyLabel)
+            assertEquals(0, repo.requests)
+            assertEquals(0, changes)
+        }
+
+    @Test
+    fun aRunAskedForAndFinishedReadsTheWalletAgain() =
+        runTest(dispatcher) {
+            val repo = FakeTranslations()
+            repo.requestResult = AppResult.Ok(ChapterTranslation("ee", TranslationStatus.Queued, null))
+            var changes = 0
+            val quotes =
+                object : TranslationQuotes {
+                    override suspend fun quote(
+                        chapterId: String,
+                        lang: String,
+                    ) = TranslationQuote(5, 5, false, false, true, balance = 40)
+
+                    override fun changed() {
+                        changes += 1
+                    }
+                }
+            val vm = TranslationViewModel("vovoscan", "c1", repo, quotes)
+            advanceUntilIdle()
+            vm.onIntent(TranslationIntent.Choose("ee"))
+            advanceUntilIdle()
+            vm.onIntent(TranslationIntent.ConfirmOffer)
+            advanceTimeBy(100)
+            assertEquals(1, changes)
+            repo.languages = listOf(ChapterTranslation("ee", TranslationStatus.Ready, null))
+            advanceUntilIdle()
+            assertEquals(2, changes)
         }
 
     private inner class FakeTranslations(

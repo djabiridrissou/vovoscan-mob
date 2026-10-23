@@ -39,6 +39,7 @@ enum CircleInk {
 /// "Together" in the reader's top bar: the sheet (read together, join with a code), or the ticket once in a circle.
 struct TogetherButton: View {
     @ObservedObject var together: TogetherModel
+    @Environment(\.horizontalSizeClass) private var sizeClass
 
     var body: some View {
         let inCircle = together.state.circle != nil
@@ -46,12 +47,9 @@ struct TogetherButton: View {
             Haptics.select()
             together.send(TogetherIntentOpenSheet.shared)
         } label: {
-            HStack(spacing: 4) {
-                Text(together.state.buttonLabel).font(.brandDisplay(13))
-                if let count = together.state.circle?.stamps.count, count > 0 {
-                    Text("\(count)").font(.brandBody(11, weight: .bold))
-                }
-            }
+            // The word on a wide bar (iPad, landscape), the icon alone on a phone's crowded one: never a label broken
+            // one letter a line.
+            pill(word: sizeClass == .regular)
             .foregroundStyle(inCircle ? Color.brandInk : Color.brandPaper)
             .padding(.horizontal, 12)
             .frame(minHeight: 34)
@@ -62,6 +60,20 @@ struct TogetherButton: View {
         }
         .accessibilityLabel(together.state.buttonLabel)
         .accessibilityIdentifier("reader.together")
+    }
+
+    private func pill(word: Bool) -> some View {
+        HStack(spacing: 4) {
+            if word {
+                Text(together.state.buttonLabel).font(.brandDisplay(13)).lineLimit(1)
+            } else {
+                Image(systemName: "person.2.fill").font(.system(size: 13, weight: .bold))
+            }
+            if let count = together.state.circle?.stamps.count, count > 0 {
+                Text("\(count)").font(.brandBody(11, weight: .bold)).lineLimit(1)
+            }
+        }
+        .fixedSize()
     }
 }
 
@@ -385,6 +397,9 @@ struct Hanko: View {
 /// The rail at the right edge: one dot per reader at their place in the chapter; tap a dot to go there.
 struct TogetherRail: View {
     @ObservedObject var together: TogetherModel
+    /// With the bars only: hidden bars leave every tap to the page, so a tap near the edge meant to show them never
+    /// lands on a reader's dot and moves the strip (a host was sent back to the top of page 1).
+    var interactive = true
 
     var body: some View {
         if let circle = together.state.circle, !circle.rail.isEmpty {
@@ -401,6 +416,7 @@ struct TogetherRail: View {
                                 .contentShape(Rectangle())
                         }
                         .offset(y: CGFloat(dot.share) * max(area.size.height - 44, 0))
+                        .allowsHitTesting(interactive)
                         .accessibilityHidden(true)
                     }
                 }

@@ -75,7 +75,8 @@ fun LanguageDock(
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             if (content.busy) CircularProgressIndicator(Modifier.size(16.dp), color = Brand.Cyan, strokeWidth = 2.dp)
-            Text(content.title, style = MaterialTheme.typography.titleMedium.copy(color = Brand.Paper))
+            Text(content.title, style = MaterialTheme.typography.titleMedium.copy(color = Brand.Paper), modifier = Modifier.weight(1f))
+            CreditChip()
         }
         content.line?.let {
             val warning = content.failed || (content.confirmLabel == null && content.addKeyLabel != null)

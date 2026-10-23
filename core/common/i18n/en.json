@@ -955,5 +955,10 @@
   "sticker.kusu": "Funny",
   "sticker.gaan": "Shock",
   "sticker.kira": "Gorgeous art",
-  "sticker.shiin": "Speechless"
+  "sticker.shiin": "Speechless",
+  "translation.readyFree": "Ready ✦ free",
+  "translation.offer.shortBalance": "This one needs about {credits, plural, one {# credit} other {# credits}} and you have {balance, plural, one {# credit} other {# credits}}. Add your own Anthropic key (no credits needed), or ask the owner for a top-up.",
+  "episode.readyFree": "Ready ✦ free",
+  "episode.costShortBalance": "Not enough credits: this run needs {count, plural, one {# credit} other {# credits}} and you have {balance, plural, one {# credit} other {# credits}}. Add your own keys (no credits needed), or ask the owner for a top-up.",
+  "wallet.badgeA11y": "Your credits: {balance}"
 }

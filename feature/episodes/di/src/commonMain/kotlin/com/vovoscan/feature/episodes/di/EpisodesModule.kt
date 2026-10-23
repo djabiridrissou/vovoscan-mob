@@ -12,6 +12,7 @@ import com.vovoscan.feature.episodes.data.KtorEpisodesRemoteDataSource
 import com.vovoscan.feature.episodes.data.SqlEpisodesLocalDataSource
 import com.vovoscan.feature.episodes.data.db.EpisodesDatabase
 import com.vovoscan.feature.episodes.domain.EpisodesRepository
+import com.vovoscan.feature.episodes.domain.MadeEpisodeLanguages
 import com.vovoscan.feature.episodes.presentation.EpisodeViewModel
 import com.vovoscan.feature.episodes.presentation.PlayerViewModel
 import org.koin.core.module.dsl.viewModel
@@ -42,6 +43,7 @@ val episodesModule =
                 sourceKey = params.values.getOrNull(2) as String? ?: INTERNAL_SOURCE_KEY,
                 titleId = params.values.getOrNull(3) as String? ?: "",
                 imports = getOrNull() ?: ChapterImports.None,
+                made = getOrNull() ?: MadeEpisodeLanguages.None,
             )
         }
         // The next chapter (optional) comes from the screen that opens the player: the reader or the title page know it.

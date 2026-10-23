@@ -61,7 +61,11 @@ struct TitleView: View {
                         Button(L("common.tryAgain")) { model.refresh() }.buttonStyle(GhostButtonStyle())
                     }
                     Text(model.state.name).font(.brandDisplay(26)).foregroundStyle(Color.brandPaper)
-                    Text(model.state.meta).font(.brandBody(13)).foregroundStyle(Color.brandMuted)
+                    HStack(spacing: 8) {
+                        Text(model.state.meta).font(.brandBody(13)).foregroundStyle(Color.brandMuted)
+                        Spacer(minLength: 0)
+                        CreditChip()
+                    }
                     if model.state.ratingLine != nil || model.state.favoriteLine != nil {
                         MarkLines(rating: model.state.ratingLine, favorite: model.state.favoriteLine)
                             .accessibilityElement(children: .ignore)

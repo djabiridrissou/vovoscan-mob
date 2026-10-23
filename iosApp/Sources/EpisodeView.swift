@@ -78,6 +78,7 @@ struct EpisodeView: View {
         .toolbarBackground(.visible, for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
         .toolbar {
+            ToolbarItem(placement: .primaryAction) { CreditChip() }
             if inSheet {
                 ToolbarItem(placement: .cancellationAction) {
                     Button(L("common.close")) { dismiss() }
@@ -290,7 +291,8 @@ struct EpisodeLanguageList: View {
                         HStack(spacing: 12) {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(option.label).font(.brandBody(16, weight: .bold)).foregroundStyle(Color.brandPaper)
-                                Text(option.detail).font(.brandBody(13)).foregroundStyle(Color.brandMuted)
+                                Text(option.detail).font(.brandBody(13))
+                                    .foregroundStyle(option.ready ? Color.brandYellow : Color.brandMuted)
                             }
                             Spacer()
                             if option.selected { Image(systemName: "checkmark").foregroundStyle(Color.brandRed) }
@@ -309,6 +311,7 @@ struct EpisodeLanguageList: View {
             .navigationTitle(L("episode.languageTitle"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) { CreditChip() }
                 ToolbarItem(placement: .confirmationAction) { Button(L("common.done")) { dismiss() } }
             }
         }

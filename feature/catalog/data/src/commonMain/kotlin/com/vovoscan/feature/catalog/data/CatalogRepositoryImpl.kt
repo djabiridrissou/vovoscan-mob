@@ -174,6 +174,11 @@ class CatalogRepositoryImpl(
         id: String,
     ): Flow<TitleDetail?> = local.observeDetail(sourceKey, id)
 
+    override fun observeEpisodeLanguages(
+        sourceKey: String,
+        chapterId: String,
+    ): Flow<Set<String>> = local.observeEpisodeLanguages(sourceKey, chapterId)
+
     override suspend fun refreshTitle(
         sourceKey: String,
         id: String,

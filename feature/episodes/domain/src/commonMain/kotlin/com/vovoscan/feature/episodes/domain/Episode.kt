@@ -235,6 +235,8 @@ data class RunCost(
     val metered: Set<String>? = null,
     /** Providers nobody pays for: that step is skipped (bubbles unread, lines silent); null: not said. */
     val unfunded: Set<String>? = null,
+    /** The wallet's balance when quoted; null when unknown (no wallet read). */
+    val balance: Long? = null,
 ) {
     /** Who runs [provider] when the account has no key for it. Never inferred from a zero charge. */
     fun funding(provider: String): ProviderFunding =
@@ -270,6 +272,9 @@ fun interface RunQuotes {
         chapterId: String,
         lang: String,
     ): RunCost?
+
+    /** A run was asked for, finished or refused: the balance may have moved (the wallet reads it again). */
+    fun changed() {}
 
     companion object {
         val None = RunQuotes { _, _ -> null }
@@ -337,4 +342,20 @@ interface EpisodesRepository {
     ): AppResult<EpisodeExport>
 
     suspend fun clearLocal()
+}
+
+/**
+ * The languages a chapter's episode is already made in ("" = the original), as the title page last read them from the
+ * server: the card's picker lists them first (free to watch). A port wired by the app to the catalog.
+ */
+fun interface MadeEpisodeLanguages {
+    /** [chapterId]: the chapter's id at its source ([sourceKey]). */
+    fun observe(
+        sourceKey: String,
+        chapterId: String,
+    ): Flow<Set<String>>
+
+    companion object {
+        val None = MadeEpisodeLanguages { _, _ -> flowOf(emptySet()) }
+    }
 }

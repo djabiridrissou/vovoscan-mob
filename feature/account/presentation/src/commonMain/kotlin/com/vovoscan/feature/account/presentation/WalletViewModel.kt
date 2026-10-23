@@ -27,6 +27,10 @@ data class WalletUiState(
     /** The daily limit or an empty wallet (without own keys); null when a run can go. */
     val warning: String? = null,
     val empty: Boolean = false,
+    /** The balance chip shown on the reading screens: "1,240 credits". Empty until the wallet was read. */
+    val badge: String = "",
+    /** "Your credits: 1,240 credits" for screen readers. */
+    val badgeA11y: String = "",
     val loading: Boolean = false,
     val offline: Boolean = false,
     val error: String? = null,
@@ -36,7 +40,10 @@ sealed interface WalletIntent {
     data object Refresh : WalletIntent
 }
 
-/** The credits card in Settings: the balance, what spends it, and why a run on the platform's keys would wait. */
+/**
+ * The credits card in Settings, and the balance chip of the title page, the reader and the episode card: one wallet,
+ * read when a screen opens it and again whenever this device asks for, finishes or is refused a paid run.
+ */
 class WalletViewModel(
     private val repository: WalletRepository,
 ) : ViewModel() {
@@ -85,6 +92,8 @@ class WalletViewModel(
         shown = true,
         balanceLabel = AccountText.grouped(wallet.balanceCredits.toDouble(), 0),
         unitLabel = WalletText.unit(wallet.balanceCredits),
+        badge = WalletText.badge(wallet.balanceCredits),
+        badgeA11y = t("wallet.badgeA11y", "balance" to WalletText.badge(wallet.balanceCredits)),
         empty = wallet.balanceCredits <= 0 && !wallet.usesOwnKeys,
         explainer = if (wallet.usesOwnKeys) WalletText.OWN_KEYS else WalletText.EXPLAINER,
         warning =
@@ -106,4 +115,7 @@ object WalletText {
 
     /** "credit" / "credits" after the balance (French puts 0 and 1 in the singular). */
     fun unit(balance: Long): String = t("wallet.unit", "count" to balance)
+
+    /** "1,240 credits". */
+    fun badge(balance: Long): String = "${AccountText.grouped(balance.toDouble(), 0)} ${unit(balance)}"
 }

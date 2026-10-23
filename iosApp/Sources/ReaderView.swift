@@ -192,7 +192,7 @@ struct ReaderView: View {
     /// typed, or folded to its stamps).
     @ViewBuilder private var togetherLayers: some View {
         let state: TogetherUiState = together.state
-        TogetherRail(together: together).zIndex(0.4)
+        TogetherRail(together: together, interactive: model.state.chromeVisible).zIndex(0.4)
         TogetherBursts(together: together).zIndex(0.55)
         TogetherToast(together: together)
             .padding(.top, model.state.chromeVisible ? 64 : 8)

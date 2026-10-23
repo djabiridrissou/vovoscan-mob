@@ -649,7 +649,7 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
 - Languages (`?lang=` on every episode call, "" = the original; `EpisodeDto.language`, `audio` `dub | sub`): the card
   has a searchable language picker (`EpisodeIntent.ChooseLanguage`, `LanguageQuery`; `Language.ALL` in `core/common`,
   the server's `core/languages.py` with its `dub` / `mp4` / `beta` flags): "Dubbed" when ElevenLabs speaks it, else
-  "Subtitled" (the original voices, captions in it). Each language is its own episode, stored under `<chapterId>~<lang>`
+  "Subtitled" (the original voices, captions in it). Languages already made (the chapter's `episode_languages` in the catalog, `MadeEpisodeLanguages` port) come first, marked "Ready ✦ free". Each language is its own episode, stored under `<chapterId>~<lang>`
   (`storeKey`; the original keeps the bare chapter id), quoted with its `lang`, run with a TRANSLATE stage
   (`translating`). The player opens in the card's `language`, and "Next chapter →" opens the next card in it.
 
@@ -698,6 +698,11 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   credits" when the wallet can't hold `maxCredits`).
   Errors: `402 INSUFFICIENT_CREDITS`, `503 PLATFORM_PAUSED`, `429 DAILY_CAP` (kept as `Rejected`, not a rate limit,
   by `errorOf`), each with a calm line (`EpisodeText.creditError`). `WalletViewModel` = the credits card in Settings.
+  The same wallet feeds the balance chip (`WalletUiState.badge`, iOS `CreditChip` in `Components.swift`, Android
+  `ui/common/CreditChip.kt`) on the title page, the episode card, both language pickers and the language dock (reader
+  and player); red when empty. Quotes carry the balance (`TranslationQuote.balance`, `RunCost.balance`): short of the
+  price, the offer says what it costs and what is held ("About 12 credits, you have 3.") with "Add a key"; every quote,
+  run asked, run finished or credit refusal reads the wallet again (`changed()` on the quote ports), so every chip moves.
 - The creator studio is web only: Settings links to `WEB_BASE_URL` + `contribute` (`project.yml`), "Creator studio"
   for creators, "Publish your own series" otherwise. The apps never upload, translate or schedule releases.
 - A new account has no source turned on (the official one starts hidden): `SourcesUiState.needsSource` (no source, or
@@ -720,7 +725,7 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
 ## Translated reader (`TranslationViewModel`, iOS `TranslationViews.swift`, Android `ui/reader/{Lettering,TranslationSheet}.kt`)
 
 - Any comic chapter: a language button in the reader's top bar opens a searchable picker (own name, English name or
-  code), languages already made first ("Ready": shared, free). A chapter of a source read on the device is brought to
+  code), languages already made first ("Ready ✦ free": shared, free; a source's chapter already on the server is looked up when the picker opens, `TranslationIntent.PickerOpened`), those being made next. A chapter of a source read on the device is brought to
   the server first (see "Chapters of a source on the server"); once translated, its server copy (a strip may be re-cut
   there, so the lettering never lands on the device's pages) replaces the reader in that language at the same share of
   the chapter (`TranslationUiState.openCopy`, `TranslatedCopy.startPage`, `CopyOpened`; Android `onOpenCopy`, iOS

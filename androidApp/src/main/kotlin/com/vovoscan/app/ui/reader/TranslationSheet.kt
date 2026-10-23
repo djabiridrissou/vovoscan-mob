@@ -19,6 +19,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -27,6 +28,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.vovoscan.app.ui.common.AppIcons
 import com.vovoscan.app.ui.common.BrandField
+import com.vovoscan.app.ui.common.CreditChip
 import com.vovoscan.app.ui.settings.KeysScreen
 import com.vovoscan.app.ui.theme.Brand
 import com.vovoscan.core.common.i18n.I18n
@@ -79,6 +81,8 @@ fun TranslationSheet(
     onIntent: (TranslationIntent) -> Unit,
     onDismiss: () -> Unit,
 ) {
+    // A source's chapter already on the server lists its made languages first.
+    LaunchedEffect(Unit) { onIntent(TranslationIntent.PickerOpened) }
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
@@ -91,7 +95,14 @@ fun TranslationSheet(
         ) {
             item {
                 Column(Modifier.padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text(I18n.text("translation.languageTitle"), style = MaterialTheme.typography.titleLarge)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            I18n.text("translation.languageTitle"),
+                            style = MaterialTheme.typography.titleLarge,
+                            modifier = Modifier.weight(1f),
+                        )
+                        CreditChip()
+                    }
                     BrandField(I18n.text("common.searchLanguage"), state.query, { onIntent(TranslationIntent.Query(it)) })
                 }
             }

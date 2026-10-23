@@ -212,6 +212,12 @@ interface CatalogRepository {
         id: String,
     ): Flow<TitleDetail?>
 
+    /** The languages a chapter's episode is made in ("" = the original), as its title page last said; empty unknown. */
+    fun observeEpisodeLanguages(
+        sourceKey: String,
+        chapterId: String,
+    ): Flow<Set<String>> = flowOf(emptySet())
+
     suspend fun refreshTitle(
         sourceKey: String,
         id: String,

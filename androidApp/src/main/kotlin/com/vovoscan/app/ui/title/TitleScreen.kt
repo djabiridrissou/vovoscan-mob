@@ -33,6 +33,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
+import com.vovoscan.app.ui.common.CreditChip
 import com.vovoscan.app.ui.common.EpisodeBadge
 import com.vovoscan.app.ui.common.ErrorText
 import com.vovoscan.app.ui.common.GhostButton
@@ -118,7 +119,10 @@ fun TitleScreen(
                 state.error?.let { ErrorText(it) }
                 if (state.unavailable && state.canRetry) GhostButton(I18n.text("common.tryAgain"), detail::refresh)
                 Text(state.name, style = MaterialTheme.typography.headlineSmall)
-                Text(state.meta, style = MaterialTheme.typography.bodySmall)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(state.meta, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+                    CreditChip()
+                }
                 MarkLines(
                     state.ratingLine,
                     state.favoriteLine,

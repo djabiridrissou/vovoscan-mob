@@ -18,6 +18,7 @@ import com.vovoscan.feature.catalog.domain.TitleSummary
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.builtins.ListSerializer
@@ -93,6 +94,12 @@ interface CatalogLocalDataSource {
     ): Map<String, String>
 
     fun observeCategories(sourceKey: String): Flow<List<SourceCategory>>
+
+    /** The episode languages saved with a chapter (any title of [sourceKey] holding it). */
+    fun observeEpisodeLanguages(
+        sourceKey: String,
+        chapterId: String,
+    ): Flow<Set<String>>
 
     suspend fun saveCategories(
         sourceKey: String,
@@ -269,6 +276,17 @@ class SqlCatalogLocalDataSource(
                 if (filter.episodesOnly) queries.putSetting(EPISODES, "1") else queries.deleteSetting(EPISODES)
             }
         }
+
+    override fun observeEpisodeLanguages(
+        sourceKey: String,
+        chapterId: String,
+    ): Flow<Set<String>> =
+        queries
+            .chaptersById(sourceKey, chapterId)
+            .asFlow()
+            .mapToList(io)
+            .map { rows -> rows.flatMap { decodeLanguages(it.episode_languages) }.toSet() }
+            .distinctUntilChanged()
 
     override fun observeNewestFirst(): Flow<Boolean> =
         queries

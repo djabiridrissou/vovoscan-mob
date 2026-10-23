@@ -48,6 +48,7 @@ object EpisodeText {
     // Languages (`?lang=`): the original, or the episode dubbed / subtitled in another language.
     val ORIGINAL: String get() = t("episode.original")
     val ORIGINAL_DETAIL: String get() = t("episode.originalDetail")
+    val READY_FREE: String get() = t("episode.readyFree")
     val DUBBED: String get() = t("episode.dubbed")
     val SUBTITLED: String get() = t("episode.subtitled")
     val BETA: String get() = t("episode.beta")
@@ -138,7 +139,9 @@ object EpisodeText {
             cost.alreadyAvailable -> t("episode.costAlreadyMade")
             cost.coveredByOwnKeys -> t("episode.costOwnKeys")
             !cost.meteredRun -> null
-            !cost.fundable -> t("episode.costShort", "count" to cost.maxCredits)
+            !cost.fundable ->
+                cost.balance?.let { t("episode.costShortBalance", "count" to cost.maxCredits, "balance" to it) }
+                    ?: t("episode.costShort", "count" to cost.maxCredits)
             else -> t("episode.costCredits", "count" to cost.credits)
         }
 

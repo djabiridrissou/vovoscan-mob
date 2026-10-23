@@ -20,6 +20,7 @@ import com.vovoscan.feature.episodes.domain.EpisodesRepository
 import com.vovoscan.feature.episodes.domain.ExportStatus
 import com.vovoscan.feature.episodes.domain.KeyStatus
 import com.vovoscan.feature.episodes.domain.KeyStatusProvider
+import com.vovoscan.feature.episodes.domain.MadeEpisodeLanguages
 import com.vovoscan.feature.episodes.domain.PipelineStage
 import com.vovoscan.feature.episodes.domain.PrepareResult
 import com.vovoscan.feature.episodes.domain.ProviderFunding
@@ -70,9 +71,11 @@ data class EpisodeLanguageOption(
     val code: String?,
     /** Own name ("Français"), or "Original". */
     val label: String,
-    /** "French ✦ Dubbed", "Ewe ✦ Subtitled ✦ beta". */
+    /** "French ✦ Dubbed", "Ready ✦ free ✦ French ✦ Dubbed" when it is already made. */
     val detail: String,
     val selected: Boolean,
+    /** Already made: watching it is free. These rows come first. */
+    val ready: Boolean = false,
 )
 
 /** A video to download now: a freshly signed link and the file's name. [id] changes with every request. */
@@ -232,9 +235,13 @@ class EpisodeViewModel(
     sourceKey: String = INTERNAL_SOURCE_KEY,
     titleId: String = "",
     private val imports: ChapterImports = ChapterImports.None,
+    made: MadeEpisodeLanguages = MadeEpisodeLanguages.None,
 ) : ViewModel() {
     /** A chapter of a source read on the device: its pages are brought to the server first. Null for our own. */
     private val unit = SourceUnit(sourceKey, titleId, chapterId).takeUnless { it.internal }
+
+    /** The languages already made ("" = the original): first in the picker. */
+    private var madeLanguages: Set<String> = emptySet()
 
     /** Our chapter id: the chapter's own, or its copy on the server once brought in ("" until then). */
     private var chapterId = if (unit == null) chapterId else ""
@@ -270,6 +277,12 @@ class EpisodeViewModel(
 
     init {
         if (chapterId.isNotEmpty()) observe()
+        made
+            .observe(sourceKey, chapterId)
+            .onEach { languages ->
+                madeLanguages = languages
+                render()
+            }.launchIn(viewModelScope)
         keys
             .observe()
             .onEach { status ->
@@ -294,6 +307,8 @@ class EpisodeViewModel(
             repository
                 .observe(chapterId, lang)
                 .onEach { stored ->
+                    // A run that ends (made or failed) settles what the wallet held for it.
+                    if (episode?.inProgress == true && stored?.inProgress != true) quotes.changed()
                     episode = stored
                     render()
                     if (stored?.inProgress == true) follow()
@@ -459,8 +474,17 @@ class EpisodeViewModel(
                     mutableState.update { it.copy(notice = notice) }
                     // Queued, or someone else's run: follow it live. Already ready: nothing runs.
                     if (result.value !is PrepareResult.AlreadyReady) follow()
+                    if (result.value is PrepareResult.Queued) quotes.changed()
                 }
-                is AppResult.Err -> failed(result.error, refreshing = false)
+                is AppResult.Err -> {
+                    if (EpisodeText.creditError(result.error) != null) {
+                        quotes.changed()
+                        // The wallet moved since the quote: ask again, so the card says what is needed now.
+                        cost = null
+                        quote()
+                    }
+                    failed(result.error, refreshing = false)
+                }
             }
             render()
         }
@@ -641,12 +665,24 @@ class EpisodeViewModel(
     private fun EpisodeUiState.withLanguages(): EpisodeUiState {
         val chosen = Language.of(lang)
         val needle = query.trim().lowercase()
-        val original = EpisodeLanguageOption(null, EpisodeText.ORIGINAL, EpisodeText.ORIGINAL_DETAIL, chosen == null)
+        val original =
+            EpisodeLanguageOption(null, EpisodeText.ORIGINAL, EpisodeText.ORIGINAL_DETAIL, chosen == null, ready = "" in madeLanguages)
+        // Already made first (free to watch), then the rest, each group by name.
         val languages =
             Language.ALL
-                .sortedBy { it.name }
+                .sortedWith(compareBy<Language>({ it.code !in madeLanguages }, { it.name }))
                 .filter { needle.isEmpty() || it.matches(needle) }
-                .map { EpisodeLanguageOption(it.code, it.native, EpisodeText.languageDetail(it), it.code == lang) }
+                .map {
+                    val ready = it.code in madeLanguages
+                    val detail = EpisodeText.languageDetail(it)
+                    EpisodeLanguageOption(
+                        code = it.code,
+                        label = it.native,
+                        detail = if (ready) "${EpisodeText.READY_FREE} ✦ $detail" else detail,
+                        selected = it.code == lang,
+                        ready = ready,
+                    )
+                }
         val showOriginal = needle.isEmpty() || EpisodeText.ORIGINAL.lowercase().contains(needle)
         return copy(
             language = lang,

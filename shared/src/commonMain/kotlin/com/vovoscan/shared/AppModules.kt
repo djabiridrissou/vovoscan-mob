@@ -55,6 +55,7 @@ import com.vovoscan.feature.episodes.domain.EpisodeAccess
 import com.vovoscan.feature.episodes.domain.EpisodesRepository
 import com.vovoscan.feature.episodes.domain.KeyStatus
 import com.vovoscan.feature.episodes.domain.KeyStatusProvider
+import com.vovoscan.feature.episodes.domain.MadeEpisodeLanguages
 import com.vovoscan.feature.episodes.domain.RunCost
 import com.vovoscan.feature.episodes.domain.RunQuotes
 import com.vovoscan.feature.forum.di.forumModule
@@ -385,13 +386,38 @@ fun appModules(
                 }
             }
             // What a run would cost, from the account's credits wallet (a server without credits: no quote).
+            // The balance comes with it (read again with each quote), and every run asked for, finished or refused reads
+            // it again: the credits shown on every screen follow what this device spends.
             single<RunQuotes> {
                 val wallet = get<WalletRepository>()
-                RunQuotes { chapterId, lang ->
-                    (wallet.quote(QuoteKind.Episode, chapterId, lang.ifEmpty { null }) as? AppResult.Ok)?.value?.let {
-                        RunCost(it.credits, it.coveredByOwnKeys, it.alreadyAvailable, it.maxCredits, it.fundable, it.metered, it.unfunded)
+                val scope = get<CoroutineScope>()
+                object : RunQuotes {
+                    override suspend fun episode(
+                        chapterId: String,
+                        lang: String,
+                    ): RunCost? =
+                        (wallet.quote(QuoteKind.Episode, chapterId, lang.ifEmpty { null }) as? AppResult.Ok)?.value?.let {
+                            RunCost(
+                                it.credits,
+                                it.coveredByOwnKeys,
+                                it.alreadyAvailable,
+                                it.maxCredits,
+                                it.fundable,
+                                it.metered,
+                                it.unfunded,
+                                balance = wallet.balance(),
+                            )
+                        }
+
+                    override fun changed() {
+                        scope.launch { wallet.refreshWallet() }
                     }
                 }
+            }
+            // The languages an episode is made in, as the title page last read them: first in the card's picker.
+            single<MadeEpisodeLanguages> {
+                val catalog = get<CatalogRepository>()
+                MadeEpisodeLanguages { sourceKey, chapterId -> catalog.observeEpisodeLanguages(sourceKey, chapterId) }
             }
             // Translating or voicing a chapter of a source read on the device: its pages are copied to the server first,
             // read there in the same `{{lang}}` as on the device (a language the server doesn't take reads in English).
@@ -446,9 +472,25 @@ fun appModules(
             // What translating a chapter would cost (the reader's language picker quotes before paying).
             single<TranslationQuotes> {
                 val wallet = get<WalletRepository>()
-                TranslationQuotes { chapterId, lang ->
-                    (wallet.quote(QuoteKind.Translation, chapterId, lang) as? AppResult.Ok)?.value?.let {
-                        TranslationQuote(it.credits, it.maxCredits, it.coveredByOwnKeys, it.alreadyAvailable, it.fundable)
+                val scope = get<CoroutineScope>()
+                object : TranslationQuotes {
+                    override suspend fun quote(
+                        chapterId: String,
+                        lang: String,
+                    ): TranslationQuote? =
+                        (wallet.quote(QuoteKind.Translation, chapterId, lang) as? AppResult.Ok)?.value?.let {
+                            TranslationQuote(
+                                it.credits,
+                                it.maxCredits,
+                                it.coveredByOwnKeys,
+                                it.alreadyAvailable,
+                                it.fundable,
+                                wallet.balance(),
+                            )
+                        }
+
+                    override fun changed() {
+                        scope.launch { wallet.refreshWallet() }
                     }
                 }
             }
@@ -515,3 +557,6 @@ private class AccountKeyStatus(
 /** The route isn't on this server (an older one): 404 / 405 with the framework's generic code. */
 private fun AppError.isMissingRoute(): Boolean =
     (this as? AppError.Rejected)?.code in setOf("NOT_FOUND", "METHOD_NOT_ALLOWED") || (this is AppError.Unknown && detail == "HTTP 404")
+
+/** The balance read now (each quote refreshes the wallet the screens show); null on a server without credits. */
+private suspend fun WalletRepository.balance(): Long? = (refreshWallet() as? AppResult.Ok)?.value?.balanceCredits
