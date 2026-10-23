@@ -140,7 +140,7 @@ object EpisodeText {
             cost.coveredByOwnKeys -> t("episode.costOwnKeys")
             // Nobody funds it yet: its price, and the keys that make it free (the contract's `unfunded` with a price).
             !cost.fundable && !cost.meteredRun && cost.maxCredits > 0 && !cost.unfunded.isNullOrEmpty() ->
-                unfundedLine(cost.unfunded, cost.maxCredits)
+                unfundedLine(cost.unfunded.orEmpty(), cost.maxCredits)
             !cost.meteredRun -> null
             // A price of 0 on an unfundable quote is no price (a server that leaves it out): the balance and what to do.
             !cost.fundable && cost.maxCredits <= 0 ->
