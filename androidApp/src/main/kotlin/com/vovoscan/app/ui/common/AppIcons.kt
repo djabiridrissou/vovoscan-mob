@@ -122,6 +122,17 @@ object AppIcons {
             .build()
     }
 
+    /** A book's contents: three entries, a dot and a line each. */
+    val Contents: ImageVector by lazy {
+        icon("Contents") {
+            for (y in listOf(6f, 12f, 18f)) {
+                circle(4.5f, y, 1.1f)
+                moveTo(8.5f, y)
+                lineTo(20.5f, y)
+            }
+        }
+    }
+
     private fun icon(
         name: String,
         draw: PathBuilder.() -> Unit,

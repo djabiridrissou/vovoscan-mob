@@ -5,11 +5,14 @@ import androidx.activity.compose.LocalActivity
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.AnimationState
+import androidx.compose.animation.core.DecayAnimationSpec
 import androidx.compose.animation.core.animate
-import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.animateDecay
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.rememberSplineBasedDecay
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
@@ -17,7 +20,11 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.ScrollableState
-import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculateCentroid
+import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.DragInteraction
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -46,16 +53,21 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.systemGestureExclusion
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -81,13 +93,18 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.key.utf16CodePoint
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerInputScope
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChange
+import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
@@ -97,8 +114,10 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.util.lerp
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -106,11 +125,15 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
+import coil3.memory.MemoryCache
+import coil3.request.CachePolicy
 import coil3.request.ImageRequest
 import coil3.request.allowHardware
 import coil3.size.Dimension
+import coil3.size.Precision
 import coil3.size.Size
 import com.vovoscan.app.MainActivity
+import com.vovoscan.app.ui.common.AppIcons
 import com.vovoscan.app.ui.common.ErrorText
 import com.vovoscan.app.ui.common.GhostButton
 import com.vovoscan.app.ui.common.HeartButton
@@ -135,10 +158,13 @@ import com.vovoscan.core.common.i18n.I18n
 import com.vovoscan.feature.forum.presentation.ForumViewModel
 import com.vovoscan.feature.forum.presentation.MarginIntent
 import com.vovoscan.feature.library.presentation.FollowViewModel
+import com.vovoscan.feature.reader.domain.PageZoom
 import com.vovoscan.feature.reader.domain.ReaderKey
 import com.vovoscan.feature.reader.domain.ReaderPage
 import com.vovoscan.feature.reader.domain.TallPages
 import com.vovoscan.feature.reader.domain.TapAction
+import com.vovoscan.feature.reader.domain.ZoomTransform
+import com.vovoscan.feature.reader.presentation.BookText
 import com.vovoscan.feature.reader.presentation.CoachGesture
 import com.vovoscan.feature.reader.presentation.NextActionKind
 import com.vovoscan.feature.reader.presentation.NextButton
@@ -164,6 +190,8 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import org.koin.compose.viewmodel.koinViewModel
 import org.koin.core.parameter.parametersOf
+import kotlin.math.abs
+import kotlin.math.roundToInt
 
 /**
  * Reader. Comics: paged (right to left, left to right, vertical) or a long strip (with or without gaps), tap zones
@@ -262,6 +290,7 @@ fun ReaderScreen(
         remember(translationState.available) {
             if (translationState.available) ReaderLanguageAction(translationState.endCardLabel) { languagesOpen = true } else null
         }
+    var contentsOpen by rememberSaveable { mutableStateOf(false) }
 
     // Keep the screen awake while reading (setting, on by default).
     val view = LocalView.current
@@ -395,6 +424,7 @@ fun ReaderScreen(
                     onIntent(ReaderIntent.SettingsOpened)
                     settingsOpen = true
                 },
+                { contentsOpen = true },
                 Modifier.align(Alignment.TopCenter),
                 onWatch = { onIntent(ReaderIntent.ReadWithVoice) },
                 onHelp = { onIntent(ReaderIntent.ShowCoach) },
@@ -517,6 +547,16 @@ fun ReaderScreen(
             onIntent(ReaderIntent.SettingsClosed)
         }
     }
+    // Books: their own settings (typography, page colours) and contents.
+    if (settingsOpen && state.isBook) {
+        BookSettingsSheet(state.book.settings, onIntent) {
+            settingsOpen = false
+            onIntent(ReaderIntent.SettingsClosed)
+        }
+    }
+    if (contentsOpen && state.isBook) {
+        BookContentsSheet(state.book.contents, onIntent) { contentsOpen = false }
+    }
 }
 
 /**
@@ -561,8 +601,9 @@ private fun TogetherEffects(
 }
 
 /**
- * Comic: the mode's layout under one tap detector. A drag, fling or pinch is not a tap (the scrolling layout
- * consumes it first). Double tap to zoom (off by default) makes single taps wait for a possible second tap.
+ * Comic: the mode's layout under one tap detector and the zoom (`ComicZoom`). A drag, fling or pinch is not a tap
+ * (the scrolling layout, or the zoom, consumes it first). Double tap to zoom (off by default) makes single taps wait
+ * for a possible second tap; pinching works either way.
  */
 @Composable
 private fun ComicReader(
@@ -570,41 +611,33 @@ private fun ComicReader(
     onIntent: (ReaderIntent) -> Unit,
 ) {
     var size by remember { mutableStateOf(IntSize.Zero) }
-    var zoomed by remember { mutableStateOf(false) }
-    var panX by remember { mutableFloatStateOf(0f) }
-    var panY by remember { mutableFloatStateOf(0f) }
-    val scale by animateFloatAsState(if (zoomed) ZOOM else 1f, label = "zoom")
-    val translationX by animateFloatAsState(if (zoomed) panX else 0f, label = "panX")
-    val translationY by animateFloatAsState(if (zoomed) panY else 0f, label = "panY")
-    // A new page or mode starts unzoomed.
-    LaunchedEffect(state.currentItem.takeIf { state.isPaged }, state.mode) { zoomed = false }
-    if (!state.doubleTapZoom && zoomed) zoomed = false
-
-    fun clampPan(
-        x: Float,
-        y: Float,
-    ) {
-        panX = x.coerceIn(size.width * (1 - ZOOM), 0f)
-        panY = y.coerceIn(size.height * (1 - ZOOM), 0f)
+    val zoom = remember { ComicZoom() }
+    val scope = rememberCoroutineScope()
+    val decay = rememberSplineBasedDecay<Float>()
+    // Another page (a volume key), a jump or another mode: back to 1× at once.
+    LaunchedEffect(state.zoomReset) { zoom.reset() }
+    LaunchedEffect(zoom) {
+        snapshotFlow { zoom.transform.zoomed }.distinctUntilChanged().collect { onIntent(ReaderIntent.ZoomChanged(it)) }
     }
+    val zoomed = zoom.transform.zoomed
+    // A margin tool armed (the page hatched): the finger is the mark's, never the zoom's.
+    val placing = LocalPageMargin.current?.state?.placing == true
 
     Box(
         Modifier
             .fillMaxSize()
             // Measured outside the zoom: taps are fractions of the reading area as the reader sees it.
             .onSizeChanged { size = it }
+            .pointerInput(placing) { if (!placing) zoomGestures(zoom, { size }, scope, decay) }
             .pointerInput(state.doubleTapZoom) {
                 detectTapGestures(
                     onDoubleTap =
                         if (state.doubleTapZoom) {
                             { point: Offset ->
-                                if (zoomed) {
-                                    zoomed = false
-                                } else {
-                                    // Zoom in around the finger: that point stays where it is.
-                                    clampPan(point.x * (1 - ZOOM), point.y * (1 - ZOOM))
-                                    zoomed = true
-                                }
+                                zoom.animateTo(
+                                    scope,
+                                    PageZoom.doubleTap(zoom.transform, point.x, point.y, size.width.toFloat(), size.height.toFloat()),
+                                )
                             }
                         } else {
                             null
@@ -615,42 +648,145 @@ private fun ComicReader(
                         }
                     },
                 )
-            }.then(
-                if (zoomed) {
-                    Modifier.pointerInput(Unit) {
-                        detectDragGestures { change, drag ->
-                            change.consume()
-                            clampPan(panX + drag.x, panY + drag.y)
-                        }
-                    }
-                } else {
-                    Modifier
-                },
-            ),
+            },
     ) {
         Box(
             Modifier
                 .fillMaxSize()
                 .graphicsLayer {
+                    val transform = zoom.transform
                     transformOrigin = TransformOrigin(0f, 0f)
-                    scaleX = scale
-                    scaleY = scale
-                    this.translationX = translationX
-                    this.translationY = translationY
+                    scaleX = transform.scale
+                    scaleY = transform.scale
+                    translationX = transform.x
+                    translationY = transform.y
                 },
         ) {
-            // A margin tool armed (the page hatched): a drag places the mark at once and never scrolls.
-            val placing = LocalPageMargin.current?.state?.placing == true
+            // Zoomed, or a margin tool armed (the page hatched: a drag places the mark at once): the pager or the
+            // strip stays still under the fingers.
             if (state.isPaged) {
-                PagedReader(
-                    state,
-                    onIntent,
-                    scrollEnabled = !zoomed && !placing,
-                )
+                PagedReader(state, onIntent, zoom, scrollEnabled = !zoomed && !placing)
             } else {
                 FlowStrip(state, onIntent, scrollEnabled = !zoomed && !placing)
             }
         }
+    }
+}
+
+/**
+ * The comic's zoom on screen (`PageZoom` decides where it goes): the transform drawn, and what a pan past the zoomed
+ * view's edge scrolls ([scrollTarget]: the strip, or the current tall page inside its page).
+ */
+@Stable
+private class ComicZoom {
+    var transform by mutableStateOf(PageZoom.None)
+    var scrollTarget: ScrollableState? = null
+    private var animation: Job? = null
+    private var fling: Job? = null
+
+    fun reset() {
+        stop()
+        transform = PageZoom.None
+    }
+
+    /** A finger is down: what was moving stops where it is. */
+    fun stop() {
+        animation?.cancel()
+        fling?.cancel()
+    }
+
+    fun animateTo(
+        scope: CoroutineScope,
+        target: ZoomTransform,
+    ) {
+        stop()
+        val from = transform
+        animation =
+            scope.launch {
+                animate(0f, 1f, animationSpec = tween(ZOOM_MS)) { f, _ ->
+                    transform = ZoomTransform(lerp(from.scale, target.scale, f), lerp(from.x, target.x, f), lerp(from.y, target.y, f))
+                }
+            }
+    }
+
+    /** Moves the content beneath by [distance] (content pixels), as far as it goes. */
+    fun scrollContent(distance: Float) {
+        if (distance != 0f) scrollTarget?.dispatchRawDelta(distance)
+    }
+
+    /** A pan let go while zoomed: the content beneath goes on with the finger's speed ([velocity], screen px/s). */
+    fun fling(
+        scope: CoroutineScope,
+        decay: DecayAnimationSpec<Float>,
+        velocity: Float,
+    ) {
+        val target = scrollTarget ?: return
+        val speed = -velocity / transform.scale
+        if (abs(speed) < MIN_FLING) return
+        fling =
+            scope.launch {
+                target.scroll {
+                    var done = 0f
+                    AnimationState(0f, speed).animateDecay(decay) {
+                        val delta = value - done
+                        val consumed = scrollBy(delta)
+                        done = value
+                        // The strip's end (or the tall page's edge): nothing left to move.
+                        if (abs(delta - consumed) > 0.5f) cancelAnimation()
+                    }
+                }
+            }
+    }
+}
+
+/**
+ * Pinch (two fingers, at any scale) and, while zoomed, a one-finger pan with its fling. Read before the pager or the
+ * strip (initial pass) and consumed: they never scroll under the zoom. At 1× a single finger is left to them.
+ */
+private suspend fun PointerInputScope.zoomGestures(
+    zoom: ComicZoom,
+    area: () -> IntSize,
+    scope: CoroutineScope,
+    decay: DecayAnimationSpec<Float>,
+) {
+    awaitEachGesture {
+        awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+        zoom.stop()
+        val velocity = VelocityTracker()
+        var panning = false
+        var travel = Offset.Zero
+        do {
+            val event = awaitPointerEvent(PointerEventPass.Initial)
+            val size = area()
+            val width = size.width.toFloat()
+            val height = size.height.toFloat()
+            val pressed = event.changes.filter { it.pressed }
+            if (pressed.size >= 2) {
+                val centroid = event.calculateCentroid(useCurrent = true)
+                val pan = event.calculatePan()
+                zoom.transform =
+                    PageZoom.pinch(zoom.transform, event.calculateZoom(), centroid.x, centroid.y, pan.x, pan.y, width, height)
+                event.changes.forEach { it.consume() }
+                // The finger left on the glass goes on panning, without a new slop.
+                panning = true
+                velocity.resetTracking()
+            } else if (pressed.size == 1 && zoom.transform.zoomed) {
+                val change = pressed.first()
+                val delta = change.positionChange()
+                if (!panning) {
+                    travel += delta
+                    panning = travel.getDistance() > viewConfiguration.touchSlop
+                }
+                if (panning) {
+                    val moved = PageZoom.pan(zoom.transform, delta.x, delta.y, width, height)
+                    zoom.transform = moved.transform
+                    zoom.scrollContent(moved.scroll)
+                    velocity.addPosition(change.uptimeMillis, change.position)
+                    change.consume()
+                }
+            }
+        } while (event.changes.any { it.pressed })
+        if (panning && zoom.transform.zoomed) zoom.fling(scope, decay, velocity.calculateVelocity().y)
     }
 }
 
@@ -663,6 +799,7 @@ private fun ComicReader(
 private fun PagedReader(
     state: ReaderUiState,
     onIntent: (ReaderIntent) -> Unit,
+    zoom: ComicZoom,
     scrollEnabled: Boolean,
 ) {
     val adaptive = LocalAdaptive.current
@@ -688,6 +825,13 @@ private fun PagedReader(
                 scope.launch { if (command.animated) pager.animateScrollToPage(screen) else pager.scrollToPage(screen) }
                 onIntent(ReaderIntent.CommandHandled(command.seq))
             }
+            // The page slider: that page's screen at once, from its top.
+            if (command is ReaderCommand.JumpTo) {
+                bottomRequest = null
+                val screen = state.spreadOf(command.item)
+                scope.launch { pager.scrollToPage(screen) }
+                onIntent(ReaderIntent.CommandHandled(command.seq))
+            }
         }
         BoxWithConstraints(Modifier.fillMaxSize()) {
             // Turned, unfolded, folded, half opened, a window resized: one or two pages per screen, the same page kept.
@@ -705,6 +849,7 @@ private fun PagedReader(
                                 state,
                                 onIntent,
                                 area,
+                                zoom,
                                 scrollEnabled,
                                 showBottom = bottomRequest == index,
                                 onBottomShown = { if (bottomRequest == index) bottomRequest = null },
@@ -800,6 +945,7 @@ private fun PagedPage(
     state: ReaderUiState,
     onIntent: (ReaderIntent) -> Unit,
     area: IntSize,
+    zoom: ComicZoom,
     scrollEnabled: Boolean,
     showBottom: Boolean,
     onBottomShown: () -> Unit,
@@ -842,9 +988,14 @@ private fun PagedPage(
         LaunchedEffect(command) {
             if (command is ReaderCommand.ScrollBy) {
                 pinBottom = false
-                tapScroll.run(scope, scroll, command.fraction * area.height)
+                tapScroll.run(scope, scroll, command.fraction * area.height / zoom.transform.scale)
                 onIntent(ReaderIntent.CommandHandled(command.seq))
             }
+        }
+        // Zoomed, a pan past the view's edge scrolls this page inside itself.
+        DisposableEffect(tall, scroll) {
+            if (tall) zoom.scrollTarget = scroll
+            onDispose { if (zoom.scrollTarget === scroll) zoom.scrollTarget = null }
         }
     }
     Box(
@@ -859,6 +1010,8 @@ private fun PagedPage(
             if (tall) ContentScale.FillWidth else ContentScale.Fit,
             reserve = tall,
             onSize = { w, h -> onIntent(ReaderIntent.PageSized(page.index, w, h)) },
+            // The page read, zoomed: decoded with all its pixels (sharp at 4×), else for the screen's width.
+            detail = current && zoom.transform.zoomed,
             onLoadedRatio = { loadedRatio = it },
         )
     }
@@ -1061,7 +1214,23 @@ private class TapScroll {
 private const val TAP_SCROLL_MS = 300
 private const val MAX_HARDWARE_SIDE = 4096
 private val LABEL_WIDTH = 140.dp
-private const val ZOOM = 2f
+private const val ZOOM_MS = 220
+
+/** Decoded pages larger than this (bytes) stay out of the memory cache. */
+private const val MAX_CACHED_BYTES = 16L * 1024 * 1024
+
+/** A page's size once decoded for the screen's width (ARGB, never scaled up); 0 when the source gave no size. */
+private fun decodedBytes(
+    page: ReaderPage,
+    screenWidth: Int,
+): Long {
+    if (!page.hasSize) return 0
+    val width = minOf(page.width, screenWidth).toLong()
+    return width * (page.height.toLong() * width / page.width) * 4
+}
+
+/** Content pixels per second under which a zoomed pan's fling does not go on. */
+private const val MIN_FLING = 50f
 
 /** The internal source: its chapters are the server's, so they have a margin. */
 private const val OUR_SOURCE = "vovoscan"
@@ -1080,30 +1249,44 @@ internal fun PageImage(
     scale: ContentScale = ContentScale.FillWidth,
     reserve: Boolean = true,
     onSize: ((Int, Int) -> Unit)? = null,
+    detail: Boolean = false,
     onLoadedRatio: (Float) -> Unit = {},
 ) {
     val context = LocalContext.current
-    // A page of unknown size is decoded for the screen's width, whatever its height: sized for the placeholder (a
-    // box fitted to the screen), a webtoon strip came out a few hundred pixels wide and was blurred once it filled
-    // the width.
+    // Every page is decoded for the screen's width, whatever its height, and never above its own size: a page wider
+    // than the screen takes the screen's pixels, a webtoon strip narrower than it keeps its own (sharp at full width,
+    // drawn scaled). Sized for the placeholder (a box fitted to the screen), a strip of unknown size came out a few
+    // hundred pixels wide and was blurred once it filled the width. [detail]: the page read while zoomed, all its
+    // pixels.
     val screenWidth =
         with(LocalDensity.current) {
             LocalConfiguration.current.screenWidthDp.dp
                 .roundToPx()
         }
+    // Only a page wider than the screen has more pixels to show zoomed.
+    val detailed = detail && (!page.hasSize || page.width > screenWidth)
     var attempt by remember(page.url) { mutableIntStateOf(0) }
     var failed by remember(page.url) { mutableStateOf(false) }
+    var loading by remember(page.url, attempt) { mutableStateOf(true) }
+    // What is on screen (the screen-width decode), shown while the detailed one loads.
+    var shownKey by remember(page.url, attempt) { mutableStateOf<MemoryCache.Key?>(null) }
     // The image's own width / height once loaded, for a page whose size the source didn't give.
     var loadedRatio by remember(page.url) { mutableStateOf<Float?>(null) }
     // Webtoon pages can be very tall (800 × 14 000 px): beyond what a GPU texture holds, a hardware bitmap fails
     // to draw, so tall pages, and pages of unknown height, are decoded as ordinary bitmaps.
     val request =
-        remember(page.url, attempt, screenWidth) {
+        remember(page.url, attempt, screenWidth, detailed) {
+            // A webtoon strip of 800 × 13 000 px is about 40 MB decoded: kept in the memory cache once off screen, it
+            // was one more of those held (the strip scrolled back decodes it again from the disk cache).
+            val cached = !detailed && decodedBytes(page, screenWidth) <= MAX_CACHED_BYTES
             ImageRequest
                 .Builder(context)
                 .data(page.url)
                 .allowHardware(page.hasSize && page.height <= MAX_HARDWARE_SIDE)
-                .apply { if (!page.hasSize) size(Size(Dimension(screenWidth), Dimension.Undefined)) }
+                .size(if (detailed) Size.ORIGINAL else Size(Dimension(screenWidth), Dimension.Undefined))
+                .precision(Precision.INEXACT)
+                .memoryCachePolicy(if (cached) CachePolicy.ENABLED else CachePolicy.READ_ONLY)
+                .apply { if (detailed) placeholderMemoryCacheKey(shownKey) }
                 .build()
         }
     // Known size: space reserved from it, no jump when the image arrives. Unknown: a placeholder, then the image's
@@ -1132,12 +1315,16 @@ internal fun PageImage(
     // The reader's language: the translated lettering over the page, in a box of the page's own shape (the image
     // may be fitted inside a larger area).
     val lettering = LocalPageLettering.current(page.index)
-    Box(contentAlignment = Alignment.Center) {
+    // A page fitted to the screen keeps the reader's black around it once loaded (as on iOS), not the placeholder's grey.
+    Box(sized.background(if (loading || reserve) Brand.Ink2 else Color.Transparent)) {
         AsyncImage(
             model = request,
             contentDescription = I18n.textWith("library.page", mapOf("n" to page.index + 1)),
             contentScale = scale,
+            onLoading = { loading = shownKey == null },
             onSuccess = { success ->
+                loading = false
+                if (!detailed) shownKey = success.result.memoryCacheKey
                 val image = success.result.image
                 if (image.width > 0 && image.height > 0) {
                     loadedRatio = image.width.toFloat() / image.height
@@ -1145,13 +1332,28 @@ internal fun PageImage(
                     onLoadedRatio(image.width.toFloat() / image.height)
                 }
             },
-            onError = { failed = true },
-            modifier = sized.background(Brand.Ink2),
+            onError = {
+                loading = false
+                failed = true
+            },
+            modifier = Modifier.matchParentSize(),
+            if (lettering.isNotEmpty()) {
+                Box(Modifier.matchParentSize(), contentAlignment = Alignment.Center) {
+                    LetteringOverlay(lettering, Modifier.aspectRatio(ratio))
+                }
+            },
         )
-        if (lettering.isNotEmpty()) {
-            Box(Modifier.matchParentSize(), contentAlignment = Alignment.Center) {
-                LetteringOverlay(lettering, Modifier.aspectRatio(ratio))
-            }
+        // Still loading: says so (a slow source left a blank page). Near the top of a tall page, where it is seen.
+        if (loading) {
+            CircularProgressIndicator(
+                color = Brand.Cyan,
+                strokeWidth = 3.dp,
+                modifier =
+                    Modifier
+                        .align(if (reserve) Alignment.TopCenter else Alignment.Center)
+                        .padding(top = if (reserve) 120.dp else 0.dp)
+                        .size(32.dp),
+            )
         }
         // Over the lettering: the margin's pins and, with a tool chosen, the surface that takes the mark.
         LocalPageMargin.current?.let { margin ->
@@ -1167,6 +1369,7 @@ private fun TopBar(
     state: ReaderUiState,
     onBack: () -> Unit,
     onSettings: () -> Unit,
+    onContents: () -> Unit,
     modifier: Modifier,
     onWatch: () -> Unit = {},
     onHelp: () -> Unit = {},
@@ -1176,10 +1379,19 @@ private fun TopBar(
         modifier.fillMaxWidth().background(Brand.Ink.copy(alpha = 0.92f)).padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text("←", style = MaterialTheme.typography.titleMedium, modifier = Modifier.clickable(onClick = onBack).padding(end = 16.dp))
+        // TalkBack reads the action, not the arrow.
+        Text(
+            "←",
+            style = MaterialTheme.typography.titleMedium,
+            modifier =
+                Modifier
+                    .clickable(role = Role.Button, onClick = onBack)
+                    .semantics { contentDescription = I18n.text("common.back") }
+                    .padding(end = 16.dp),
+        )
         Column(Modifier.weight(1f)) {
             Text(state.titleName, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(state.chapterLabel, style = MaterialTheme.typography.bodySmall)
+            Text(state.subtitle, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         if (state.voiceAvailable) {
             Text(
@@ -1203,14 +1415,28 @@ private fun TopBar(
                     .semantics { contentDescription = help }
                     .padding(start = 16.dp, top = 4.dp, bottom = 4.dp),
         )
-        if (!state.isBook) {
-            // Text presentation of the gear (not the emoji).
-            Text(
-                "⚙︎",
-                style = MaterialTheme.typography.titleMedium,
-                modifier = Modifier.clickable(onClick = onSettings).padding(start = 16.dp, top = 4.dp, bottom = 4.dp),
+        if (state.isBook && state.book.contents.isNotEmpty()) {
+            Icon(
+                AppIcons.Contents,
+                contentDescription = BookText.CONTENTS_BUTTON,
+                tint = Brand.Paper,
+                modifier =
+                    Modifier
+                        .clickable(role = Role.Button, onClick = onContents)
+                        .padding(start = 16.dp, top = 2.dp, bottom = 2.dp)
+                        .size(22.dp),
             )
         }
+        // Text presentation of the gear (not the emoji). Books have their own settings (typography, page colours).
+        Text(
+            "⚙︎",
+            style = MaterialTheme.typography.titleMedium,
+            modifier =
+                Modifier
+                    .clickable(role = Role.Button, onClick = onSettings)
+                    .semantics { contentDescription = I18n.text("reader.settingsTitle") }
+                    .padding(start = 16.dp, top = 4.dp, bottom = 4.dp),
+        )
     }
 }
 
@@ -1221,20 +1447,82 @@ private fun BottomBar(
     onOpenChapter: (String) -> Unit,
     modifier: Modifier,
 ) {
+    // The page under the slider's thumb while it is dragged ("12 / 19" in yellow in place of the page read).
+    var dragged by remember { mutableStateOf<Int?>(null) }
+    Column(modifier.fillMaxWidth().background(Brand.Ink.copy(alpha = 0.92f))) {
+        if (state.showsSlider) PageSlider(state, onIntent) { dragged = it }
+        BottomBarRow(state, onIntent, onOpenChapter, dragged)
+    }
+}
+
+/**
+ * Comics: a slider over every page of the chapter, first page on the right in right to left. Letting go jumps there
+ * (`SeekTo`), in every mode.
+ */
+@Composable
+private fun PageSlider(
+    state: ReaderUiState,
+    onIntent: (ReaderIntent) -> Unit,
+    onDrag: (Int?) -> Unit,
+) {
+    var value by remember { mutableStateOf<Float?>(null) }
+    val direction = if (state.rightToLeft) LayoutDirection.Rtl else LayoutDirection.Ltr
+    CompositionLocalProvider(LocalLayoutDirection provides direction) {
+        Slider(
+            value = value ?: state.currentIndex.toFloat(),
+            onValueChange = {
+                value = it
+                onDrag(it.roundToInt())
+            },
+            onValueChangeFinished = {
+                value?.let { onIntent(ReaderIntent.SeekTo(it.roundToInt())) }
+                value = null
+                onDrag(null)
+            },
+            valueRange = 0f..state.pages.lastIndex.toFloat(),
+            colors =
+                SliderDefaults.colors(
+                    thumbColor = Brand.Red,
+                    activeTrackColor = Brand.Red,
+                    inactiveTrackColor = Brand.Line,
+                ),
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .padding(start = 16.dp, end = 16.dp, top = 4.dp)
+                    .height(32.dp)
+                    // The thumb at the first or last page sits in the back gesture's edge: the slider keeps the drag.
+                    .systemGestureExclusion()
+                    .semantics { contentDescription = "Page" },
+        )
+    }
+}
+
+@Composable
+private fun BottomBarRow(
+    state: ReaderUiState,
+    onIntent: (ReaderIntent) -> Unit,
+    onOpenChapter: (String) -> Unit,
+    dragged: Int?,
+) {
     Row(
-        modifier.fillMaxWidth().background(Brand.Ink.copy(alpha = 0.92f)).padding(horizontal = 16.dp, vertical = 12.dp),
+        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (state.isBook) {
             Text(
                 "←",
                 style = MaterialTheme.typography.titleMedium.copy(color = if (state.canGoBack) Brand.Paper else Brand.Line),
-                modifier = Modifier.clickable(enabled = state.canGoBack) { onIntent(ReaderIntent.Previous) }.padding(end = 16.dp),
+                modifier =
+                    Modifier
+                        .clickable(enabled = state.canGoBack, role = Role.Button) { onIntent(ReaderIntent.Previous) }
+                        .semantics { contentDescription = "Previous section" }
+                        .padding(end = 16.dp),
             )
         }
         Text(
-            state.positionLabel,
-            style = MaterialTheme.typography.bodySmall,
+            if (dragged != null) state.sliderLabel(dragged) else state.positionLabel,
+            style = MaterialTheme.typography.bodySmall.let { if (dragged != null) it.copy(color = Brand.Yellow) else it },
             modifier = Modifier.weight(1f).semantics { liveRegion = LiveRegionMode.Polite },
         )
         if (state.canFocus) {
