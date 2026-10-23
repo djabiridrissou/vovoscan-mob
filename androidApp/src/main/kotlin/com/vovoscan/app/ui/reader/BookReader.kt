@@ -35,7 +35,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -43,15 +45,21 @@ import androidx.compose.ui.viewinterop.AndroidView
 import com.vovoscan.app.ui.common.PrimaryButton
 import com.vovoscan.app.ui.theme.Brand
 import com.vovoscan.core.common.i18n.I18n
+import com.vovoscan.feature.reader.presentation.BookAnchors
+import com.vovoscan.feature.reader.presentation.BookIntent
 import com.vovoscan.feature.reader.presentation.PullHint
 import com.vovoscan.feature.reader.presentation.ReaderIntent
 import com.vovoscan.feature.reader.presentation.ReaderUiState
+import com.vovoscan.feature.reader.presentation.SectionOpening
+import kotlin.math.roundToInt
 
 /**
  * Book: one section at a time, in a web view with JavaScript off, no network and no navigation. The HTML is
  * already sanitised and styled (BookStyle); images are embedded. Pulling past the bottom (or the top) of the
  * section shows a hint that grows with the pull and turns the section on release past the threshold: the web view
- * only measures the pull, `ReaderUiState.pullHint` and `ReaderIntent.PullReleased` decide.
+ * only measures the pull, `ReaderUiState.pullHint` and `ReaderIntent.PullReleased` decide. The page follows the
+ * device's text size (`BookIntent.SystemTextScale`); where a section opens comes from `ReaderUiState.book.opening`,
+ * and the web view reports where its top is (`BookIntent.SectionScrolled`) so the reader reopens there.
  */
 @Composable
 internal fun BookReader(
@@ -61,6 +69,9 @@ internal fun BookReader(
 ) {
     val document = state.sectionDocument
     val context = LocalContext.current
+    // The device's text size (Android font scale): the page's text follows it.
+    val fontScale = LocalDensity.current.fontScale
+    LaunchedEffect(fontScale) { onIntent(BookIntent.SystemTextScale(fontScale)) }
     val view = LocalView.current
     val reducedMotion =
         remember { Settings.Global.getFloat(context.contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f) == 0f }
@@ -93,12 +104,9 @@ internal fun BookReader(
                             overscroll = 0f
                             if (web.height > 0) onIntent(ReaderIntent.PullReleased(px / web.height))
                         }
-                        if (web.tag != document) {
-                            web.tag = document
-                            web.fromEnd = state.sectionFromEnd
-                            web.loadDataWithBaseURL(null, document, "text/html", "utf-8", null)
-                            web.scrollTo(0, 0)
-                        }
+                        web.onScrolled = { section, fraction -> onIntent(BookIntent.SectionScrolled(section, fraction)) }
+                        web.setBackgroundColor(rgb(state.book.pageBackground).toArgb())
+                        web.show(document, state.currentIndex, state.book.opening)
                     },
                 )
         }
@@ -194,12 +202,22 @@ private class PullWebView(
     /** The finger let go during a pull. */
     var onRelease: (Float) -> Unit = {}
 
-    /** The section loading now opens at its end (reached going back). */
-    var fromEnd = false
+    /** Where the top of the page is: the section shown and the fraction of its height (not while it is placed). */
+    var onScrolled: (Int, Float) -> Unit = { _, _ -> }
 
     private var lastY = 0f
     private var drag = 0f
     private var touched = false
+
+    /** The section in the page, its opening to apply once loaded, the last opening applied. */
+    private var section = -1
+    private var pending: SectionOpening? = null
+    private var appliedSeq = -1
+    private var loading = false
+
+    /** An opening is being applied (the page is not where it will be yet): nothing is reported meanwhile. */
+    private var placing = false
+    private var placeGeneration = 0
 
     init {
         setBackgroundColor(android.graphics.Color.parseColor("#0B0B0E"))
@@ -207,6 +225,8 @@ private class PullWebView(
         settings.blockNetworkLoads = true
         settings.allowFileAccess = false
         settings.allowContentAccess = false
+        // The page sets its own text size from the device's (BookStyle): nothing on top of it.
+        settings.textZoom = 100
         webViewClient =
             object : WebViewClient() {
                 // No link leaves the book.
@@ -219,22 +239,98 @@ private class PullWebView(
                     view: WebView,
                     url: String?,
                 ) {
-                    if (!fromEnd) return
-                    touched = false
-                    // The page's height settles over the first frames: try again a moment later.
-                    END_RETRIES_MS.forEach { delay -> postDelayed({ if (!touched) scrollToEnd() }, delay) }
+                    // Once per load (a jump to an anchor inside the page finishes too).
+                    if (!loading) return
+                    loading = false
+                    place(pending)
                 }
             }
     }
 
-    private fun scrollToEnd() {
-        scrollTo(0, (computeVerticalScrollRange() - height).coerceAtLeast(0))
+    /**
+     * Shows [document] (section [index]): loaded when it changed, then placed as [opening] says once laid out; an
+     * opening for the section already shown (a contents entry inside it) is placed at once.
+     */
+    fun show(
+        document: String,
+        index: Int,
+        opening: SectionOpening?,
+    ) {
+        val forHere = opening?.takeIf { it.section == index && it.seq != appliedSeq }
+        if (tag != document) {
+            tag = document
+            section = index
+            pending = forHere
+            forHere?.let { appliedSeq = it.seq }
+            loading = true
+            placing = true
+            loadDataWithBaseURL(null, document, "text/html", "utf-8", null)
+            scrollTo(0, 0)
+        } else if (forHere != null && !loading) {
+            appliedSeq = forHere.seq
+            place(forHere)
+        }
+    }
+
+    /**
+     * Puts the page where [opening] says (its top when null). A section of several MB keeps growing for a moment
+     * after it has loaded: placed again a few times, unless the reader touches it first. Then reports where it is.
+     */
+    private fun place(opening: SectionOpening?) {
+        touched = false
+        placeGeneration += 1
+        val generation = placeGeneration
+        if (opening == null || (opening.fraction == null && opening.anchor == null && !opening.fromEnd)) {
+            placing = false
+            report()
+            return
+        }
+        placing = true
+        PLACE_RETRIES_MS.forEachIndexed { step, delay ->
+            postDelayed({
+                if (generation != placeGeneration || touched) return@postDelayed
+                when {
+                    // Where the element's text starts (no navigation: a jump to an anchor could leave the page here).
+                    opening.anchor != null ->
+                        scrollTo(
+                            0,
+                            ((BookAnchors.textFraction(section(), opening.anchor!!) ?: 0f) * computeVerticalScrollRange()).roundToInt(),
+                        )
+                    opening.fromEnd -> scrollTo(0, (computeVerticalScrollRange() - height).coerceAtLeast(0))
+                    else -> scrollTo(0, ((opening.fraction ?: 0f) * computeVerticalScrollRange()).roundToInt())
+                }
+                if (step == PLACE_RETRIES_MS.lastIndex) {
+                    placing = false
+                    report()
+                }
+            }, delay)
+        }
+    }
+
+    private fun section(): String = tag as? String ?: ""
+
+    private fun report() {
+        val range = computeVerticalScrollRange()
+        if (placing || loading || section < 0 || range <= 0) return
+        onScrolled(section, (scrollY.toFloat() / range).coerceIn(0f, 1f))
+    }
+
+    override fun onScrollChanged(
+        l: Int,
+        t: Int,
+        oldl: Int,
+        oldt: Int,
+    ) {
+        super.onScrollChanged(l, t, oldl, oldt)
+        report()
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 touched = true
+                // The reader takes over: where the page is now is theirs.
+                if (placing && !loading) placing = false
                 lastY = event.y
                 drag = 0f
             }
@@ -268,6 +364,8 @@ private class PullWebView(
 
     private companion object {
         const val RESISTANCE = 0.5f
-        val END_RETRIES_MS = listOf(0L, 120L, 400L)
+
+        /** The page's height settles over the first frames (longer for a big section): placed again meanwhile. */
+        val PLACE_RETRIES_MS = listOf(0L, 120L, 400L, 1000L)
     }
 }
