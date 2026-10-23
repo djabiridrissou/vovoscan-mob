@@ -567,6 +567,14 @@ struct ReaderView: View {
             .padding(.vertical, 12)
             .background(Color.brandInk.opacity(0.92))
             Spacer()
+            bottomBar
+        }
+    }
+
+    /// The slider (comics) over the counter and the chapter buttons, measured as one: whatever floats above the bars
+    /// (the language dock, the next-chapter bubble, the circle's dock) sits above both, never under the slider.
+    private var bottomBar: some View {
+        VStack(spacing: 0) {
             if model.state.showsSlider {
                 PageSlider(model: model, dragged: $dragged)
                     .padding(.horizontal, 16)
@@ -613,8 +621,8 @@ struct ReaderView: View {
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
             .background(Color.brandInk.opacity(0.92))
-            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { bottomBarHeight = $0 }
         }
+        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { bottomBarHeight = $0 }
     }
 }
 
