@@ -2,7 +2,9 @@ package com.vovoscan.feature.reader.presentation
 
 /**
  * HTML page for a book section, in brand colors (dark, paper-colored text). Shared by Android (WebView) and
- * iOS (WKWebView), shown with JavaScript off: the content is already sanitized, this is styling only.
+ * iOS (WKWebView), shown with JavaScript off: the content is already sanitized, this is styling only. Links are
+ * removed (`EpubParser`), so what is left of an `<a>` reads as the text around it: red would promise a tap that does
+ * nothing (Gutenberg books wrap headings, and through `<a id="…"/>` whole chapters, in anchors).
  */
 object BookStyle {
     fun document(
@@ -24,7 +26,7 @@ object BookStyle {
                        line-height: 1.15; color: #f3eee4; }
           h1 { font-size: 28px; margin: 8px 0 24px; } h2 { font-size: 22px; } h3 { font-size: 19px; }
           p { margin: 0 0 1em; color: rgba(243, 238, 228, .92); }
-          a { color: #ff2d55; text-decoration: none; }
+          a { color: inherit; text-decoration: none; }
           img { max-width: 100%; height: auto; display: block; margin: 16px auto; border-radius: 4px; }
           blockquote { margin: 1em 0; padding-left: 14px; border-left: 2px solid #ff2d55; color: #a39e94; }
           hr { border: 0; border-top: 1px solid #2a2a33; margin: 2em 0; }

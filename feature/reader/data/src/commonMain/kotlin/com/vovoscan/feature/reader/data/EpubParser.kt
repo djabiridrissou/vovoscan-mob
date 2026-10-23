@@ -95,29 +95,42 @@ class EpubParser(
             val document = Ksoup.parse(text(navPath).orEmpty())
             val toc = document.select("nav").firstOrNull { it.attr("epub:type") == "toc" } ?: document.selectFirst("nav")
             val navDir = navPath.substringBeforeLast('/', "")
-            return toc?.select("a")?.associate { resolve(navDir, it.attr("href").substringBefore('#')) to it.text().trim() }.orEmpty()
+            return toc
+                ?.select("a")
+                ?.map { resolve(navDir, it.attr("href").substringBefore('#')) to it.text().trim() }
+                .orEmpty()
+                .firstPerFile()
         }
         val ncxId = opf.selectFirst("spine")?.attr("toc").orEmpty()
         val ncx = items[ncxId] ?: items.values.firstOrNull { it.attr("media-type") == "application/x-dtbncx+xml" } ?: return emptyMap()
         val ncxPath = resolve(base, ncx.attr("href"))
         val document = Ksoup.parseXml(text(ncxPath).orEmpty())
         val ncxDir = ncxPath.substringBeforeLast('/', "")
-        return document.select("navPoint").associate { point ->
-            resolve(
-                ncxDir,
-                point
-                    .selectFirst("content")
-                    ?.attr("src")
-                    .orEmpty()
-                    .substringBefore('#'),
-            ) to
-                point
-                    .selectFirst("navLabel text")
-                    ?.text()
-                    ?.trim()
-                    .orEmpty()
-        }
+        return document
+            .select("navPoint")
+            .map { point ->
+                resolve(
+                    ncxDir,
+                    point
+                        .selectFirst("content")
+                        ?.attr("src")
+                        .orEmpty()
+                        .substringBefore('#'),
+                ) to
+                    point
+                        .selectFirst("navLabel text")
+                        ?.text()
+                        ?.trim()
+                        .orEmpty()
+            }.firstPerFile()
     }
+
+    /**
+     * A file holding several chapters (Gutenberg splits its books every few chapters) is named after the first one:
+     * the section starts there. The last one used to win ("CHAPTER 3. The Spouter-Inn." for chapters 1 to 3).
+     */
+    private fun List<Pair<String, String>>.firstPerFile(): Map<String, String> =
+        filter { it.second.isNotBlank() }.distinctBy { it.first }.toMap()
 
     @OptIn(ExperimentalEncodingApi::class)
     private fun inlineImages(

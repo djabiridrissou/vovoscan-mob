@@ -95,9 +95,10 @@ struct ReaderView: View {
         VStack(spacing: 0) {
             HStack(spacing: 16) {
                 Button { dismiss() } label: { Text("←").font(.brandDisplay(18)).foregroundStyle(Color.brandPaper) }
+                    .accessibilityLabel("Back")
                 VStack(alignment: .leading, spacing: 2) {
                     Text(model.state.titleName).font(.brandBody(15)).foregroundStyle(Color.brandPaper).lineLimit(1)
-                    Text(model.state.chapterLabel).font(.brandBody(13)).foregroundStyle(Color.brandMuted)
+                    Text(model.state.subtitle).font(.brandBody(13)).foregroundStyle(Color.brandMuted).lineLimit(1)
                 }
                 Spacer()
                 if !model.state.isBook && translation.state.available {
@@ -123,18 +124,21 @@ struct ReaderView: View {
                         Text("←").font(.brandDisplay(18)).foregroundStyle(model.state.canGoBack ? Color.brandPaper : Color.brandLine)
                     }
                     .disabled(!model.state.canGoBack)
+                    .accessibilityLabel("Previous section")
                 }
                 Text(model.state.positionLabel).font(.brandBody(13)).foregroundStyle(Color.brandMuted)
                 Spacer()
+                // A book with a section left offers that section alone (as on Android): the parts come at its end.
                 if model.state.isBook && model.state.canGoForward {
                     Button("Next section →") { model.send(ReaderIntentNext.shared) }
                         .font(.brandBody(16, weight: .bold)).foregroundStyle(Color.brandRed)
-                }
-                if let previous = model.state.previousChapterId {
-                    Button("← Previous") { onOpenChapter(previous, 0) }.font(.brandBody(13)).foregroundStyle(Color.brandMuted)
-                }
-                if let next = model.state.nextChapterId {
-                    Button("Next →") { onOpenChapter(next, 0) }.font(.brandBody(16, weight: .bold)).foregroundStyle(Color.brandRed)
+                } else {
+                    if let previous = model.state.previousChapterId {
+                        Button("← Previous") { onOpenChapter(previous, 0) }.font(.brandBody(13)).foregroundStyle(Color.brandMuted)
+                    }
+                    if let next = model.state.nextChapterId {
+                        Button("Next →") { onOpenChapter(next, 0) }.font(.brandBody(16, weight: .bold)).foregroundStyle(Color.brandRed)
+                    }
                 }
             }
             .padding(.horizontal, 16)
@@ -815,6 +819,13 @@ private struct PageImage: View {
                     Button("Retry") { loader.load(page.url) }.buttonStyle(GhostButtonStyle()).frame(width: 160)
                 }
                 .padding(24)
+            } else if active {
+                // Still loading: says so (a slow source left a blank page). Near the top of a tall page, where it is seen.
+                ProgressView()
+                    .tint(Color.brandCyan)
+                    .padding(.top, fit ? 0 : 120)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: fit ? .center : .top)
+                    .accessibilityLabel("Loading the page")
             }
         }
         .aspectRatio(ratio, contentMode: .fit)

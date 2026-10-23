@@ -210,6 +210,9 @@ class ReaderViewModelTest {
             assertEquals(1, reader.loads)
             assertEquals("Section 2 / 2", vm.state.value.positionLabel)
             assertEquals("The Rain Returns", vm.state.value.sectionTitle)
+            // The top bar names the section read, not the part ("Full text").
+            assertEquals("Full text", vm.state.value.chapterLabel)
+            assertEquals("The Rain Returns", vm.state.value.subtitle)
             assertTrue(
                 vm.state.value.sectionDocument!!
                     .contains("<p>Section 1</p>"),

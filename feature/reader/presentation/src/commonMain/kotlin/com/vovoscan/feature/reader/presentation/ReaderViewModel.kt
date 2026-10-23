@@ -213,6 +213,12 @@ data class ReaderUiState(
 
     val sectionTitle: String? get() = sections.getOrNull(currentIndex)?.title
 
+    /**
+     * The top bar's second line: the chapter ("Chapter 2 · The last gate"), or for a book the section being read
+     * ("CHAPTER VI. Pig and Pepper"), the part's name until the sections are known.
+     */
+    val subtitle: String get() = if (isBook) sectionTitle?.takeIf { it.isNotBlank() } ?: chapterLabel else chapterLabel
+
     val canGoBack: Boolean get() = currentIndex > 0
 
     val canGoForward: Boolean get() = currentIndex < count - 1
@@ -408,6 +414,9 @@ class ReaderViewModel(
     private var zonesChangedInSettings = false
     private var stripAtTop = false
     private var stripAtBottom = false
+
+    /** Long strips: the item last reported at the top of the screen (null until the strip has moved). */
+    private var stripItem: Int? = null
     private var pageScroll: ReaderIntent.PageScroll? = null
     private var seq = 0
 
@@ -439,10 +448,15 @@ class ReaderViewModel(
     fun onIntent(intent: ReaderIntent) {
         when (intent) {
             is ReaderIntent.PageVisible -> moveTo(intent.index)
-            is ReaderIntent.ItemVisible -> itemVisible(intent.item)
+            is ReaderIntent.ItemVisible -> {
+                if (state.value.isStrip) stripItem = intent.item
+                itemVisible(stripItemShown(intent.item))
+            }
             is ReaderIntent.StripEdges -> {
                 stripAtTop = intent.atTop
                 stripAtBottom = intent.atBottom
+                // Once the strip has moved, reaching its bottom (or leaving it) changes the page read.
+                stripItem?.let { itemVisible(stripItemShown(it)) }
             }
             is ReaderIntent.PageScroll -> pageScroll = intent
             is ReaderIntent.PullReleased -> pullReleased(intent.overscroll)
@@ -550,6 +564,15 @@ class ReaderViewModel(
         }
     }
 
+    /**
+     * Long strips: the item at the top of the screen, except at the bottom of the strip, where the last page is the
+     * one read (it can never reach the top of the screen: the chapter ended on "6 / 7" and was saved so).
+     */
+    private fun stripItemShown(item: Int): Int {
+        val current = state.value
+        return if (current.isStrip && stripAtBottom) maxOf(item, current.pages.size) else item
+    }
+
     /** Paged modes: the current item's scroll inside its page, when it is a tall page. */
     private fun tallPage(current: ReaderUiState): ReaderIntent.PageScroll? =
         pageScroll?.takeIf { current.isPaged && it.tall && it.item == current.currentItem }
@@ -614,6 +637,8 @@ class ReaderViewModel(
         }
         val mode = ReadingModes.resolve(chapter.mode, chapter.format, seriesMode, preferences)
         val isBook = mode == ReadingMode.Book
+        // Another layout: the strip's last report no longer says where the reader is.
+        if (mode != state.value.mode) stripItem = null
         mutableState.update {
             // A chapter seen before its pages (saved for the first time, or a source that sends them later) keeps the
             // resume page: clamped to an empty list, it opened at page 1.

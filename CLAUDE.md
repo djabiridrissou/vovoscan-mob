@@ -152,7 +152,13 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   read by `EpubParser` (Okio + Ksoup: `container.xml` → OPF → reading order, nav/NCX table of contents), sections
   sanitized (allowlist, images as `data:` only, links removed) and stored in the database: offline rereading.
   Displayed in a WebView / WKWebView with no JavaScript and no network, styles and CSP from `BookStyle`. A book's
-  progress counts in sections.
+  progress counts in sections. What is left of a removed link reads as the text around it (`a { color: inherit }`):
+  red promised a tap that did nothing, and Gutenberg books wrap headings, and whole chapters, in anchors. A file
+  holding several chapters (Gutenberg splits its books every few chapters) is named after its first table-of-contents
+  entry (nav or NCX): the last one used to win ("CHAPTER 3. The Spouter-Inn." over chapters 1 to 3); books opened
+  before keep their saved titles until opened again from a new download. The top bar's second line is the section read
+  (`ReaderUiState.subtitle`: "CHAPTER VI. Pig and Pepper", the part's name while the sections load); both bottom bars
+  offer "Next section →" alone while a section is left, the previous / next part after the last one.
 - Books: pull to turn. Pulling up past the bottom of a section (down past its top) shows a hint that grows with the
   pull: "↑ Pull for the next section" → past the threshold, red, "Release for the next section"; letting go there
   opens it at its top. The targets are the buttons' (kept): the next section, else at the last section the next part
@@ -315,8 +321,10 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   ("Finished: Chapter 3" / "Next: Chapter 4 · name" / "This is the last chapter for now."), a further Next opens the
   next chapter; before the first page the same backwards, and the previous chapter opens at its last page
   (`ReaderViewModel.START_AT_END`). Strips report their edges (`StripEdges`): Next at the bottom opens the next
-  chapter. Chapter names come through the `ChapterHeadings` port (wired in `shared` to the title page kept by the
-  catalog). Commands carry a `seq`; the native side starts them and answers `CommandHandled(seq)`.
+  chapter. A strip's page is the one at the top of the screen, except at the bottom of the strip, where the last page
+  is read (it can never reach the top: a chapter ended on "6 / 7" and was saved so); this needs the strip to have
+  moved (an `ItemVisible` report), so an opening strip not laid out yet does not jump to the end. Chapter names come
+  through the `ChapterHeadings` port (wired in `shared` to the title page kept by the catalog). Commands carry a `seq`; the native side starts them and answers `CommandHandled(seq)`.
 - Single taps act on touch-up (measured 6-19 ms from touch-up to the intent on the iOS simulator). Double tap to zoom
   (off by default; 2×, pan by dragging, scrolling paused while zoomed) makes single taps wait for a possible second
   tap (~370 ms). A drag, fling or pinch is never a tap (the scroll view takes it first). Taps faster than the scroll
@@ -371,7 +379,11 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   then took no height at all). The loader starts again when the page's URL changes (the saved copy of a chapter shows
   first, the fresh one may bring new signed links). A page that fails shows "This page didn't load." and Retry; Retry
   sits under the reader's tap detector and takes the tap itself (the button consumes it, no tap zone fires; checked
-  on the Pixel 7 with a page whose file was missing: the page loaded on Retry and took its tall shape).
+  on the Pixel 7 with a page whose file was missing: the page loaded on Retry and took its tall shape). While its
+  image loads, a page shows a cyan spinner (centred, or near the top of a page fit to width); before, a slow source
+  left a blank grey page. A page fitted to the screen keeps the reader's black around it once loaded (Android drew
+  the placeholder's grey beside a wide xkcd strip). The reader's back, settings and previous-section controls have
+  TalkBack / VoiceOver labels ("Back", "Reader settings", "Previous section"), not "left arrow".
 
 ## Account (keys, reading model, costs)
 

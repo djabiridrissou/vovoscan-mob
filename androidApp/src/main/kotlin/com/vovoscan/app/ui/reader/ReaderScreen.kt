@@ -37,6 +37,7 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -64,6 +65,9 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntSize
@@ -602,6 +606,7 @@ private fun PageImage(
         }
     var attempt by remember(page.url) { mutableIntStateOf(0) }
     var failed by remember(page.url) { mutableStateOf(false) }
+    var loading by remember(page.url, attempt) { mutableStateOf(true) }
     // The image's own width / height once loaded, for a page whose size the source didn't give.
     var loadedRatio by remember(page.url) { mutableStateOf<Float?>(null) }
     // Webtoon pages can be very tall (800 × 14 000 px): beyond what a GPU texture holds, a hardware bitmap fails
@@ -638,20 +643,40 @@ private fun PageImage(
         }
         return
     }
-    AsyncImage(
-        model = request,
-        contentDescription = "Page ${page.index + 1}",
-        contentScale = scale,
-        onSuccess = { success ->
-            val image = success.result.image
-            if (image.width > 0 && image.height > 0) {
-                loadedRatio = image.width.toFloat() / image.height
-                onLoadedRatio(image.width.toFloat() / image.height)
-            }
-        },
-        onError = { failed = true },
-        modifier = sized.background(Brand.Ink2),
-    )
+    // A page fitted to the screen keeps the reader's black around it once loaded (as on iOS), not the placeholder's grey.
+    Box(sized.background(if (loading || reserve) Brand.Ink2 else Color.Transparent)) {
+        AsyncImage(
+            model = request,
+            contentDescription = "Page ${page.index + 1}",
+            contentScale = scale,
+            onLoading = { loading = true },
+            onSuccess = { success ->
+                loading = false
+                val image = success.result.image
+                if (image.width > 0 && image.height > 0) {
+                    loadedRatio = image.width.toFloat() / image.height
+                    onLoadedRatio(image.width.toFloat() / image.height)
+                }
+            },
+            onError = {
+                loading = false
+                failed = true
+            },
+            modifier = Modifier.matchParentSize(),
+        )
+        // Still loading: says so (a slow source left a blank page). Near the top of a tall page, where it is seen.
+        if (loading) {
+            CircularProgressIndicator(
+                color = Brand.Cyan,
+                strokeWidth = 3.dp,
+                modifier =
+                    Modifier
+                        .align(if (reserve) Alignment.TopCenter else Alignment.Center)
+                        .padding(top = if (reserve) 120.dp else 0.dp)
+                        .size(32.dp),
+            )
+        }
+    }
 }
 
 @Composable
@@ -665,17 +690,30 @@ private fun TopBar(
         modifier.fillMaxWidth().background(Brand.Ink.copy(alpha = 0.92f)).padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text("←", style = MaterialTheme.typography.titleMedium, modifier = Modifier.clickable(onClick = onBack).padding(end = 16.dp))
+        // TalkBack reads the action, not the arrow.
+        Text(
+            "←",
+            style = MaterialTheme.typography.titleMedium,
+            modifier =
+                Modifier
+                    .clickable(role = Role.Button, onClick = onBack)
+                    .semantics { contentDescription = "Back" }
+                    .padding(end = 16.dp),
+        )
         Column(Modifier.weight(1f)) {
             Text(state.titleName, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(state.chapterLabel, style = MaterialTheme.typography.bodySmall)
+            Text(state.subtitle, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         if (!state.isBook) {
             // Text presentation of the gear (not the emoji).
             Text(
                 "⚙︎",
                 style = MaterialTheme.typography.titleMedium,
-                modifier = Modifier.clickable(onClick = onSettings).padding(start = 16.dp, top = 4.dp, bottom = 4.dp),
+                modifier =
+                    Modifier
+                        .clickable(role = Role.Button, onClick = onSettings)
+                        .semantics { contentDescription = "Reader settings" }
+                        .padding(start = 16.dp, top = 4.dp, bottom = 4.dp),
             )
         }
     }
@@ -696,7 +734,11 @@ private fun BottomBar(
             Text(
                 "←",
                 style = MaterialTheme.typography.titleMedium.copy(color = if (state.canGoBack) Brand.Paper else Brand.Line),
-                modifier = Modifier.clickable(enabled = state.canGoBack) { onIntent(ReaderIntent.Previous) }.padding(end = 16.dp),
+                modifier =
+                    Modifier
+                        .clickable(enabled = state.canGoBack, role = Role.Button) { onIntent(ReaderIntent.Previous) }
+                        .semantics { contentDescription = "Previous section" }
+                        .padding(end = 16.dp),
             )
         }
         Text(state.positionLabel, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
