@@ -319,6 +319,11 @@ data class MarginUiState(
 
     /** Notes are written in the chapter tab, theories in theirs, the salon only in the current week. */
     val canWrite: Boolean get() = !offline && (tab != MarginTab.Salon || salon?.current == true)
+
+    companion object {
+        /** The margin off (no flag, or a chapter read on the device): the state of a screen without a view model. */
+        val hidden: MarginUiState = MarginUiState()
+    }
 }
 
 internal fun pinOf(

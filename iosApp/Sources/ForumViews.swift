@@ -13,11 +13,7 @@ final class MarginModel: ObservableObject {
     init(route: ReaderRoute) {
         // A source's chapter read on the device has no margin until it is a chapter of the server.
         viewModel = route.sourceKey == "vovoscan" ? owner.forum(chapterId: route.chapterId) : nil
-        state = viewModel?.state.value ?? MarginUiState(
-            visible: false, open: false, tab: .chapter, order: .best, loading: false, offline: false, error: nil, count: 0,
-            pins: [:], notes: [], theories: [], salon: nil, composer: ComposerUi(), thread: nil, endCard: nil, reporting: nil,
-            toast: nil
-        )
+        state = viewModel?.state.value ?? MarginUiState.companion.hidden
     }
 
     func observe() async {

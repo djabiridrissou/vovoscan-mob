@@ -66,12 +66,12 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
-import com.vovoscan.app.ui.common.Brand
 import com.vovoscan.app.ui.common.ErrorText
 import com.vovoscan.app.ui.common.GhostButton
 import com.vovoscan.app.ui.common.OfflineNotice
 import com.vovoscan.app.ui.common.PrimaryButton
 import com.vovoscan.app.ui.common.ToggleChip
+import com.vovoscan.app.ui.theme.Brand
 import com.vovoscan.core.common.i18n.I18n
 import com.vovoscan.feature.forum.domain.PostKind
 import com.vovoscan.feature.forum.presentation.MarginIntent
