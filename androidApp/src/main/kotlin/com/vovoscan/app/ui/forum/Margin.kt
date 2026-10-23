@@ -198,6 +198,22 @@ fun MarginPinsOverlay(
             )
         }
         Canvas(Modifier.fillMaxSize()) {
+            // A tool is armed: a faint red hatch and a dashed outline say the page takes the mark (never a dimming).
+            if (state.placing) {
+                val step = 14.dp.toPx()
+                var x = -size.height
+                while (x < size.width) {
+                    drawLine(Brand.Red.copy(alpha = 0.05f), Offset(x, size.height), Offset(x + size.height, 0f), 2.dp.toPx())
+                    x += step
+                }
+                val inset = 1.dp.toPx()
+                drawRect(
+                    Brand.Red,
+                    Offset(inset, inset),
+                    Size(size.width - 2 * inset, size.height - 2 * inset),
+                    style = Stroke(2.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(24f, 18f))),
+                )
+            }
             (pins + listOfNotNull(draft)).forEach { pin ->
                 when (pin.shape) {
                     PinShape.Frame ->

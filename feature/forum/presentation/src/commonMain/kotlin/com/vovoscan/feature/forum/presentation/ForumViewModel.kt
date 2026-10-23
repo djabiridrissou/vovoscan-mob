@@ -889,10 +889,10 @@ class ForumViewModel(
 
     private fun render() {
         val m = margin
+        // Pinned posts are only in `pins`, the others only in `notes`: the chapter's list shows both, pins first.
         val notes =
-            m
-                ?.notes
-                .orEmpty()
+            (m?.pins.orEmpty() + m?.notes.orEmpty())
+                .distinctBy { it.id }
                 .mapNotNull { posts[it.id] }
                 .filter(::shown)
         val pins =

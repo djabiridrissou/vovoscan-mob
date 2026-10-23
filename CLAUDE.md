@@ -731,7 +731,8 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   of the server has a margin (`sourceKey` `vovoscan`, or a source's chapter reopened on its server copy): a chapter read
   on the device is never brought in for it, so browsing a source tells the server nothing.
 - `ForumViewModel(chapterId)` (`MarginUiState`, `MarginIntent`): the "余白 Margin" switch in the reader's bar (with the
-  chapter's count), pins over the pages while it is open (`pinsOn(page)`, `draftOn(page)`: sticker glyph on yellow, "？"
+  chapter's count: pins + notes, which the server sends disjoint; the chapter's list shows both, pins first), pins over
+  the pages while it is open (`pinsOn(page)`, `draftOn(page)`: sticker glyph on yellow, "？"
   on a note masked as a spoiler for this reader, "✎" for words only; frames and strokes drawn in red), three tabs
   (this chapter's notes, theories with their verdict votes, the weekly salon with its 8 latest weeks), orders best /
   new / old, replies, eight sticker reactions (the same again takes it back), reveal, translate into the writing
@@ -740,14 +741,15 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   many readers got there and the best three visible notes.
 - Marks (`Anchors`, domain, pure): a point, a frame (two corners; under 0.02 of the page it is a point) or a stroke
   (thinned with Ramer-Douglas-Peucker to at most 64 points), fractions of the page rounded to 4 decimals. With a tool
-  chosen (`placing`), the page takes the finger before the pager, the strip or the tap zones.
+  chosen (`placing`), the page takes the finger before the pager, the strip or the tap zones, and shows a faint red
+  hatch (5 %) with a 2 pt dashed red outline until the mark is placed or the tool turned off.
 - Rules (`ForumRules`): control and bidirectional characters dropped, one blank line at most, 500 / 1500 / 1000
   characters (note / theory / salon), 500 for a reply, at most 2 links; a sticker or a stroke is content on its own.
 - Online only: nothing is queued (spoilers and moderation are the server's). The last margin read per chapter is kept
   (`margin_cache`, the 50 latest) and shown offline with the offline line; erased on sign-out. Moderation stays in the
   web console.
 - iOS `ForumViews.swift` (`MarginModel`, `MarginButton`, `MarginPinsOverlay` over each `PageImage` through the
-  `pageMargin` environment, `MarginSheet` with a 0.4 detent that leaves the pages interactive, `MarginEndCard` in the
+  `pageMargin` environment, `MarginSheet` (0.4 and large detents; the pages stay interactive and are never dimmed), `MarginEndCard` in the
   forward chapter card). Android `ui/forum/Margin.kt` (`LocalPageMargin`, a non-modal `MarginPanel` docked at the
   bottom, 45 % or 90 % of the height; Back closes the replies, then the panel).
 

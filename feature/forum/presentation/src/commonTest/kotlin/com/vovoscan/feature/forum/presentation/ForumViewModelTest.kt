@@ -94,12 +94,8 @@ class FakeForum : ForumRepository {
                     post("p1", pageIndex = 0, anchor = Anchor.Point(0.5, 0.5), sticker = Sticker.Don),
                     post("p2", pageIndex = 2, anchor = Anchor.Frame(0.1, 0.1, 0.3, 0.3), masked = true),
                 ),
-            notes =
-                listOf(
-                    post("p1", pageIndex = 0, anchor = Anchor.Point(0.5, 0.5), sticker = Sticker.Don),
-                    post("p2", pageIndex = 2, anchor = Anchor.Frame(0.1, 0.1, 0.3, 0.3), masked = true),
-                    post("n3", body = "Le gardien ment.", language = "fr", author = "u2"),
-                ),
+            // Disjoint, as the server sends them: a pinned post is only in `pins`.
+            notes = listOf(post("n3", body = "Le gardien ment.", language = "fr", author = "u2")),
             theories = emptyList(),
         )
     val cached = MutableStateFlow<Margin?>(null)
@@ -269,6 +265,9 @@ class ForumViewModelTest {
             val s = vm.state.value
             assertTrue(s.visible)
             assertEquals(3, s.count)
+            // The chapter's list holds every post, pins first.
+            assertEquals(listOf("p1", "p2", "n3"), s.notes.map { it.id })
+            assertNull(s.empty)
             assertEquals("ドン", s.pins[0]!!.single().label)
             // Pins show on the pages only while the margin is open.
             assertTrue(s.pinsOn(0).isEmpty())

@@ -101,7 +101,11 @@ struct MarginPinsOverlay: View {
         GeometryReader { geo in
             let size = geo.size
             ZStack(alignment: .topLeading) {
-                if margin.placing { capture(size) }
+                if margin.placing {
+                    // A tool is armed: a faint red hatch and a dashed outline say the page takes the mark.
+                    ArmedPage().allowsHitTesting(false)
+                    capture(size)
+                }
                 ForEach(margin.pins(pageIndex), id: \.postId) { pin in pinView(pin, size, draft: false) }
                 if let draft = margin.draft(pageIndex) { pinView(draft, size, draft: true) }
                 // The frame or stroke under the finger, before it is let go.
@@ -194,6 +198,28 @@ struct MarginPinsOverlay: View {
         .position(x: at.x, y: at.y)
         .opacity(draft ? 0.85 : 1)
         .accessibilityLabel(pin.a11y)
+    }
+}
+
+/// The page while a tool is armed: red diagonal hatch at 5 % and a 2 pt dashed red outline (never a dimming).
+private struct ArmedPage: View {
+    var body: some View {
+        Canvas { context, size in
+            var hatch = Path()
+            let step: CGFloat = 14
+            var x: CGFloat = -size.height
+            while x < size.width {
+                hatch.move(to: CGPoint(x: x, y: size.height))
+                hatch.addLine(to: CGPoint(x: x + size.height, y: 0))
+                x += step
+            }
+            context.stroke(hatch, with: .color(Color.brandRed.opacity(0.05)), lineWidth: 2)
+            context.stroke(
+                Path(CGRect(origin: .zero, size: size).insetBy(dx: 1, dy: 1)),
+                with: .color(Color.brandRed),
+                style: StrokeStyle(lineWidth: 2, dash: [8, 6])
+            )
+        }
     }
 }
 

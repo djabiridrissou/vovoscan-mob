@@ -296,7 +296,7 @@ struct ReaderView: View {
         base
             .fullScreenCover(item: $player) { (route: PlayerRoute) in PlayerView(route: route) { _, _ in player = nil } }
             .sheet(item: $sourceEpisode) { (episode: SourceEpisode) in SourceEpisodeSheet(episode: episode) }
-            // The margin: the pages stay readable and markable under its lower detent.
+            // The margin: the pages stay readable and markable under it.
             // Presented from a local flag that follows the shared state (never a binding computed from it: the state
             // comes back a moment after a swipe down, so the binding read "open" again mid-dismissal and the sheet's
             // dimming layer stayed over the pages).
@@ -305,7 +305,8 @@ struct ReaderView: View {
             }) {
                 MarginSheet(margin: margin)
                     .presentationDetents([.fraction(0.4), .large])
-                    .presentationBackgroundInteraction(.enabled(upThrough: .fraction(0.4)))
+                    // Never dims the pages, whatever the detent: the marks sit on the art at full brightness.
+                    .presentationBackgroundInteraction(.enabled)
                     .presentationBackground(Color.brandInk2)
             }
             .sheet(isPresented: $languagesOpen) {
