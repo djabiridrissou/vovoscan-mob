@@ -182,7 +182,7 @@ fun ColdOpen(
             val w = maxWidth
             val h = maxHeight
             Panel(0.06f, Modifier.size(w, h * 0.42f).slam(beat >= 1, 1.3f)) {
-                Text("ゴゴゴ", style = MaterialTheme.typography.displaySmall.copy(color = Brand.Ink), modifier = Modifier.rotate(-8f))
+                Text("GRRR", style = MaterialTheme.typography.displaySmall.copy(color = Brand.Ink), modifier = Modifier.rotate(-8f))
             }
             Panel(-0.05f, Modifier.offset(y = h * 0.45f).size(w * 0.58f, h * 0.55f).slam(beat >= 2, 1.25f)) {
                 SpeedLines(Offset(0.2f, 0.5f), Brand.Ink.copy(alpha = 0.5f), Modifier.fillMaxSize())
@@ -193,7 +193,7 @@ fun ColdOpen(
             }
             Box(Modifier.offset(x = w - 70.dp, y = (-22).dp).slam(beat >= 4, 2.4f)) { LogoMark(74) }
             Text(
-                "ドン!",
+                "BOOM!",
                 style = MaterialTheme.typography.displaySmall.copy(color = Brand.Yellow, fontSize = 34.sp),
                 modifier = Modifier.offset(x = 6.dp, y = h * 0.36f).rotate(-6f).slam(beat >= 5, 0.4f),
             )
