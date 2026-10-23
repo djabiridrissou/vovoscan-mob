@@ -223,16 +223,29 @@ private struct ArmedPage: View {
     }
 }
 
-/// The sheet: three tabs (this chapter, theories, salon), the list, and the composer with its tools.
-struct MarginSheet: View {
+/// The panel, docked at the bottom of the reader (45 % or 90 % of its height; never a sheet, so nothing dims the
+/// pages): three tabs (this chapter, theories, salon), the list, and the composer with its tools; a thread opens in
+/// place with a way back.
+struct MarginPanel: View {
     @ObservedObject var margin: MarginModel
+    /// The reader's height.
+    let height: CGFloat
     @State private var draft = ""
     @State private var reply = ""
+    @State private var tall = false
+    @GestureState private var pull: CGFloat = 0
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private static let shape = UnevenRoundedRectangle(topLeadingRadius: 16, topTrailingRadius: 16)
 
     var body: some View {
         let state = margin.state
-        NavigationStack {
-            VStack(spacing: 0) {
+        VStack(spacing: 0) {
+            handle
+            if state.thread != nil {
+                threadHeader(state)
+                thread
+            } else {
                 header(state)
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 12) {
@@ -250,36 +263,81 @@ struct MarginSheet: View {
                 }
                 if state.canWrite { composer(state) }
             }
-            .background(Color.brandInk2)
-            .navigationDestination(isPresented: Binding(
-                get: { margin.state.thread != nil },
-                set: { if !$0 { margin.send(MarginIntentCloseThread.shared) } }
-            )) {
-                thread
+        }
+        .frame(maxWidth: .infinity)
+        .frame(height: panelHeight, alignment: .top)
+        .background(Color.brandInk2, in: Self.shape)
+        .background(alignment: .bottom) {
+            // Under the home indicator too, so the pages never show through below the panel.
+            Color.brandInk2.frame(height: 1).ignoresSafeArea(edges: .bottom)
+        }
+        .overlay(Self.shape.stroke(Color.brandLine, lineWidth: 1))
+        .animation(reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.9), value: tall)
+        .confirmationDialog(
+            state.reportTitle,
+            isPresented: Binding(get: { margin.state.reporting != nil }, set: { if !$0 { margin.send(MarginIntentCancelReport.shared) } }),
+            titleVisibility: .visible
+        ) {
+            ForEach(state.reportReasons, id: \.label) { reason in
+                Button(reason.label) { margin.send(MarginIntentSendReport(reason: reason.reason)) }
             }
-            .confirmationDialog(
-                state.reportTitle,
-                isPresented: Binding(get: { margin.state.reporting != nil }, set: { if !$0 { margin.send(MarginIntentCancelReport.shared) } }),
-                titleVisibility: .visible
-            ) {
-                ForEach(state.reportReasons, id: \.label) { reason in
-                    Button(reason.label) { margin.send(MarginIntentSendReport(reason: reason.reason)) }
-                }
-                Button(L("common.cancel"), role: .cancel) { margin.send(MarginIntentCancelReport.shared) }
-            }
-            .overlay(alignment: .bottom) {
-                if let toast = state.toast {
-                    Text(toast).font(.brandBody(14, weight: .bold)).foregroundStyle(Color.brandInk)
-                        .padding(12)
-                        .background(Color.brandYellow, in: RoundedRectangle(cornerRadius: 10))
-                        .padding(.bottom, 90)
-                        .task {
-                            try? await Task.sleep(for: .seconds(3))
-                            margin.send(MarginIntentToastShown.shared)
-                        }
-                }
+            Button(L("common.cancel"), role: .cancel) { margin.send(MarginIntentCancelReport.shared) }
+        }
+        .overlay(alignment: .bottom) {
+            if let toast = state.toast {
+                Text(toast).font(.brandBody(14, weight: .bold)).foregroundStyle(Color.brandInk)
+                    .padding(12)
+                    .background(Color.brandYellow, in: RoundedRectangle(cornerRadius: 10))
+                    .padding(.bottom, 90)
+                    .task {
+                        try? await Task.sleep(for: .seconds(3))
+                        margin.send(MarginIntentToastShown.shared)
+                    }
             }
         }
+    }
+
+    /// 45 % or 90 % of the reader, following the finger while the handle is dragged.
+    private var panelHeight: CGFloat {
+        let base = (tall ? 0.9 : 0.45) * height
+        return min(max(base - pull, 160), max(height, 160))
+    }
+
+    /// The handle: a tap makes the panel taller or shorter; a drag up makes it tall, down short, then closes it.
+    private var handle: some View {
+        Capsule().fill(Color.brandLine).frame(width: 36, height: 4)
+            .frame(maxWidth: .infinity, minHeight: 24)
+            .contentShape(Rectangle())
+            .onTapGesture { tall.toggle() }
+            .gesture(
+                DragGesture(minimumDistance: 6)
+                    .updating($pull) { value, pull, _ in pull = value.translation.height }
+                    .onEnded { value in
+                        let dy = value.translation.height
+                        if dy < -60 {
+                            tall = true
+                        } else if dy > 60 {
+                            if tall { tall = false } else { margin.send(MarginIntentClose.shared) }
+                        }
+                    }
+            )
+            .accessibilityElement()
+            .accessibilityLabel(L("forum.resize"))
+            .accessibilityAddTraits(.isButton)
+            .accessibilityAction { tall.toggle() }
+    }
+
+    private func threadHeader(_ state: MarginUiState) -> some View {
+        HStack(spacing: 4) {
+            Button { margin.send(MarginIntentCloseThread.shared) } label: {
+                Image(systemName: "chevron.left").font(.system(size: 17, weight: .bold)).foregroundStyle(Color.brandPaper)
+                    .frame(width: 44, height: 44)
+            }
+            .accessibilityLabel(L("common.back"))
+            Text(state.repliesTitle).font(.brandBody(16, weight: .bold)).foregroundStyle(Color.brandPaper).lineLimit(1)
+            Spacer()
+        }
+        .padding(.horizontal, 8)
     }
 
     private func posts(_ state: MarginUiState) -> [PostUi] {
@@ -429,8 +487,6 @@ struct MarginSheet: View {
                 }
                 .padding(16)
             }
-            .background(Color.brandInk2)
-            .navigationTitle(margin.state.repliesTitle)
         }
     }
 }

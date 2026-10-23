@@ -49,7 +49,8 @@ struct ReaderView: View {
     @State private var pushSettled = false
     @State private var pickerShown = false
     @State private var keysOpen = false
-    @State private var marginSheetOpen = false
+    /// The reader's height: the margin's panel is a share of it.
+    @State private var readerHeight: CGFloat = 0
     /// The bottom bar's height: the language dock sits above it while the bars show.
     @State private var bottomBarHeight: CGFloat = 0
     @State private var player: PlayerRoute?
@@ -82,10 +83,12 @@ struct ReaderView: View {
     private var layers: some View {
         ZStack {
             Color.brandInk.ignoresSafeArea()
-            content
+            // The keyboard of the margin's composer never resizes the pages under it.
+            content.ignoresSafeArea(.keyboard)
             floating
             overlays
         }
+        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { readerHeight = $0 }
     }
 
     /// The chapter itself: a book, a comic, or why it isn't here.
@@ -220,6 +223,15 @@ struct ReaderView: View {
         // A book keeps its bars: the web view receives the taps (text scrolling).
         // Over the dock, the bubble and the toast (their full-height frames), under the coach.
         if model.state.chromeVisible || model.state.isBook { chrome.transition(.opacity).zIndex(0.9) }
+        // The margin: a panel in the reader, never a presented sheet, so the pages are never dimmed (a sheet left its
+        // dimming and the muted tint over the pages once closed) and stay readable and markable above it. The switch
+        // in the top bar is the panel: on, it shows; off, it is gone.
+        if margin.state.visible && margin.state.open && !model.state.isBook {
+            MarginPanel(margin: margin, height: readerHeight)
+                .frame(maxHeight: .infinity, alignment: .bottom)
+                .transition(reduceMotion ? .identity : .move(edge: .bottom))
+                .zIndex(0.95)
+        }
         // How to read, the first time a chapter of its kind opens: any tap closes it.
         if let coach = model.state.coach {
             ReaderCoachOverlay(coach: coach) { model.send(ReaderIntentDismissCoach.shared) }
@@ -236,6 +248,7 @@ struct ReaderView: View {
             .animation(reduced ? nil : .easeOut(duration: 0.25), value: model.state.coach == nil)
             .animation(reduced ? nil : .easeInOut(duration: 0.25), value: model.state.chromeVisible)
             .animation(reduced ? nil : .easeInOut(duration: 0.4), value: model.state.titleCard)
+            .animation(reduced ? nil : .spring(response: 0.35, dampingFraction: 0.9), value: margin.state.visible && margin.state.open)
             .toolbar(.hidden, for: .navigationBar)
             .toolbar(.hidden, for: .tabBar)
             .statusBarHidden(!model.state.chromeVisible)
@@ -253,9 +266,6 @@ struct ReaderView: View {
             .task { await translation.observe() }
             .task { await next.observe() }
             .task { await margin.observe() }
-            .onChange(of: margin.state.visible && margin.state.open) { _, open in
-                if marginSheetOpen != open { marginSheetOpen = open }
-            }
             .onChange(of: translation.state.shown, initial: true) { _, shown in next.send(NextChapterIntentLanguageShown(code: shown)) }
             .onChange(of: model.state.readShare, initial: true) { _, share in next.send(NextChapterIntentReached(share: share)) }
             .onChange(of: model.state.onEndCard, initial: true) { _, end in next.send(NextChapterIntentAtEnd(atEnd: end)) }
@@ -296,19 +306,6 @@ struct ReaderView: View {
         base
             .fullScreenCover(item: $player) { (route: PlayerRoute) in PlayerView(route: route) { _, _ in player = nil } }
             .sheet(item: $sourceEpisode) { (episode: SourceEpisode) in SourceEpisodeSheet(episode: episode) }
-            // The margin: the pages stay readable and markable under it.
-            // Presented from a local flag that follows the shared state (never a binding computed from it: the state
-            // comes back a moment after a swipe down, so the binding read "open" again mid-dismissal and the sheet's
-            // dimming layer stayed over the pages).
-            .sheet(isPresented: $marginSheetOpen, onDismiss: {
-                if margin.state.open { margin.send(MarginIntentClose.shared) }
-            }) {
-                MarginSheet(margin: margin)
-                    .presentationDetents([.fraction(0.4), .large])
-                    // Never dims the pages, whatever the detent: the marks sit on the art at full brightness.
-                    .presentationBackgroundInteraction(.enabled)
-                    .presentationBackground(Color.brandInk2)
-            }
             .sheet(isPresented: $languagesOpen) {
                 LanguageSheet(translation: translation)
                     .presentationDetents([.medium, .large])

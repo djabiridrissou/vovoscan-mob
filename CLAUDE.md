@@ -752,8 +752,10 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   (`margin_cache`, the 50 latest) and shown offline with the offline line; erased on sign-out. Moderation stays in the
   web console.
 - iOS `ForumViews.swift` (`MarginModel`, `MarginButton`, `MarginPinsOverlay` over each `PageImage` through the
-  `pageMargin` environment, `MarginSheet` (0.4 and large detents; the pages stay interactive and are never dimmed), `MarginEndCard` in the
-  forward chapter card). Android `ui/forum/Margin.kt` (`LocalPageMargin`, a non-modal `MarginPanel` docked at the
+  `pageMargin` environment, `MarginPanel` docked in the reader's own layers, 45 % or 90 % of its height (handle: tap,
+  drag up or down, down again closes; a thread opens in place with ←), `MarginEndCard` in the forward chapter card).
+  Never a presented sheet: a sheet's dimming and muted tint stayed over the pages once it was closed, so the switch
+  is the panel and nothing dims the pages. Android `ui/forum/Margin.kt` (`LocalPageMargin`, a non-modal `MarginPanel` docked at the
   bottom, 45 % or 90 % of the height; Back closes the replies, then the panel).
 
 ## Screens (account and episodes)
