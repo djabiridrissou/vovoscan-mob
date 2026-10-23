@@ -666,6 +666,8 @@ private struct PageSlider: View {
         }
         .tint(Color.brandRed)
         .environment(\.layoutDirection, model.state.rightToLeft ? .rightToLeft : .leftToRight)
+        // Made again when the direction changes: a slider flipped in place drew its thumb apart from its fill.
+        .id(model.state.rightToLeft)
         .accessibilityLabel("Page")
         .accessibilityValue(model.state.sliderLabel(page: Int32(dragged ?? Int(model.state.currentIndex))))
     }
@@ -896,7 +898,22 @@ private struct HorizontalPages: View {
         .scrollIndicators(.hidden)
         .scrollTargetBehavior(.paging)
         .scrollPosition(id: $position)
+        // The screen shown comes from what is visible, not from the position binding alone: a pager made while the
+        // chapter is open (Continuous → Right to left from the settings) could keep its first position and never
+        // report a swipe, so the counter, the slider and the saved page stayed where the strip had left them.
+        .onScrollTargetVisibilityChange(idType: Int.self, threshold: 0.6) { ids in
+            guard let screen = ids.first else { return }
+            if position != screen { position = screen }
+            if screen != Int(model.state.currentSpread), let spread = model.state.spreads[safe: screen] {
+                model.send(ReaderIntentItemVisible(item: spread.first))
+            }
+        }
         .id("\(model.state.mode)-\(model.state.twoPages)")
+        .onAppear {
+            // Placed once laid out: a lazy stack made mid-chapter may not have reached the current screen yet.
+            let screen = Int(model.state.currentSpread)
+            DispatchQueue.main.async { position = screen }
+        }
         .onChange(of: position) { _, screen in
             if let screen, let spread = model.state.spreads[safe: screen] {
                 model.send(ReaderIntentItemVisible(item: spread.first))
