@@ -201,10 +201,7 @@ class SqlDownloadsLocalDataSource(
         sections: List<ParsedSection>?,
     ) = withContext(io) {
         queries.transaction {
-            if (sections != null) {
-                queries.deleteSections(key)
-                sections.forEachIndexed { index, section -> queries.putSection(key, index.toLong(), section.title, section.html) }
-            }
+            if (sections != null) database.putBook(key, sections)
             queries.deleteDownload(key)
         }
     }
@@ -214,7 +211,7 @@ class SqlDownloadsLocalDataSource(
             queries.transaction {
                 queries.deleteDownloadPages(key)
                 queries.deleteDownload(key)
-                queries.deleteSections(key)
+                database.deleteBook(key)
             }
         }
 
