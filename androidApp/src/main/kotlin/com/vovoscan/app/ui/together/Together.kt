@@ -604,7 +604,9 @@ private fun Hanko(
 
 /**
  * The rail at the right edge: one dot per reader at their place in the chapter; tap a dot to go there. Only with the
- * bars ([interactive]): hidden bars leave every tap to the page, so a tap meant to show them never lands on a dot.
+ * bars ([interactive]): while they are hidden a dot's tap only brings them back ([wake]). It never moves the reader
+ * (a tap near the edge meant to show the bars sent a host to the top of page 1), and never reaches the page under it
+ * (its tap zone scrolled the strip back a page).
  */
 @Composable
 fun TogetherRail(
@@ -612,6 +614,7 @@ fun TogetherRail(
     send: (TogetherIntent) -> Unit,
     modifier: Modifier = Modifier,
     interactive: Boolean = true,
+    wake: () -> Unit = {},
 ) {
     val rail = state.circle?.rail.orEmpty()
     if (rail.isEmpty()) return
@@ -631,7 +634,7 @@ fun TogetherRail(
                 Modifier
                     .offset(y = track * dot.share)
                     .size(44.dp)
-                    .then(if (interactive) Modifier.clickable { send(TogetherIntent.JumpTo(dot.userId)) } else Modifier),
+                    .clickable { if (interactive) send(TogetherIntent.JumpTo(dot.userId)) else wake() },
                 contentAlignment = Alignment.Center,
             ) {
                 Box(

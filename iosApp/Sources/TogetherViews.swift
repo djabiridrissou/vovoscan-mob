@@ -397,9 +397,11 @@ struct Hanko: View {
 /// The rail at the right edge: one dot per reader at their place in the chapter; tap a dot to go there.
 struct TogetherRail: View {
     @ObservedObject var together: TogetherModel
-    /// With the bars only: hidden bars leave every tap to the page, so a tap near the edge meant to show them never
-    /// lands on a reader's dot and moves the strip (a host was sent back to the top of page 1).
+    /// With the bars only: while they are hidden a dot's tap only brings them back (`wake`). It never moves the
+    /// reader (a tap near the edge meant to show the bars sent a host to the top of page 1), and never reaches the page
+    /// under it (its tap zone scrolled the strip back a page).
     var interactive = true
+    var wake: () -> Void = {}
 
     var body: some View {
         if let circle = together.state.circle, !circle.rail.isEmpty {
@@ -408,7 +410,9 @@ struct TogetherRail: View {
                     Capsule().fill(Color.brandPaper.opacity(0.18)).frame(width: 3)
                     ForEach(circle.rail, id: \.userId) { dot in
                         let size: CGFloat = dot.host ? 14 : 10
-                        Button { together.send(TogetherIntentJumpTo(userId: dot.userId)) } label: {
+                        Button {
+                            if interactive { together.send(TogetherIntentJumpTo(userId: dot.userId)) } else { wake() }
+                        } label: {
                             Circle().fill(CircleInk.of(dot.slot))
                                 .overlay(Circle().stroke(dot.me ? Color.brandPaper : Color.brandInk, lineWidth: 2))
                                 .frame(width: size, height: size)
@@ -416,7 +420,6 @@ struct TogetherRail: View {
                                 .contentShape(Rectangle())
                         }
                         .offset(y: CGFloat(dot.share) * max(area.size.height - 44, 0))
-                        .allowsHitTesting(interactive)
                         .accessibilityHidden(true)
                     }
                 }
