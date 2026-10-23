@@ -109,16 +109,16 @@ interface ForumRemoteDataSource {
 class ApiForumRemoteDataSource(
     private val http: HttpClient,
 ) : ForumRemoteDataSource {
-    private fun chapter(id: String) = "$BASE/chapters/${id.encodeURLPathPart()}"
+    private fun chapterPath(id: String) = "$BASE/chapters/${id.encodeURLPathPart()}"
 
-    private fun post(id: String) = "$BASE/posts/${id.encodeURLPathPart()}"
+    private fun postPath(id: String) = "$BASE/posts/${id.encodeURLPathPart()}"
 
     override suspend fun margin(
         chapterId: String,
         order: Order,
     ): AppResult<MarginDto> =
         http
-            .apiCall<ApiData<MarginDto>> { get("${chapter(chapterId)}/margin") { parameter("order", order.wire) } }
+            .apiCall<ApiData<MarginDto>> { get("${chapterPath(chapterId)}/margin") { parameter("order", order.wire) } }
             .map { it.data }
 
     override suspend fun post(
@@ -127,7 +127,7 @@ class ApiForumRemoteDataSource(
     ): AppResult<PostDto> =
         http
             .apiCall<ApiData<PostDto>> {
-                post("${chapter(chapterId)}/posts") {
+                post("${chapterPath(chapterId)}/posts") {
                     contentType(ContentType.Application.Json)
                     setBody(body)
                 }
@@ -138,7 +138,7 @@ class ApiForumRemoteDataSource(
         week: String?,
     ): AppResult<SalonDto> =
         http
-            .apiCall<ApiData<SalonDto>> { get("${chapter(chapterId)}/salon") { week?.let { parameter("week", it) } } }
+            .apiCall<ApiData<SalonDto>> { get("${chapterPath(chapterId)}/salon") { week?.let { parameter("week", it) } } }
             .map { it.data }
 
     override suspend fun theories(
@@ -146,11 +146,11 @@ class ApiForumRemoteDataSource(
         order: Order,
     ): AppResult<TheoriesDto> =
         http
-            .apiCall<ApiData<TheoriesDto>> { get("${chapter(chapterId)}/theories") { parameter("order", order.wire) } }
+            .apiCall<ApiData<TheoriesDto>> { get("${chapterPath(chapterId)}/theories") { parameter("order", order.wire) } }
             .map { it.data }
 
     override suspend fun replies(postId: String): AppResult<RepliesDto> =
-        http.apiCall<ApiData<RepliesDto>> { get("${post(postId)}/replies") }.map { it.data }
+        http.apiCall<ApiData<RepliesDto>> { get("${postPath(postId)}/replies") }.map { it.data }
 
     override suspend fun reply(
         postId: String,
@@ -158,7 +158,7 @@ class ApiForumRemoteDataSource(
     ): AppResult<PostDto> =
         http
             .apiCall<ApiData<PostDto>> {
-                post("${post(postId)}/replies") {
+                post("${postPath(postId)}/replies") {
                     contentType(ContentType.Application.Json)
                     setBody(body)
                 }
@@ -170,16 +170,16 @@ class ApiForumRemoteDataSource(
     ): AppResult<PostDto> =
         http
             .apiCall<ApiData<PostDto>> {
-                patch(post(postId)) {
+                patch(postPath(postId)) {
                     contentType(ContentType.Application.Json)
                     setBody(EditBody(body))
                 }
             }.map { it.data }
 
-    override suspend fun delete(postId: String): AppResult<Unit> = http.apiCallUnit { delete(post(postId)) }
+    override suspend fun delete(postId: String): AppResult<Unit> = http.apiCallUnit { delete(postPath(postId)) }
 
     override suspend fun reveal(postId: String): AppResult<PostDto> =
-        http.apiCall<ApiData<PostDto>> { post("${post(postId)}/reveal") }.map { it.data }
+        http.apiCall<ApiData<PostDto>> { post("${postPath(postId)}/reveal") }.map { it.data }
 
     override suspend fun react(
         postId: String,
@@ -188,9 +188,9 @@ class ApiForumRemoteDataSource(
         http
             .apiCall<ApiData<PostDto>> {
                 if (key == null) {
-                    delete("${post(postId)}/reaction")
+                    delete("${postPath(postId)}/reaction")
                 } else {
-                    put("${post(postId)}/reaction") {
+                    put("${postPath(postId)}/reaction") {
                         contentType(ContentType.Application.Json)
                         setBody(ReactionBody(key))
                     }
@@ -204,9 +204,9 @@ class ApiForumRemoteDataSource(
         http
             .apiCall<ApiData<PostDto>> {
                 if (verdict == null) {
-                    delete("${post(postId)}/vote")
+                    delete("${postPath(postId)}/vote")
                 } else {
-                    put("${post(postId)}/vote") {
+                    put("${postPath(postId)}/vote") {
                         contentType(ContentType.Application.Json)
                         setBody(VoteBody(verdict))
                     }
@@ -218,7 +218,7 @@ class ApiForumRemoteDataSource(
         body: ReportBody,
     ): AppResult<Unit> =
         http.apiCallUnit {
-            post("${post(postId)}/reports") {
+            post("${postPath(postId)}/reports") {
                 contentType(ContentType.Application.Json)
                 setBody(body)
             }
@@ -230,7 +230,7 @@ class ApiForumRemoteDataSource(
     ): AppResult<TranslationDto> =
         http
             .apiCall<ApiData<TranslationDto>> {
-                post("${post(postId)}/translations") {
+                post("${postPath(postId)}/translations") {
                     contentType(ContentType.Application.Json)
                     setBody(TranslateBody(language))
                 }

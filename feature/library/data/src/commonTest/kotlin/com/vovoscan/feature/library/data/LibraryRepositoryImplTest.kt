@@ -108,7 +108,9 @@ class LibraryRepositoryImplTest {
         favorite: Boolean,
         at: String = "1970-01-01T00:00:01Z",
         newChapters: Int? = null,
+        chapter: String? = null,
     ) = """{"data":{"sourceKey":"gutenberg","titleRef":"1342","titleName":"Pride and Prejudice","lastPage":0,""" +
+        (chapter?.let { """"lastChapterRef":"$it",""" } ?: "") +
         """"updatedAt":"$at","favorite":$favorite,"favoriteUpdatedAt":"$at"""" +
         (if (favorite) ""","favoritedAt":"$at"""" else "") +
         (newChapters?.let { ""","chapterCount":9,"newChapters":$it""" } ?: "") + "}}"
@@ -169,8 +171,8 @@ class LibraryRepositoryImplTest {
                                 HttpStatusCode.NotFound,
                             )
                         request.url.encodedPath.startsWith("/api/v1/favorites/") -> respondJson(entryJson(favorite = true))
-                        // The library's answer carries the heart as the server has it.
-                        else -> respondJson(entryJson(favorite = true, at = "1970-01-01T00:00:02Z"))
+                        // The library's answer echoes the progress saved and carries the heart as the server has it.
+                        else -> respondJson(entryJson(favorite = true, at = "1970-01-01T00:00:02Z", chapter = "c1"))
                     }
                 }
             val repo = LibraryRepositoryImpl(KtorLibraryRemoteDataSource(http), local) { 1_000L }
