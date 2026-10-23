@@ -76,53 +76,57 @@ class EngineExtensionsTest {
     fun postWithRenderedBodyAndSignedQuery() =
         runTest {
             val manifestJson =
-            """
-            {
-              "key": "signed", "name": "Signed", "contractVersion": 1, "kinds": ["comic"], "langs": ["en"],
-              "hosts": ["api.signed.example"],
-              "catalog": {
-                "request": {
-                  "url": "https://api.signed.example/list",
-                  "type": "json", "method": "post", "contentType": "application/json",
-                  "body": "{\"page\": {{page}}, \"search\": \"{{search}}\"}",
-                  "query": {"_ts": {"template": "{{unix}}"}, "_t": {"template": "{{unix}}salt", "then": ["md5"]}}
-                },
-                "list": "$.data[*]",
-                "item": {"id": "$.id", "name": "$.name"}
-              },
-              "title": {
-                "request": {"url": "https://api.signed.example/title/{{id}}", "type": "json"},
-                "fields": {"name": "$.name"},
-                "units": {"single": {"id": "{{id}}", "name": "One"}}
-              },
-              "content": {
-                "comic": {
-                  "request": {"url": "https://api.signed.example/pages", "type": "json"},
-                  "list": "$.pages[*]",
-                  "item": {"url": "$"}
+                """
+                {
+                  "key": "signed", "name": "Signed", "contractVersion": 1, "kinds": ["comic"], "langs": ["en"],
+                  "hosts": ["api.signed.example"],
+                  "catalog": {
+                    "request": {
+                      "url": "https://api.signed.example/list",
+                      "type": "json", "method": "post", "contentType": "application/json",
+                      "body": "{\"page\": {{page}}, \"search\": \"{{search}}\"}",
+                      "query": {"_ts": {"template": "{{unix}}"}, "_t": {"template": "{{unix}}salt", "then": ["md5"]}}
+                    },
+                    "list": "$.data[*]",
+                    "item": {"id": "$.id", "name": "$.name"}
+                  },
+                  "title": {
+                    "request": {"url": "https://api.signed.example/title/{{id}}", "type": "json"},
+                    "fields": {"name": "$.name"},
+                    "units": {"single": {"id": "{{id}}", "name": "One"}}
+                  },
+                  "content": {
+                    "comic": {
+                      "request": {"url": "https://api.signed.example/pages", "type": "json"},
+                      "list": "$.pages[*]",
+                      "item": {"url": "$"}
+                    }
+                  }
                 }
-              }
-            }
-            """.trimIndent()
-        val manifest = SourceManifest("signed", Json.parseToJsonElement(manifestJson).jsonObject, emptyMap())
-        val seen = mutableListOf<Triple<HttpMethod, String, String?>>()
-        val engine =
-            MockEngine { request ->
-                val text = (request.body as? io.ktor.http.content.TextContent)?.text
-                seen += Triple(request.method, request.url.toString(), text)
-                respond("""{"data":[{"id":"a","name":"A"}]}""", HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
-            }
-        val source = RulesSource(manifest, RulesHttp(createRulesHttpClient(engine)))
-        val page = source.catalog(1)
-        assertTrue(page is com.vovoscan.core.common.AppResult.Ok, "catalog failed: $page")
-        val (method, url, body) = seen.single()
-        assertEquals(HttpMethod.Post, method)
-        assertTrue(url.startsWith("https://api.signed.example/list?_ts="), url)
-        val ts = Regex("_ts=([0-9]+)").find(url)?.groupValues?.get(1)
-        val token = Regex("_t=([0-9a-f]{32})").find(url)?.groupValues?.get(1)
-        assertTrue(ts != null && token != null, url)
-        assertEquals(md5Hex(ts!! + "salt"), token)
-        assertEquals("""{"page": 1, "search": ""}""", body)
+                """.trimIndent()
+            val manifest = SourceManifest("signed", Json.parseToJsonElement(manifestJson).jsonObject, emptyMap())
+            val seen = mutableListOf<Triple<HttpMethod, String, String?>>()
+            val engine =
+                MockEngine { request ->
+                    val text = (request.body as? io.ktor.http.content.TextContent)?.text
+                    seen += Triple(request.method, request.url.toString(), text)
+                    respond(
+                        """{"data":[{"id":"a","name":"A"}]}""",
+                        HttpStatusCode.OK,
+                        headersOf(HttpHeaders.ContentType, "application/json"),
+                    )
+                }
+            val source = RulesSource(manifest, RulesHttp(createRulesHttpClient(engine)))
+            val page = source.catalog(1)
+            assertTrue(page is com.vovoscan.core.common.AppResult.Ok, "catalog failed: $page")
+            val (method, url, body) = seen.single()
+            assertEquals(HttpMethod.Post, method)
+            assertTrue(url.startsWith("https://api.signed.example/list?_ts="), url)
+            val ts = Regex("_ts=([0-9]+)").find(url)?.groupValues?.get(1)
+            val token = Regex("_t=([0-9a-f]{32})").find(url)?.groupValues?.get(1)
+            assertTrue(ts != null && token != null, url)
+            assertEquals(md5Hex(ts!! + "salt"), token)
+            assertEquals("""{"page": 1, "search": ""}""", body)
         }
 
     @Test

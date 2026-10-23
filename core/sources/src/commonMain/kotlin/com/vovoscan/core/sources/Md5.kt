@@ -24,17 +24,84 @@ fun md5Hex(input: String): String {
     var c0 = 0x98BADCFE.toInt()
     var d0 = 0x10325476.toInt()
 
-    val s = intArrayOf(7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22, 5, 9, 14, 20, 5, 9, 14, 20, 5, 9, 14, 20, 5, 9, 14, 20, 4, 11, 16, 23, 4, 11, 16, 23, 4, 11, 16, 23, 4, 11, 16, 23, 6, 10, 15, 21, 6, 10, 15, 21, 6, 10, 15, 21, 6, 10, 15, 21)
+    val s =
+        intArrayOf(
+            7,
+            12,
+            17,
+            22,
+            7,
+            12,
+            17,
+            22,
+            7,
+            12,
+            17,
+            22,
+            7,
+            12,
+            17,
+            22,
+            5,
+            9,
+            14,
+            20,
+            5,
+            9,
+            14,
+            20,
+            5,
+            9,
+            14,
+            20,
+            5,
+            9,
+            14,
+            20,
+            4,
+            11,
+            16,
+            23,
+            4,
+            11,
+            16,
+            23,
+            4,
+            11,
+            16,
+            23,
+            4,
+            11,
+            16,
+            23,
+            6,
+            10,
+            15,
+            21,
+            6,
+            10,
+            15,
+            21,
+            6,
+            10,
+            15,
+            21,
+            6,
+            10,
+            15,
+            21,
+        )
     val k = IntArray(64) { i -> floor(4294967296.0 * abs(sin(i + 1.0))).toLong().toInt() }
 
     for (blockStart in padded.indices step 64) {
-        val m = IntArray(16) { i ->
-            val p = blockStart + i * 4
-            (padded[p].toInt() and 0xFF) or
-                ((padded[p + 1].toInt() and 0xFF) shl 8) or
-                ((padded[p + 2].toInt() and 0xFF) shl 16) or
-                ((padded[p + 3].toInt() and 0xFF) shl 24)
-        }
+        val m =
+            IntArray(16) { i ->
+                val p = blockStart + i * 4
+                (padded[p].toInt() and 0xFF) or
+                    ((padded[p + 1].toInt() and 0xFF) shl 8) or
+                    ((padded[p + 2].toInt() and 0xFF) shl 16) or
+                    ((padded[p + 3].toInt() and 0xFF) shl 24)
+            }
 
         var a = a0
         var b = b0
@@ -54,12 +121,12 @@ fun md5Hex(input: String): String {
             c = b
             b =
                 b +
-                    (
-                        a +
-                            f +
-                            k[i] +
-                            m[g]
-                    ).rotateLeft(s[i])
+                (
+                    a +
+                        f +
+                        k[i] +
+                        m[g]
+                ).rotateLeft(s[i])
             a = tmp
         }
 

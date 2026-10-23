@@ -19,7 +19,11 @@ object Template {
             when {
                 // Clock variables, for request signing (e.g. a token of the current time): the same values
                 // expand everywhere in one template, and `{{utc:…}}` is UTC so every device signs identically.
-                name == "unix" -> Clock.System.now().epochSeconds.toString()
+                name == "unix" ->
+                    Clock.System
+                        .now()
+                        .epochSeconds
+                        .toString()
                 name.startsWith("utc:") -> UtcFormat.format(name.removePrefix("utc:"), Clock.System.now())
                 else -> lookup(name, variables)
             }
