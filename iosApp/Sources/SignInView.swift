@@ -35,7 +35,7 @@ struct SignInView: View {
             SpeedLines(center: UnitPoint(x: 0.82, y: 0.25))
             HalftoneBackground(color: .brandRed, spacing: 11, maxOpacity: 0.22)
             // Sound effects in the margin, as in a panel.
-            Text("ドン!")
+            Text("BOOM!")
                 .font(.brandDisplay(64))
                 .foregroundStyle(Color.brandYellow)
                 .rotationEffect(.degrees(10))

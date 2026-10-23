@@ -358,7 +358,7 @@ private fun CreditLine(
 @Composable
 private fun Done(state: OnboardingUiState) {
     Text(
-        "ドン!",
+        "BOOM!",
         style = MaterialTheme.typography.displayMedium.copy(color = Brand.Yellow, fontSize = 56.sp),
         modifier = Modifier.padding(top = 24.dp).rotate(-6f),
     )
