@@ -518,6 +518,7 @@ enum ReaderKeyMap {
 /// zoom (off by default) makes single taps wait for a possible second tap.
 private struct ComicReader: View {
     @ObservedObject var model: ReaderModel
+    @Environment(\.pageMargin) private var pageMargin
     @State private var zoomed = false
     @State private var pan: CGSize = .zero
     @State private var panStart: CGSize = .zero
@@ -533,7 +534,8 @@ private struct ComicReader: View {
                     FlowStrip(model: model)
                 }
             }
-            .scrollDisabled(zoomed)
+            // A margin tool armed (the page hatched): a drag places the mark at once and never scrolls.
+            .scrollDisabled(zoomed || pageMargin?.placing == true)
             .scaleEffect(zoomed ? zoom : 1, anchor: .topLeading)
             .offset(zoomed ? pan : .zero)
             .frame(width: size.width, height: size.height, alignment: .topLeading)

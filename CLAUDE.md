@@ -745,7 +745,8 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   many readers got there and the best three visible notes.
 - Marks (`Anchors`, domain, pure): a point, a frame (two corners; under 0.02 of the page it is a point) or a stroke
   (thinned with Ramer-Douglas-Peucker to at most 64 points), fractions of the page rounded to 4 decimals. With a tool
-  chosen (`placing`), the page takes the finger before the pager, the strip or the tap zones, and shows a faint red
+  chosen (`placing`), the page takes the finger before the pager, the strip or the tap zones (scrolling is off
+  until the tool is turned off, so a quick drag draws at once), and shows a faint red
   hatch (5 %) with a 2 pt dashed red outline until the mark is placed or the tool turned off.
 - Rules (`ForumRules`): control and bidirectional characters dropped, one blank line at most, 500 / 1500 / 1000
   characters (note / theory / salon), 500 for a reply, at most 2 links; a sticker or a stroke is content on its own.

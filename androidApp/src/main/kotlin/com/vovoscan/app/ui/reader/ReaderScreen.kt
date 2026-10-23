@@ -551,14 +551,16 @@ private fun ComicReader(
                     this.translationY = translationY
                 },
         ) {
+            // A margin tool armed (the page hatched): a drag places the mark at once and never scrolls.
+            val placing = LocalPageMargin.current?.state?.placing == true
             if (state.isPaged) {
                 PagedReader(
                     state,
                     onIntent,
-                    scrollEnabled = !zoomed,
+                    scrollEnabled = !zoomed && !placing,
                 )
             } else {
-                FlowStrip(state, onIntent, scrollEnabled = !zoomed)
+                FlowStrip(state, onIntent, scrollEnabled = !zoomed && !placing)
             }
         }
     }
