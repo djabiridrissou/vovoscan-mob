@@ -326,9 +326,31 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   moved (an `ItemVisible` report), so an opening strip not laid out yet does not jump to the end. Chapter names come
   through the `ChapterHeadings` port (wired in `shared` to the title page kept by the catalog). Commands carry a `seq`; the native side starts them and answers `CommandHandled(seq)`.
 - Single taps act on touch-up (measured 6-19 ms from touch-up to the intent on the iOS simulator). Double tap to zoom
-  (off by default; 2×, pan by dragging, scrolling paused while zoomed) makes single taps wait for a possible second
-  tap (~370 ms). A drag, fling or pinch is never a tap (the scroll view takes it first). Taps faster than the scroll
-  animation add up.
+  (off by default) makes single taps wait for a possible second tap (~370 ms). A drag, fling or pinch is never a tap
+  (the scroll view, or the zoom, takes it first). Taps faster than the scroll animation add up.
+- Zoom, in every mode (`PageZoom`, `ZoomTransform`, pure, `domain`; drawn as `screen = content × scale + (x, y)`, the
+  zoomed content always covering the area): pinch from 1× to 4× around the fingers, whatever the double-tap setting;
+  double tap (when on) goes fit → 2× around the tapped point, and from any zoom back to fit. Zoomed, a drag pans the
+  view, and what goes past its top or bottom scrolls the content beneath (`PageZoom.pan` → `ZoomPan.scroll`: the strip,
+  or the current tall page inside its page, never into the next page); letting go flings it. The pager and the strip
+  do not scroll by themselves while zoomed (no page turn under a pan). Long strips zoom as a whole, as Mihon's webtoon
+  view: pages stay joined and the strip keeps scrolling under the zoom (zooming the page under the fingers cut it from
+  its neighbours at every page boundary and stopped the reading there). The native side reports
+  `ReaderIntent.ZoomChanged(zoomed)`; while zoomed a tap only shows or hides the bars (`ReaderUiState.zoomed`, the
+  zones would turn the page away from what is being read), and back at 1× they work again. `ReaderUiState.zoomReset`
+  changes when the zoom must go back to 1× at once: a page turned while zoomed (volume keys), a slider jump, another
+  mode. The page read, zoomed in a paged mode, is decoded again with all its pixels (`detail`), back to the screen's
+  width at 1×. Android: one `pointerInput` in the initial pass (`zoomGestures`: `calculateZoom` / `calculateCentroid` /
+  `calculatePan`, zoomed one-finger pans with a `VelocityTracker` fling) consumes what it uses, so the pager or the
+  list never sees it; `graphicsLayer` draws. iOS: `MagnifyGesture` (around where the fingers started: SwiftUI gives no
+  centre that follows them) and, zoomed, a `DragGesture`; `scaleEffect` + `offset`; `ZoomScroller` reaches the strip or
+  the tall page beneath.
+- Page slider (bottom bar, with the bars, comics of more than one page; `ReaderUiState.showsSlider`): every page of
+  the chapter, mirrored in right to left (first page on the right). While dragged, the bar's "5 / 19" shows the page
+  under the thumb in yellow (`sliderLabel`); letting go sends `ReaderIntent.SeekTo(page)` → `ReaderCommand.JumpTo(item)`:
+  that page at once, its top at the top of the screen, in every mode (a tall page from its top); the zoom goes back to
+  1× and the bars stay. A strip counts the jump as moved (its next reports follow from there). TalkBack / VoiceOver
+  adjustments jump at once.
 - Overlay (red next, cyan previous, ink menu, ~1.5 s): on the reader's first opening on the device, then when the
   zones change (layout, invert, or a mode that changes them), after the settings sheet closes; "Show tap zones" off
   never shows it.
@@ -341,7 +363,13 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
 - Android: `HorizontalPager` (reversed for right to left) / `VerticalPager` / `LazyColumn`, `detectTapGestures`
   around them, volume keys through `MainActivity.onKeyDown`/`onKeyUp` while the reader is on screen. Pages taller than
   4096 px, and pages of unknown height, are decoded as software bitmaps (a hardware bitmap of an 800 × 14 000 webtoon
-  page never drew). A tall page is a `verticalScroll` inside its pager page (`PagedPage`): nested scrolling scrolls the
+  page never drew). Every page is decoded for the screen's width (`size(Size(width, Dimension.Undefined))`,
+  `Precision.INEXACT`: a page wider than the screen takes the screen's pixels, a narrower one keeps its own, never
+  scaled up); the `LazyColumn` only composes the pages near the screen, and a page above 16 MB decoded (a webtoon
+  strip of 800 × 13 000 px is about 40 MB) stays out of Coil's memory cache (`MAX_CACHED_BYTES`: read from it, never
+  written), so pages scrolled away are let go and come back from the disk cache (Reaper's chapter 1 on the Pixel 7: about
+  2 strips held at rest, 4 at the peak of a fling until the GC runs, as before: its 800 px pages are narrower than the
+  screen, so the width decode changes nothing there). A tall page is a `verticalScroll` inside its pager page (`PagedPage`): nested scrolling scrolls the
   page first, the rest of the drag moves the pager, a fling stops at the page's edge (the pager's own rule). Pages
   before the current one wait at their bottom, pages after it at their top, so a swipe back shows the end of the
   previous page. iOS: horizontal pages are a paging `ScrollView` (`scrollTargetBehavior(.paging)`, right-to-left layout
@@ -353,14 +381,20 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   the screen past the edge (`TURN_FRACTION`), else back to the edge, one page per gesture. The stack is a `VStack`,
   not lazy (a lazy stack's estimated positions for pages not laid out yet made scrolls to the next page stop short or
   not move), and only pages within 2 of the current one hold their image (`PageImage.active`). Strips: `ScrollView` +
-  `ScrollPosition`; one `SpatialTapGesture` on the container.
+  `ScrollPosition` over a `VStack` too (`StripReader`): the `LazyVStack` kept every page it had shown with its image
+  (Reaper's chapter 1, 7 pages of 800 × 12 000-14 000 px, about 40 MB each decoded, went from 113 to 278 MB; now about 70 MB all along), and a
+  jump needs every page's place; the pages within a screen above and two below the visible area hold their image
+  (`window`, from the measured frames), the others let it go. One `SpatialTapGesture` on the container. `PageLoader`
+  decodes with ImageIO (`CGImageSourceCreateThumbnailAtIndex`, decoded at once off the main thread) no wider than the
+  reading area's pixels (`pageDecodeWidth`, never scaled up), and keeps the file while the image is held, for the
+  zoom's detailed decode; `UIImage(data:)` kept the file and decoded it full size on the main thread when first drawn.
 - Page size (`ReaderPage.hasSize`): our pages come with their size, so the space is reserved and nothing jumps. A source
   read on the device usually sends none (0 × 0): the page shows a placeholder (0.7, portrait) until the image has loaded,
   then takes **the image's own shape** (Android: Coil's `onSuccess`; iOS: `PageLoader`, which fetches through the shared
   session so the cache and `SourceRefererProtocol` still apply). Never the placeholder's shape: a webtoon strip squeezed
-  into it was a thin band on iOS and cropped to its top on Android. Android decodes such a page for the screen's width,
-  whatever its height (`size(Size(width, Dimension.Undefined))`): sized for the placeholder's screen-fitted box, a strip
-  came out a few hundred pixels wide and was blurred once it filled the width.
+  into it was a thin band on iOS and cropped to its top on Android. Android decodes such a page (as every page) for the
+  screen's width, whatever its height: sized for the placeholder's screen-fitted box, a strip came out a few hundred
+  pixels wide and was blurred once it filled the width.
 - Resume with pages of unknown size (and as they change shape). The reader opens at the saved page in every mode and
   stays there while pages go from the placeholder to their real height. Cause of the bug ("page 1 / 7" instead of the
   saved page 5, right to left, a rule-based source): `SqlReaderLocalDataSource.observe` combined two queries (the

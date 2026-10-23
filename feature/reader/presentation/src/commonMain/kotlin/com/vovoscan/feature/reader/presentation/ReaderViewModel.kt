@@ -136,6 +136,15 @@ sealed interface ReaderCommand {
         val fraction: Float,
     ) : ReaderCommand
 
+    /**
+     * The page slider let go on a page: show this item (index in `items`) at once, its top at the top of the screen,
+     * in every mode (a strip scrolls to the page's top, a tall page shows its top).
+     */
+    data class JumpTo(
+        override val seq: Int,
+        val item: Int,
+    ) : ReaderCommand
+
     /** Replace this reader by another chapter, from `startPage` (`ReaderViewModel.START_AT_END`: its last page). */
     data class OpenChapter(
         override val seq: Int,
@@ -175,6 +184,10 @@ data class ReaderUiState(
     /** The overlay to draw for a moment (first opening, after a change of zones), else null. */
     val tapOverlay: TapOverlay? = null,
     val command: ReaderCommand? = null,
+    /** Comics: pinched or double-tapped above 1× (as the native side reports it). Taps then only toggle the bars. */
+    val zoomed: Boolean = false,
+    /** Changes whenever the zoom must go back to 1× (another page in the paged modes, a jump, another mode). */
+    val zoomReset: Int = 0,
     val freshness: Freshness = Freshness.Refreshing,
     /** Never opened and no network: nothing to show. */
     val unavailable: Boolean = false,
@@ -229,6 +242,12 @@ data class ReaderUiState(
     val nextLabel: String? get() = nextChapterId?.let { if (isBook) "Next part →" else "Next chapter →" }
 
     val rightToLeft: Boolean get() = mode == ReadingMode.PagedRightToLeft
+
+    /** Comics: the page slider in the bottom bar (with the bars), mirrored in right to left ([rightToLeft]). */
+    val showsSlider: Boolean get() = !isBook && pages.size > 1
+
+    /** The slider's label for a page being dragged to ("12 / 19"), as [positionLabel] says it. */
+    fun sliderLabel(page: Int): String = if (pages.isEmpty()) "" else "${page.coerceIn(0, pages.lastIndex) + 1} / ${pages.size}"
 
     /**
      * Book: the hint for a pull past an edge of the section. [overscroll]: how far past the edge, as a fraction of
@@ -318,6 +337,16 @@ sealed interface ReaderIntent {
 
     data class CommandHandled(
         val seq: Int,
+    ) : ReaderIntent
+
+    /** Comics: the reading area went above 1× ([zoomed]) or back to it (pinch, double tap, a reset). */
+    data class ZoomChanged(
+        val zoomed: Boolean,
+    ) : ReaderIntent
+
+    /** Comics: the page slider let go on this page (index in `pages`). */
+    data class SeekTo(
+        val page: Int,
     ) : ReaderIntent
 
     data object Next : ReaderIntent
@@ -462,6 +491,8 @@ class ReaderViewModel(
             is ReaderIntent.PullReleased -> pullReleased(intent.overscroll)
             is ReaderIntent.Tap -> tap(intent.x, intent.y)
             is ReaderIntent.CommandHandled -> mutableState.update { if (it.command?.seq == intent.seq) it.copy(command = null) else it }
+            is ReaderIntent.ZoomChanged -> mutableState.update { it.copy(zoomed = intent.zoomed) }
+            is ReaderIntent.SeekTo -> seekTo(intent.page)
             ReaderIntent.Next -> if (state.value.isBook) moveTo(state.value.currentIndex + 1) else forward()
             ReaderIntent.Previous -> if (state.value.isBook) moveTo(state.value.currentIndex - 1) else backward()
             ReaderIntent.ToggleChrome -> mutableState.update { it.copy(chromeVisible = !it.chromeVisible) }
@@ -528,6 +559,11 @@ class ReaderViewModel(
         val current = state.value
         if (current.isBook || current.items.isEmpty()) return
         hideOverlay()
+        // Zoomed: a tap only shows or hides the bars (the zones would turn the page away from what is being read).
+        if (current.zoomed) {
+            mutableState.update { it.copy(chromeVisible = !it.chromeVisible) }
+            return
+        }
         when (TapZones.resolve(current.preferences.tapLayout, current.preferences.tapInvert, current.mode, x, y)) {
             TapAction.Menu -> mutableState.update { it.copy(chromeVisible = !it.chromeVisible) }
             TapAction.Next -> forward()
@@ -581,8 +617,29 @@ class ReaderViewModel(
         item: Int,
         atBottom: Boolean = false,
     ) {
+        // A volume key while zoomed: the next page starts at 1×.
+        if (state.value.zoomed) resetZoom()
         itemVisible(item)
         command { ReaderCommand.GoToItem(it, item, animated = true, atBottom = atBottom) }
+    }
+
+    /**
+     * The page slider: the page at once, from its top, in every mode; the zoom goes back to 1×. A strip counts the
+     * jump as moved (its next reports say what is at the top of the screen).
+     */
+    private fun seekTo(page: Int) {
+        val current = state.value
+        if (current.isBook || current.pages.isEmpty() || current.items.isEmpty()) return
+        val item = page.coerceIn(0, current.pages.lastIndex) + 1
+        resetZoom()
+        if (current.isStrip) stripItem = item
+        itemVisible(item)
+        command { ReaderCommand.JumpTo(it, item) }
+    }
+
+    /** Back to 1× (the native side follows `zoomReset`); taps turn pages again. */
+    private fun resetZoom() {
+        mutableState.update { it.copy(zoomed = false, zoomReset = it.zoomReset + 1) }
     }
 
     /** Book: letting go past the threshold opens what the hint announced (the buttons' targets). */
@@ -637,8 +694,11 @@ class ReaderViewModel(
         }
         val mode = ReadingModes.resolve(chapter.mode, chapter.format, seriesMode, preferences)
         val isBook = mode == ReadingMode.Book
-        // Another layout: the strip's last report no longer says where the reader is.
-        if (mode != state.value.mode) stripItem = null
+        // Another layout: the strip's last report no longer says where the reader is, and the zoom starts again.
+        if (mode != state.value.mode) {
+            stripItem = null
+            if (state.value.zoomed) resetZoom()
+        }
         mutableState.update {
             // A chapter seen before its pages (saved for the first time, or a source that sends them later) keeps the
             // resume page: clamped to an empty list, it opened at page 1.

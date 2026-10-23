@@ -1,3 +1,4 @@
+import ImageIO
 import Shared
 import SwiftUI
 import WebKit
@@ -31,6 +32,8 @@ struct ReaderView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var settingsOpen = false
     @State private var languagesOpen = false
+    /// The page under the slider's thumb while it is dragged.
+    @State private var dragged: Int?
     let onOpenChapter: (String, Int) -> Void
 
     init(route: ReaderRoute, onOpenChapter: @escaping (String, Int) -> Void) {
@@ -118,6 +121,12 @@ struct ReaderView: View {
             .padding(.vertical, 12)
             .background(Color.brandInk.opacity(0.92))
             Spacer()
+            if model.state.showsSlider {
+                PageSlider(model: model, dragged: $dragged)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 8)
+                    .background(Color.brandInk.opacity(0.92))
+            }
             HStack(spacing: 20) {
                 if model.state.isBook {
                     Button { model.send(ReaderIntentPrevious.shared) } label: {
@@ -126,7 +135,11 @@ struct ReaderView: View {
                     .disabled(!model.state.canGoBack)
                     .accessibilityLabel("Previous section")
                 }
-                Text(model.state.positionLabel).font(.brandBody(13)).foregroundStyle(Color.brandMuted)
+                // "5 / 19", or the page the slider is being dragged to, in yellow.
+                Text(dragged.map { model.state.sliderLabel(page: Int32($0)) } ?? model.state.positionLabel)
+                    .font(.brandBody(13))
+                    .foregroundStyle(dragged == nil ? Color.brandMuted : Color.brandYellow)
+                    .monospacedDigit()
                 Spacer()
                 // A book with a section left offers that section alone (as on Android): the parts come at its end.
                 if model.state.isBook && model.state.canGoForward {
@@ -148,47 +161,127 @@ struct ReaderView: View {
     }
 }
 
-/// Comic: the mode's layout under one tap gesture. A drag or fling is the scroll view's, never a tap. Double tap to
-/// zoom (off by default) makes single taps wait for a possible second tap.
+/// Comics: a slider over every page of the chapter, the first page on the right in right to left. Letting go jumps
+/// there (`SeekTo`), in every mode; while dragged, the page under the thumb shows in the bar ("12 / 19").
+private struct PageSlider: View {
+    @ObservedObject var model: ReaderModel
+    @Binding var dragged: Int?
+    @State private var editing = false
+
+    var body: some View {
+        let last = Double(max(1, model.state.pages.count - 1))
+        Slider(
+            value: Binding(
+                get: { Double(dragged ?? Int(model.state.currentIndex)) },
+                set: { value in
+                    let page = Int(value.rounded())
+                    if editing {
+                        dragged = page
+                    } else {
+                        // VoiceOver's adjustments (no drag): at once.
+                        model.send(ReaderIntentSeekTo(page: Int32(page)))
+                    }
+                }
+            ),
+            in: 0 ... last,
+            step: 1
+        ) { started in
+            editing = started
+            if !started, let page = dragged {
+                model.send(ReaderIntentSeekTo(page: Int32(page)))
+                dragged = nil
+            }
+        }
+        .tint(Color.brandRed)
+        .environment(\.layoutDirection, model.state.rightToLeft ? .rightToLeft : .leftToRight)
+        .accessibilityLabel("Page")
+        .accessibilityValue(model.state.sliderLabel(page: Int32(dragged ?? Int(model.state.currentIndex))))
+    }
+}
+
+/// Comic: the mode's layout under one tap gesture, and the zoom (`PageZoom`, shared: where it goes). A drag or fling
+/// is the scroll view's at 1×, never a tap. Pinching zooms from 1× to 4× in every mode (the page on screen, or the
+/// whole strip); zoomed, a drag pans and, past the zoomed view's edge, scrolls the strip or the tall page beneath, while
+/// the pager or the strip stays still under the fingers. Double tap to zoom (off by default) makes single taps wait for
+/// a possible second tap.
 private struct ComicReader: View {
     @ObservedObject var model: ReaderModel
-    @State private var zoomed = false
-    @State private var pan: CGSize = .zero
-    @State private var panStart: CGSize = .zero
-    private let zoom: CGFloat = 2
+    @Environment(\.displayScale) private var displayScale
+    @State private var zoom = PageZoom.shared.None
+    @State private var pinchStart: ZoomTransform?
+    @State private var lastDrag: CGSize?
+    @State private var scroller = ZoomScroller()
 
     var body: some View {
         GeometryReader { area in
             let size = area.size
             Group {
                 if model.state.isPaged {
-                    PagedReader(model: model, size: size)
+                    PagedReader(model: model, size: size, scroller: scroller, zoomed: zoom.zoomed)
                 } else {
-                    StripReader(model: model)
+                    StripReader(model: model, scroller: scroller)
                 }
             }
-            .scrollDisabled(zoomed)
-            .scaleEffect(zoomed ? zoom : 1, anchor: .topLeading)
-            .offset(zoomed ? pan : .zero)
+            // Pages are decoded for the screen's pixels (never above their own).
+            .environment(\.pageDecodeWidth, size.width * displayScale)
+            .scrollDisabled(zoom.zoomed || pinchStart != nil)
+            .scaleEffect(CGFloat(zoom.scale), anchor: .topLeading)
+            .offset(x: CGFloat(zoom.x), y: CGFloat(zoom.y))
             .frame(width: size.width, height: size.height, alignment: .topLeading)
             .clipped()
             .contentShape(Rectangle())
             .gesture(taps(size: size))
-            .gesture(
-                DragGesture()
-                    .onChanged { value in
-                        pan = clamp(CGSize(width: panStart.width + value.translation.width, height: panStart.height + value.translation.height), size)
-                    }
-                    .onEnded { _ in panStart = pan },
-                including: zoomed ? .all : .subviews
-            )
-            .animation(.easeOut(duration: 0.2), value: zoomed)
+            .gesture(pan(size: size), including: zoom.zoomed ? .all : .subviews)
+            .simultaneousGesture(pinch(size: size))
         }
         .ignoresSafeArea()
-        // A new page or mode starts unzoomed.
-        .onChange(of: model.state.isPaged ? model.state.currentItem : -1) { _, _ in zoomed = false }
-        .onChange(of: model.state.mode) { _, _ in zoomed = false }
-        .onChange(of: model.state.doubleTapZoom) { _, on in if !on { zoomed = false } }
+        // Another page (a volume key), a jump or another mode: back to 1× at once.
+        .onChange(of: model.state.zoomReset) { _, _ in zoom = PageZoom.shared.None }
+        .onChange(of: zoom.zoomed) { _, zoomed in model.send(ReaderIntentZoomChanged(zoomed: zoomed)) }
+    }
+
+    /// Two fingers, at any scale: around where they started (SwiftUI gives no centre that moves with them).
+    private func pinch(size: CGSize) -> some Gesture {
+        MagnifyGesture(minimumScaleDelta: 0)
+            .onChanged { value in
+                let start = pinchStart ?? zoom
+                if pinchStart == nil { pinchStart = start }
+                zoom = PageZoom.shared.pinch(
+                    transform: start,
+                    factor: Float(value.magnification),
+                    focusX: Float(value.startLocation.x),
+                    focusY: Float(value.startLocation.y),
+                    panX: 0,
+                    panY: 0,
+                    width: Float(size.width),
+                    height: Float(size.height)
+                )
+            }
+            .onEnded { _ in pinchStart = nil }
+    }
+
+    /// Zoomed: a drag pans the view, and what goes past its edge scrolls the content beneath; letting go flings it.
+    private func pan(size: CGSize) -> some Gesture {
+        DragGesture(minimumDistance: 8)
+            .onChanged { value in
+                guard pinchStart == nil else { return }
+                let last = lastDrag ?? .zero
+                lastDrag = value.translation
+                let moved = PageZoom.shared.pan(
+                    transform: zoom,
+                    dx: Float(value.translation.width - last.width),
+                    dy: Float(value.translation.height - last.height),
+                    width: Float(size.width),
+                    height: Float(size.height)
+                )
+                zoom = moved.transform
+                if moved.scroll != 0 { scroller.scrollBy?(CGFloat(moved.scroll)) }
+            }
+            .onEnded { value in
+                lastDrag = nil
+                guard zoom.zoomed, pinchStart == nil else { return }
+                scroller.fling?(-value.velocity.height / CGFloat(zoom.scale))
+            }
     }
 
     /// Single tap at once; with double tap to zoom on, the single tap waits for a possible second one.
@@ -199,23 +292,43 @@ private struct ComicReader: View {
         }
         guard model.state.doubleTapZoom else { return AnyGesture(single.map { _ in () }) }
         let double = SpatialTapGesture(count: 2).onEnded { value in
-            if zoomed {
-                zoomed = false
-            } else {
-                // Zoom in around the finger: that point stays where it is.
-                pan = clamp(CGSize(width: value.location.x * (1 - zoom), height: value.location.y * (1 - zoom)), size)
-                panStart = pan
-                zoomed = true
-            }
+            // Fit ↔ 2× around the finger (that point stays where it is).
+            let target = PageZoom.shared.doubleTap(
+                transform: zoom,
+                x: Float(value.location.x),
+                y: Float(value.location.y),
+                width: Float(size.width),
+                height: Float(size.height)
+            )
+            withAnimation(.easeOut(duration: 0.22)) { zoom = target }
         }
         return AnyGesture(double.exclusively(before: single).map { _ in () })
     }
+}
 
-    private func clamp(_ offset: CGSize, _ size: CGSize) -> CGSize {
-        CGSize(
-            width: min(0, max(size.width * (1 - zoom), offset.width)),
-            height: min(0, max(size.height * (1 - zoom), offset.height))
-        )
+/// What a zoomed pan scrolls past the view's edge (content points, positive forward), and the fling when it lets go
+/// (content points per second): the strip, or the current tall page within its bounds. Set by whichever is on screen.
+@MainActor
+private final class ZoomScroller {
+    var scrollBy: ((CGFloat) -> Void)?
+    var fling: ((CGFloat) -> Void)?
+
+    /// Where a fling from `from` at `speed` comes to rest (a scroll view's normal deceleration, about half a second's
+    /// travel), within `range`.
+    static func rest(from: CGFloat, speed: CGFloat, in range: ClosedRange<CGFloat>) -> CGFloat {
+        min(max(range.lowerBound, from + speed * 0.4), range.upperBound)
+    }
+}
+
+private struct PageDecodeWidthKey: EnvironmentKey {
+    static let defaultValue: CGFloat = 0
+}
+
+extension EnvironmentValues {
+    /// The reading area's width in pixels: pages are decoded no wider (0: their own width).
+    fileprivate var pageDecodeWidth: CGFloat {
+        get { self[PageDecodeWidthKey.self] }
+        set { self[PageDecodeWidthKey.self] = newValue }
     }
 }
 
@@ -224,13 +337,16 @@ private struct ComicReader: View {
 private struct PagedReader: View {
     @ObservedObject var model: ReaderModel
     let size: CGSize
+    let scroller: ZoomScroller
+    /// The page read is zoomed: it is decoded with all its pixels (sharp up to 4×).
+    let zoomed: Bool
     @StateObject private var ratios = PageRatios()
 
     var body: some View {
         if model.state.pagedHorizontally {
-            HorizontalPages(model: model, size: size, ratios: ratios)
+            HorizontalPages(model: model, size: size, ratios: ratios, scroller: scroller, zoomed: zoomed)
         } else {
-            VerticalPages(model: model, size: size, ratios: ratios)
+            VerticalPages(model: model, size: size, ratios: ratios, scroller: scroller, zoomed: zoomed)
         }
     }
 }
@@ -262,12 +378,16 @@ private struct HorizontalPages: View {
     @ObservedObject var model: ReaderModel
     let size: CGSize
     @ObservedObject var ratios: PageRatios
+    let scroller: ZoomScroller
+    let zoomed: Bool
     @State private var position: Int?
 
-    init(model: ReaderModel, size: CGSize, ratios: PageRatios) {
+    init(model: ReaderModel, size: CGSize, ratios: PageRatios, scroller: ZoomScroller, zoomed: Bool) {
         self.model = model
         self.size = size
         self.ratios = ratios
+        self.scroller = scroller
+        self.zoomed = zoomed
         _position = State(initialValue: Int(model.state.currentItem))
     }
 
@@ -278,10 +398,11 @@ private struct HorizontalPages: View {
                 ForEach(Array(items.enumerated()), id: \.offset) { index, item in
                     Group {
                         if let page = item as? ReaderItemPage {
+                            let detail = zoomed && index == Int(model.state.currentItem)
                             if ratios.isTall(page.page, in: size) {
-                                TallPageView(model: model, page: page.page, index: index, size: size)
+                                TallPageView(model: model, page: page.page, index: index, size: size, scroller: scroller, detail: detail)
                             } else {
-                                PageImage(page: page.page, fit: true) { ratios.set(page.page.url, $0) }
+                                PageImage(page: page.page, fit: true, detail: detail) { ratios.set(page.page.url, $0) }
                             }
                         } else if let transition = item as? ReaderItemTransition {
                             TransitionCardView(card: transition.card, model: model)
@@ -304,6 +425,11 @@ private struct HorizontalPages: View {
             if let item { model.send(ReaderIntentItemVisible(item: Int32(item))) }
         }
         .onChange(of: model.state.command?.seq) { _, _ in
+            // The page slider: that page at once (a tall page shows its top, `TallPageView`).
+            if let jump = model.state.command as? ReaderCommandJumpTo {
+                model.send(ReaderIntentCommandHandled(seq: jump.seq))
+                position = Int(jump.item)
+            }
             guard let go = model.state.command as? ReaderCommandGoToItem else { return }
             model.send(ReaderIntentCommandHandled(seq: go.seq))
             if go.animated {
@@ -322,6 +448,8 @@ private struct TallPageView: View {
     let page: ReaderPage
     let index: Int
     let size: CGSize
+    let scroller: ZoomScroller
+    let detail: Bool
     @State private var position = ScrollPosition(edge: .top)
     @State private var geometry = StripGeometry()
     @State private var tapTarget: (y: CGFloat, at: Date)?
@@ -330,7 +458,7 @@ private struct TallPageView: View {
 
     var body: some View {
         ScrollView(.vertical) {
-            PageImage(page: page)
+            PageImage(page: page, detail: detail)
         }
         .scrollIndicators(.hidden)
         .scrollPosition($position)
@@ -343,15 +471,20 @@ private struct TallPageView: View {
         .onAppear {
             if index < Int(model.state.currentItem) { position.scrollTo(edge: .bottom) }
             report()
+            if current { takeZoomScroll() }
         }
         .onChange(of: model.state.currentItem) { _, item in
             if index < Int(item) { position.scrollTo(edge: .bottom) }
             if index > Int(item) { position.scrollTo(edge: .top) }
             report()
+            if current { takeZoomScroll() }
         }
         .onChange(of: model.state.command?.seq) { _, _ in
             if let go = model.state.command as? ReaderCommandGoToItem, Int(go.item) == index, go.atBottom {
                 position.scrollTo(edge: .bottom)
+            }
+            if let jump = model.state.command as? ReaderCommandJumpTo, Int(jump.item) == index {
+                position.scrollTo(edge: .top)
             }
             guard current, let by = model.state.command as? ReaderCommandScrollBy else { return }
             model.send(ReaderIntentCommandHandled(seq: by.seq))
@@ -360,6 +493,22 @@ private struct TallPageView: View {
             let target = min(max(0, from + CGFloat(by.fraction) * geometry.viewport), geometry.maxOffset)
             tapTarget = (target, now)
             withAnimation(.easeInOut(duration: 0.3)) { position.scrollTo(y: target) }
+        }
+    }
+
+    /// Zoomed, a pan past the view's edge scrolls this page inside itself.
+    private func takeZoomScroll() {
+        // A page that is no longer the one read (another page took over, or none is tall) scrolls nothing.
+        scroller.scrollBy = { distance in
+            guard current else { return }
+            let target = min(max(0, geometry.offset + distance), geometry.maxOffset)
+            geometry.offset = target
+            position.scrollTo(y: target)
+        }
+        scroller.fling = { speed in
+            guard current else { return }
+            let target = ZoomScroller.rest(from: geometry.offset, speed: speed, in: 0 ... geometry.maxOffset)
+            withAnimation(.easeOut(duration: 0.6)) { position.scrollTo(y: target) }
         }
     }
 
@@ -382,6 +531,8 @@ private struct VerticalPages: View {
     @ObservedObject var model: ReaderModel
     let size: CGSize
     @ObservedObject var ratios: PageRatios
+    let scroller: ZoomScroller
+    let zoomed: Bool
     @State private var scroll = ScrollPosition(idType: Int.self)
     @State private var layout = PagedLayout()
     @State private var tapTarget: (y: CGFloat, at: Date)?
@@ -401,10 +552,11 @@ private struct VerticalPages: View {
                     Group {
                         if let page = item as? ReaderItemPage {
                             let active = abs(index - current) <= Self.window
+                            let detail = zoomed && index == current
                             if ratios.isTall(page.page, in: size), let ratio = ratios.ratio(page.page) {
-                                PageImage(page: page.page, active: active).frame(width: size.width, height: size.width / ratio)
+                                PageImage(page: page.page, active: active, detail: detail).frame(width: size.width, height: size.width / ratio)
                             } else {
-                                PageImage(page: page.page, fit: true, active: active) { ratios.set(page.page.url, $0) }
+                                PageImage(page: page.page, fit: true, active: active, detail: detail) { ratios.set(page.page.url, $0) }
                                     .frame(width: size.width, height: size.height)
                             }
                         } else if let transition = item as? ReaderItemTransition {
@@ -431,6 +583,7 @@ private struct VerticalPages: View {
             layout.anchor = PagedLayout.Anchor(item: Int(model.state.currentItem), within: 0, atBottom: false)
             layout.opening = true
             scroll.scrollTo(id: Int(model.state.currentItem), anchor: .top)
+            takeZoomScroll()
         }
         .onChange(of: items.count) { _, count in layout.count = count }
         .onScrollGeometryChange(for: StripGeometry.self) { g in
@@ -511,7 +664,42 @@ private struct VerticalPages: View {
         }
     }
 
+    /// Zoomed, a pan past the view's edge scrolls the page read inside itself (never into the next page).
+    private func takeZoomScroll() {
+        scroller.scrollBy = { distance in
+            guard let target = zoomTarget(layout.offset + distance) else { return }
+            layout.offset = target
+            scroll.scrollTo(y: target)
+            layout.anchorHere()
+        }
+        scroller.fling = { speed in
+            guard let frame = layout.frames[Int(model.state.currentItem)] else { return }
+            let range = frame.minY ... max(frame.minY, frame.maxY - layout.viewport)
+            let target = ZoomScroller.rest(from: layout.offset, speed: speed, in: range)
+            withAnimation(.easeOut(duration: 0.6)) { scroll.scrollTo(y: target) }
+            layout.anchor = PagedLayout.Anchor(item: Int(model.state.currentItem), within: target - frame.minY, atBottom: false)
+        }
+    }
+
+    private func zoomTarget(_ y: CGFloat) -> CGFloat? {
+        guard let frame = layout.frames[Int(model.state.currentItem)] else { return nil }
+        return min(max(frame.minY, y), max(frame.minY, frame.maxY - layout.viewport))
+    }
+
     private func run(_ command: ReaderCommand?) {
+        if let jump = command as? ReaderCommandJumpTo {
+            // The page slider: that page's top at once.
+            model.send(ReaderIntentCommandHandled(seq: jump.seq))
+            layout.shown = Int(jump.item)
+            layout.opening = false
+            layout.anchor = PagedLayout.Anchor(item: Int(jump.item), within: 0, atBottom: false)
+            if let y = layout.offset(of: Int(jump.item), atBottom: false) {
+                scroll.scrollTo(y: y)
+            } else {
+                scroll.scrollTo(id: Int(jump.item), anchor: .top)
+            }
+            return
+        }
         if let go = command as? ReaderCommandGoToItem {
             model.send(ReaderIntentCommandHandled(seq: go.seq))
             layout.shown = Int(go.item)
@@ -632,8 +820,12 @@ private struct TallPaging: ScrollTargetBehavior {
 }
 
 /// Continuous vertical strip (webtoon), with the mode's gap between pages. Taps scroll it by a fraction of the screen.
+/// Not lazy (as `VerticalPages`): every page is laid out at its size, so a jump lands on its page and the pages near the
+/// screen are known; only those hold their image (`window`), as a lazy stack kept every page it had shown (a chapter of
+/// webtoon strips decoded at 800 × 13 000 px each, about 40 MB apiece, went from 113 to 278 MB).
 private struct StripReader: View {
     @ObservedObject var model: ReaderModel
+    let scroller: ZoomScroller
     @State private var scroll = ScrollPosition(idType: Int.self)
     @State private var geometry = StripGeometry()
     @State private var reportedEdges: [Bool] = []
@@ -643,15 +835,21 @@ private struct StripReader: View {
     @State private var tapTarget: (y: CGFloat, at: Date)?
     /// Pages of unknown size grow from the placeholder to their image's height: the strip keeps what is read in place.
     @State private var layout = PagedLayout(pagesFillScreen: false)
+    /// The items that hold their image: those within a screen above and two below what is on screen.
+    @State private var window: ClosedRange<Int>?
+    private static let above: CGFloat = 1
+    private static let below: CGFloat = 2
 
     var body: some View {
         let items = model.state.items
+        let current = Int(model.state.currentItem)
+        let held = window ?? (current - 1) ... (current + 1)
         ScrollView(.vertical) {
-            LazyVStack(spacing: CGFloat(model.state.pageGap)) {
+            VStack(spacing: CGFloat(model.state.pageGap)) {
                 ForEach(Array(items.enumerated()), id: \.offset) { index, item in
                     Group {
                         if let page = item as? ReaderItemPage {
-                            PageImage(page: page.page)
+                            PageImage(page: page.page, active: held.contains(index))
                         } else if let transition = item as? ReaderItemTransition {
                             TransitionCardView(card: transition.card, model: model).frame(minHeight: 280)
                         }
@@ -672,6 +870,16 @@ private struct StripReader: View {
         .onAppear {
             layout.anchor = PagedLayout.Anchor(item: Int(model.state.currentItem), within: 0, atBottom: false)
             scroll.scrollTo(id: Int(model.state.currentItem), anchor: .top)
+            takeZoomScroll()
+            // The stack is laid out over the first frames: a scroll sent before it is ignored (the strip opened on the
+            // previous-chapter card). Until the reader moves, the opening position is sent again from the frames.
+            for delay in [0.05, 0.2, 0.5] {
+                DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                    guard !moved, layout.idle, let target = layout.anchorOffset() else { return }
+                    layout.offset = target
+                    scroll.scrollTo(y: target)
+                }
+            }
         }
         .onScrollGeometryChange(for: StripGeometry.self) { g in
             StripGeometry(offset: g.contentOffset.y, viewport: g.containerSize.height, content: g.contentSize.height)
@@ -679,6 +887,7 @@ private struct StripReader: View {
             geometry = new
             layout.offset = new.offset
             layout.viewport = new.viewport
+            updateWindow()
             let edges = [new.offset <= 1, new.offset >= new.maxOffset - 1]
             if edges != reportedEdges {
                 reportedEdges = edges
@@ -696,6 +905,21 @@ private struct StripReader: View {
             if moved, let first = visible.min() { model.send(ReaderIntentItemVisible(item: Int32(first))) }
         }
         .onChange(of: model.state.command?.seq) { _, _ in
+            if let jump = model.state.command as? ReaderCommandJumpTo {
+                // The page slider: the page's top at the top of the screen, at once.
+                model.send(ReaderIntentCommandHandled(seq: jump.seq))
+                moved = true
+                layout.anchor = PagedLayout.Anchor(item: Int(jump.item), within: 0, atBottom: false)
+                if let frame = layout.frames[Int(jump.item)] {
+                    let y = min(frame.minY, geometry.maxOffset)
+                    layout.offset = y
+                    scroll.scrollTo(y: y)
+                } else {
+                    scroll.scrollTo(id: Int(jump.item), anchor: .top)
+                }
+                updateWindow()
+                return
+            }
             guard let by = model.state.command as? ReaderCommandScrollBy else { return }
             model.send(ReaderIntentCommandHandled(seq: by.seq))
             // Taps faster than the animation add up (the touch itself stops the animation): within the animation's
@@ -714,6 +938,34 @@ private struct StripReader: View {
         if layout.idle, let target = layout.anchorOffset(), abs(target - layout.offset) > 0.5 {
             layout.offset = target
             scroll.scrollTo(y: target)
+        }
+        updateWindow()
+    }
+
+    /// The items near the screen (by their frames) hold their image; the others let it go.
+    private func updateWindow() {
+        guard layout.viewport > 0 else { return }
+        let top = layout.offset - layout.viewport * Self.above
+        let bottom = layout.offset + layout.viewport * (1 + Self.below)
+        let near = layout.frames.filter { $0.value.maxY >= top && $0.value.minY <= bottom }.keys
+        guard let first = near.min(), let last = near.max() else { return }
+        if window != first ... last { window = first ... last }
+    }
+
+    /// Zoomed, the whole strip is: a pan past the view's edge scrolls it, a fling carries on.
+    private func takeZoomScroll() {
+        scroller.scrollBy = { distance in
+            let target = min(max(0, layout.offset + distance), geometry.maxOffset)
+            moved = true
+            layout.offset = target
+            scroll.scrollTo(y: target)
+            layout.anchorHere()
+        }
+        scroller.fling = { speed in
+            let target = ZoomScroller.rest(from: layout.offset, speed: speed, in: 0 ... geometry.maxOffset)
+            withAnimation(.easeOut(duration: 0.6)) { scroll.scrollTo(y: target) }
+            layout.offset = target
+            layout.anchorHere()
         }
     }
 }
@@ -804,8 +1056,11 @@ private struct PageImage: View {
     @Environment(\.pageLettering) private var lettering
     /// Holds its image (false: a page far from the one read lets its image go).
     var active = true
+    /// The page read, zoomed: decoded with all its pixels (sharp up to 4×), else for the screen's width.
+    var detail = false
     /// The image's width / height once loaded (a page whose size the source didn't give may turn out tall).
     var onLoaded: ((CGFloat) -> Void)?
+    @Environment(\.pageDecodeWidth) private var decodeWidth
     @StateObject private var loader = PageLoader()
 
     var body: some View {
@@ -835,10 +1090,14 @@ private struct PageImage: View {
             if !items.isEmpty { LetteringOverlay(items: items) }
         }
         .frame(maxWidth: .infinity, maxHeight: fit ? .infinity : nil)
-        .onAppear { if active { loader.show(page.url) } }
+        .onAppear {
+            loader.maxWidth = detail ? 0 : decodeWidth
+            if active { loader.show(page.url) }
+        }
         .onChange(of: active) { _, on in if on { loader.show(page.url) } else { loader.clear() } }
         // The saved copy of a chapter shows first; the fresh one may bring new signed links.
         .onChange(of: page.url) { _, url in if active { loader.show(url) } }
+        .onChange(of: detail ? 0 : decodeWidth) { _, width in loader.redecode(maxWidth: width) }
         .onChange(of: loader.image) { _, image in
             if let size = image?.size, size.width > 0, size.height > 0 { onLoaded?(size.width / size.height) }
         }
@@ -853,13 +1112,20 @@ private struct PageImage: View {
 }
 
 /// One page's image, fetched through the shared session (its cache, and the source's Referer from
-/// `SourceRefererProtocol`, as AsyncImage had), so its real size is known once it has loaded.
+/// `SourceRefererProtocol`, as AsyncImage had), so its real size is known once it has loaded. Decoded with ImageIO at
+/// once, off the main thread, never wider than `maxWidth` pixels (the screen's; 0: its own width): `UIImage(data:)`
+/// kept the file and decoded it full size on the main thread when first drawn.
 @MainActor
 private final class PageLoader: ObservableObject {
     @Published private(set) var image: UIImage?
     @Published private(set) var failed = false
+    var maxWidth: CGFloat = 0
     private var task: Task<Void, Never>?
     private var address: String?
+    /// The file, kept while the image is held: a zoom decodes it again with all its pixels, and back.
+    private var data: Data?
+    /// The file's own width in pixels (0: unknown).
+    private var fullWidth: CGFloat = 0
 
     /// Loads `url` unless it is already the one shown (or loading).
     func show(_ url: String) {
@@ -873,7 +1139,53 @@ private final class PageLoader: ObservableObject {
         task?.cancel()
         address = nil
         image = nil
+        data = nil
+        fullWidth = 0
         failed = false
+    }
+
+    /// Decodes the file again for another width (zoomed in, or back), the image on screen kept meanwhile.
+    func redecode(maxWidth: CGFloat) {
+        guard maxWidth != self.maxWidth else { return }
+        let old = self.maxWidth
+        self.maxWidth = maxWidth
+        // A page no wider than both widths is already at its own size (a webtoon strip narrower than the screen).
+        func full(_ width: CGFloat) -> Bool { width == 0 || (fullWidth > 0 && width >= fullWidth) }
+        if full(old), full(maxWidth) { return }
+        guard let data, image != nil else { return }
+        let address = self.address
+        task?.cancel()
+        task = Task {
+            let decoded = await Task.detached { Self.decode(data, maxWidth: maxWidth) }.value
+            guard !Task.isCancelled, address == self.address, let decoded else { return }
+            image = decoded
+        }
+    }
+
+    nonisolated static func pixelWidth(_ data: Data) -> CGFloat {
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil),
+              let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any]
+        else { return 0 }
+        return properties[kCGImagePropertyPixelWidth] as? CGFloat ?? 0
+    }
+
+    /// The image at its own size, or `maxWidth` pixels wide when it is wider (0: its own size), decoded now.
+    nonisolated static func decode(_ data: Data, maxWidth: CGFloat) -> UIImage? {
+        guard let source = CGImageSourceCreateWithData(data as CFData, [kCGImageSourceShouldCache: false] as CFDictionary),
+              let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+              let width = properties[kCGImagePropertyPixelWidth] as? CGFloat,
+              let height = properties[kCGImagePropertyPixelHeight] as? CGFloat, width > 0, height > 0
+        else { return UIImage(data: data) }
+        // The thumbnail's size is its longest side.
+        let scale = maxWidth > 0 && width > maxWidth ? maxWidth / width : 1
+        let options: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceShouldCacheImmediately: true,
+            kCGImageSourceThumbnailMaxPixelSize: Int((max(width, height) * scale).rounded(.up)),
+        ]
+        guard let image = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else { return UIImage(data: data) }
+        return UIImage(cgImage: image)
     }
 
     func load(_ address: String) {
@@ -888,9 +1200,16 @@ private final class PageLoader: ObservableObject {
             do {
                 let (data, response) = try await URLSession.shared.data(from: url)
                 let status = (response as? HTTPURLResponse)?.statusCode ?? 200
-                let decoded = (200 ..< 300).contains(status) ? await Task.detached { UIImage(data: data) }.value : nil
+                let maxWidth = maxWidth
+                let decoded = (200 ..< 300).contains(status) ? await Task.detached { Self.decode(data, maxWidth: maxWidth) }.value : nil
                 guard !Task.isCancelled else { return }
-                if let decoded { image = decoded } else { failed = true }
+                if let decoded {
+                    image = decoded
+                    self.data = data
+                    fullWidth = Self.pixelWidth(data)
+                } else {
+                    failed = true
+                }
             } catch {
                 if !Task.isCancelled { failed = true }
             }
