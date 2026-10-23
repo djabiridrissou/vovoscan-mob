@@ -16,6 +16,7 @@ import com.vovoscan.feature.account.domain.UsageEntry
 import com.vovoscan.feature.account.domain.UsageRepository
 import com.vovoscan.feature.account.domain.UsageTotal
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 
 /**
  * Keys, reading model and costs. Reads are offline first (the key list and the model are kept on the device);
@@ -66,17 +67,61 @@ class AccountRepositoryImpl(
 
     override fun observeReadingModel(): Flow<ReadingModel?> = local.observeReadingModel()
 
-    override suspend fun refreshReadingModel(): AppResult<Unit> =
-        remote
+    override suspend fun refreshReadingModel(): AppResult<Unit> {
+        // A language chosen while the server could not take it goes first, so the server's older answer never wins.
+        val pending = local.targetLanguagePending()
+        if (pending) local.observeTargetLanguage().first()?.let { pushTargetLanguage(it) }
+        val stillPending = pending && local.targetLanguagePending()
+        return remote
             .readingSettings()
-            .also { result -> if (result is AppResult.Ok) ReadingModel.from(result.value.ocrModel)?.let { local.saveReadingModel(it) } }
-            .map { }
+            .also { result ->
+                if (result is AppResult.Ok) {
+                    result.value.ocrModel
+                        ?.let(ReadingModel::from)
+                        ?.let { local.saveReadingModel(it) }
+                    if (!stillPending) result.value.targetLanguage?.let { local.saveTargetLanguage(it) }
+                }
+            }.map { }
+    }
 
     override suspend fun set(model: ReadingModel): AppResult<ReadingModel> {
-        val result = remote.setReadingSettings(model.wire)
+        val result = remote.setReadingSettings(ocrModel = model.wire)
         if (result !is AppResult.Ok) return result as AppResult.Err
-        val saved = ReadingModel.from(result.value.ocrModel) ?: model
+        val saved = result.value.ocrModel?.let(ReadingModel::from) ?: model
         local.saveReadingModel(saved)
+        return AppResult.Ok(saved)
+    }
+
+    override fun observeTargetLanguage(): Flow<String?> = local.observeTargetLanguage()
+
+    /**
+     * The choice is the device's at once. Offline, or refused by a server that doesn't know the field yet, it stays on
+     * the device and is sent again at the next refresh: choosing a language never blocks (the first-launch tour).
+     */
+    override suspend fun setTargetLanguage(code: String): AppResult<String> {
+        local.saveTargetLanguage(code)
+        return when (val result = pushTargetLanguage(code)) {
+            is AppResult.Ok -> result
+            is AppResult.Err ->
+                when (result.error) {
+                    AppError.Network, is AppError.Rejected, is AppError.Unknown -> AppResult.Ok(code)
+                    else -> result
+                }
+        }
+    }
+
+    // The current model goes with it: a server without `targetLanguage` (it requires `ocrModel` and ignores the rest)
+    // takes the request, a newer one keeps both.
+    private suspend fun pushTargetLanguage(code: String): AppResult<String> {
+        val model = local.observeReadingModel().first() ?: ReadingModel.Haiku
+        val result = remote.setReadingSettings(ocrModel = model.wire, targetLanguage = code)
+        if (result !is AppResult.Ok) {
+            local.setTargetLanguagePending(true)
+            return result as AppResult.Err
+        }
+        val saved = result.value.targetLanguage ?: code
+        local.saveTargetLanguage(saved)
+        local.setTargetLanguagePending(false)
         return AppResult.Ok(saved)
     }
 

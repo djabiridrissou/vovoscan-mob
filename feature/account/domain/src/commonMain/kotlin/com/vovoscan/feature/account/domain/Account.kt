@@ -1,6 +1,7 @@
 package com.vovoscan.feature.account.domain
 
 import com.vovoscan.core.common.AppResult
+import com.vovoscan.core.common.i18n.t
 import kotlinx.coroutines.flow.Flow
 
 /** A paid provider the user brings their own key for (`core/providers.py` on the server). */
@@ -56,12 +57,15 @@ object KeyRules {
 /** The Claude model that reads the bubbles of the chapters the user prepares, cheapest first. */
 enum class ReadingModel(
     val wire: String,
-    val label: String,
+    private val key: String,
 ) {
-    Haiku("claude-haiku-5-5", "Haiku — fastest, cheapest"),
-    Sonnet("claude-sonnet-5-5", "Sonnet — balanced"),
-    Opus("claude-opus-5-5", "Opus — most careful"),
+    Haiku("claude-haiku-5-5", "keys.modelHaiku"),
+    Sonnet("claude-sonnet-5-5", "keys.modelSonnet"),
+    Opus("claude-opus-5-5", "keys.modelOpus"),
     ;
+
+    /** "Haiku — fastest, cheapest", in the UI locale. */
+    val label: String get() = t(key)
 
     companion object {
         val Default = Haiku
@@ -139,6 +143,12 @@ interface ReadingSettingsRepository {
 
     /** Needs the network; the local copy follows the server's answer. */
     suspend fun set(model: ReadingModel): AppResult<ReadingModel>
+
+    /** The content language chapters are translated into (`Language.ALL` code), kept on the device; null until chosen. */
+    fun observeTargetLanguage(): Flow<String?>
+
+    /** Needs the network, like the model. */
+    suspend fun setTargetLanguage(code: String): AppResult<String>
 }
 
 interface UsageRepository {

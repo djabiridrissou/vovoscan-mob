@@ -1,5 +1,6 @@
 package com.vovoscan.feature.reader.presentation
 
+import com.vovoscan.core.common.i18n.t
 import com.vovoscan.feature.reader.domain.ComicFormat
 import com.vovoscan.feature.reader.domain.ReaderPreferences
 import com.vovoscan.feature.reader.domain.ReadingMode
@@ -36,7 +37,7 @@ data class ScrollOption(
 /** The reader settings sheet, ready to draw: every choice with its label and whether it is the current one. */
 data class ReaderSettingsSheet(
     val seriesModes: List<ModeOption>,
-    /** "Default for this series: Long strip." */
+    /** "Default for this series: Continuous." */
     val seriesHint: String,
     /** The series has its own mode: "Reset to default" is offered. */
     val canResetSeries: Boolean,
@@ -63,7 +64,7 @@ data class ReaderSettingsSheet(
             fun modes(selected: ReadingMode) = ReadingMode.comicModes.map { ModeOption(it, ReaderText.mode(it), it == selected) }
             return ReaderSettingsSheet(
                 seriesModes = modes(mode),
-                seriesHint = "Default for this series: ${ReaderText.mode(formatDefault)}.",
+                seriesHint = t("reader.seriesHint", "mode" to ReaderText.mode(formatDefault)),
                 canResetSeries = seriesMode != null,
                 mangaModes = modes(preferences.mangaMode ?: ComicFormat.Manga.defaultMode),
                 webtoonModes = modes(preferences.webtoonMode ?: ComicFormat.Webtoon.defaultMode),
@@ -82,60 +83,80 @@ data class ReaderSettingsSheet(
 
 /** The reader's words (English, short and calm). */
 object ReaderText {
-    const val SETTINGS_TITLE = "Reader settings"
-    const val SERIES_MODE = "Mode for this series"
-    const val RESET_SERIES = "Reset to default"
-    const val DEFAULT_MODES = "Default mode"
-    const val MANGA = "Manga"
-    const val WEBTOON = "Webtoon"
-    const val TAP_ZONES = "Tap zones"
-    const val INVERT = "Invert"
-    const val SCROLL_AMOUNT = "Tap scroll amount"
-    const val SCROLL_AMOUNT_HELP = "How far a tap moves a long strip or a tall page. The gap between pages comes with the mode."
-    const val SHOW_TAP_ZONES = "Show tap zones"
-    const val SHOW_TAP_ZONES_HELP = "Briefly, the first time and after a change."
-    const val DOUBLE_TAP_ZOOM = "Double tap to zoom"
-    const val DOUBLE_TAP_ZOOM_HELP = "Single taps then wait a moment, in case a second tap follows."
-    const val KEEP_AWAKE = "Keep screen awake"
-    const val KEEP_AWAKE_HELP = "While reading."
-    const val VOLUME_KEYS = "Volume keys turn pages"
-    const val VOLUME_KEYS_HELP = "Volume down goes forward, volume up goes back."
-    const val VOLUME_KEYS_INVERTED = "Invert volume keys"
+    val SETTINGS_TITLE: String get() = t("reader.settingsTitle")
+    val SERIES_MODE: String get() = t("reader.seriesMode")
+    val RESET_SERIES: String get() = t("reader.resetSeries")
+    val DEFAULT_MODES: String get() = t("reader.defaultModes")
+    val MANGA: String get() = t("reader.manga")
+    val WEBTOON: String get() = t("reader.webtoon")
+    val TAP_ZONES: String get() = t("reader.tapZones")
+    val INVERT: String get() = t("reader.invert")
+    val SCROLL_AMOUNT: String get() = t("reader.scrollAmount")
+    val SCROLL_AMOUNT_HELP: String get() = t("reader.scrollAmountHelp")
+    val SHOW_TAP_ZONES: String get() = t("reader.showTapZones")
+    val SHOW_TAP_ZONES_HELP: String get() = t("reader.showTapZonesHelp")
+    val DOUBLE_TAP_ZOOM: String get() = t("reader.doubleTapZoom")
+    val DOUBLE_TAP_ZOOM_HELP: String get() = t("reader.doubleTapZoomHelp")
+    val KEEP_AWAKE: String get() = t("reader.keepAwake")
+    val KEEP_AWAKE_HELP: String get() = t("reader.keepAwakeHelp")
+    val VOLUME_KEYS: String get() = t("reader.volumeKeys")
+    val VOLUME_KEYS_HELP: String get() = t("reader.volumeKeysHelp")
+    val VOLUME_KEYS_INVERTED: String get() = t("reader.volumeKeysInverted")
 
     fun mode(mode: ReadingMode): String =
         when (mode) {
-            ReadingMode.PagedRightToLeft -> "Right to left"
-            ReadingMode.PagedLeftToRight -> "Left to right"
-            ReadingMode.PagedVertical -> "Vertical pages"
-            ReadingMode.LongStrip -> "Long strip"
-            ReadingMode.LongStripGaps -> "Long strip with gaps"
-            ReadingMode.Book -> "Book"
+            ReadingMode.PagedRightToLeft -> t("reader.modeRtl")
+            ReadingMode.PagedLeftToRight -> t("reader.modeLtr")
+            ReadingMode.PagedVertical -> t("reader.modeVertical")
+            ReadingMode.LongStrip -> t("reader.modeStrip")
+            ReadingMode.LongStripGaps -> t("reader.modeStripGaps")
+            ReadingMode.Book -> t("reader.modeBook")
         }
+
+    /** "Webtoon ✦ top to bottom": the format recognised and the way it is read now. */
+    fun format(
+        format: ComicFormat,
+        mode: ReadingMode,
+    ): String {
+        val name =
+            when (format) {
+                ComicFormat.Manga -> t("reader.manga")
+                ComicFormat.Webtoon -> t("reader.webtoon")
+                ComicFormat.Comic -> t("reader.comic")
+            }
+        val flow =
+            when (mode) {
+                ReadingMode.PagedRightToLeft -> t("reader.flowRtl")
+                ReadingMode.PagedLeftToRight -> t("reader.flowLtr")
+                else -> t("reader.flowDown")
+            }
+        return t("reader.formatLine", "format" to name, "flow" to flow)
+    }
 
     fun layout(layout: TapLayout): String =
         when (layout) {
-            TapLayout.Default -> "Default"
-            TapLayout.RightAndLeft -> "Right and left"
-            TapLayout.LShaped -> "L-shaped"
-            TapLayout.Kindle -> "Kindle-ish"
-            TapLayout.Edge -> "Edge"
-            TapLayout.Disabled -> "Disabled"
+            TapLayout.Default -> t("reader.layoutDefault")
+            TapLayout.RightAndLeft -> t("reader.layoutRightAndLeft")
+            TapLayout.LShaped -> t("reader.layoutLShaped")
+            TapLayout.Kindle -> t("reader.layoutKindle")
+            TapLayout.Edge -> t("reader.layoutEdge")
+            TapLayout.Disabled -> t("reader.layoutDisabled")
         }
 
     fun invert(invert: TapInvert): String =
         when (invert) {
-            TapInvert.None -> "None"
-            TapInvert.Horizontal -> "Horizontal"
-            TapInvert.Vertical -> "Vertical"
-            TapInvert.Both -> "Both"
+            TapInvert.None -> t("reader.invertNone")
+            TapInvert.Horizontal -> t("reader.invertHorizontal")
+            TapInvert.Vertical -> t("reader.invertVertical")
+            TapInvert.Both -> t("reader.invertBoth")
         }
 
-    fun scroll(amount: ScrollAmount): String = "${(amount.fraction * 100).roundToInt()} %"
+    fun scroll(amount: ScrollAmount): String = t("reader.scrollPercent", "n" to (amount.fraction * 100).roundToInt())
 
     fun action(action: TapAction): String =
         when (action) {
-            TapAction.Previous -> "Previous"
-            TapAction.Next -> "Next"
-            TapAction.Menu -> "Menu"
+            TapAction.Previous -> t("reader.tapPrevious")
+            TapAction.Next -> t("reader.tapNext")
+            TapAction.Menu -> t("reader.tapMenu")
         }
 }

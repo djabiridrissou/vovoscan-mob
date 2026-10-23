@@ -59,7 +59,9 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
 - Writes (library): applied locally right away, queued (`outbox`, one operation per title), sent by `sync()` with
   the time of the action. The server settles conflicts (last-write-wins) and returns the winning state;
   `updatedSince` fetches changes from other devices, deletions included.
-- One database per feature; after a schema change, add a `.sqm` migration. Target SQLite 3.18 (Android 8):
+- One database per feature; after a schema change, add a `.sqm` migration. A database left by a newer build (an older build
+  installed over it) is rebuilt, never fatal (`DowngradeGuard`: iOS deletes and reopens it, Android empties it in
+  `onDowngrade`); the iOS app used to stop at launch ("Database version 4 newer than config version 3"). Target SQLite 3.18 (Android 8):
   no `ON CONFLICT … DO UPDATE`. Session token in `SecureStore` only; everything is wiped on sign-out.
 
 ## Sources
@@ -140,6 +142,15 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   notice line (`CatalogNotices`): no network → the offline line; one source read → its own line as before; several →
   "Project Gutenberg isn't answering right now." / "X couldn't be read. It may need an update." (Retry when one is
   down). The others' titles show; offline, every saved listing shows.
+- Continue reading (`ReadingResume` port, wired in `shared`): every chapter opened is kept on the device for any title,
+  followed or not (`ReaderSettingsRepository.recordRead`, `reader_setting` rows `last/<source>/<title>` = `<ms>:<page>:<chapter>`,
+  erased with the account or the source), merged with the library's synced progress (`ResumePoints.merge`: the most
+  recent per title). The title page's main button is `readAction` ("Continue reading →" at the chapter and page, else
+  "Start reading →" at chapter 1), the chapter being read has a red edge; chapters are listed oldest first (chapter 1 on
+  top) with a toggle remembered on the device (`catalog_setting` `chapters_newest_first`); `nextChapterId` follows the
+  reading order whatever the list's order. The catalog shows the last title read on top (`resume`) and marks started
+  cards ("Reading"). Scrolled past the search field, it folds into a floating magnifier (bottom right) that floats the
+  field over the top of the catalog (iOS `onScrollGeometryChange`, Android the grid's first visible item).
 - Cards carry the source's name (small badge under the format badge). Screens: a "All sources ▾" / "2 sources ▾" /
   name button and a category button (red when they narrow the catalog) open a sheet (Android `ModalBottomSheet`, iOS
   `.sheet`): "All" + the sources with checkmarks, or "All categories" + the categories.
@@ -335,15 +346,36 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
 - Modes (`ReadingMode`): `PagedRightToLeft`, `PagedLeftToRight`, `PagedVertical` (one page at a time), `LongStrip`
   (continuous, no gap: webtoons), `LongStripGaps` (16 dp/pt between pages); `Book` for books. `ReadingModes.resolve`:
   the mode chosen for the series (`series_mode`, per `(sourceKey, titleId)`), else the user's default for the format
-  (manga / webtoon), else the format rule: vertical pages for every comic, manga and webtoon (it was right to left
-  for manga and long strip for webtoons before: a mode chosen for a series or a format default chosen before is
-  kept). Switching keeps the page.
+  (manga / webtoon), else `LongStrip` for every format ("Continuous", reader/SPEC.md shared with the web reader).
+  Switching keeps the page.
+- Format recognition (`ComicFormat`: `Manga` right to left, `Webtoon`, `Comic` left to right when paged): the source's
+  word first (our API's `format`; a plugin's own labels "Long Strip", "Web Comic", manhwa, manhua, BD; an original
+  language `ko` / `zh` = webtoon), then the pages' shape: most sized pages taller than 2.5 × their width
+  (`ComicFormat.fromPages`, re-checked as images of unknown size load) = a strip, read continuously at full width
+  whatever the per-format default says (only the series' own mode overrides it). The title card names it
+  (`formatLabel`: "Webtoon ✦ top to bottom").
+- Continuous reader (`Glide.kt` in domain, `ReaderViewModel`, Android `ui/reader/FlowStrip.kt`, iOS `FlowStrip` in
+  `ReaderView.swift`): the native side reports `StripMeasured(width, viewport)` and `StripScrolled(offset, byUser,
+  settled)` (points / dp from the first page's top) and plays `GlideTo(offset, animated)`. Stops (`ReadingStops`):
+  per panel (the analysis from `GET …/translations/chapters/{id}/read` `pages[].panels`, `ChapterPanels` port; else
+  `Gutters.bands` from the page's luminance at 48 columns, sent as `PageLuminance`; else the page): a panel that fits
+  is centred (unless already whole: only the spotlight moves), a taller one is read from its top in steps of 0.8 ×
+  the screen, margin 0.03, stops never go back up. Motion: a critically damped spring (`Glide.OMEGA` 13) solved from
+  each frame's time (Android `withFrameNanos`, iOS `CADisplayLink` up to 120 Hz, `CADisableMinimumFrameDurationOnPhone`);
+  taps retarget keeping the velocity; a finger stops it. Past the last stop: the end card (`GoToItem`). Bars hide
+  2.5 s after a Next or a scroll down, come back on a scroll up of 0.25 × the screen; a 2 pt red progress line while
+  hidden; immersive system bars (Android), hidden status bar (iOS). Title card for 1.6 s on opening. Focus (off by
+  default, `ReaderPreferences.focus`): the panel at full light, the rest at 0.72, gliding 380 ms. Position
+  `{page, offset}` (share of the page) in `reader_setting` (`pos/<source>/<chapter>`, at most every 500 ms),
+  restored when the chapter opens at its saved page. The next 3 pages are prefetched. Our catalogue's comics have
+  "Watch from here" (`ReadWithVoice` → `OpenEpisode(chapterId, page)` → `PlayerViewModel(…, startPage)`, the first
+  beat of that page). Reduce Motion / Remove animations: jumps, no glide, no fades.
 - Tall pages in the paged modes (`TallPages`, as Mihon's paged viewer): a page whose height / width is more than
   1.25 × the screen's portrait shape (long side / short side of the reading area, whichever way the device is held;
   `fitsWidth`, by its ratio: its size, or its image's once loaded) is shown fit to width and scrolls vertically inside
   its page; the next page starts after its bottom. Other pages (a manga page, Le Griot's 800 × 1280) are fitted to the
   screen as before, in landscape too: judged against the area's own shape, a manga page fit to a landscape width was
-  taller than the screen and scrolled. Checked on the Pixel 7 in landscape: Le Griot's page whole, Reaper's strips fit
+  taller than the screen and scrolled. Checked on the Pixel 7 in landscape: Le Griot's page whole, webtoon strips fit
   to width (the iOS app is portrait only). The native side reports the current page's scroll
   (`ReaderIntent.PageScroll(item, tall, atTop, atBottom)`, like `StripEdges`) and runs commands: Next on a tall page
   not at its bottom is `ScrollBy(+tap scroll amount)` inside the page (never past its edge), at its bottom the next
@@ -557,7 +589,7 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
 ## iOS finish (`iosApp/Sources/Premium.swift`)
 
 - Launch: the mark is stamped on the page (spring, haptic, speed lines), then the app or the sign-in fades in.
-- Sign-in: a printed-manga hero (speed lines, red halftone, ドン!, "Invite only" kicker), password AutoFill content
+- Sign-in: a printed-manga hero (speed lines, red halftone, BOOM!, "Invite only" kicker), password AutoFill content
   types, an error haptic.
 - Catalog: covers open their title page with the iOS 18 zoom transition (`matchedTransitionSource` +
   `.navigationTransition(.zoom)`), tiles sink when pressed (`PressableCardStyle`), rise in one after the other
@@ -676,6 +708,50 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   crash): `CueMixer` starts the engine first and never plays a node in a stopped engine. Do not run audio work in a
   SwiftUI view's body other than through `PlayerAudio.sync` (cheap: volume, pan, a drift check every 300 ms).
 
+## Languages, tutorial, account (i18n/SPEC.md, shared with the web)
+
+- UI languages: English and French (`UiLocales`), catalogues `core/common/i18n/{en,fr}.json` (ICU messages, keys shared
+  with the web's `apps/web/messages`; generated into Kotlin). `t(key, pairs)` / `I18n.text` / `I18n.textWith`;
+  `LocalFormat` and `PlatformFormats` (region name, dates, times) follow the region. French: vous, typographic ’, a
+  narrow no-break space (U+202F) before `: ; ? !` (`CataloguesTest` checks every string). Never a literal on screen.
+- The UI language is not a content language: chapters are translated into the **reading language**
+  (`GET/PUT api/v1/settings/reading` `targetLanguage`, `ReadingSettingsViewModel`, `LanguagePicker` over `Language.ALL`).
+- `UiLanguage` (`core/common`): the account's `locale`/`region` win, else the choice saved on the device
+  (`DevicePreferences`: SharedPreferences `vovoscan_device` / NSUserDefaults `vovoscan.*`), else the device's languages.
+  `LocaleSync` (`shared`) applies the account's on every session change. The API client sends `Accept-Language` (the UI
+  language) to the API host only. A change rebuilds the screens: iOS `LocaleRoot` (`.id(locale)`), Android
+  `recreate()` (ViewModels survive; labels are getters read on draw).
+- Sign-up (`SignInViewModel`): the UI language chips, and in invite mode the age box (`auth.ageConfirm`, the region's
+  minimum age; `422 AGE_NOT_CONFIRMED`); the redeem sends locale, region, time zone and `ageConfirmed`.
+- Tutorial (`OnboardingViewModel`, `ONBOARDING_VERSION` 1): welcome, language, reading, sources, credits, done; Skip on
+  every step, Back from the second, the step kept in `DevicePreferences` (a language change rebuilds the screen). Shown
+  when `/auth/me` says `onboarding.due` (or replayed from Settings › Preferences: `SessionViewModel.replayTutorial`);
+  finishing or skipping sends `onboardingCompleted`. The sources step offers the official "vovoscan" source first
+  (off by default, ADR-0055; one tap puts it first and visible, `AppOnboardingServices.turnOnOfficial`), then "Add a
+  source"; the credits step explains own keys vs credits and opens the keys screen.
+- Tutorial scenes (iOS `OnboardingScenes.swift`, Android `ui/onboarding/OnboardingScenes.kt`, the same on both):
+  welcome opens cold on a manga page whose three panels slam in (a haptic each, ~1.6 s, the mark stamped last); the
+  reading step has a live translated page (`DemoLines.balloon`: one balloon of the drawn page, its original Japanese line (the source art, never UI text) wiped and lettered again in the
+  reading language in its reading direction, on a loop; a line written by hand for 30 languages, any other shows
+  the app's language and says so, never a guessed translation); credits count the wallet up (`balanceLabel`); done
+  ends on the official source's first title (`OnboardingServices.featured`, loaded when the source is turned on) with
+  "Read …" opening it in the catalog. Reduce Motion / animations off: every scene at its final state.
+- Brand files: iOS `iosApp/Assets.xcassets` (`AppIcon` 1024 px any/dark/tinted, `BrandLogo` = every `LogoMark`,
+  `LaunchMark` on `LaunchBackground` = the launch screen), Android `res/mipmap-anydpi-v26/ic_launcher.xml` (adaptive:
+  `drawable/ic_launcher_background`, `ic_launcher_foreground`, `ic_launcher_monochrome`), `mipmap-*/ic_launcher.png`,
+  `drawable-nodpi/brand_logo.png` (`LogoMark`), Android 12+ splash `drawable/splash_mark` in `values-v31/themes.xml`.
+  The mark is the balloon holding a V and two sound waves (no katakana), generated by the brand kit; replacing the files is enough.
+- Profile changes (`AuthRepository.updateProfile`, `PATCH api/v1/me`): applied on the device at once; offline they are
+  merged into one pending patch (`pending_profile` in the secure store) sent before the next `GET /auth/me`; a refusal
+  restores the server's profile.
+- Account (`AccountViewModel`, `AccountRepository`): name, email change (password, link sent to the new address),
+  password, devices (`GET/DELETE api/v1/me/sessions`, revoke others), deletion with a 30-day grace period
+  (`POST/DELETE api/v1/me/deletion`; a yellow banner with "Keep my account" on every screen meanwhile; the owner can't).
+  Passwords stay in the native fields and travel only in the intent that sends them (`secretFieldResets` empties the
+  fields). `401 WRONG_PASSWORD` is a refusal, never a sign-out: `errorOf` checks `data.error` first.
+- Screens: iOS `OnboardingView.swift`, `AccountView.swift` (Account, Preferences); Android `ui/onboarding`,
+  `ui/account`; Settings opens both (Account, Preferences rows).
+
 ## UI
 
 - Colors: `Brand` (Android) and `BrandColors.swift` (iOS), copied from `brand/tokens.json`. Red = action,
@@ -684,7 +760,7 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   `square.stack.3d.up`, `gearshape`). Android: no icon library; `AppIcons` (androidApp `ui/common`) draws the same
   shapes as `ImageVector` line icons (24 × 24, 1.8 stroke), plus the download controls.
 - Primary button: hard offset shadow with no blur, presses down 2 pt on tap (150 ms) with haptic feedback.
-- Copy in English, short sentences, calm tone ("Invite already used."), ✦ separator.
+- Copy in the UI language (catalogues above), short sentences, calm tone ("Invite already used."), ✦ separator.
 
 ## Branches and commits
 

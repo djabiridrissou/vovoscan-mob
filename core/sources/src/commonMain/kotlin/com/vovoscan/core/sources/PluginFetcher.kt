@@ -2,6 +2,7 @@ package com.vovoscan.core.sources
 
 import com.vovoscan.core.common.AppError
 import com.vovoscan.core.common.AppResult
+import com.vovoscan.core.common.i18n.t
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.HttpClientEngine
 import io.ktor.client.plugins.HttpTimeout
@@ -65,7 +66,7 @@ class PluginFetcher(
                 is Step.Redirect -> current = step.url
             }
         }
-        return PluginErrors.rejected("PLUGIN_REDIRECT", "Too many redirects.")
+        return PluginErrors.rejected("PLUGIN_REDIRECT", t("plugins.tooManyRedirects"))
     }
 
     private suspend fun read(
@@ -77,7 +78,16 @@ class PluginFetcher(
         val declared = response.headers[HttpHeaders.ContentLength]?.toLongOrNull() ?: 0
         return when {
             response.status.value in 300..399 && location != null -> Step.Redirect(absoluteUrl(url, location.trim()))
-            !response.status.isSuccess() -> Step.Done(PluginErrors.rejected("PLUGIN_FETCH", "The link answered ${response.status.value}."))
+            !response.status.isSuccess() ->
+                Step.Done(
+                    PluginErrors.rejected(
+                        "PLUGIN_FETCH",
+                        t(
+                            "plugins.linkStatus",
+                            "status" to response.status.value.toString(),
+                        ),
+                    ),
+                )
             declared > maxBytes -> Step.Done(PluginErrors.tooLarge)
             else -> {
                 // Read one byte more than allowed: a longer body is refused without being kept.
@@ -87,7 +97,7 @@ class PluginFetcher(
         }
     }
 
-    private val unsafeRedirect get() = PluginErrors.rejected("PLUGIN_REDIRECT", "This link redirects to an unsafe address.")
+    private val unsafeRedirect get() = PluginErrors.rejected("PLUGIN_REDIRECT", t("plugins.unsafeRedirect"))
 
     private sealed interface Step {
         class Redirect(

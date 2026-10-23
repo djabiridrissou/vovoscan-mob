@@ -27,6 +27,7 @@ import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import com.vovoscan.app.MainActivity
 import com.vovoscan.app.R
+import com.vovoscan.core.common.i18n.I18n
 import com.vovoscan.feature.reader.domain.DownloadActivity
 import com.vovoscan.feature.reader.domain.DownloadScheduler
 import com.vovoscan.feature.reader.domain.DownloadsRepository
@@ -241,7 +242,7 @@ object DownloadNotifications {
             .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
             .setProgress(100, ((progress ?: 0f) * 100).toInt(), progress == null)
             .setContentIntent(open)
-            .addAction(0, "Cancel", cancel)
+            .addAction(0, I18n.text("common.cancel"), cancel)
             .build()
     }
 
@@ -250,8 +251,8 @@ object DownloadNotifications {
         val manager = context.getSystemService(NotificationManager::class.java)
         if (manager.getNotificationChannel(CHANNEL_ID) != null) return
         manager.createNotificationChannel(
-            NotificationChannel(CHANNEL_ID, "Downloads", NotificationManager.IMPORTANCE_LOW).apply {
-                description = "Chapters and books downloading for offline reading."
+            NotificationChannel(CHANNEL_ID, I18n.text("downloads.title"), NotificationManager.IMPORTANCE_LOW).apply {
+                description = I18n.text("downloads.channelDetail")
                 setShowBadge(false)
             },
         )

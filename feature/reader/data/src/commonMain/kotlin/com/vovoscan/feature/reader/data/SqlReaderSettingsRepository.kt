@@ -4,9 +4,11 @@ import app.cash.sqldelight.coroutines.asFlow
 import app.cash.sqldelight.coroutines.mapToList
 import app.cash.sqldelight.coroutines.mapToOneOrNull
 import com.vovoscan.feature.reader.data.db.ReaderDatabase
+import com.vovoscan.feature.reader.domain.LastRead
 import com.vovoscan.feature.reader.domain.ReaderPreferences
 import com.vovoscan.feature.reader.domain.ReaderSettingsRepository
 import com.vovoscan.feature.reader.domain.ReadingMode
+import com.vovoscan.feature.reader.domain.ReadingPosition
 import com.vovoscan.feature.reader.domain.ScrollAmount
 import com.vovoscan.feature.reader.domain.TapInvert
 import com.vovoscan.feature.reader.domain.TapLayout
@@ -68,7 +70,36 @@ class SqlReaderSettingsRepository(
         }
     }
 
+    override suspend fun position(
+        sourceKey: String,
+        chapterId: String,
+    ): ReadingPosition? =
+        withContext(io) { ReadingPosition.decode(queries.setting(positionKey(sourceKey, chapterId)).executeAsOneOrNull()) }
+
+    override suspend fun savePosition(
+        sourceKey: String,
+        chapterId: String,
+        position: ReadingPosition,
+    ) {
+        withContext(io) { queries.putSetting(positionKey(sourceKey, chapterId), position.encode()) }
+    }
+
+    override fun observeHistory(): Flow<List<LastRead>> =
+        queries
+            .history()
+            .asFlow()
+            .mapToList(io)
+            .map { rows ->
+                rows.mapNotNull { LastRead.decode(it.name.removePrefix(HISTORY_PREFIX), it.setting_value) }.sortedByDescending { it.readAt }
+            }.distinctUntilChanged()
+
+    override suspend fun recordRead(read: LastRead) {
+        withContext(io) { queries.putSetting(HISTORY_PREFIX + read.key, read.encode()) }
+    }
+
     internal companion object {
+        const val HISTORY_PREFIX = "last/"
+
         private const val NONE = "-"
 
         fun decode(values: Map<String, String>): ReaderPreferences {
@@ -91,6 +122,7 @@ class SqlReaderSettingsRepository(
                 volumeKeys = flag("volumeKeys", defaults.volumeKeys),
                 volumeKeysInverted = flag("volumeKeysInverted", defaults.volumeKeysInverted),
                 tapZonesSeen = flag("tapZonesSeen", defaults.tapZonesSeen),
+                focus = flag("focus", defaults.focus),
             )
         }
 
@@ -107,9 +139,16 @@ class SqlReaderSettingsRepository(
                 "volumeKeys" to preferences.volumeKeys.toString(),
                 "volumeKeysInverted" to preferences.volumeKeysInverted.toString(),
                 "tapZonesSeen" to preferences.tapZonesSeen.toString(),
+                "focus" to preferences.focus.toString(),
             )
 
         /** A comic mode by name; a book or anything unknown is no choice. */
         fun modeOf(name: String): ReadingMode? = ReadingMode.comicModes.firstOrNull { it.name == name }
     }
 }
+
+/** `reader_setting` row of a chapter's position; erased with the series modes (`ReaderLocalDataSource`). */
+internal fun positionKey(
+    sourceKey: String,
+    chapterId: String,
+) = "pos/$sourceKey/$chapterId"

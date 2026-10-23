@@ -91,6 +91,35 @@ data class CatalogFilter(
     val categoryName: String? = null,
 )
 
+/** Where a title was left: its chapter and page, and when (ms). */
+data class ResumePoint(
+    val sourceKey: String,
+    val titleId: String,
+    val chapterId: String,
+    val page: Int,
+    val readAt: Long,
+)
+
+/**
+ * Port: the titles this account has started, newest first, one point per title (the device's own reading and the
+ * library's progress, synced from other devices). Wired by the app; the catalog does not know the reader or the library.
+ */
+fun interface ReadingResume {
+    fun observe(): Flow<List<ResumePoint>>
+}
+
+object ResumePoints {
+    /** One point per title, the most recent of every list wins; newest first. */
+    fun merge(vararg lists: List<ResumePoint>): List<ResumePoint> =
+        lists
+            .asList()
+            .flatten()
+            .groupBy { it.sourceKey to it.titleId }
+            .values
+            .map { points -> points.maxBy { it.readAt } }
+            .sortedByDescending { it.readAt }
+}
+
 /**
  * Each source's catalog, offline first: screens read the local database (`observe…`), `refresh…` replaces it
  * with what the source says (the vovoscan API for the internal source, the device itself for the others). A source
@@ -135,6 +164,11 @@ interface CatalogRepository {
     fun observeFilter(): Flow<CatalogFilter>
 
     suspend fun saveFilter(filter: CatalogFilter)
+
+    /** Title pages list chapters oldest first (chapter 1 on top) unless the reader chose newest first. */
+    fun observeNewestFirst(): Flow<Boolean>
+
+    suspend fun saveNewestFirst(newestFirst: Boolean)
 
     fun observeTitle(
         sourceKey: String,

@@ -279,7 +279,7 @@ struct BrandSwitch: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(label)
-        .accessibilityValue(isOn ? "On" : "Off")
+        .accessibilityValue(isOn ? L("common.on") : L("common.off"))
         .accessibilityAddTraits(.isToggle)
     }
 }

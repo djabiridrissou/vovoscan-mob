@@ -100,6 +100,15 @@ class PlayerViewModelTest {
         }
 
     @Test
+    fun fromTheReaderItStartsOnThePageBeingRead() =
+        runTest(dispatcher) {
+            val vm = PlayerViewModel("c1", null, repo(AppResult.Ok(watch())), { 0L }, startPage = 1)
+            advanceUntilIdle()
+            assertEquals(2, vm.state.value.beat)
+            assertEquals("Page 2 / 2", vm.state.value.pageLabel)
+        }
+
+    @Test
     fun beatsAndPagesNavigate() =
         runTest(dispatcher) {
             val vm = PlayerViewModel("c1", null, repo(AppResult.Ok(watch())), { 0L })

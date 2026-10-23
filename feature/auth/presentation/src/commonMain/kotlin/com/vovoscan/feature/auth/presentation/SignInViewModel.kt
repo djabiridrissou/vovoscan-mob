@@ -3,6 +3,12 @@ package com.vovoscan.feature.auth.presentation
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.vovoscan.core.common.AppResult
+import com.vovoscan.core.common.i18n.DeviceLocale
+import com.vovoscan.core.common.i18n.I18n
+import com.vovoscan.core.common.i18n.Regions
+import com.vovoscan.core.common.i18n.UiLanguage
+import com.vovoscan.core.common.i18n.UiLocales
+import com.vovoscan.core.common.i18n.t
 import com.vovoscan.core.common.userMessage
 import com.vovoscan.feature.auth.domain.AuthRepository
 import com.vovoscan.feature.auth.domain.Credentials
@@ -14,6 +20,13 @@ import kotlinx.coroutines.launch
 
 enum class SignInMode { SignIn, Invite }
 
+/** A UI language offered on the sign-in screen, named in itself ("English", "Français"). */
+data class UiLocaleOption(
+    val code: String,
+    val label: String,
+    val selected: Boolean,
+)
+
 data class SignInUiState(
     val mode: SignInMode = SignInMode.SignIn,
     val email: String = "",
@@ -23,12 +36,21 @@ data class SignInUiState(
     val emailError: String? = null,
     val passwordError: String? = null,
     val inviteError: String? = null,
+    /** The required "I am {age} or older." box of a sign-up (the age from the region, i18n/SPEC.md §2). */
+    val ageConfirmed: Boolean = false,
+    val ageError: String? = null,
     val submitting: Boolean = false,
     val error: String? = null,
 ) {
-    val title: String get() = if (mode == SignInMode.SignIn) "Sign in." else "Redeem your invite."
-    val submitLabel: String get() = if (mode == SignInMode.SignIn) "Sign in →" else "Create my account →"
-    val switchLabel: String get() = if (mode == SignInMode.SignIn) "I have an invite" else "I already have an account"
+    val ageLabel: String get() = t("auth.ageConfirm", "age" to Regions.minimumAge(I18n.region))
+
+    /** The app's language before signing in; the account's own replaces it once signed in. */
+    val locales: List<UiLocaleOption>
+        get() = UiLocales.ALL.map { UiLocaleOption(it, UiLocales.NATIVE_NAMES[it] ?: it, it == I18n.locale.value) }
+
+    val title: String get() = t(if (mode == SignInMode.SignIn) "auth.signInTitle" else "auth.redeemTitle")
+    val submitLabel: String get() = t(if (mode == SignInMode.SignIn) "auth.signInSubmit" else "auth.redeemSubmit")
+    val switchLabel: String get() = t(if (mode == SignInMode.SignIn) "auth.haveInvite" else "auth.haveAccount")
 }
 
 sealed interface SignInIntent {
@@ -50,12 +72,22 @@ sealed interface SignInIntent {
 
     data object SwitchMode : SignInIntent
 
+    data class AgeConfirmed(
+        val value: Boolean,
+    ) : SignInIntent
+
+    /** Rebuilds the screens in that language (the native root follows `I18n.locale`). */
+    data class ChooseLocale(
+        val code: String,
+    ) : SignInIntent
+
     data object Submit : SignInIntent
 }
 
 /** Sign-in or sign-up with an invite. All screen logic lives here; Compose and SwiftUI only display it. */
 class SignInViewModel(
     private val auth: AuthRepository,
+    private val language: UiLanguage,
 ) : ViewModel() {
     private val mutableState = MutableStateFlow(SignInUiState())
     val state: StateFlow<SignInUiState> = mutableState.asStateFlow()
@@ -70,6 +102,8 @@ class SignInViewModel(
                 mutableState.update {
                     SignInUiState(mode = if (it.mode == SignInMode.SignIn) SignInMode.Invite else SignInMode.SignIn, email = it.email)
                 }
+            is SignInIntent.AgeConfirmed -> mutableState.update { it.copy(ageConfirmed = intent.value, ageError = null, error = null) }
+            is SignInIntent.ChooseLocale -> language.choose(intent.code)
             SignInIntent.Submit -> submit()
         }
     }
@@ -84,8 +118,9 @@ class SignInViewModel(
                 // No length rule on sign-in: an older password must still be accepted.
                 passwordError = if (invite) Credentials.passwordError(current.password) else null,
                 inviteError = if (invite) Credentials.inviteError(current.inviteCode) else null,
+                ageError = if (invite && !current.ageConfirmed) t("auth.ageRequired") else null,
             )
-        if (checked.emailError != null || checked.passwordError != null || checked.inviteError != null) {
+        if (checked.emailError != null || checked.passwordError != null || checked.inviteError != null || checked.ageError != null) {
             mutableState.value = checked
             return
         }
@@ -93,7 +128,16 @@ class SignInViewModel(
         viewModelScope.launch {
             val result =
                 if (invite) {
-                    auth.redeemInvite(Credentials.normalizeInvite(current.inviteCode), current.email, current.password, current.displayName)
+                    auth.redeemInvite(
+                        code = Credentials.normalizeInvite(current.inviteCode),
+                        email = current.email,
+                        password = current.password,
+                        displayName = current.displayName,
+                        locale = I18n.locale.value,
+                        region = I18n.region,
+                        timeZone = DeviceLocale.timeZone(),
+                        ageConfirmed = true,
+                    )
                 } else {
                     auth.signIn(current.email, current.password)
                 }

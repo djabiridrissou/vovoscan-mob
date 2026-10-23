@@ -190,7 +190,7 @@ class ReaderZoomSliderTest {
             // The bars stay: the reader may move the slider again.
             assertTrue(vm.state.value.chromeVisible)
             advanceUntilIdle()
-            assertEquals(listOf(11), saved)
+            assertEquals(listOf(4, 11), saved) // the opening, then the page jumped to
             // Out of range: clamped to the first and last pages.
             vm.onIntent(ReaderIntent.SeekTo(99))
             assertEquals(ReaderCommand.JumpTo(2, item = 19), vm.state.value.command)

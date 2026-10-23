@@ -31,5 +31,5 @@ val catalogModule =
         single<CatalogLocalDataSource> { SqlCatalogLocalDataSource(get(), get<AppDispatchers>().io) }
         single<CatalogRepository> { CatalogRepositoryImpl(get(), get()) }
         viewModelOf(::CatalogViewModel)
-        viewModel { (sourceKey: String, titleId: String) -> TitleDetailViewModel(sourceKey, titleId, get()) }
+        viewModel { (sourceKey: String, titleId: String) -> TitleDetailViewModel(sourceKey, titleId, get(), get()) }
     }

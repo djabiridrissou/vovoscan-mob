@@ -4,6 +4,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelStore
 import com.vovoscan.core.common.NetworkMonitor
 import com.vovoscan.core.common.NetworkState
+import com.vovoscan.core.common.i18n.DevicePreferences
+import com.vovoscan.core.common.i18n.UiLanguage
 import com.vovoscan.core.database.AppFolders
 import com.vovoscan.core.database.DatabaseDriverFactory
 import com.vovoscan.core.database.appFolders
@@ -15,6 +17,9 @@ import com.vovoscan.feature.account.presentation.ReadingSettingsViewModel
 import com.vovoscan.feature.account.presentation.UsageViewModel
 import com.vovoscan.feature.account.presentation.WalletViewModel
 import com.vovoscan.feature.auth.domain.AuthRepository
+import com.vovoscan.feature.auth.presentation.AccountViewModel
+import com.vovoscan.feature.auth.presentation.OnboardingViewModel
+import com.vovoscan.feature.auth.presentation.PreferencesViewModel
 import com.vovoscan.feature.auth.presentation.SessionViewModel
 import com.vovoscan.feature.auth.presentation.SignInViewModel
 import com.vovoscan.feature.catalog.presentation.CatalogViewModel
@@ -70,10 +75,14 @@ fun initKoin(
                         if (offline) NetworkMonitor.Fixed(NetworkState(online = false, unmetered = false)) else IosNetworkMonitor()
                     }
                     single<AppFolders> { appFolders() }
+                    single<DevicePreferences> { IosDevicePreferences() }
                 },
             ),
         )
     }
+    // The app's language before the first screen: the device's choice, then the account's once it is known.
+    KoinPlatform.getKoin().get<UiLanguage>().start()
+    KoinPlatform.getKoin().get<LocaleSync>().start()
     // Session kept on the device, before the first screen (a short Keychain read; the network follows).
     runBlocking { KoinPlatform.getKoin().get<AuthRepository>().restore() }
     // Chapters left downloading when the app stopped carry on.
@@ -111,6 +120,12 @@ class ViewModels : KoinComponent {
     fun session(): SessionViewModel = remember("session") { get<SessionViewModel>() }
 
     fun signIn(): SignInViewModel = remember("signIn") { get<SignInViewModel>() }
+
+    fun account(): AccountViewModel = remember("account") { get<AccountViewModel>() }
+
+    fun preferences(): PreferencesViewModel = remember("preferences") { get<PreferencesViewModel>() }
+
+    fun onboarding(): OnboardingViewModel = remember("onboarding") { get<OnboardingViewModel>() }
 
     fun catalog(): CatalogViewModel = remember("catalog") { get<CatalogViewModel>() }
 
@@ -188,6 +203,16 @@ class ViewModels : KoinComponent {
         language: String,
     ): PlayerViewModel =
         remember("player:$chapterId~$language") { get<PlayerViewModel> { parametersOf(chapterId, nextChapterId, language) } }
+
+    /** The player opened from the reader ("Watch from here"): the episode in [language], from the first beat of [startPage]. */
+    fun playerFrom(
+        chapterId: String,
+        language: String,
+        startPage: Int,
+    ): PlayerViewModel =
+        remember("player:$chapterId~$language@$startPage") {
+            get<PlayerViewModel> { parametersOf(chapterId, null, language, startPage) }
+        }
 
     fun clear() = store.clear()
 

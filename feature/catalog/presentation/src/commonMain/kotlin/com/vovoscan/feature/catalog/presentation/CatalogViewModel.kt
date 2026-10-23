@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.vovoscan.core.common.AppResult
 import com.vovoscan.core.common.Freshness
 import com.vovoscan.core.common.StaleReason
+import com.vovoscan.core.common.i18n.t
 import com.vovoscan.core.common.userMessage
 import com.vovoscan.feature.catalog.domain.CatalogFilter
 import com.vovoscan.feature.catalog.domain.CatalogMerge
@@ -13,7 +14,10 @@ import com.vovoscan.feature.catalog.domain.CategoryOption
 import com.vovoscan.feature.catalog.domain.CategoryUnion
 import com.vovoscan.feature.catalog.domain.ContentKind
 import com.vovoscan.feature.catalog.domain.ReadingFormat
+import com.vovoscan.feature.catalog.domain.ReadingResume
+import com.vovoscan.feature.catalog.domain.ResumePoint
 import com.vovoscan.feature.catalog.domain.SourceCategory
+import com.vovoscan.feature.catalog.domain.TitleDetail
 import com.vovoscan.feature.catalog.domain.TitleSummary
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
@@ -48,6 +52,22 @@ data class TitleCard(
     /** "WEBTOON", "MANGA" or "BOOK": badge on the cover. */
     val formatLabel: String,
     val status: String,
+    /** This account has started it: the card says so ("Reading"). */
+    val started: Boolean = false,
+)
+
+/** "Continue: Title, Chapter 4": the last title read, opened where it was left. */
+data class ResumeCard(
+    val sourceKey: String,
+    val titleId: String,
+    val chapterId: String,
+    val page: Int,
+    val titleName: String,
+    val coverUrl: String?,
+    /** "Continue reading". */
+    val label: String,
+    /** "Chapter 4 · The Well ✦ page 12". */
+    val detail: String,
 )
 
 /** A row of the source filter's sheet. */
@@ -89,8 +109,16 @@ data class CatalogUiState(
     val loadingMore: Boolean = false,
     val canLoadMore: Boolean = false,
     val error: String? = null,
+    /** The titles started ("<sourceKey>/<id>"), for the cards' "Reading" mark. */
+    val startedKeys: Set<String> = emptySet(),
+    /** The last title read, on top of the catalog (not while searching). */
+    val resume: ResumeCard? = null,
 ) {
-    val visible: List<TitleCard> get() = results ?: cards
+    val visible: List<TitleCard>
+        get() = (results ?: cards).map { if ("${it.sourceKey}/${it.id}" in startedKeys) it.copy(started = true) else it }
+
+    /** "Reading": the mark on a started title's card. */
+    val startedLabel: String get() = t("catalog.started")
 
     /** The source filter shows once there is a choice to make. */
     val showSourceFilter: Boolean get() = sources.size > 1
@@ -106,9 +134,9 @@ data class CatalogUiState(
     val emptyMessage: String
         get() =
             when {
-                results != null -> "No title matches “${query.trim()}”."
-                category != null -> "No titles in “$category” yet."
-                else -> "No titles yet. Check back soon."
+                results != null -> t("catalog.noMatch", "query" to query.trim())
+                category != null -> t("catalog.noneInCategory", "category" to category)
+                else -> t("catalog.none")
             }
 
     /**
@@ -164,6 +192,7 @@ sealed interface CatalogIntent {
 @OptIn(ExperimentalCoroutinesApi::class)
 class CatalogViewModel(
     private val repository: CatalogRepository,
+    private val resume: ReadingResume = ReadingResume { flowOf(emptyList()) },
 ) : ViewModel() {
     private val mutableState = MutableStateFlow(CatalogUiState())
     val state: StateFlow<CatalogUiState> = mutableState.asStateFlow()
@@ -207,6 +236,21 @@ class CatalogViewModel(
     private val seed = MutableStateFlow(Random.nextLong())
 
     init {
+        resume
+            .observe()
+            .flatMapLatest { points ->
+                // The newest title whose page is on the device (its name, cover and chapters are known).
+                val recent = points.take(RESUME_CANDIDATES)
+                if (recent.isEmpty()) {
+                    flowOf(points to null)
+                } else {
+                    combine(recent.map { point -> repository.observeTitle(point.sourceKey, point.titleId).map { point to it } }) { known ->
+                        points to known.firstNotNullOfOrNull { (point, detail) -> detail?.let { resumeCard(point, it) } }
+                    }
+                }
+            }.onEach { (points, card) ->
+                mutableState.update { it.copy(startedKeys = points.mapTo(HashSet()) { p -> "${p.sourceKey}/${p.titleId}" }, resume = card) }
+            }.launchIn(viewModelScope)
         viewModelScope.launch { filter.value = repository.observeFilter().first() }
         val selection =
             combine(visible.filterNotNull(), filter.filterNotNull()) { v, f -> Triple(v, f, CatalogSelection.selected(v, f)) }
@@ -406,8 +450,37 @@ class CatalogViewModel(
             // Anything else (not a source problem): an error line, naming the source when several are read.
             error =
                 other?.let { (reading, error) ->
-                    if (readings.size > 1) "${reading.source.name}: ${error.userMessage()}" else error.userMessage()
+                    if (readings.size >
+                        1
+                    ) {
+                        t("catalog.sourceError", "name" to reading.source.name, "message" to error.userMessage())
+                    } else {
+                        error.userMessage()
+                    }
                 },
+        )
+    }
+
+    private fun resumeCard(
+        point: ResumePoint,
+        detail: TitleDetail,
+    ): ResumeCard? {
+        val chapter = detail.chapters.firstOrNull { it.id == point.chapterId } ?: return null
+        val label =
+            if (detail.summary.kind == ContentKind.Book) {
+                chapter.name ?: t("reader.part", "n" to chapter.label)
+            } else {
+                chapterLabel(chapter.label, chapter.name)
+            }
+        return ResumeCard(
+            sourceKey = point.sourceKey,
+            titleId = point.titleId,
+            chapterId = point.chapterId,
+            page = point.page,
+            titleName = detail.summary.name,
+            coverUrl = detail.summary.coverUrl,
+            label = t("catalog.continueReading"),
+            detail = if (point.page > 0) t("catalog.resumeAt", "chapter" to label, "page" to point.page + 1) else label,
         )
     }
 
@@ -422,14 +495,15 @@ class CatalogViewModel(
         coverUrl = title.coverUrl,
         formatLabel =
             when {
-                title.kind == ContentKind.Book -> "BOOK"
-                title.format == ReadingFormat.Webtoon -> "WEBTOON"
-                else -> "MANGA"
+                title.kind == ContentKind.Book -> t("catalog.badgeBook")
+                title.format == ReadingFormat.Webtoon -> t("catalog.badgeWebtoon")
+                else -> t("catalog.badgeManga")
             },
-        status = title.status.replaceFirstChar { it.uppercase() },
+        status = statusLabel(title.status),
     )
 
     private companion object {
         const val SEARCH_DEBOUNCE_MS = 300L
+        const val RESUME_CANDIDATES = 5
     }
 }

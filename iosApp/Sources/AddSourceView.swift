@@ -14,8 +14,8 @@ struct AddSourceView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
-                Kicker(text: "Sources")
-                Text("Add a source.").font(.brandDisplay(26)).foregroundStyle(Color.brandPaper)
+                Kicker(text: L("nav.sources"))
+                Text(L("sources.addHeadline")).font(.brandDisplay(26)).foregroundStyle(Color.brandPaper)
                 ForEach(model.state.officialOffers, id: \.key) { offer in officialCard(offer) }
                 Text(model.state.warning)
                     .font(.brandBody(13))
@@ -35,7 +35,7 @@ struct AddSourceView: View {
                 case .repository: if let repo = model.state.repository { repositoryListing(repo) }
                 }
                 if model.state.step == .preview || model.state.step == .repository {
-                    Button("Use another link") { model.send(AddSourceIntentReset.shared) }.buttonStyle(GhostButtonStyle())
+                    Button(L("sources.anotherLink")) { model.send(AddSourceIntentReset.shared) }.buttonStyle(GhostButtonStyle())
                 }
             }
             .padding(20)
@@ -49,11 +49,11 @@ struct AddSourceView: View {
             model.send(AddSourceIntentImportFile(bytes: IosAppKt.bytesOf(data: data), name: url.lastPathComponent))
         }
         .alert(
-            "New connections",
+            L("sources.newConnections"),
             isPresented: Binding(get: { model.state.hostsConfirmation != nil }, set: { _ in })
         ) {
-            Button("Continue") { model.send(AddSourceIntentConfirmHosts.shared) }
-            Button("Cancel", role: .cancel) { model.send(AddSourceIntentCancelHosts.shared) }
+            Button(L("common.continue")) { model.send(AddSourceIntentConfirmHosts.shared) }
+            Button(L("common.cancel"), role: .cancel) { model.send(AddSourceIntentCancelHosts.shared) }
         } message: {
             Text(model.state.hostsConfirmation ?? "")
         }
@@ -83,7 +83,7 @@ struct AddSourceView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(spacing: 6) {
                         Text(offer.name).font(.brandBody(17, weight: .bold)).foregroundStyle(Color.brandPaper)
-                        Sticker(text: "Official")
+                        Sticker(text: L("sources.official"))
                     }
                     Text(offer.kindsLabel).font(.brandBody(13)).foregroundStyle(Color.brandMuted)
                 }
@@ -104,13 +104,13 @@ struct AddSourceView: View {
         let loading = model.state.step == .loading
         return VStack(alignment: .leading, spacing: 12) {
             IntentField(
-                label: "Link to a source or repository",
+                label: L("sources.linkLabel"),
                 text: $link,
                 value: model.state.link,
                 keyboard: .URL,
                 placeholder: "https://"
             ) { model.send(AddSourceIntentLinkChanged(value: $0)) }
-            Button(loading ? "Checking…" : "Add →") {
+            Button(loading ? L("common.checking") : L("sources.addArrow")) {
                 submitAfterCommittingInput {
                     model.send(AddSourceIntentLinkChanged(value: link))
                     model.send(AddSourceIntentSubmitLink.shared)
@@ -119,7 +119,7 @@ struct AddSourceView: View {
             .buttonStyle(PrimaryButtonStyle())
             .disabled(!model.state.canSubmit)
             .padding(.bottom, 6)
-            Button("Choose a .vovo file") { importing = true }
+            Button(L("sources.chooseFile")) { importing = true }
                 .buttonStyle(GhostButtonStyle())
                 .disabled(loading)
         }
@@ -131,14 +131,14 @@ struct AddSourceView: View {
             if let hosts = preview.newHostsLabel { Text(hosts).font(.brandBody(13)).foregroundStyle(Color.brandYellow) }
             if let status = preview.statusLabel { Text(status).font(.brandBody(15)).foregroundStyle(Color.brandPaper) }
             if let action = preview.actionLabel {
-                Button(model.state.installing ? "Installing…" : "\(action) →") { model.send(AddSourceIntentInstall.shared) }
+                Button(model.state.installing ? L("sources.installing") : "\(action) →") { model.send(AddSourceIntentInstall.shared) }
                     .buttonStyle(PrimaryButtonStyle())
                     .disabled(model.state.installing)
                     .padding(.top, 4)
                     .padding(.bottom, 6)
             }
             if model.state.installedKey == preview.info.key {
-                NavigationLink(value: SourceDetailRoute(key: preview.info.key)) { Text("Open source") }
+                NavigationLink(value: SourceDetailRoute(key: preview.info.key)) { Text(L("sources.open")) }
                     .buttonStyle(GhostButtonStyle())
             }
         }
@@ -199,7 +199,7 @@ private struct AddSourceSettingsSheet: View {
                         model.send(AddSourceIntentSettingChanged(name: field.name, value: $0))
                     }
                 }
-                Button(model.state.installing ? "Installing…" : "Confirm →") {
+                Button(model.state.installing ? L("sources.installing") : L("common.confirmArrow")) {
                     submitAfterCommittingInput {
                         for (name, value) in values { model.send(AddSourceIntentSettingChanged(name: name, value: value)) }
                         model.send(AddSourceIntentConfirmSettings.shared)
@@ -208,7 +208,7 @@ private struct AddSourceSettingsSheet: View {
                 .buttonStyle(PrimaryButtonStyle())
                 .disabled(model.state.installing)
                 .padding(.bottom, 6)
-                Button("Cancel") { model.send(AddSourceIntentCancelSettings.shared) }.buttonStyle(GhostButtonStyle())
+                Button(L("common.cancel")) { model.send(AddSourceIntentCancelSettings.shared) }.buttonStyle(GhostButtonStyle())
             }
             .padding(20)
         }

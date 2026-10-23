@@ -1,6 +1,7 @@
 import ImageIO
 import Shared
 import SwiftUI
+import UIKit
 import WebKit
 
 /// Opens a chapter; "next chapter" replaces the reader in place (no endless stacking).
@@ -33,6 +34,8 @@ struct ReaderView: View {
     @State private var settingsOpen = false
     @State private var contentsOpen = false
     @State private var languagesOpen = false
+    @State private var player: PlayerRoute?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// The page under the slider's thumb while it is dragged.
     @State private var dragged: Int?
     let onOpenChapter: (String, Int) -> Void
@@ -48,9 +51,9 @@ struct ReaderView: View {
             Color.brandInk.ignoresSafeArea()
             if model.state.unavailable {
                 VStack(alignment: .leading, spacing: 12) {
-                    Text("This chapter isn't saved on this device yet.").font(.brandBody(15)).foregroundStyle(Color.brandPaper)
+                    Text(L("reader.notSaved")).font(.brandBody(15)).foregroundStyle(Color.brandPaper)
                     if let error = model.state.error { ErrorText(text: error) }
-                    Button("Try again") { model.send(ReaderIntentRetry.shared) }.buttonStyle(GhostButtonStyle())
+                    Button(L("common.tryAgain")) { model.send(ReaderIntentRetry.shared) }.buttonStyle(GhostButtonStyle())
                 }
                 .padding(24)
             } else if model.state.isBook {
@@ -58,15 +61,23 @@ struct ReaderView: View {
             } else if !model.state.items.isEmpty {
                 // The reader's language: each page draws its translated lettering, if any.
                 ComicReader(model: model)
+                    .accessibilityElement(children: .contain)
+                    .accessibilityLabel(model.state.chapterLabel)
+                    .accessibilityHint(model.state.tapsHint)
                     .environment(\.pageLettering, { [state = translation.state] index in state.letteringFor(index: Int32(index)) })
             }
             if let overlay = model.state.tapOverlay {
                 TapZonesOverlay(overlay: overlay).transition(.opacity)
             }
+            // While the bars are away: a 2 pt line of the share read, at the very top.
+            if !model.state.chromeVisible && !model.state.isBook { progressLine }
+            if let card = model.state.titleCard { titleCard(card) }
             // A book keeps its bars: the web view receives the taps (text scrolling).
-            if model.state.chromeVisible || model.state.isBook { chrome }
+            if model.state.chromeVisible || model.state.isBook { chrome.transition(.opacity) }
         }
         .animation(.easeInOut(duration: 0.2), value: model.state.tapOverlay == nil)
+        .animation(model.state.reducedMotion ? nil : .easeInOut(duration: 0.25), value: model.state.chromeVisible)
+        .animation(model.state.reducedMotion ? nil : .easeInOut(duration: 0.4), value: model.state.titleCard)
         .toolbar(.hidden, for: .navigationBar)
         .toolbar(.hidden, for: .tabBar)
         .statusBarHidden(!model.state.chromeVisible)
@@ -78,6 +89,20 @@ struct ReaderView: View {
             if let open = model.state.command as? ReaderCommandOpenChapter {
                 model.send(ReaderIntentCommandHandled(seq: open.seq))
                 onOpenChapter(open.chapterId, Int(open.startPage))
+            }
+            // "Watch from here": the episode from the first beat of the page being read.
+            if let episode = model.state.command as? ReaderCommandOpenEpisode {
+                model.send(ReaderIntentCommandHandled(seq: episode.seq))
+                player = PlayerRoute(chapterId: episode.chapterId, nextChapterId: nil, startPage: Int(episode.page))
+            }
+        }
+        .fullScreenCover(item: $player) { route in PlayerView(route: route) { _ in player = nil } }
+        // Reduce Motion: jumps instead of the spring, no spotlight glide, no fades.
+        .onChange(of: reduceMotion, initial: true) { _, on in model.send(ReaderIntentReducedMotion(on: on)) }
+        // VoiceOver: "Page 5 of 19" when the page changes, never on every frame.
+        .onChange(of: model.state.pageAnnouncement) { _, text in
+            if UIAccessibility.isVoiceOverRunning && !text.isEmpty {
+                UIAccessibility.post(notification: .announcement, argument: text)
             }
         }
         // Keep the screen awake while reading (setting, on by default).
@@ -103,16 +128,51 @@ struct ReaderView: View {
         }
     }
 
+    private var progressLine: some View {
+        GeometryReader { area in
+            Rectangle()
+                .fill(Color.brandRed)
+                .frame(width: area.size.width * CGFloat(model.state.progress), height: 2)
+        }
+        .frame(height: 2)
+        .frame(maxHeight: .infinity, alignment: .top)
+        .ignoresSafeArea()
+        .allowsHitTesting(false)
+        .accessibilityLabel(model.state.progressLabel)
+    }
+
+    /// "Series ✦ Chapter 3 · name" over the first page for a moment.
+    private func titleCard(_ text: String) -> some View {
+        Text(text)
+            .font(.brandDisplay(20))
+            .foregroundStyle(Color.brandPaper)
+            .multilineTextAlignment(.center)
+            .padding(.horizontal, 20)
+            .padding(.vertical, 14)
+            .background(Color.brandInk.opacity(0.85), in: RoundedRectangle(cornerRadius: 12))
+            .padding(24)
+            .allowsHitTesting(false)
+            .transition(.opacity)
+    }
+
     private var chrome: some View {
         VStack(spacing: 0) {
             HStack(spacing: 16) {
                 Button { dismiss() } label: { Text("←").font(.brandDisplay(18)).foregroundStyle(Color.brandPaper) }
-                    .accessibilityLabel("Back")
+                    .accessibilityLabel(L("common.back"))
                 VStack(alignment: .leading, spacing: 2) {
                     Text(model.state.titleName).font(.brandBody(15)).foregroundStyle(Color.brandPaper).lineLimit(1)
                     Text(model.state.subtitle).font(.brandBody(13)).foregroundStyle(Color.brandMuted).lineLimit(1)
                 }
                 Spacer()
+                if model.state.voiceAvailable {
+                    Button { model.send(ReaderIntentReadWithVoice.shared) } label: {
+                        Image(systemName: "play.fill").font(.system(size: 16)).foregroundStyle(Color.brandInk)
+                            .frame(width: 34, height: 34)
+                            .background(Color.brandRed, in: Circle())
+                    }
+                    .accessibilityLabel(model.state.voiceLabel)
+                }
                 if !model.state.isBook && translation.state.available {
                     LanguageButton(translation: translation) { languagesOpen = true }
                 }
@@ -128,7 +188,7 @@ struct ReaderView: View {
                 } label: {
                     Image(systemName: "gearshape").font(.system(size: 18)).foregroundStyle(Color.brandPaper)
                 }
-                .accessibilityLabel("Reader settings")
+                .accessibilityLabel(L("reader.settingsTitle"))
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
@@ -153,17 +213,27 @@ struct ReaderView: View {
                     .font(.brandBody(13))
                     .foregroundStyle(dragged == nil ? Color.brandMuted : Color.brandYellow)
                     .monospacedDigit()
+                if model.state.canFocus {
+                    Button { model.send(ReaderIntentToggleFocus.shared) } label: {
+                        Image(systemName: model.state.focusOn ? "viewfinder.circle.fill" : "viewfinder.circle")
+                            .font(.system(size: 20))
+                            .foregroundStyle(model.state.focusOn ? Color.brandYellow : Color.brandPaper)
+                    }
+                    .accessibilityLabel(model.state.focusLabel)
+                    .accessibilityHint(model.state.focusHelp)
+                    .accessibilityAddTraits(model.state.focusOn ? .isSelected : [])
+                }
                 Spacer()
                 // A book with a section left offers that section alone (as on Android): the parts come at its end.
                 if model.state.isBook && model.state.canGoForward {
-                    Button("Next section →") { model.send(ReaderIntentNext.shared) }
+                    Button(L("reader.nextSection")) { model.send(ReaderIntentNext.shared) }
                         .font(.brandBody(16, weight: .bold)).foregroundStyle(Color.brandRed)
                 } else {
                     if let previous = model.state.previousChapterId {
-                        Button("← Previous") { onOpenChapter(previous, 0) }.font(.brandBody(13)).foregroundStyle(Color.brandMuted)
+                        Button(L("reader.previousArrow")) { onOpenChapter(previous, 0) }.font(.brandBody(13)).foregroundStyle(Color.brandMuted)
                     }
                     if let next = model.state.nextChapterId {
-                        Button("Next →") { onOpenChapter(next, 0) }.font(.brandBody(16, weight: .bold)).foregroundStyle(Color.brandRed)
+                        Button(L("reader.nextArrow")) { onOpenChapter(next, 0) }.font(.brandBody(16, weight: .bold)).foregroundStyle(Color.brandRed)
                     }
                 }
             }
@@ -206,7 +276,23 @@ private struct PageSlider: View {
             }
         }
         .tint(Color.brandRed)
-        .environment(\.layoutDirection, model.state.rightToLeft ? .rightToLeft : .leftToRight)
+        // Right to left: a left-to-right slider drawn mirrored, thumb and fill together (a slider in a right-to-left
+        // layout direction, switched in place, drew its thumb apart from its fill).
+        .environment(\.layoutDirection, .leftToRight)
+        .scaleEffect(x: model.state.rightToLeft ? -1 : 1, y: 1)
+        // A drag the slider never saw end (the bars hidden under the finger, the reader switching modes) must not leave
+        // its page in the bar: the counter and the thumb stayed on it while the pages moved on.
+        .onDisappear {
+            editing = false
+            dragged = nil
+        }
+        .onChange(of: model.state.mode) { _, _ in
+            editing = false
+            dragged = nil
+        }
+        .onChange(of: model.state.currentIndex) { _, _ in
+            if !editing { dragged = nil }
+        }
         .accessibilityLabel("Page")
         .accessibilityValue(model.state.sliderLabel(page: Int32(dragged ?? Int(model.state.currentIndex))))
     }
@@ -232,7 +318,7 @@ private struct ComicReader: View {
                 if model.state.isPaged {
                     PagedReader(model: model, size: size, scroller: scroller, zoomed: zoom.zoomed)
                 } else {
-                    StripReader(model: model, scroller: scroller)
+                    FlowStrip(model: model, scroller: scroller)
                 }
             }
             // Pages are decoded for the screen's pixels (never above their own).
@@ -433,7 +519,24 @@ private struct HorizontalPages: View {
         .scrollIndicators(.hidden)
         .scrollTargetBehavior(.paging)
         .scrollPosition(id: $position)
+        // The page on screen comes from what is visible, not from the position binding alone: a pager made while the
+        // chapter is open (Continuous → Right to left from the settings) could keep its first position and never
+        // report a swipe, so the counter, the slider and the saved page stayed where the strip had left them.
+        .onScrollTargetVisibilityChange(idType: Int.self, threshold: 0.6) { ids in
+            guard let item = ids.first else { return }
+            if position != item { position = item }
+            if item != Int(model.state.currentItem) { model.send(ReaderIntentItemVisible(item: Int32(item))) }
+        }
         .id(model.state.mode)
+        .onAppear {
+            // Placed once laid out, and again once the lazy stack has measured its neighbours: a pager made mid-chapter
+            // may not have reached the current page yet.
+            let item = Int(model.state.currentItem)
+            DispatchQueue.main.async { position = item }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                if position != item, Int(model.state.currentItem) == item { position = item }
+            }
+        }
         .onChange(of: position) { _, item in
             if let item { model.send(ReaderIntentItemVisible(item: Int32(item))) }
         }
@@ -832,20 +935,23 @@ private struct TallPaging: ScrollTargetBehavior {
     }
 }
 
-/// Continuous vertical strip (webtoon), with the mode's gap between pages. Taps scroll it by a fraction of the screen.
-/// Not lazy (as `VerticalPages`): every page is laid out at its size, so a jump lands on its page and the pages near the
-/// screen are known; only those hold their image (`window`), as a lazy stack kept every page it had shown (a chapter of
-/// webtoon strips decoded at 800 × 13 000 px each, about 40 MB apiece, went from 113 to 278 MB).
-private struct StripReader: View {
+/// The continuous strip (`flow`, reader/SPEC.md): every page stacked at the screen's width, no gap. It reports its
+/// width, height and scroll (from the first page's top, in points) and plays the view model's `GlideTo` with the shared
+/// spring, solved from each display frame's own time (60 or 120 Hz alike). A finger stops the spring at once and the
+/// scroll view's own momentum takes over. Focus dims everything but the panel being read.
+private struct FlowStrip: View {
     @ObservedObject var model: ReaderModel
     let scroller: ZoomScroller
     @State private var scroll = ScrollPosition(idType: Int.self)
     @State private var geometry = StripGeometry()
+    @State private var phase: ScrollPhase = .idle
     @State private var reportedEdges: [Bool] = []
-    /// The strip moved (finger or tap scroll): until then, positioning at the current item (clamped at the end of
-    /// the chapter) must not change the page.
-    @State private var moved = false
-    @State private var tapTarget: (y: CGFloat, at: Date)?
+    @State private var spring = SpringDriver()
+    @State private var measured: CGSize = .zero
+
+    /// The previous-chapter card has a fixed height, so the first page's top is known without measuring it.
+    private static let cardHeight: CGFloat = 280
+    private var lead: CGFloat { Self.cardHeight + CGFloat(model.state.pageGap) }
     /// Pages of unknown size grow from the placeholder to their image's height: the strip keeps what is read in place.
     @State private var layout = PagedLayout(pagesFillScreen: false)
     /// The items that hold their image: those within a screen above and two below what is on screen.
@@ -862,13 +968,26 @@ private struct StripReader: View {
                 ForEach(Array(items.enumerated()), id: \.offset) { index, item in
                     Group {
                         if let page = item as? ReaderItemPage {
-                            PageImage(page: page.page, active: held.contains(index))
+                            PageImage(
+                                page: page.page,
+                                onSize: { size in
+                                    model.send(
+                                        ReaderIntentPageSized(page: page.page.index, width: Int32(size.width.rounded()), height: Int32(size.height.rounded()))
+                                    )
+                                },
+                                active: held.contains(index)
+                            )
+                            .task(id: page.page.url) { await luminance(page.page) }
                         } else if let transition = item as? ReaderItemTransition {
-                            TransitionCardView(card: transition.card, model: model).frame(minHeight: 280)
+                            if transition.card.forward {
+                                TransitionCardView(card: transition.card, model: model).frame(minHeight: Self.cardHeight)
+                            } else {
+                                TransitionCardView(card: transition.card, model: model).frame(height: Self.cardHeight)
+                            }
                         }
                     }
                     .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(PagedLayout.space)) } action: { frame in
-                        measured(index, frame)
+                        frameMeasured(index, frame)
                     }
                     .id(index)
                 }
@@ -878,28 +997,34 @@ private struct StripReader: View {
         }
         .scrollIndicators(.hidden)
         .scrollPosition($scroll)
-        // Resume (and a mode change) at the current item, once the strip is laid out; held there as pages above and
-        // the page itself take their real height.
+        .background {
+            GeometryReader { area in
+                Color.clear.onAppear { measure(area.size) }.onChange(of: area.size) { _, size in measure(size) }
+            }
+        }
+        // Opening at the current item, held there as pages above and the page itself take their real height; a saved
+        // position comes as a `GlideTo` once the strip is measured.
         .onAppear {
             layout.anchor = PagedLayout.Anchor(item: Int(model.state.currentItem), within: 0, atBottom: false)
             scroll.scrollTo(id: Int(model.state.currentItem), anchor: .top)
             takeZoomScroll()
-            // The stack is laid out over the first frames: a scroll sent before it is ignored (the strip opened on the
-            // previous-chapter card). Until the reader moves, the opening position is sent again from the frames.
-            for delay in [0.05, 0.2, 0.5] {
-                DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-                    guard !moved, layout.idle, let target = layout.anchorOffset() else { return }
-                    layout.offset = target
-                    scroll.scrollTo(y: target)
-                }
+            spring.apply = { [self] y in scroll.scrollTo(y: min(max(0, y + lead), geometry.maxOffset)) }
+            spring.onStop = { [self] in
+                layout.idle = phase == .idle
+                layout.anchorHere()
+                report(settled: phase == .idle)
             }
         }
+        .onDisappear { spring.stop() }
         .onScrollGeometryChange(for: StripGeometry.self) { g in
             StripGeometry(offset: g.contentOffset.y, viewport: g.containerSize.height, content: g.contentSize.height)
         } action: { _, new in
             geometry = new
             layout.offset = new.offset
             layout.viewport = new.viewport
+            // A scroll the reader played (a jump, a tap scroll): what is at the top of the screen now is what to keep.
+            if layout.anchor == nil { layout.anchorHere() }
+            report(settled: phase == .idle && !spring.running)
             updateWindow()
             let edges = [new.offset <= 1, new.offset >= new.maxOffset - 1]
             if edges != reportedEdges {
@@ -907,46 +1032,109 @@ private struct StripReader: View {
                 model.send(ReaderIntentStripEdges(atTop: edges[0], atBottom: edges[1]))
             }
         }
-        .onScrollPhaseChange { old, phase in
-            if phase != .idle { moved = true }
-            layout.idle = phase == .idle
+        .onScrollPhaseChange { old, new in
+            phase = new
+            // A finger always wins: the spring stops where it is and the scroll view's momentum takes over.
+            if new == .tracking || new == .interacting { spring.stop() }
+            layout.idle = new == .idle && !spring.running
             // The finger or a tap scroll moved the strip: what is at the top of the screen now is what to keep.
-            if phase == .idle, old != .idle { layout.anchorHere() }
+            if new == .idle, old != .idle { layout.anchorHere() }
+            if new == .idle { report(settled: !spring.running) }
         }
-        // The current item is the first one on screen (any part of it).
-        .onScrollTargetVisibilityChange(idType: Int.self, threshold: 0.001) { visible in
-            if moved, let first = visible.min() { model.send(ReaderIntentItemVisible(item: Int32(first))) }
-        }
-        .onChange(of: model.state.command?.seq) { _, _ in
-            if let jump = model.state.command as? ReaderCommandJumpTo {
-                // The page slider: the page's top at the top of the screen, at once.
-                model.send(ReaderIntentCommandHandled(seq: jump.seq))
-                moved = true
-                layout.anchor = PagedLayout.Anchor(item: Int(jump.item), within: 0, atBottom: false)
-                if let frame = layout.frames[Int(jump.item)] {
-                    let y = min(frame.minY, geometry.maxOffset)
-                    layout.offset = y
-                    scroll.scrollTo(y: y)
-                } else {
-                    scroll.scrollTo(id: Int(jump.item), anchor: .top)
-                }
-                updateWindow()
-                return
+        .overlay { focusDim }
+        .onChange(of: model.state.prefetch) { _, urls in Prefetch.warm(urls) }
+        .onChange(of: model.state.command?.seq) { _, _ in play(model.state.command) }
+    }
+
+    private func measure(_ size: CGSize) {
+        guard size.width > 0, size.height > 0, size != measured else { return }
+        measured = size
+        model.send(ReaderIntentStripMeasured(width: Float(size.width), viewport: Float(size.height)))
+    }
+
+    /// Scroll from the first page's top: negative over the previous-chapter card, past the strip on the end card.
+    private var offset: CGFloat { geometry.offset - lead }
+
+    private func report(settled: Bool) {
+        guard measured.width > 0 else { return }
+        let byUser = !spring.running && (phase == .tracking || phase == .interacting || phase == .decelerating)
+        model.send(ReaderIntentStripScrolled(offset: Float(offset), byUser: byUser, settled: settled))
+    }
+
+    private func play(_ command: ReaderCommand?) {
+        switch command {
+        case let glide as ReaderCommandGlideTo:
+            model.send(ReaderIntentCommandHandled(seq: glide.seq))
+            let target = CGFloat(glide.offset)
+            if !glide.animated {
+                spring.stop()
+                layout.anchor = nil
+                scroll.scrollTo(y: max(0, target + lead))
+            } else {
+                Haptics.select()
+                layout.idle = false
+                // Taps add up: from where the spring is, at its speed, towards the new stop.
+                spring.glide(from: spring.running ? spring.position : offset, to: target)
             }
-            guard let by = model.state.command as? ReaderCommandScrollBy else { return }
+        case let go as ReaderCommandGoToItem:
+            model.send(ReaderIntentCommandHandled(seq: go.seq))
+            spring.stop()
+            layout.anchor = PagedLayout.Anchor(item: Int(go.item), within: 0, atBottom: false)
+            if go.animated && !model.state.reducedMotion {
+                withAnimation(.easeInOut(duration: 0.35)) { scroll.scrollTo(id: Int(go.item), anchor: .top) }
+            } else {
+                scroll.scrollTo(id: Int(go.item), anchor: .top)
+            }
+        case let by as ReaderCommandScrollBy:
+            // Before the strip is measured: a plain share of the screen.
             model.send(ReaderIntentCommandHandled(seq: by.seq))
-            // Taps faster than the animation add up (the touch itself stops the animation): within the animation's
-            // time, the next one starts from where the last one was going.
-            let now = Date()
-            let from = tapTarget.flatMap { now.timeIntervalSince($0.at) < 0.35 ? $0.y : nil } ?? geometry.offset
-            let target = min(max(0, from + CGFloat(by.fraction) * geometry.viewport), geometry.maxOffset)
-            tapTarget = (target, now)
+            let target = min(max(0, geometry.offset + CGFloat(by.fraction) * geometry.viewport), geometry.maxOffset)
+            layout.anchor = nil
             withAnimation(.easeInOut(duration: 0.3)) { scroll.scrollTo(y: target) }
+        default:
+            break
         }
     }
 
+    /// Focus: the panel being read at full light, the rest at `otherLight`. The spotlight glides in strip
+    /// coordinates (`focusMs`); the scroll moves it at once.
+    @ViewBuilder private var focusDim: some View {
+        if let focus = model.state.focus, measured.width > 0 {
+            let pages = model.state.pages
+            let width = measured.width
+            let index = Int(focus.page)
+            if index >= 0 && index < pages.count {
+                let top = pages.prefix(index).reduce(CGFloat(0)) { $0 + width / CGFloat($1.aspectRatio) + CGFloat(model.state.pageGap) }
+                let height = width / CGFloat(pages[index].aspectRatio)
+                let rect = CGRect(
+                    x: CGFloat(focus.x) * width,
+                    y: top + CGFloat(focus.y) * height,
+                    width: CGFloat(focus.width) * width,
+                    height: CGFloat(focus.height) * height
+                )
+                SpotlightShape(spot: rect, scroll: offset)
+                    .fill(Color.black.opacity(Double(1 - model.state.otherLight)), style: FillStyle(eoFill: true))
+                    .animation(.easeInOut(duration: Double(model.state.focusMs) / 1000), value: rect)
+                    .allowsHitTesting(false)
+                    .transition(.opacity)
+            }
+        }
+    }
+
+    /// The page's luminance at `Gutters.COLUMNS` columns (gutter bands when the chapter has no analysis).
+    private func luminance(_ page: ReaderPage) async {
+        guard page.width > 0, page.height > 0, let url = URL(string: page.url) else { return }
+        let columns = Int(Gutters.shared.COLUMNS)
+        let rows = min(4096, max(1, Int((CGFloat(columns) * CGFloat(page.height) / CGFloat(page.width)).rounded())))
+        guard let values = await Task.detached(priority: .utility, operation: { await Luminance.rows(url: url, columns: columns, rows: rows) }).value
+        else { return }
+        let array = KotlinIntArray(size: Int32(values.count))
+        for (i, v) in values.enumerated() { array.set(index: Int32(i), value: Int32(v)) }
+        model.send(ReaderIntentPageLuminance(page: page.index, values: array))
+    }
+
     /// At rest, a page that changed height above (or at) the one read moves the scroll with it (see `VerticalPages`).
-    private func measured(_ index: Int, _ frame: CGRect) {
+    private func frameMeasured(_ index: Int, _ frame: CGRect) {
         layout.measured(index, frame)
         if layout.idle, let target = layout.anchorOffset(), abs(target - layout.offset) > 0.5 {
             layout.offset = target
@@ -969,7 +1157,7 @@ private struct StripReader: View {
     private func takeZoomScroll() {
         scroller.scrollBy = { distance in
             let target = min(max(0, layout.offset + distance), geometry.maxOffset)
-            moved = true
+            spring.stop()
             layout.offset = target
             scroll.scrollTo(y: target)
             layout.anchorHere()
@@ -988,6 +1176,123 @@ private struct StripGeometry: Equatable {
     var viewport: CGFloat = 0
     var content: CGFloat = 0
     var maxOffset: CGFloat { max(0, content - viewport) }
+}
+
+/// The whole screen minus the spotlight (even-odd fill). Only the spotlight animates; the scroll is applied as is.
+private struct SpotlightShape: Shape {
+    var spot: CGRect
+    let scroll: CGFloat
+
+    var animatableData: AnimatablePair<AnimatablePair<CGFloat, CGFloat>, AnimatablePair<CGFloat, CGFloat>> {
+        get { AnimatablePair(AnimatablePair(spot.minX, spot.minY), AnimatablePair(spot.width, spot.height)) }
+        set { spot = CGRect(x: newValue.first.first, y: newValue.first.second, width: newValue.second.first, height: newValue.second.second) }
+    }
+
+    func path(in rect: CGRect) -> Path {
+        var path = Path(rect)
+        path.addRect(spot.offsetBy(dx: 0, dy: -scroll))
+        return path
+    }
+}
+
+/// The tap scroll (SPEC §3): a critically damped spring on the scroll position, `Glide.OMEGA`, solved from each
+/// display frame's target time (the same curve at 60 and 120 Hz). A new target while moving keeps the velocity.
+@MainActor
+private final class SpringDriver {
+    var apply: ((CGFloat) -> Void)?
+    var onStop: (() -> Void)?
+    private(set) var position: CGFloat = 0
+    private var velocity: CGFloat = 0
+    private var from: CGFloat = 0
+    private var startVelocity: CGFloat = 0
+    private var target: CGFloat = 0
+    private var start: CFTimeInterval = 0
+    private var link: CADisplayLink?
+    private var proxy: LinkProxy?
+
+    var running: Bool { link != nil }
+
+    func glide(from: CGFloat, to target: CGFloat) {
+        self.from = from
+        startVelocity = running ? velocity : 0
+        self.target = target
+        position = from
+        start = CACurrentMediaTime()
+        guard link == nil else { return }
+        let proxy = LinkProxy { [weak self] link in MainActor.assumeIsolated { self?.step(link) } }
+        let link = CADisplayLink(target: proxy, selector: #selector(LinkProxy.tick(_:)))
+        link.preferredFrameRateRange = CAFrameRateRange(minimum: 60, maximum: 120, preferred: 120)
+        link.add(to: .main, forMode: .common)
+        self.proxy = proxy
+        self.link = link
+    }
+
+    func stop() {
+        guard link != nil else { return }
+        link?.invalidate()
+        link = nil
+        proxy = nil
+        velocity = 0
+        onStop?()
+    }
+
+    private func step(_ link: CADisplayLink) {
+        let omega = CGFloat(Glide.shared.OMEGA)
+        let t = max(0, link.targetTimestamp - start)
+        let x0 = from - target
+        let c = startVelocity + omega * x0
+        let e = exp(-omega * t)
+        position = target + (x0 + c * t) * e
+        velocity = (c - omega * (x0 + c * t)) * e
+        if Glide.shared.settled(position: Float(position), velocity: Float(velocity), target: Float(target)) {
+            position = target
+            apply?(target)
+            stop()
+        } else {
+            apply?(position)
+        }
+    }
+}
+
+/// CADisplayLink keeps its target: a small proxy so the driver is never retained by the run loop.
+private final class LinkProxy: NSObject {
+    let onTick: (CADisplayLink) -> Void
+    init(_ onTick: @escaping (CADisplayLink) -> Void) { self.onTick = onTick }
+    @objc func tick(_ link: CADisplayLink) { onTick(link) }
+}
+
+/// The next pages, fetched ahead into the shared URL cache that AsyncImage reads.
+private enum Prefetch {
+    static func warm(_ urls: [String]) {
+        for case let url? in urls.map(URL.init(string:)) {
+            URLSession.shared.dataTask(with: URLRequest(url: url, cachePolicy: .returnCacheDataElseLoad)).resume()
+        }
+    }
+}
+
+/// A page's luminance, downscaled to `columns` x `rows` (one byte per pixel, row after row).
+private enum Luminance {
+    static func rows(url: URL, columns: Int, rows: Int) async -> [UInt8]? {
+        let request = URLRequest(url: url, cachePolicy: .returnCacheDataElseLoad)
+        guard let (data, _) = try? await URLSession.shared.data(for: request),
+              let source = CGImageSourceCreateWithData(data as CFData, nil),
+              let image = CGImageSourceCreateThumbnailAtIndex(source, 0, [
+                  kCGImageSourceCreateThumbnailFromImageAlways: true,
+                  kCGImageSourceThumbnailMaxPixelSize: max(columns, rows) * 2,
+              ] as CFDictionary)
+        else { return nil }
+        var pixels = [UInt8](repeating: 0, count: columns * rows)
+        let drawn: Bool = pixels.withUnsafeMutableBytes { buffer in
+            guard let context = CGContext(
+                data: buffer.baseAddress, width: columns, height: rows, bitsPerComponent: 8, bytesPerRow: columns,
+                space: CGColorSpaceCreateDeviceGray(), bitmapInfo: CGImageAlphaInfo.none.rawValue
+            ) else { return false }
+            context.interpolationQuality = .medium
+            context.draw(image, in: CGRect(x: 0, y: 0, width: columns, height: rows))
+            return true
+        }
+        return drawn ? pixels : nil
+    }
 }
 
 /// "Finished: Chapter 3" / "Next: Chapter 4 · The last gate" and "Next chapter →".
@@ -1066,6 +1371,8 @@ private struct TapZonesOverlay: View {
 private struct PageImage: View {
     let page: ReaderPage
     var fit = false
+    /// A page the source gave no size for: the image's own size once loaded (the strip lays out from it).
+    var onSize: ((CGSize) -> Void)? = nil
     @Environment(\.pageLettering) private var lettering
     /// Holds its image (false: a page far from the one read lets its image go).
     var active = true
@@ -1083,8 +1390,8 @@ private struct PageImage: View {
                 Image(uiImage: image).resizable().aspectRatio(contentMode: .fit)
             } else if loader.failed {
                 VStack(spacing: 12) {
-                    Text("This page didn't load.").font(.brandBody(14)).foregroundStyle(Color.brandMuted)
-                    Button("Retry") { loader.load(page.url) }.buttonStyle(GhostButtonStyle()).frame(width: 160)
+                    Text(L("reader.pageFailed")).font(.brandBody(14)).foregroundStyle(Color.brandMuted)
+                    Button(L("common.retry")) { loader.load(page.url) }.buttonStyle(GhostButtonStyle()).frame(width: 160)
                 }
                 .padding(24)
             } else if active {
@@ -1112,9 +1419,12 @@ private struct PageImage: View {
         .onChange(of: page.url) { _, url in if active { loader.show(url) } }
         .onChange(of: detail ? 0 : decodeWidth) { _, width in loader.redecode(maxWidth: width) }
         .onChange(of: loader.image) { _, image in
-            if let size = image?.size, size.width > 0, size.height > 0 { onLoaded?(size.width / size.height) }
+            if let size = image?.size, size.width > 0, size.height > 0 {
+                onLoaded?(size.width / size.height)
+                if !page.hasSize { onSize?(size) }
+            }
         }
-        .accessibilityLabel("Page \(page.index + 1)")
+        .accessibilityLabel(L("library.page", ["n": Int(page.index) + 1]))
     }
 
     private var ratio: CGFloat {
@@ -1258,12 +1568,12 @@ private struct BookReader: View {
                     model.send(ReaderIntentPullReleased(overscroll: Float(overscroll)))
                 }
             } else {
-                Text(model.state.preparingBook ? "Opening the book…" : "")
+                Text(model.state.preparingBook ? L("reader.openingBook") : "")
                     .font(.brandBody(13)).foregroundStyle(Color.brandMuted)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
             if model.state.atEnd, let next = model.state.nextChapterId, model.state.sectionDocument != nil, pull.overscroll == 0 {
-                Button(model.state.nextLabel ?? "Next →") { onOpenChapter(next) }
+                Button(model.state.nextLabel ?? L("reader.nextArrow")) { onOpenChapter(next) }
                     .buttonStyle(PrimaryButtonStyle())
                     .padding(16)
             }

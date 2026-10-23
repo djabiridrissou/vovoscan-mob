@@ -12,7 +12,7 @@ struct LibraryView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
-                ScreenHeader(kicker: "Library", title: "Keep reading.")
+                ScreenHeader(kicker: L("nav.library"), title: L("library.headline"))
                 NavigationLink(value: DownloadsRoute()) { Text(downloads.state.entryLabel + " →") }
                     .buttonStyle(GhostButtonStyle())
                 if let notice = model.state.pendingNotice { OfflineNotice(text: notice) }
@@ -20,14 +20,14 @@ struct LibraryView: View {
                 if model.state.empty {
                     if sources.state.needsSource {
                         EmptyStateCard(
-                            sfx: "パラ",
+                            sfx: "FLIP",
                             title: sources.state.firstSourceTitle,
                             message: sources.state.firstSourceMessage,
                             actionLabel: sources.state.firstSourceAction
                         ) { openTab(.sources) }
                     } else {
-                        EmptyStateCard(sfx: "パラ", title: model.state.emptyMessage, message: "Follow a title from its page: it lands here, on every device.",
-                                       actionLabel: "Browse the catalog →") { openTab(.catalog) }
+                        EmptyStateCard(sfx: "FLIP", title: model.state.emptyMessage, message: L("library.emptyMessage"),
+                                       actionLabel: L("library.browse")) { openTab(.catalog) }
                     }
                 }
                 ForEach(Array(model.state.rows.enumerated()), id: \.element) { index, row in
@@ -59,8 +59,8 @@ struct LibraryView: View {
                     .disabled(row.sourceRemoved)
                     .riseIn(index)
                 }
-                Button("Sync now") { model.send(LibraryIntentSync.shared) }.buttonStyle(GhostButtonStyle())
-                Button("Sign out", action: onSignOut).buttonStyle(GhostButtonStyle())
+                Button(L("library.syncNow")) { model.send(LibraryIntentSync.shared) }.buttonStyle(GhostButtonStyle())
+                Button(L("common.signOut"), action: onSignOut).buttonStyle(GhostButtonStyle())
             }
             .padding(20)
         }

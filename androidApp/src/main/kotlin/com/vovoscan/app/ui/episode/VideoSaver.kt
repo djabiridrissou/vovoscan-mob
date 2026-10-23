@@ -6,6 +6,7 @@ import android.os.Build
 import android.os.Environment
 import android.widget.Toast
 import androidx.core.net.toUri
+import com.vovoscan.core.common.i18n.I18n
 
 /**
  * Saves an episode's MP4 with the system's DownloadManager: the signed link needs no session, the download survives
@@ -33,6 +34,6 @@ object VideoSaver {
                 request.setDestinationInExternalFilesDir(context, Environment.DIRECTORY_MOVIES, "$FOLDER/$fileName")
             }
             context.getSystemService(DownloadManager::class.java).enqueue(request)
-            Toast.makeText(context, "Downloading to Movies/vovoscan.", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, I18n.text("episode.videoSaving"), Toast.LENGTH_SHORT).show()
         }.isSuccess
 }

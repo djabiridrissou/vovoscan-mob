@@ -44,6 +44,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.vovoscan.app.ui.common.PrimaryButton
 import com.vovoscan.app.ui.theme.Brand
+import com.vovoscan.core.common.i18n.I18n
 import com.vovoscan.feature.reader.presentation.BookAnchors
 import com.vovoscan.feature.reader.presentation.BookIntent
 import com.vovoscan.feature.reader.presentation.PullHint
@@ -89,7 +90,7 @@ internal fun BookReader(
         when {
             state.preparingBook || document == null ->
                 Text(
-                    if (state.preparingBook) "Opening the book…" else "",
+                    if (state.preparingBook) I18n.text("reader.openingBook") else "",
                     style = MaterialTheme.typography.bodySmall,
                     modifier = Modifier.align(Alignment.Center),
                 )
@@ -118,7 +119,7 @@ internal fun BookReader(
         }
         if (state.atEnd && state.nextChapterId != null && document != null && hint == null) {
             Box(Modifier.align(Alignment.BottomCenter).padding(16.dp)) {
-                PrimaryButton(state.nextLabel ?: "Next →", { onOpenChapter(state.nextChapterId!!) })
+                PrimaryButton(state.nextLabel ?: I18n.text("reader.nextArrow"), { onOpenChapter(state.nextChapterId!!) })
             }
         }
     }

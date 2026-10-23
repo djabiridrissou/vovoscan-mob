@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.vovoscan.core.common.AppResult
 import com.vovoscan.core.common.Clock
 import com.vovoscan.core.common.SystemClock
+import com.vovoscan.core.common.i18n.t
 import com.vovoscan.feature.episodes.domain.EpisodesRepository
 import com.vovoscan.feature.episodes.domain.Watch
 import com.vovoscan.feature.episodes.domain.player.CaptionPlacement
@@ -58,7 +59,7 @@ data class PlayerUiState(
     val timeLabel: String get() = "${EpisodeText.clock(positionMs)} / ${EpisodeText.clock(durationMs)}"
 
     /** "Page 3 / 12". */
-    val pageLabel: String get() = if (pageCount > 0) "Page $pageNumber / $pageCount" else ""
+    val pageLabel: String get() = if (pageCount > 0) t("episode.pageOf", "n" to pageNumber, "total" to pageCount) else ""
 
     val soundLabel: String get() =
         if (silent) {
@@ -141,6 +142,8 @@ class PlayerViewModel(
     private val clock: Clock = SystemClock,
     /** The episode's language, from the card that opened the player ("" = the original). */
     private val lang: String = "",
+    /** Opened from the reader ("Watch the episode from here"): start on the first beat of this chapter page. */
+    private val startPage: Int? = null,
 ) : ViewModel() {
     private val mutableState = MutableStateFlow(PlayerUiState(nextChapterId = nextChapterId))
     val state: StateFlow<PlayerUiState> = mutableState.asStateFlow()
@@ -282,6 +285,7 @@ class PlayerViewModel(
         plan = next
         // Same render with fresh URLs: playback goes on where it was; another render (rerun): from its start.
         if (before != null && before.watch.renderKey != watch.renderKey) position = 0.0
+        if (before == null && startPage != null) next.firstBeatFrom(startPage)?.let { position = next.beatStartMs(it) }
         position = position.coerceIn(0.0, next.durationMs)
         mutableState.update {
             it.copy(

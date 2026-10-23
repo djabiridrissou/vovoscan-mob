@@ -10,7 +10,9 @@ struct PlayerRoute: Hashable, Identifiable {
     let nextChapterId: String?
     /// "" = the original; else the language of the episode the card showed.
     var language: String = ""
-    var id: String { "\(chapterId)~\(language)" }
+    /// From the reader ("Watch from here"): the first beat of this page.
+    var startPage: Int? = nil
+    var id: String { "\(chapterId)~\(language)@\(startPage ?? -1)" }
 }
 
 /// The full-screen episode player: a 9:16 stage (letterboxed on other screens) redrawn at the display's rate by a
@@ -30,7 +32,7 @@ struct PlayerView: View {
     let onNextChapter: (String) -> Void
 
     init(route: PlayerRoute, onNextChapter: @escaping (String) -> Void) {
-        _model = StateObject(wrappedValue: PlayerModel(chapterId: route.chapterId, nextChapterId: route.nextChapterId, language: route.language))
+        _model = StateObject(wrappedValue: PlayerModel(chapterId: route.chapterId, nextChapterId: route.nextChapterId, language: route.language, startPage: route.startPage))
         self.onNextChapter = onNextChapter
     }
 
@@ -44,8 +46,8 @@ struct PlayerView: View {
             } else {
                 VStack(alignment: .leading, spacing: 12) {
                     ErrorText(text: model.state.error ?? "")
-                    Button("Try again") { model.send(PlayerIntentRetry.shared) }.buttonStyle(PrimaryButtonStyle())
-                    Button("Close") { dismiss() }.buttonStyle(GhostButtonStyle())
+                    Button(L("common.tryAgain")) { model.send(PlayerIntentRetry.shared) }.buttonStyle(PrimaryButtonStyle())
+                    Button(L("common.close")) { dismiss() }.buttonStyle(GhostButtonStyle())
                 }
                 .padding(24)
             }
@@ -105,12 +107,12 @@ struct PlayerView: View {
     private var controls: some View {
         VStack(spacing: 0) {
             HStack(spacing: 12) {
-                RoundButton(label: "Close", action: { dismiss() }) {
+                RoundButton(label: L("common.close"), action: { dismiss() }) {
                     Image(systemName: "xmark").font(.system(size: 16, weight: .bold))
                 }
                 Text(model.state.pageLabel).font(.brandBody(13)).foregroundStyle(Color.brandPaper)
                 Spacer()
-                if model.state.offline { Text("Offline").font(.brandBody(13)).foregroundStyle(Color.brandMuted) }
+                if model.state.offline { Text(L("common.offlineShort")).font(.brandBody(13)).foregroundStyle(Color.brandMuted) }
                 Pill(label: model.state.soundLabel, selected: !model.state.muted && !model.state.silent) {
                     if !model.state.silent { model.send(PlayerIntentToggleMute.shared) }
                     touches += 1
@@ -121,7 +123,7 @@ struct PlayerView: View {
             .background(LinearGradient(colors: [.black.opacity(0.7), .clear], startPoint: .top, endPoint: .bottom))
             Spacer()
             HStack(spacing: 28) {
-                RoundButton(label: "Previous bubble", enabled: model.state.canGoBack, action: {
+                RoundButton(label: L("episode.previousBubble"), enabled: model.state.canGoBack, action: {
                     model.send(PlayerIntentPreviousBeat.shared)
                     touches += 1
                 }) { Image(systemName: "backward.end.fill").font(.system(size: 18)) }
@@ -129,7 +131,7 @@ struct PlayerView: View {
                     model.send(PlayerIntentTogglePlay.shared)
                     touches += 1
                 }) { Image(systemName: model.state.playing ? "pause.fill" : "play.fill").font(.system(size: 26)) }
-                RoundButton(label: "Next bubble", enabled: model.state.canGoForward, action: {
+                RoundButton(label: L("episode.nextBubble"), enabled: model.state.canGoForward, action: {
                     model.send(PlayerIntentNextBeat.shared)
                     touches += 1
                 }) { Image(systemName: "forward.end.fill").font(.system(size: 18)) }

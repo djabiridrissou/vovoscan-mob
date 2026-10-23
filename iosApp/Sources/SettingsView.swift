@@ -6,6 +6,7 @@ import SwiftUI
 struct SettingsView: View {
     let session: Session
     let onSignOut: () -> Void
+    let onReplayTutorial: () -> Void
     @StateObject private var wallet = WalletModel()
     @StateObject private var keys = ProviderKeysModel()
     @StateObject private var reading = ReadingSettingsModel()
@@ -14,13 +15,23 @@ struct SettingsView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
-                ScreenHeader(kicker: "Settings", title: "Your keys, your episodes.", subtitle: session.email)
+                ScreenHeader(kicker: L("nav.settings"), title: L("settings.headline"), subtitle: session.email)
                 if wallet.state.shown { WalletCard(state: wallet.state).riseIn() }
                 StudioCard(isCreator: session.isCreator).riseIn(1)
-                keysSection
+                VStack(spacing: 8) {
+                    NavigationLink(value: SettingsRoute.account) {
+                        SettingsRow(icon: "person.crop.circle", title: L("settings.tabs.account"), detail: session.displayName)
+                    }
+                    NavigationLink(value: SettingsRoute.preferences) {
+                        SettingsRow(icon: "globe", title: L("settings.tabs.preferences"), detail: L("prefs.lead"))
+                    }
+                }
+                .buttonStyle(PressableCardStyle())
+                .riseIn(2)
+                KeysSection(keys: keys)
                 readingSection
                 costsSection
-                Button("Sign out", action: onSignOut).buttonStyle(GhostButtonStyle()).padding(.top, 8)
+                Button(L("common.signOut"), action: onSignOut).buttonStyle(GhostButtonStyle()).padding(.top, 8)
             }
             .padding(20)
         }
@@ -35,55 +46,12 @@ struct SettingsView: View {
         .task { await keys.observe() }
         .task { await reading.observe() }
         .task { await usage.observe() }
-        .alert(
-            keys.state.removal?.title ?? "",
-            isPresented: Binding(get: { keys.state.removal != nil }, set: { if !$0 { keys.send(ProviderKeysIntentCancelRemove.shared) } }),
-            presenting: keys.state.removal
-        ) { prompt in
-            Button(prompt.confirmLabel, role: .destructive) { keys.send(ProviderKeysIntentConfirmRemove.shared) }
-            Button(prompt.cancelLabel, role: .cancel) { keys.send(ProviderKeysIntentCancelRemove.shared) }
-        } message: { prompt in
-            Text(prompt.message)
-        }
-    }
-
-    // Keys.
-
-    private var keysSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            SectionTitle(text: "Keys")
-            if let notice = keys.state.offlineNotice { OfflineNotice(text: notice) }
-            Text(keys.state.privacyNote).font(.brandBody(13)).foregroundStyle(Color.brandMuted)
-            if let disabled = keys.state.disabledNotice { Text(disabled).font(.brandBody(15)).foregroundStyle(Color.brandPaper) }
-            if let notice = keys.state.notice { Text(notice).font(.brandBody(13)).foregroundStyle(Color.brandPaper) }
-            if let error = keys.state.error { ErrorText(text: error) }
-            ForEach(keys.state.slots, id: \.providerLabel) { slot in
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(slot.providerLabel).font(.brandDisplay(18)).foregroundStyle(Color.brandPaper)
-                    Text(slot.purpose).font(.brandBody(13)).foregroundStyle(Color.brandMuted)
-                    if let key = slot.key {
-                        Text([key.hintLabel, key.label].compactMap { $0 }.joined(separator: " ✦ "))
-                            .font(.brandBody(15)).foregroundStyle(Color.brandPaper)
-                        Text("\(key.addedLabel) ✦ \(key.lastUsedLabel)").font(.brandBody(13)).foregroundStyle(Color.brandMuted)
-                    }
-                    if keys.state.enabled {
-                        HStack(spacing: 10) {
-                            Button(slot.actionLabel) { keys.send(ProviderKeysIntentOpenForm(provider: slot.provider)) }
-                                .buttonStyle(GhostButtonStyle())
-                            if let key = slot.key {
-                                Button("Remove") { keys.send(ProviderKeysIntentAskRemove(keyId: key.id)) }
-                                    .buttonStyle(GhostButtonStyle())
-                            }
-                        }
-                        .padding(.top, 4)
-                    }
-                }
-                .padding(16)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color.brandInk2, in: RoundedRectangle(cornerRadius: 12))
-                .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.brandLine, lineWidth: 1))
+        .keyRemovalAlert(keys)
+        .navigationDestination(for: SettingsRoute.self) { route in
+            switch route {
+            case .account: AccountView()
+            case .preferences: PreferencesView(onReplayTutorial: onReplayTutorial)
             }
-            if keys.state.formOpen { KeyForm(model: keys) }
         }
     }
 
@@ -91,7 +59,7 @@ struct SettingsView: View {
 
     private var readingSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            SectionTitle(text: "Reading model")
+            SectionTitle(text: L("settings.readingModel"))
             if let notice = reading.state.offlineNotice { OfflineNotice(text: notice) }
             ForEach(reading.state.options, id: \.label) { option in
                 Button {
@@ -123,7 +91,7 @@ struct SettingsView: View {
     private var costsSection: some View {
         let state = usage.state
         return VStack(alignment: .leading, spacing: 10) {
-            SectionTitle(text: "Costs")
+            SectionTitle(text: L("settings.costs"))
             HStack(spacing: 8) {
                 ForEach(state.periods, id: \.label) { chip in
                     Button(chip.label) { usage.send(UsageIntentSelectPeriod(period: chip.period)) }
@@ -131,10 +99,10 @@ struct SettingsView: View {
                 }
             }
             if state.loading {
-                Text("Loading the costs…").font(.brandBody(13)).foregroundStyle(Color.brandMuted)
+                Text(L("usage.loading")).font(.brandBody(13)).foregroundStyle(Color.brandMuted)
             } else if let error = state.error {
                 ErrorText(text: error)
-                Button("Try again") { usage.send(UsageIntentRefresh.shared) }.buttonStyle(GhostButtonStyle())
+                Button(L("common.tryAgain")) { usage.send(UsageIntentRefresh.shared) }.buttonStyle(GhostButtonStyle())
             } else {
                 if state.empty { Text(state.emptyLabel).font(.brandBody(15)).foregroundStyle(Color.brandPaper) }
                 if !state.empty, let total = state.totalCostLabel { Text(total).font(.brandDisplay(26)).foregroundStyle(Color.brandPaper) }
@@ -168,6 +136,79 @@ struct SettingsView: View {
     }
 }
 
+/// The user's own provider keys (add, replace, remove): in Settings and opened from the tutorial's credits step.
+struct KeysSection: View {
+    @ObservedObject var keys: ProviderKeysModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            SectionTitle(text: L("settings.keys"))
+            if let notice = keys.state.offlineNotice { OfflineNotice(text: notice) }
+            Text(keys.state.privacyNote).font(.brandBody(13)).foregroundStyle(Color.brandMuted)
+            if let disabled = keys.state.disabledNotice { Text(disabled).font(.brandBody(15)).foregroundStyle(Color.brandPaper) }
+            if let notice = keys.state.notice { Text(notice).font(.brandBody(13)).foregroundStyle(Color.brandPaper) }
+            if let error = keys.state.error { ErrorText(text: error) }
+            ForEach(keys.state.slots, id: \.providerLabel) { slot in
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(slot.providerLabel).font(.brandDisplay(18)).foregroundStyle(Color.brandPaper)
+                    Text(slot.purpose).font(.brandBody(13)).foregroundStyle(Color.brandMuted)
+                    if let key = slot.key {
+                        Text([key.hintLabel, key.label].compactMap { $0 }.joined(separator: " ✦ "))
+                            .font(.brandBody(15)).foregroundStyle(Color.brandPaper)
+                        Text("\(key.addedLabel) ✦ \(key.lastUsedLabel)").font(.brandBody(13)).foregroundStyle(Color.brandMuted)
+                    }
+                    if keys.state.enabled {
+                        HStack(spacing: 10) {
+                            Button(slot.actionLabel) { keys.send(ProviderKeysIntentOpenForm(provider: slot.provider)) }
+                                .buttonStyle(GhostButtonStyle())
+                            if let key = slot.key {
+                                Button(L("common.remove")) { keys.send(ProviderKeysIntentAskRemove(keyId: key.id)) }
+                                    .buttonStyle(GhostButtonStyle())
+                            }
+                        }
+                        .padding(.top, 4)
+                    }
+                }
+                .padding(16)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.brandInk2, in: RoundedRectangle(cornerRadius: 12))
+                .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.brandLine, lineWidth: 1))
+            }
+            if keys.state.formOpen { KeyForm(model: keys) }
+        }
+    }
+}
+
+/// The keys alone, pushed from the tutorial ("Add my keys").
+struct KeysScreen: View {
+    @StateObject private var keys = ProviderKeysModel()
+
+    var body: some View {
+        ScrollView {
+            KeysSection(keys: keys).padding(20)
+        }
+        .background(Color.brandInk)
+        .task { await keys.observe() }
+        .keyRemovalAlert(keys)
+    }
+}
+
+extension View {
+    /// Asks before removing a key (the ViewModel's prompt).
+    func keyRemovalAlert(_ keys: ProviderKeysModel) -> some View {
+        alert(
+            keys.state.removal?.title ?? "",
+            isPresented: Binding(get: { keys.state.removal != nil }, set: { if !$0 { keys.send(ProviderKeysIntentCancelRemove.shared) } }),
+            presenting: keys.state.removal
+        ) { prompt in
+            Button(prompt.confirmLabel, role: .destructive) { keys.send(ProviderKeysIntentConfirmRemove.shared) }
+            Button(prompt.cancelLabel, role: .cancel) { keys.send(ProviderKeysIntentCancelRemove.shared) }
+        } message: { prompt in
+            Text(prompt.message)
+        }
+    }
+}
+
 /// Add or replace a key. The secret lives only in this field's `@State` (never in the ViewModel's state): every
 /// keystroke goes out as `SecretChanged`, the field empties itself whenever `secretFieldResets` changes, and Save
 /// resends both fields before submitting (iOS pitfalls in CLAUDE.md). A secure field with no autocorrection, no
@@ -182,7 +223,7 @@ private struct KeyForm: View {
         VStack(alignment: .leading, spacing: 12) {
             Text(state.formTitle).font(.brandDisplay(18)).foregroundStyle(Color.brandPaper)
             VStack(alignment: .leading, spacing: 6) {
-                Text("Key").font(.brandBody(13)).foregroundStyle(Color.brandMuted)
+                Text(L("keys.key")).font(.brandBody(13)).foregroundStyle(Color.brandMuted)
                 SecureField("", text: $secret, prompt: Text(state.secretPlaceholder).foregroundColor(Color.brandMuted))
                     .textContentType(.oneTimeCode)
                     .textInputAutocapitalization(.never)
@@ -197,7 +238,7 @@ private struct KeyForm: View {
                     .onChange(of: secret) { _, typed in model.send(ProviderKeysIntentSecretChanged(value: typed)) }
                 if let error = state.secretError { ErrorText(text: error) }
             }
-            IntentField(label: "Label", text: $label, value: state.formLabel, error: state.labelError, placeholder: state.labelPlaceholder) {
+            IntentField(label: L("keys.label"), text: $label, value: state.formLabel, error: state.labelError, placeholder: state.labelPlaceholder) {
                 model.send(ProviderKeysIntentLabelChanged(value: $0))
             }
             if let error = state.formError { ErrorText(text: error) }
@@ -210,7 +251,7 @@ private struct KeyForm: View {
             }
             .buttonStyle(PrimaryButtonStyle())
             .disabled(!state.canSubmit)
-            Button("Cancel") { model.send(ProviderKeysIntentCloseForm.shared) }.buttonStyle(GhostButtonStyle())
+            Button(L("common.cancel")) { model.send(ProviderKeysIntentCloseForm.shared) }.buttonStyle(GhostButtonStyle())
         }
         .padding(16)
         .background(Color.brandInk2, in: RoundedRectangle(cornerRadius: 12))
@@ -220,7 +261,35 @@ private struct KeyForm: View {
     }
 }
 
-private struct SectionTitle: View {
+/// Settings' own screens.
+enum SettingsRoute: Hashable {
+    case account, preferences
+}
+
+/// A row that opens a settings screen: icon, title, one muted line, chevron.
+struct SettingsRow: View {
+    let icon: String
+    let title: String
+    let detail: String
+
+    var body: some View {
+        HStack(spacing: 14) {
+            Image(systemName: icon).font(.system(size: 20, weight: .semibold)).foregroundStyle(Color.brandRed).frame(width: 28)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(.brandBody(16, weight: .bold)).foregroundStyle(Color.brandPaper)
+                Text(detail).font(.brandBody(13)).foregroundStyle(Color.brandMuted).lineLimit(1)
+            }
+            Spacer()
+            Image(systemName: "chevron.right").font(.system(size: 13, weight: .bold)).foregroundStyle(Color.brandMuted)
+        }
+        .padding(16)
+        .background(Color.brandInk2, in: RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.brandLine, lineWidth: 1))
+        .contentShape(Rectangle())
+    }
+}
+
+struct SectionTitle: View {
     let text: String
     var body: some View {
         Text(text).font(.brandDisplay(18)).foregroundStyle(Color.brandPaper).padding(.top, 12)
@@ -255,7 +324,7 @@ private struct WalletCard: View {
                     .contentTransition(.numericText())
                 Text(state.unitLabel).font(.brandBody(15, weight: .bold)).foregroundStyle(Color.brandMuted)
                 Spacer()
-                Sticker(text: "クレ", color: .brandCyan, angle: 6)
+                Sticker(text: "CR", color: .brandCyan, angle: 6)
             }
             if let warning = state.warning {
                 Text(warning).font(.brandBody(13, weight: .bold)).foregroundStyle(Color.brandYellow)
@@ -296,9 +365,9 @@ private struct StudioCard: View {
                     .frame(width: 40, height: 40)
                     .background(Color.brandYellow, in: RoundedRectangle(cornerRadius: 8))
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(isCreator ? "Creator studio" : "Publish your own series")
+                    Text(isCreator ? L("settings.studio") : L("settings.publish"))
                         .font(.brandBody(15, weight: .bold)).foregroundStyle(Color.brandPaper)
-                    Text(isCreator ? "Upload, translate and schedule releases on the web." : "Apply as a creator on the web.")
+                    Text(isCreator ? L("settings.studioDetail") : L("settings.publishDetail"))
                         .font(.brandBody(13)).foregroundStyle(Color.brandMuted)
                 }
                 Spacer()
@@ -309,6 +378,6 @@ private struct StudioCard: View {
             .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.brandLine, lineWidth: 1))
         }
         .buttonStyle(PressableCardStyle())
-        .accessibilityHint("Opens the website")
+        .accessibilityHint(L("settings.opensWebsite"))
     }
 }

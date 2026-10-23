@@ -308,8 +308,9 @@ class ProviderKeysViewModel(
                     providerLabel = provider.label,
                     hintLabel = AccountText.hint(key.hint),
                     label = key.label,
-                    addedLabel = "Added " + AccountText.date(key.createdAtMillis, offset),
-                    lastUsedLabel = key.lastUsedAtMillis?.let { "Last used " + AccountText.date(it, offset) } ?: AccountText.NEVER_USED,
+                    addedLabel = AccountText.added(AccountText.date(key.createdAtMillis, offset)),
+                    lastUsedLabel =
+                        key.lastUsedAtMillis?.let { AccountText.lastUsed(AccountText.date(it, offset)) } ?: AccountText.NEVER_USED,
                 ),
                 AccountText.REPLACE_KEY,
             )

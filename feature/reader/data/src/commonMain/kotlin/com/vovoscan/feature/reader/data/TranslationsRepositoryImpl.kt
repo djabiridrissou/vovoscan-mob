@@ -4,7 +4,9 @@ import com.vovoscan.core.common.AppResult
 import com.vovoscan.core.common.map
 import com.vovoscan.core.network.ApiData
 import com.vovoscan.core.network.apiCall
+import com.vovoscan.feature.reader.domain.ChapterPanels
 import com.vovoscan.feature.reader.domain.ChapterTranslation
+import com.vovoscan.feature.reader.domain.PanelBox
 import com.vovoscan.feature.reader.domain.PixelBox
 import com.vovoscan.feature.reader.domain.TranslatedPage
 import com.vovoscan.feature.reader.domain.TranslatedText
@@ -61,6 +63,8 @@ data class TranslatedPageDto(
     val h: Int? = null,
     val texts: List<TranslatedTextDto>? = null,
     val balloons: List<TranslatedTextDto>? = null,
+    /** The analysis' panels, `[x, y, width, height]` in page pixels, already in reading order (reader/SPEC.md §2). */
+    val panels: List<List<Double>>? = null,
 )
 
 @Serializable
@@ -68,10 +72,27 @@ data class TranslatedChapterDto(
     val pages: List<TranslatedPageDto> = emptyList(),
 )
 
-/** Remote source and repository at once: translations are read fresh, nothing is kept on the device. */
+/**
+ * Remote source and repository at once: translations are read fresh, nothing is kept on the device. Also the reader's
+ * panels (the original's `…/read`): our catalogue only; a source read on the device has none (gutters on the device).
+ */
 class TranslationsRepositoryImpl(
     private val http: HttpClient,
-) : TranslationsRepository {
+) : TranslationsRepository,
+    ChapterPanels {
+    override suspend fun panels(
+        sourceKey: String,
+        chapterId: String,
+    ): Map<Int, List<PanelBox>> {
+        if (sourceKey != INTERNAL_SOURCE) return emptyMap()
+        val result = http.apiCall<ApiData<TranslatedChapterDto>> { get(path(chapterId) + "/read") }
+        val pages = (result as? AppResult.Ok)?.value?.data?.pages ?: return emptyMap()
+        return pages
+            .mapIndexed { i, page -> (page.index ?: i) to page.panelBoxes(page.index ?: i) }
+            .filter { it.second.isNotEmpty() }
+            .toMap()
+    }
+
     override suspend fun languages(chapterId: String): AppResult<List<ChapterTranslation>> =
         http
             .apiCall<ApiData<ChapterTranslationsDto>> { get(path(chapterId)) }
@@ -127,6 +148,23 @@ internal fun TranslatedPageDto.toDomain(position: Int) =
                 )
             },
     )
+
+/** The panels as fractions of the page; boxes outside it are clipped, empty ones dropped. */
+internal fun TranslatedPageDto.panelBoxes(page: Int): List<PanelBox> {
+    val w = (width ?: this.w ?: 0).toDouble()
+    val h = (height ?: this.h ?: 0).toDouble()
+    if (w <= 0 || h <= 0) return emptyList()
+    return panels.orEmpty().mapNotNull { box ->
+        val b = box.toBox() ?: return@mapNotNull null
+        val x0 = (b.x / w).coerceIn(0.0, 1.0)
+        val y0 = (b.y / h).coerceIn(0.0, 1.0)
+        val x1 = ((b.x + b.w) / w).coerceIn(0.0, 1.0)
+        val y1 = ((b.y + b.h) / h).coerceIn(0.0, 1.0)
+        if (x1 <= x0 || y1 <= y0) null else PanelBox(page, x0.toFloat(), y0.toFloat(), (x1 - x0).toFloat(), (y1 - y0).toFloat())
+    }
+}
+
+private const val INTERNAL_SOURCE = "vovoscan"
 
 private fun List<Double>.toBox(): PixelBox? =
     if (size == 4 && this[2] > 0 && this[3] > 0) PixelBox(this[0], this[1], this[2], this[3]) else null

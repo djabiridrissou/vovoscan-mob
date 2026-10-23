@@ -249,7 +249,53 @@ class AccountViewModelsTest {
 
         override suspend fun set(model: ReadingModel): AppResult<ReadingModel> =
             setResult ?: AppResult.Ok(model).also { this.model.value = model }
+
+        val target = MutableStateFlow<String?>(null)
+        var targetResult: AppResult<String>? = null
+
+        override fun observeTargetLanguage(): Flow<String?> = target
+
+        override suspend fun setTargetLanguage(code: String): AppResult<String> =
+            targetResult ?: AppResult.Ok(code).also { target.value = code }
     }
+
+    @Test
+    fun theReadingLanguageIsChosenFromTheSearchablePicker() =
+        runTest(dispatcher) {
+            val repo = FakeReading()
+            val vm = ReadingSettingsViewModel(repo)
+            advanceUntilIdle()
+            assertEquals("Not chosen yet", vm.state.value.languageLabel)
+            vm.onIntent(ReadingSettingsIntent.LanguageQuery("ewe"))
+            assertEquals(
+                listOf("ee"),
+                vm.state.value.languageRows
+                    .map { it.code },
+            )
+            vm.onIntent(ReadingSettingsIntent.ChooseLanguage("ee"))
+            advanceUntilIdle()
+            assertEquals("ee", repo.target.value)
+            assertEquals("Eʋegbe", vm.state.value.languageLabel)
+            assertEquals("", vm.state.value.languageQuery)
+            assertEquals("Saved.", vm.state.value.notice)
+        }
+
+    @Test
+    fun anOfflineLanguageChoiceKeepsThePreviousOne() =
+        runTest(dispatcher) {
+            val repo = FakeReading()
+            repo.target.value = "fr"
+            repo.targetResult = AppResult.Err(AppError.Network)
+            val vm = ReadingSettingsViewModel(repo)
+            advanceUntilIdle()
+            vm.onIntent(ReadingSettingsIntent.ChooseLanguage("yo"))
+            advanceUntilIdle()
+            assertEquals("Français", vm.state.value.languageLabel)
+            assertTrue(
+                vm.state.value.error!!
+                    .isNotBlank(),
+            )
+        }
 
     @Test
     fun readingModelDefaultsToHaikuThenFollowsTheServer() =
@@ -332,11 +378,13 @@ class AccountViewModelsTest {
             assertEquals(now - 30 * 86_400_000L, repo.asked.single())
             assertEquals("$1.24", state.totals[0].costLabel)
             assertEquals("182,400 tokens ✦ 12 requests", state.totals[0].unitsLabel)
-            assertEquals("<$0.01", state.totals[1].costLabel)
+            assertEquals("under $0.01", state.totals[1].costLabel)
             assertEquals("1 character ✦ 12.5 seconds", state.totals[1].unitsLabel)
             assertEquals("$1.25", state.totalCostLabel)
             assertEquals("12,000 tokens", state.entries.single().amountLabel)
-            assertEquals("Oct 20 ✦ 16:05", state.entries.single().dateLabel)
+            // The platform writes the time (12-hour in English, with the locale's own space before PM).
+            val dateLabel = state.entries.single().dateLabel
+            assertTrue(dateLabel.startsWith("Oct 20, 2026 ✦ 4:05") && dateLabel.endsWith("PM"), dateLabel)
             assertEquals(listOf("Last 7 days", "Last 30 days", "This month"), state.periods.map { it.label })
             vm.onIntent(UsageIntent.SelectPeriod(UsagePeriod.ThisMonth))
             advanceUntilIdle()

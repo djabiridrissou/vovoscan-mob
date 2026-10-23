@@ -83,7 +83,7 @@ struct LanguageButton: View {
             .overlay(Capsule().stroke(state.working ? Color.brandCyan : (state.translated ? Color.brandRed : Color.brandLine), lineWidth: 1))
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("Language: \(state.buttonLabel)")
+        .accessibilityLabel(L("translation.languageA11y", ["language": state.buttonLabel]))
     }
 }
 
@@ -107,7 +107,7 @@ struct LanguageSheet: View {
                 if let error = state.error {
                     VStack(alignment: .leading, spacing: 8) {
                         ErrorText(text: error)
-                        Button("Try again") { translation.send(TranslationIntentRetry.shared) }
+                        Button(L("common.tryAgain")) { translation.send(TranslationIntentRetry.shared) }
                             .font(.brandBody(13, weight: .bold)).foregroundStyle(Color.brandRed)
                     }
                     .listRowBackground(Color.brandInk2)
@@ -142,12 +142,12 @@ struct LanguageSheet: View {
             }
             .scrollContentBackground(.hidden)
             .background(Color.brandInk2)
-            .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search a language")
+            .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: L("common.searchLanguage"))
             .onChange(of: query) { _, text in translation.send(TranslationIntentQuery(value: text)) }
-            .navigationTitle("Language")
+            .navigationTitle(L("translation.languageTitle"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) { Button(L("common.done")) { dismiss() } }
             }
         }
         .onAppear { query = state.query }

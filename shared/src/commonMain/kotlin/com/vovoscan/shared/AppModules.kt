@@ -3,6 +3,8 @@ package com.vovoscan.shared
 import com.vovoscan.core.common.AppDispatchers
 import com.vovoscan.core.common.AppResult
 import com.vovoscan.core.common.NetworkMonitor
+import com.vovoscan.core.common.SystemClock
+import com.vovoscan.core.common.i18n.UiLanguage
 import com.vovoscan.core.network.ApiConfig
 import com.vovoscan.core.network.createHttpClient
 import com.vovoscan.core.network.platformHttpEngine
@@ -22,9 +24,13 @@ import com.vovoscan.feature.account.domain.WalletRepository
 import com.vovoscan.feature.auth.di.SignOutCleanup
 import com.vovoscan.feature.auth.di.authModule
 import com.vovoscan.feature.auth.domain.AuthRepository
+import com.vovoscan.feature.auth.domain.OnboardingServices
 import com.vovoscan.feature.catalog.di.catalogModule
 import com.vovoscan.feature.catalog.domain.CatalogRepository
 import com.vovoscan.feature.catalog.domain.ContentKind
+import com.vovoscan.feature.catalog.domain.ReadingResume
+import com.vovoscan.feature.catalog.domain.ResumePoint
+import com.vovoscan.feature.catalog.domain.ResumePoints
 import com.vovoscan.feature.episodes.di.episodesModule
 import com.vovoscan.feature.episodes.domain.EpisodeAccess
 import com.vovoscan.feature.episodes.domain.EpisodesRepository
@@ -40,7 +46,9 @@ import com.vovoscan.feature.reader.domain.ChapterHeadings
 import com.vovoscan.feature.reader.domain.DownloadableChapter
 import com.vovoscan.feature.reader.domain.DownloadableTitle
 import com.vovoscan.feature.reader.domain.DownloadsRepository
+import com.vovoscan.feature.reader.domain.LastRead
 import com.vovoscan.feature.reader.domain.ReaderRepository
+import com.vovoscan.feature.reader.domain.ReaderSettingsRepository
 import com.vovoscan.feature.reader.domain.ReadingProgressSink
 import com.vovoscan.feature.reader.domain.TitleChapters
 import com.vovoscan.feature.reader.domain.chapterLabel
@@ -74,8 +82,8 @@ data class AppConfig(
 )
 
 /**
- * All Koin modules of the app; `platform` provides `DatabaseDriverFactory`, `SecureStore`, `NetworkMonitor` and
- * `AppFolders`.
+ * All Koin modules of the app; `platform` provides `DatabaseDriverFactory`, `SecureStore`, `NetworkMonitor`,
+ * `AppFolders` and `DevicePreferences`.
  * Each feature gets its local and remote sources from its own module (`di`).
  */
 fun appModules(
@@ -126,11 +134,32 @@ fun appModules(
                 }
             }
             // The reader saves progress in the library without knowing that feature.
+            // Every title read is also kept on the device (followed or not), for "Continue reading".
             single {
                 val library = get<LibraryRepository>()
+                val history = get<ReaderSettingsRepository>()
                 val scope = get<CoroutineScope>()
                 ReadingProgressSink { sourceKey, titleId, chapterId, page ->
-                    scope.launch { library.saveProgress(sourceKey, titleId, chapterId, page) }
+                    scope.launch {
+                        history.recordRead(LastRead(sourceKey, titleId, chapterId, page, SystemClock.nowMillis()))
+                        library.saveProgress(sourceKey, titleId, chapterId, page)
+                    }
+                }
+            }
+            // "Continue reading": this device's reading and the library's progress (synced from the account's other
+            // devices), the most recent per title.
+            single<ReadingResume> {
+                val library = get<LibraryRepository>()
+                val history = get<ReaderSettingsRepository>()
+                ReadingResume {
+                    combine(history.observeHistory(), library.observe()) { reads, entries ->
+                        ResumePoints.merge(
+                            reads.map { ResumePoint(it.sourceKey, it.titleId, it.chapterId, it.page, it.readAt) },
+                            entries.mapNotNull { e ->
+                                e.lastChapterRef?.let { ResumePoint(e.sourceKey, e.titleRef, it, e.lastPage, e.updatedAt) }
+                            },
+                        )
+                    }.distinctUntilChanged()
                 }
             }
             // The reader's chapter transitions name the next / previous chapter from the title page kept on the device.
@@ -203,6 +232,10 @@ fun appModules(
             // Image loaders (Coil, the iOS URL session) send a source's page-image Referer to its hosts: the table
             // follows the user's sources and their manifests (started by each app at launch).
             single { ImageRefererSync(get(), get(), get()) }
+            // The app's language: the device's choice at launch, then the signed-in account's.
+            single { UiLanguage(get()) }
+            single { LocaleSync(get(), get(), get(), get()) }
+            single<OnboardingServices> { AppOnboardingServices(get(), get(), get(), get(), get()) }
         },
         accountModule,
         authModule,

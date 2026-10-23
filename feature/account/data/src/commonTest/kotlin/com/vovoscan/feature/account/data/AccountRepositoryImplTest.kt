@@ -220,6 +220,73 @@ class AccountRepositoryImplTest {
         }
 
     @Test
+    fun aReadingLanguageGoesWithTheCurrentModelSoAnOlderServerTakesIt() =
+        runTest {
+            val sent = mutableListOf<String>()
+            // A server from before `targetLanguage`: `ocrModel` required, the language not answered back.
+            val s =
+                setup { request ->
+                    if (request.method == HttpMethod.Put) {
+                        val body = (request.body as TextContent).text
+                        sent += body
+                        if (body.contains("ocrModel")) {
+                            respondJson("""{"data":{"ocrModel":"claude-haiku-5-5"}}""")
+                        } else {
+                            respondJson(
+                                """{"code":422,"message":"Invalid.","data":{"error":"VALIDATION_ERROR"}}""",
+                                HttpStatusCode.UnprocessableEntity,
+                            )
+                        }
+                    } else {
+                        respondJson("""{"data":{"ocrModel":"claude-haiku-5-5"}}""")
+                    }
+                }
+            assertEquals(AppResult.Ok("ar"), s.repository.setTargetLanguage("ar"))
+            assertEquals(listOf("""{"ocrModel":"claude-haiku-5-5","targetLanguage":"ar"}"""), sent)
+            assertEquals("ar", s.repository.observeTargetLanguage().first())
+            // The server answers no language: the device's choice stays.
+            s.repository.refreshReadingModel()
+            assertEquals("ar", s.repository.observeTargetLanguage().first())
+        }
+
+    @Test
+    fun aRefusedReadingLanguageNeverBlocksAndWinsOverTheServersOlderAnswer() =
+        runTest {
+            var refuse = true
+            val puts = mutableListOf<String>()
+            val s =
+                setup { request ->
+                    if (request.method == HttpMethod.Put) {
+                        puts += (request.body as TextContent).text
+                        if (refuse) {
+                            respondJson(
+                                """{"code":422,"message":"Invalid.","data":{"error":"VALIDATION_ERROR"}}""",
+                                HttpStatusCode.UnprocessableEntity,
+                            )
+                        } else {
+                            respondJson("""{"data":{"ocrModel":"claude-haiku-5-5","targetLanguage":"ee"}}""")
+                        }
+                    } else {
+                        respondJson("""{"data":{"ocrModel":"claude-haiku-5-5","targetLanguage":"fr"}}""")
+                    }
+                }
+            // Refused: kept on the device, the tour moves on.
+            assertEquals(AppResult.Ok("ee"), s.repository.setTargetLanguage("ee"))
+            assertEquals("ee", s.repository.observeTargetLanguage().first())
+            // Still refused at the next refresh: the server's older "fr" doesn't replace it.
+            s.repository.refreshReadingModel()
+            assertEquals("ee", s.repository.observeTargetLanguage().first())
+            assertEquals(2, puts.size)
+            // Taken at last: sent once more, then the server's answer is the truth again.
+            refuse = false
+            s.repository.refreshReadingModel()
+            assertEquals(3, puts.size)
+            s.repository.refreshReadingModel()
+            assertEquals(3, puts.size)
+            assertEquals("fr", s.repository.observeTargetLanguage().first())
+        }
+
+    @Test
     fun usageAsksForThePeriodAndReadsTotals() =
         runTest {
             var query = ""

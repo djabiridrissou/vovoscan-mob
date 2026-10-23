@@ -1,5 +1,6 @@
 package com.vovoscan.core.network
 
+import com.vovoscan.core.common.i18n.I18n
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
 import io.ktor.client.request.get
@@ -26,6 +27,29 @@ class SessionTokenTest {
             client.get("https://files.elsewhere.example/page.jpg")
             assertEquals("Bearer secret-token", seen["api.test"])
             assertEquals(null, seen["files.elsewhere.example"])
+        }
+
+    @Test
+    fun theUiLanguageGoesOnlyToTheApiHost() =
+        runTest {
+            val seen = mutableMapOf<String, String?>()
+            val client =
+                createHttpClient(
+                    MockEngine { request ->
+                        seen[request.url.host] = request.headers[HttpHeaders.AcceptLanguage]
+                        respond("")
+                    },
+                    ApiConfig("https://api.test/"),
+                ) { null }
+            I18n.use("fr")
+            try {
+                client.get("api/v1/me")
+                client.get("https://source.example/catalog")
+            } finally {
+                I18n.use("en")
+            }
+            assertEquals("fr", seen["api.test"])
+            assertEquals(null, seen["source.example"])
         }
 
     @Test

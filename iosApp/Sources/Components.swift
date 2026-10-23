@@ -95,7 +95,7 @@ struct OfflineNotice: View {
             Text(text).font(.brandBody(13)).foregroundStyle(Color.brandMuted)
                 .frame(maxWidth: .infinity, alignment: .leading)
             if let onRetry {
-                Button("Retry", action: onRetry).font(.brandBody(13, weight: .bold)).foregroundStyle(Color.brandRed)
+                Button(L("common.retry"), action: onRetry).font(.brandBody(13, weight: .bold)).foregroundStyle(Color.brandRed)
             }
         }
         .padding(.horizontal, 14)
@@ -121,17 +121,17 @@ struct Kicker: View {
     }
 }
 
-/// Logo: red square tilted -6°, paper border, hard paper shadow, "ヴ" in ink.
+/// Logo: the brand mark (a red balloon holding a V and two sound waves), from the brand files.
 struct LogoMark: View {
     var size: CGFloat = 32
     var body: some View {
-        ZStack {
-            Rectangle().fill(Color.brandPaper).offset(x: 3, y: 3)
-            Rectangle().fill(Color.brandRed).overlay(Rectangle().stroke(Color.brandPaper, lineWidth: 2))
-            Text("ヴ").font(.brandDisplay(size * 0.55)).foregroundStyle(Color.brandInk)
-        }
-        .frame(width: size, height: size)
-        .rotationEffect(.degrees(-6))
+        // The brand files (Assets.xcassets/BrandLogo): replacing the image changes the mark everywhere.
+        Image("BrandLogo")
+            .resizable()
+            .interpolation(.high)
+            .scaledToFit()
+            .frame(width: size, height: size)
+            .accessibilityLabel("vovoscan")
     }
 }
 

@@ -2,6 +2,7 @@ package com.vovoscan.feature.library.presentation
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.vovoscan.core.common.i18n.t
 import com.vovoscan.feature.library.domain.LibraryRepository
 import com.vovoscan.feature.library.domain.TitleRef
 import kotlinx.coroutines.flow.SharingStarted
@@ -16,10 +17,16 @@ data class FollowUiState(
     val resumeChapterId: String? = null,
     val resumePage: Int = 0,
 ) {
-    val label: String get() = if (followed) "In your library ✓" else "Add to library →"
+    val label: String get() = t(if (followed) "library.inLibrary" else "library.add")
 
     /** "Continue · page 5" ("section" for a book), null if there is nothing to resume. */
-    fun resumeLabel(book: Boolean): String? = resumeChapterId?.let { "Continue · ${if (book) "section" else "page"} ${resumePage + 1}" }
+    fun resumeLabel(book: Boolean): String? =
+        resumeChapterId?.let {
+            t(
+                if (book) "library.continueSection" else "library.continuePage",
+                "n" to resumePage + 1,
+            )
+        }
 }
 
 /** "Follow" button and reading resume on a title page. The app assembles it next to the title page. */

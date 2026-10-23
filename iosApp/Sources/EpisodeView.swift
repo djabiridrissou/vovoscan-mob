@@ -41,7 +41,7 @@ struct EpisodeView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
-                Kicker(text: "Episode")
+                Kicker(text: L("episode.kicker"))
                 if !route.title.name.isEmpty {
                     Text(route.title.name).font(.brandBody(13)).foregroundStyle(Color.brandMuted)
                 }
@@ -87,7 +87,7 @@ struct EpisodeView: View {
     private var card: some View {
         let state = model.state
         return VStack(alignment: .leading, spacing: 12) {
-            if state.comingSoon { Sticker(text: "Coming soon", angle: -4).padding(.bottom, 4) }
+            if state.comingSoon { Sticker(text: L("episode.comingSoonSticker"), angle: -4).padding(.bottom, 4) }
             if !state.languageOptions.isEmpty { languageButton(state) }
             HStack(alignment: .firstTextBaseline) {
                 Text(state.headline).font(.brandDisplay(18)).foregroundStyle(Color.brandPaper)
@@ -160,7 +160,7 @@ struct EpisodeView: View {
             if let notice = state.notice { Text(notice).font(.brandBody(13)).foregroundStyle(Color.brandPaper) }
             if let error = state.error { ErrorText(text: error) }
             if state.phase == .unavailable {
-                Button("Try again") { model.send(EpisodeIntentRefresh.shared) }.buttonStyle(GhostButtonStyle())
+                Button(L("common.tryAgain")) { model.send(EpisodeIntentRefresh.shared) }.buttonStyle(GhostButtonStyle())
             }
         }
         .padding(18)
@@ -192,14 +192,14 @@ struct EpisodeView: View {
         }
         .buttonStyle(.plain)
         .disabled(state.working)
-        .accessibilityLabel("Episode language: \(state.languageLabel)")
+        .accessibilityLabel(L("episode.languageA11y", ["language": state.languageLabel]))
     }
 
     /// The MP4: make it (CPU only, no key), follow its progress, then save or share it.
     private func video(_ state: EpisodeUiState) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Rectangle().fill(Color.brandLine).frame(height: 1).padding(.vertical, 4)
-            Text("VIDEO").font(.brandBody(12, weight: .bold)).tracking(1.4).foregroundStyle(Color.brandMuted)
+            Text(L("episode.videoKicker")).font(.brandBody(12, weight: .bold)).tracking(1.4).foregroundStyle(Color.brandMuted)
             if let label = state.exportLabel { Text(label).font(.brandBody(16)).foregroundStyle(Color.brandPaper) }
             if let detail = state.exportDetail { Text(detail).font(.brandBody(13)).foregroundStyle(Color.brandMuted) }
             if let progress = state.exportProgress {
@@ -229,7 +229,7 @@ private struct EpisodeLanguageSheet: View {
         NavigationStack {
             List {
                 if state.languageOptions.isEmpty {
-                    Text("No language matches.").font(.brandBody(13)).foregroundStyle(Color.brandMuted).listRowBackground(Color.brandInk2)
+                    Text(L("common.noLanguage")).font(.brandBody(13)).foregroundStyle(Color.brandMuted).listRowBackground(Color.brandInk2)
                 }
                 ForEach(state.languageOptions, id: \.self) { option in
                     Button {
@@ -254,12 +254,12 @@ private struct EpisodeLanguageSheet: View {
             }
             .scrollContentBackground(.hidden)
             .background(Color.brandInk2)
-            .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search a language")
+            .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: L("common.searchLanguage"))
             .onChange(of: query) { _, text in model.send(EpisodeIntentLanguageQuery(text: text)) }
-            .navigationTitle("Episode language")
+            .navigationTitle(L("episode.languageTitle"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) { Button(L("common.done")) { dismiss() } }
             }
         }
         .onAppear { query = state.languageQuery }
@@ -306,7 +306,7 @@ private struct LiveBadge: View {
     var body: some View {
         HStack(spacing: 6) {
             Circle().fill(Color.brandCyan).frame(width: 8, height: 8)
-            Text("LIVE").font(.brandBody(12, weight: .bold)).foregroundStyle(Color.brandCyan)
+            Text(L("episode.live")).font(.brandBody(12, weight: .bold)).foregroundStyle(Color.brandCyan)
         }
     }
 }

@@ -2,6 +2,9 @@ package com.vovoscan.feature.episodes.presentation
 
 import com.vovoscan.core.common.AppError
 import com.vovoscan.core.common.Language
+import com.vovoscan.core.common.i18n.displayName
+import com.vovoscan.core.common.i18n.displayTitle
+import com.vovoscan.core.common.i18n.t
 import com.vovoscan.core.common.userMessage
 import com.vovoscan.feature.episodes.domain.EpisodeAudio
 import com.vovoscan.feature.episodes.domain.ProviderFunding
@@ -10,68 +13,62 @@ import com.vovoscan.feature.episodes.domain.StageProgress
 
 /** Every user-facing string of the episode card and the player (brand tone: calm, short, ✦ separator). */
 object EpisodeText {
-    const val NONE = "No episode yet."
-    const val NONE_DETAIL = "Prepare it once and everyone who can read this chapter can watch it."
-    const val RUNNING = "Preparing the episode"
-    const val READY = "Episode ready."
-    const val FAILED = "Preparation failed."
-    const val LOADING = "Checking the episode…"
-    const val OFFLINE_COPY = "Offline: showing what's saved on this device."
-    const val UNAVAILABLE_OFFLINE = "You're offline. The episode shows once you're back online."
-    const val PREPARE = "Prepare episode"
-    const val PREPARE_AGAIN = "Prepare again"
-    const val TRY_AGAIN = "Try again"
-    const val REREAD = "Run again with my keys"
-    const val WATCH = "Watch →"
-    const val QUEUED = "Queued"
-    const val BUSY = "Already in progress. Following it."
-    const val ALREADY_READY = "Ready. It was already made, so nothing was charged."
-    const val STARTED = "Started. Your keys pay for this run; everyone can watch the result."
-    const val BADGE_DEGRADED = "Degraded"
-    const val BADGE_SILENT = "Silent"
-    const val BADGE_OUTDATED = "Outdated"
-    const val NOTE_DEGRADED = "Some bubbles weren't read or voiced."
-    const val NOTE_SILENT = "No voices: it was prepared without an ElevenLabs key."
-    const val NOTE_OUTDATED = "The chapter or the pipeline changed since this episode was made. Prepare it again to catch up."
-    const val NOTE_REREAD = "Your keys can improve it."
+    val NONE: String get() = t("episode.none")
+    val NONE_DETAIL: String get() = t("episode.noneDetail")
+    val RUNNING: String get() = t("episode.running")
+    val READY: String get() = t("episode.ready")
+    val FAILED: String get() = t("episode.failed")
+    val LOADING: String get() = t("episode.loading")
+    val OFFLINE_COPY: String get() = t("episode.offlineCopy")
+    val UNAVAILABLE_OFFLINE: String get() = t("episode.unavailableOffline")
+    val PREPARE: String get() = t("episode.prepare")
+    val PREPARE_AGAIN: String get() = t("episode.prepareAgain")
+    val TRY_AGAIN: String get() = t("episode.tryAgain")
+    val REREAD: String get() = t("episode.reread")
+    val WATCH: String get() = t("episode.watch")
+    val QUEUED: String get() = t("episode.queued")
+    val BUSY: String get() = t("episode.busy")
+    val ALREADY_READY: String get() = t("episode.alreadyReady")
+    val STARTED: String get() = t("episode.started")
+    val BADGE_DEGRADED: String get() = t("episode.badgeDegraded")
+    val BADGE_SILENT: String get() = t("episode.badgeSilent")
+    val BADGE_OUTDATED: String get() = t("episode.badgeOutdated")
+    val NOTE_DEGRADED: String get() = t("episode.noteDegraded")
+    val NOTE_SILENT: String get() = t("episode.noteSilent")
+    val NOTE_OUTDATED: String get() = t("episode.noteOutdated")
+    val NOTE_REREAD: String get() = t("episode.noteReread")
 
     // Languages (`?lang=`): the original, or the episode dubbed / subtitled in another language.
-    const val ORIGINAL = "Original"
-    const val ORIGINAL_DETAIL = "The chapter's own language"
-    const val DUBBED = "Dubbed"
-    const val SUBTITLED = "Subtitled"
-    const val BETA = "beta"
+    val ORIGINAL: String get() = t("episode.original")
+    val ORIGINAL_DETAIL: String get() = t("episode.originalDetail")
+    val DUBBED: String get() = t("episode.dubbed")
+    val SUBTITLED: String get() = t("episode.subtitled")
+    val BETA: String get() = t("episode.beta")
 
     fun languageDetail(language: Language): String =
-        listOfNotNull(language.name, if (language.dub) DUBBED else SUBTITLED, BETA.takeIf { language.beta }).joinToString(" ✦ ")
+        listOfNotNull(language.displayTitle(), if (language.dub) DUBBED else SUBTITLED, BETA.takeIf { language.beta }).joinToString(" ✦ ")
 
     /** Under a ready episode in another language: how it sounds. */
     fun audioNote(
         language: Language,
         audio: EpisodeAudio?,
-    ): String =
-        if (audio == EpisodeAudio.Dub) {
-            "Voiced in ${language.name}."
-        } else {
-            "The original voices, with ${language.name} captions."
-        }
+    ): String = t(if (audio == EpisodeAudio.Dub) "episode.audioDub" else "episode.audioSub", "language" to language.displayName())
 
     // The key lines already say what each missing key costs; this only says where to fix it.
-    const val KEY_WARNING = "Add the missing key in Settings."
-    const val KEYS_DISABLED = "Keys are turned off on this server: the episode will be unread and silent."
-    const val COST_NOTE = "Your own keys pay for this run. Everyone can watch the result."
-    const val PLATFORM_NOTE =
-        "What your keys don't cover runs on the platform's keys, paid from your wallet. Everyone can watch the result."
-    const val UNFUNDED_NOTE = "Only your own keys pay for runs here. Everyone can watch the result."
-    const val UNFUNDED_WARNING = "Without keys the episode stays unread and silent. Add yours in Settings, or ask the owner."
-    const val OFFLINE_WRITE = "You're offline. Connect to the internet to prepare this episode."
-    const val NO_PAGES = "This chapter has no pages yet."
-    const val CHAPTER_NOT_FOUND = "This chapter isn't available."
-    const val COMING_SOON = "Episodes are coming soon."
-    const val COMING_SOON_DETAIL = "Voiced episodes open to more readers soon. The chapter reads as usual meanwhile."
-    const val NO_CREDITS = "Not enough credits for this run. Add your own keys in Settings, or ask for a top-up."
-    const val CREDITS_PAUSED = "Runs on the platform's keys are paused right now. Your own keys still work."
-    const val DAILY_CAP = "Today's limit is reached. Try again tomorrow, or use your own keys."
+    val KEY_WARNING: String get() = t("episode.keyWarning")
+    val KEYS_DISABLED: String get() = t("episode.keysDisabled")
+    val COST_NOTE: String get() = t("episode.costNote")
+    val PLATFORM_NOTE: String get() = t("episode.platformNote")
+    val UNFUNDED_NOTE: String get() = t("episode.unfundedNote")
+    val UNFUNDED_WARNING: String get() = t("episode.unfundedWarning")
+    val OFFLINE_WRITE: String get() = t("episode.offlineWrite")
+    val NO_PAGES: String get() = t("episode.noPages")
+    val CHAPTER_NOT_FOUND: String get() = t("episode.chapterNotFound")
+    val COMING_SOON: String get() = t("episode.comingSoon")
+    val COMING_SOON_DETAIL: String get() = t("episode.comingSoonDetail")
+    val NO_CREDITS: String get() = t("episode.noCredits")
+    val CREDITS_PAUSED: String get() = t("episode.creditsPaused")
+    val DAILY_CAP: String get() = t("episode.dailyCap")
 
     /** Codes saying the feature isn't open to this account (the server's feature flags). */
     val FEATURE_OFF_CODES = setOf("FEATURE_DISABLED", "FEATURE_COMING_SOON")
@@ -82,9 +79,9 @@ object EpisodeText {
         funding: ProviderFunding = ProviderFunding.None,
     ): String =
         when {
-            hint != null -> "Your Anthropic key (•••• $hint) reads the bubbles."
-            funding == ProviderFunding.Platform -> "The platform's key reads the bubbles, paid in credits."
-            else -> "No Anthropic key: the bubbles stay unread."
+            hint != null -> t("episode.anthropicOwn", "hint" to hint)
+            funding == ProviderFunding.Platform -> t("episode.anthropicPlatform")
+            else -> t("episode.anthropicNone")
         }
 
     fun elevenLabsLine(
@@ -92,9 +89,9 @@ object EpisodeText {
         funding: ProviderFunding = ProviderFunding.None,
     ): String =
         when {
-            hint != null -> "Your ElevenLabs key (•••• $hint) voices the lines."
-            funding == ProviderFunding.Platform -> "The platform's key voices the lines, paid in credits."
-            else -> "No ElevenLabs key: the episode stays silent."
+            hint != null -> t("episode.elevenLabsOwn", "hint" to hint)
+            funding == ProviderFunding.Platform -> t("episode.elevenLabsPlatform")
+            else -> t("episode.elevenLabsNone")
         }
 
     /** "3 / 12 pages", "4 / 30 lines", "Queued", "Step 2 / 5". */
@@ -105,9 +102,9 @@ object EpisodeText {
         val total = progress.total
         if (done == null || total == null || total <= 0) return null
         return when (progress.step) {
-            "pages" -> "$done / $total pages"
-            "lines" -> "$done / $total lines"
-            else -> "Step $done / $total"
+            "pages" -> t("episode.progressPages", "done" to done, "total" to total)
+            "lines" -> t("episode.progressLines", "done" to done, "total" to total)
+            else -> t("episode.progressStep", "done" to done, "total" to total)
         }
     }
 
@@ -123,13 +120,11 @@ object EpisodeText {
     /** The quote shown with Prepare; null when nothing is charged and nothing is covered (the key lines say why). */
     fun cost(cost: RunCost): String? =
         when {
-            cost.alreadyAvailable -> "Already made: it costs nothing."
-            cost.coveredByOwnKeys -> "Your own keys pay: no credit spent."
+            cost.alreadyAvailable -> t("episode.costAlreadyMade")
+            cost.coveredByOwnKeys -> t("episode.costOwnKeys")
             !cost.meteredRun -> null
-            !cost.fundable -> "Not enough credits: this run needs ${cost.maxCredits} available."
-            cost.credits == 0L -> "Costs less than 1 credit from your wallet."
-            cost.credits == 1L -> "Costs 1 credit from your wallet."
-            else -> "Costs ${cost.credits} credits from your wallet."
+            !cost.fundable -> t("episode.costShort", "count" to cost.maxCredits)
+            else -> t("episode.costCredits", "count" to cost.credits)
         }
 
     /** The credits wallet refused a run on the platform's keys; null for any other error. */
@@ -142,25 +137,25 @@ object EpisodeText {
         }
 
     // Video (MP4 export).
-    const val MAKE_VIDEO = "Make a video"
-    const val SAVE_VIDEO = "Save video"
-    const val GETTING_VIDEO = "Getting the video…"
-    const val VIDEO_NONE = "No video yet."
-    const val VIDEO_NONE_DETAIL = "Make an MP4 of this episode to keep or share. It costs no key."
-    const val VIDEO_QUEUED_LABEL = "Video queued"
-    const val VIDEO_QUEUED = "Video queued. It takes a few minutes; you can leave this screen."
-    const val VIDEO_READY = "Video ready."
-    const val VIDEO_READY_DETAIL = "An MP4 of the episode, 1080 × 1920."
-    const val VIDEO_OUTDATED = "Made from the episode as it was prepared. Prepare it again for the latest version."
-    const val VIDEO_FAILED = "The video couldn't be made."
-    const val VIDEO_GONE = "This video isn't available anymore. Make it again."
-    const val VIDEO_DOWNLOAD_FAILED = "The video couldn't be downloaded. Try again."
-    const val VIDEO_OFFLINE = "You're offline. Connect to the internet to get the video."
-    const val VIDEO_RATE_LIMITED = "You can ask for 10 videos an hour. Try again later."
+    val MAKE_VIDEO: String get() = t("episode.makeVideo")
+    val SAVE_VIDEO: String get() = t("episode.saveVideo")
+    val GETTING_VIDEO: String get() = t("episode.gettingVideo")
+    val VIDEO_NONE: String get() = t("episode.videoNone")
+    val VIDEO_NONE_DETAIL: String get() = t("episode.videoNoneDetail")
+    val VIDEO_QUEUED_LABEL: String get() = t("episode.videoQueuedLabel")
+    val VIDEO_QUEUED: String get() = t("episode.videoQueued")
+    val VIDEO_READY: String get() = t("episode.videoReady")
+    val VIDEO_READY_DETAIL: String get() = t("episode.videoReadyDetail")
+    val VIDEO_OUTDATED: String get() = t("episode.videoOutdated")
+    val VIDEO_FAILED: String get() = t("episode.videoFailed")
+    val VIDEO_GONE: String get() = t("episode.videoGone")
+    val VIDEO_DOWNLOAD_FAILED: String get() = t("episode.videoDownloadFailed")
+    val VIDEO_OFFLINE: String get() = t("episode.videoOffline")
+    val VIDEO_RATE_LIMITED: String get() = t("episode.videoRateLimited")
     const val VIDEO_FILE = "vovoscan episode.mp4"
 
     /** "Making the video ✦ 42%". */
-    fun videoProgress(percent: Int): String = "Making the video ✦ ${percent.coerceIn(0, 100)}%"
+    fun videoProgress(percent: Int): String = t("episode.videoProgress", "percent" to percent.coerceIn(0, 100))
 
     /** Making or saving the video. */
     fun exportError(error: AppError): String =
@@ -215,20 +210,20 @@ object EpisodeText {
     }
 
     // Player.
-    const val PLAYER_LOADING = "Loading the episode…"
-    const val NOT_READY = "This episode isn't ready yet."
-    const val OUTDATED = "The chapter changed since this episode was prepared. Prepare it again."
-    const val NO_EPISODE = "This chapter has no episode yet."
-    const val PLAYER_OFFLINE = "You're offline. An episode plays offline once it has been opened online."
-    const val END = "End of chapter"
-    const val REPLAY = "Replay"
-    const val NEXT_CHAPTER = "Next chapter →"
-    const val SOUND_ON = "Sound on"
-    const val SOUND_OFF = "Sound off"
-    const val SILENT = "Silent"
-    const val SILENT_HINT = "Add an ElevenLabs key in Settings to hear the voices."
-    const val PLAY = "Play"
-    const val PAUSE = "Pause"
+    val PLAYER_LOADING: String get() = t("episode.playerLoading")
+    val NOT_READY: String get() = t("episode.notReady")
+    val OUTDATED: String get() = t("episode.outdated")
+    val NO_EPISODE: String get() = t("episode.noEpisode")
+    val PLAYER_OFFLINE: String get() = t("episode.playerOffline")
+    val END: String get() = t("episode.end")
+    val REPLAY: String get() = t("episode.replay")
+    val NEXT_CHAPTER: String get() = t("episode.nextChapter")
+    val SOUND_ON: String get() = t("episode.soundOn")
+    val SOUND_OFF: String get() = t("episode.soundOff")
+    val SILENT: String get() = t("episode.silent")
+    val SILENT_HINT: String get() = t("episode.silentHint")
+    val PLAY: String get() = t("episode.play")
+    val PAUSE: String get() = t("episode.pause")
 
     fun watchError(error: AppError): String =
         when {

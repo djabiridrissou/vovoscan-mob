@@ -2,6 +2,7 @@ package com.vovoscan.feature.catalog.data
 
 import app.cash.sqldelight.coroutines.asFlow
 import app.cash.sqldelight.coroutines.mapToList
+import app.cash.sqldelight.coroutines.mapToOneOrNull
 import com.vovoscan.feature.catalog.data.db.CatalogDatabase
 import com.vovoscan.feature.catalog.domain.CatalogFilter
 import com.vovoscan.feature.catalog.domain.Chapter
@@ -63,6 +64,10 @@ interface CatalogLocalDataSource {
     fun observeFilter(): Flow<CatalogFilter>
 
     suspend fun saveFilter(filter: CatalogFilter)
+
+    fun observeNewestFirst(): Flow<Boolean>
+
+    suspend fun saveNewestFirst(newestFirst: Boolean)
 
     fun observeDetail(
         sourceKey: String,
@@ -181,6 +186,17 @@ class SqlCatalogLocalDataSource(
             }
         }
 
+    override fun observeNewestFirst(): Flow<Boolean> =
+        queries
+            .setting(NEWEST_FIRST)
+            .asFlow()
+            .mapToOneOrNull(io)
+            .map { it == "1" }
+
+    override suspend fun saveNewestFirst(newestFirst: Boolean) {
+        withContext(io) { if (newestFirst) queries.putSetting(NEWEST_FIRST, "1") else queries.deleteSetting(NEWEST_FIRST) }
+    }
+
     override fun observeDetail(
         sourceKey: String,
         id: String,
@@ -248,6 +264,7 @@ class SqlCatalogLocalDataSource(
     private companion object {
         const val SOURCES = "sources"
         const val CATEGORY = "category"
+        const val NEWEST_FIRST = "chapters_newest_first"
     }
 }
 

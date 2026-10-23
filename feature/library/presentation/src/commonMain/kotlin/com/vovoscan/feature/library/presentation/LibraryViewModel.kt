@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.vovoscan.core.common.AppError
 import com.vovoscan.core.common.AppResult
 import com.vovoscan.core.common.Freshness
+import com.vovoscan.core.common.i18n.t
 import com.vovoscan.core.common.userMessage
 import com.vovoscan.feature.library.domain.LibraryEntry
 import com.vovoscan.feature.library.domain.LibraryRepository
@@ -37,18 +38,10 @@ data class LibraryUiState(
     val error: String? = null,
 ) {
     val empty: Boolean get() = rows.isEmpty() && freshness != Freshness.Refreshing
-    val emptyMessage: String get() = "Your library is empty. Follow a title to find it here."
+    val emptyMessage: String get() = t("library.empty")
     val pendingNotice: String?
         get() =
-            rows.count { it.pendingSync }.takeIf { it > 0 }?.let {
-                if (it ==
-                    1
-                ) {
-                    "1 change waiting to sync."
-                } else {
-                    "$it changes waiting to sync."
-                }
-            }
+            rows.count { it.pendingSync }.takeIf { it > 0 }?.let { t("library.pending", "count" to it) }
 }
 
 sealed interface LibraryIntent {
@@ -123,10 +116,10 @@ class LibraryViewModel(
             titleId = entry.titleRef,
             name = entry.titleName,
             coverUrl = entry.coverUrl,
-            progress = if (entry.lastChapterRef == null) "Not started" else "Page ${entry.lastPage + 1}",
+            progress = if (entry.lastChapterRef == null) t("library.notStarted") else t("library.page", "n" to entry.lastPage + 1),
             pendingSync = entry.pendingSync,
             sourceRemoved = removed,
-            sourceNotice = if (removed) "Source removed" else null,
+            sourceNotice = if (removed) t("library.sourceRemoved") else null,
         )
     }
 }

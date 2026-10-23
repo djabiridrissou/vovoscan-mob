@@ -87,6 +87,7 @@ import com.vovoscan.app.ui.common.ErrorText
 import com.vovoscan.app.ui.common.GhostButton
 import com.vovoscan.app.ui.common.PrimaryButton
 import com.vovoscan.app.ui.theme.Brand
+import com.vovoscan.core.common.i18n.I18n
 import com.vovoscan.feature.episodes.domain.player.CaptionFrame
 import com.vovoscan.feature.episodes.domain.player.CaptionPlacement
 import com.vovoscan.feature.episodes.domain.player.PageShot
@@ -115,8 +116,10 @@ fun PlayerScreen(
     onNextChapter: (String) -> Unit,
     /** The episode's language ("" = the original). */
     language: String = "",
+    /** Opened from the reader: start on this chapter page. */
+    startPage: Int? = null,
     viewModel: PlayerViewModel =
-        koinViewModel(key = "player:$chapterId~$language") { parametersOf(chapterId, nextChapterId, language) },
+        koinViewModel(key = "player:$chapterId~$language") { parametersOf(chapterId, nextChapterId, language, startPage) },
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
@@ -189,8 +192,8 @@ fun PlayerScreen(
                 Centered {
                     Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         ErrorText(state.error.orEmpty())
-                        PrimaryButton("Try again", { viewModel.onIntent(PlayerIntent.Retry) })
-                        GhostButton("Close", onClose)
+                        PrimaryButton(I18n.text("common.tryAgain"), { viewModel.onIntent(PlayerIntent.Retry) })
+                        GhostButton(I18n.text("common.close"), onClose)
                     }
                 }
         }
@@ -411,10 +414,16 @@ private fun Controls(
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            RoundButton("Close", onClose) { CloseGlyph() }
+            RoundButton(I18n.text("common.close"), onClose) { CloseGlyph() }
             Spacer(Modifier.width(12.dp))
             Text(state.pageLabel, style = MaterialTheme.typography.bodySmall.copy(color = Brand.Paper), modifier = Modifier.weight(1f))
-            if (state.offline) Text("Offline", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(end = 10.dp))
+            if (state.offline) {
+                Text(
+                    I18n.text("common.offlineShort"),
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(end = 10.dp),
+                )
+            }
             Pill(state.soundLabel, selected = !state.muted && !state.silent) {
                 if (!state.silent) send(PlayerIntent.ToggleMute)
                 onTouch()
@@ -426,7 +435,7 @@ private fun Controls(
             horizontalArrangement = Arrangement.spacedBy(28.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            RoundButton("Previous bubble", {
+            RoundButton(I18n.text("episode.previousBubble"), {
                 send(PlayerIntent.PreviousBeat)
                 onTouch()
             }, enabled = state.canGoBack) { SkipGlyph(forward = false) }
@@ -434,7 +443,7 @@ private fun Controls(
                 send(PlayerIntent.TogglePlay)
                 onTouch()
             }, large = true) { if (state.playing) PauseGlyph() else PlayGlyph() }
-            RoundButton("Next bubble", {
+            RoundButton(I18n.text("episode.nextBubble"), {
                 send(PlayerIntent.NextBeat)
                 onTouch()
             }, enabled = state.canGoForward) { SkipGlyph(forward = true) }

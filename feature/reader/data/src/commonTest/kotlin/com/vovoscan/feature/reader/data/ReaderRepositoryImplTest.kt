@@ -69,8 +69,7 @@ class ReaderRepositoryImplTest {
             repo.refresh("vovoscan", "t1", "c2")
             repo.observe("vovoscan", "c2").test {
                 val read = awaitItem()!!
-                // The format rule (vertical pages for every comic); the format itself is kept for the user's defaults.
-                assertEquals(ReadingMode.PagedVertical, read.mode)
+                assertEquals(ReadingMode.LongStrip, read.mode)
                 assertEquals(ComicFormat.Manga, read.format)
                 assertEquals(listOf(0, 1), read.pages.map { it.index })
                 assertEquals("c1", read.previousChapterId)

@@ -75,6 +75,15 @@ object AppIcons {
         }
     }
 
+    /** The catalog's folded search (magnifyingglass). */
+    val Search: ImageVector by lazy {
+        icon("Search") {
+            circle(10.5f, 10.5f, 6.5f)
+            moveTo(15.3f, 15.3f)
+            lineTo(20.5f, 20.5f)
+        }
+    }
+
     val Download: ImageVector by lazy {
         icon("Download") {
             circle(12f, 12f, 9f)

@@ -173,6 +173,9 @@ class PlaybackPlan(
     /** 1-based position of the beat's page among the timeline's pages. */
     fun pageNumberOf(beat: Int): Int = (pagePositions[bubbles.getOrNull(beat)?.page] ?: 0) + 1
 
+    /** The first beat on chapter page [page] or after it (a page without a bubble: the next one's); null past the last. */
+    fun firstBeatFrom(page: Int): Int? = bubbles.indices.firstOrNull { bubbles[it].page >= page }
+
     /** The first beat of the next page, or null on the last page. */
     fun nextPageBeat(beat: Int): Int? {
         val page = bubbles.getOrNull(beat)?.page ?: return null

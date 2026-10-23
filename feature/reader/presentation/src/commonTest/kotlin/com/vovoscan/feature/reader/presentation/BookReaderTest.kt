@@ -125,7 +125,18 @@ class BookReaderTest {
         parts: TitleChapters = TitleChapters { _, _ -> flowOf(null) },
         reader: Reader = Reader(),
     ): ReaderViewModel {
-        val vm = ReaderViewModel("rules", "t1", "b1", startPage, reader, FakeSettings(), noHeadings, books, parts) { _, _, _, _ -> }
+        val vm =
+            ReaderViewModel(
+                "rules",
+                "t1",
+                "b1",
+                startPage,
+                reader,
+                FakeSettings(),
+                noHeadings,
+                books = books,
+                parts = parts,
+            ) { _, _, _, _ -> }
         advanceUntilIdle()
         return vm
     }
@@ -233,7 +244,7 @@ class BookReaderTest {
             advanceUntilIdle()
             vm.onIntent(ReaderIntent.Next)
             ViewModelStore().apply { put("reader", vm) }.clear()
-            assertEquals(listOf(1), saved)
+            assertEquals(listOf(0, 1), saved) // the opening, then the section read
         }
 
     @Test

@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.vovoscan.core.common.AppError
 import com.vovoscan.core.common.AppResult
 import com.vovoscan.core.common.Freshness
+import com.vovoscan.core.common.i18n.t
 import com.vovoscan.core.common.userMessage
 import com.vovoscan.feature.sources.domain.PluginsRepository
 import com.vovoscan.feature.sources.domain.SourceEngine
@@ -83,7 +84,7 @@ data class SourcesUiState(
 
     /** "1 update available" / "3 updates available"; null when none. */
     val updatesLabel: String?
-        get() = updatesCount.takeIf { it > 0 }?.let { if (it == 1) "1 update available" else "$it updates available" }
+        get() = updatesCount.takeIf { it > 0 }?.let { t("sources.updatesAvailable", "count" to it) }
 
     val empty: Boolean get() = rows.isEmpty() && freshness != Freshness.Refreshing
 
@@ -98,14 +99,12 @@ data class SourcesUiState(
     val firstSourceAction: String get() = if (noneVisible) TURN_ON_ACTION else FIRST_SOURCE_ACTION
 
     private companion object {
-        const val FIRST_SOURCE_TITLE = "Start with a source."
-        const val FIRST_SOURCE_MESSAGE =
-            "Your shelf is empty until you add one: a repository, a link to a source or a .vovo file. " +
-                "Its titles show here, read by your phone."
-        const val FIRST_SOURCE_ACTION = "Add a source →"
-        const val TURN_ON_TITLE = "Turn on a source."
-        const val TURN_ON_MESSAGE = "Your sources are all switched off. Turn one on and its titles show here."
-        const val TURN_ON_ACTION = "Choose a source →"
+        val FIRST_SOURCE_TITLE: String get() = t("sources.firstTitle")
+        val FIRST_SOURCE_MESSAGE: String get() = t("sources.firstMessage")
+        val FIRST_SOURCE_ACTION: String get() = t("sources.firstAction")
+        val TURN_ON_TITLE: String get() = t("sources.turnOnTitle")
+        val TURN_ON_MESSAGE: String get() = t("sources.turnOnMessage")
+        val TURN_ON_ACTION: String get() = t("sources.turnOnAction")
     }
 }
 
@@ -211,7 +210,7 @@ class SourcesViewModel(
         mutableState.update { it.copy(error = null, notice = null) }
         viewModelScope.launch {
             when (val result = plugins.removeRepository(id)) {
-                is AppResult.Ok -> mutableState.update { it.copy(notice = "Repository removed.") }
+                is AppResult.Ok -> mutableState.update { it.copy(notice = t("sources.repositoryRemoved")) }
                 is AppResult.Err -> mutableState.update { it.copy(error = result.error.userMessage()) }
             }
         }

@@ -4,6 +4,7 @@ import com.vovoscan.core.common.AppError
 import com.vovoscan.core.common.AppResult
 import com.vovoscan.core.common.HostPolicy
 import com.vovoscan.core.common.NetworkMonitor
+import com.vovoscan.core.common.i18n.t
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.HttpClientEngine
 import io.ktor.client.plugins.HttpTimeout
@@ -99,7 +100,7 @@ class RulesHttp(
             // Checked again on every hop: a redirect can't lead off the source's declared hosts — an exact
             // host, or a subdomain of one (download CDNs live on *.host) — nor off the internet.
             if (host == null || hosts.none { host == it || host.endsWith(".$it") } || !HostPolicy.isPublic(host) || !scheme) {
-                return AppResult.Err(AppError.Rejected("HOST_NOT_ALLOWED", "This source can't reach $host."))
+                return AppResult.Err(AppError.Rejected("HOST_NOT_ALLOWED", t("plugins.hostNotAllowed", "host" to host)))
             }
             wait(manifest)
             // Streamed: the headers come first, so a file announced too large is refused before any of it is read.
@@ -133,7 +134,7 @@ class RulesHttp(
                 }
             }
         }
-        return AppResult.Err(AppError.Rejected("SOURCE_ERROR", "Too many redirects."))
+        return AppResult.Err(AppError.Rejected("SOURCE_ERROR", t("plugins.tooManyRedirects")))
     }
 
     private suspend fun read(
@@ -155,8 +156,7 @@ class RulesHttp(
         return Step.Done(AppResult.Ok(Fetched(body, response.request.url.toString())))
     }
 
-    private fun tooLarge(): AppResult<Nothing> =
-        AppResult.Err(AppError.Rejected("SOURCE_ERROR", "The source answered with a file too large."))
+    private fun tooLarge(): AppResult<Nothing> = AppResult.Err(AppError.Rejected("SOURCE_ERROR", t("plugins.sourceTooLarge")))
 
     private sealed interface Step {
         class Redirect(

@@ -7,19 +7,107 @@ import Shared
 @MainActor
 final class SessionModel: ObservableObject {
     @Published private(set) var session: Session?
+    @Published private(set) var showTutorial: Bool
+    @Published private(set) var deletionBanner: DeletionBannerUi?
     private let owner = ViewModels()
     private let viewModel: SessionViewModel
 
     init() {
         viewModel = owner.session()
         session = viewModel.session.value
+        showTutorial = viewModel.tutorial.value.shown
+        deletionBanner = viewModel.deletionBanner.value
     }
 
     func observe() async {
         for await next in viewModel.session { session = next }
     }
 
+    func observeTutorial() async {
+        for await next in viewModel.tutorial { showTutorial = next.shown }
+    }
+
+    func observeDeletion() async {
+        for await next in viewModel.deletionBanner { deletionBanner = next }
+    }
+
     func signOut() { viewModel.signOut() }
+
+    func replayTutorial() { viewModel.replayTutorial() }
+
+    func tutorialClosed() { viewModel.tutorialClosed() }
+
+    func keepAccount() { viewModel.keepAccount() }
+
+    deinit { owner.clear() }
+}
+
+/// The UI language: the root view is rebuilt in it (every ViewModel and every `L(…)` read again).
+@MainActor
+final class LocaleModel: ObservableObject {
+    @Published private(set) var code: String = I18n.shared.locale.value
+
+    func observe() async {
+        for await next in I18n.shared.locale { code = next }
+    }
+}
+
+@MainActor
+final class AccountModel: ObservableObject {
+    @Published private(set) var state: AccountUiState
+    private let owner = ViewModels()
+    private let viewModel: AccountViewModel
+
+    init() {
+        viewModel = owner.account()
+        state = viewModel.state.value
+    }
+
+    func observe() async {
+        for await next in viewModel.state { state = next }
+    }
+
+    func send(_ intent: AccountIntent) { viewModel.onIntent(intent: intent) }
+
+    deinit { owner.clear() }
+}
+
+@MainActor
+final class PreferencesModel: ObservableObject {
+    @Published private(set) var state: PreferencesUiState
+    private let owner = ViewModels()
+    private let viewModel: PreferencesViewModel
+
+    init() {
+        viewModel = owner.preferences()
+        state = viewModel.state.value
+    }
+
+    func observe() async {
+        for await next in viewModel.state { state = next }
+    }
+
+    func send(_ intent: PreferencesIntent) { viewModel.onIntent(intent: intent) }
+
+    deinit { owner.clear() }
+}
+
+@MainActor
+final class OnboardingModel: ObservableObject {
+    @Published private(set) var state: OnboardingUiState
+    private let owner = ViewModels()
+    private let viewModel: OnboardingViewModel
+
+    init() {
+        viewModel = owner.onboarding()
+        state = viewModel.state.value
+    }
+
+    func observe() async {
+        for await next in viewModel.state { state = next }
+    }
+
+    func send(_ intent: OnboardingIntent) { viewModel.onIntent(intent: intent) }
 
     deinit { owner.clear() }
 }
@@ -107,6 +195,8 @@ final class TitleModel: ObservableObject {
     func refresh() { detail.refresh() }
 
     func toggleFollow() { following.toggle(name: state.name, coverUrl: state.coverUrl) }
+
+    func toggleOrder() { detail.onIntent(intent: TitleDetailIntentToggleOrder.shared) }
 
     deinit { owner.clear() }
 }
@@ -368,8 +458,12 @@ final class PlayerModel: ObservableObject {
     private let owner = ViewModels()
     let viewModel: PlayerViewModel
 
-    init(chapterId: String, nextChapterId: String?, language: String = "") {
-        viewModel = owner.player(chapterId: chapterId, nextChapterId: nextChapterId, language: language)
+    init(chapterId: String, nextChapterId: String?, language: String = "", startPage: Int? = nil) {
+        if let startPage {
+            viewModel = owner.playerFrom(chapterId: chapterId, language: language, startPage: Int32(startPage))
+        } else {
+            viewModel = owner.player(chapterId: chapterId, nextChapterId: nextChapterId, language: language)
+        }
         state = viewModel.state.value
     }
 

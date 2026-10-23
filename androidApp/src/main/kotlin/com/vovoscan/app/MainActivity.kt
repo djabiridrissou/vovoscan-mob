@@ -39,11 +39,14 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
+import com.vovoscan.app.ui.account.AccountScreen
+import com.vovoscan.app.ui.account.PreferencesScreen
 import com.vovoscan.app.ui.catalog.CatalogScreen
 import com.vovoscan.app.ui.common.AppIcons
 import com.vovoscan.app.ui.downloads.DownloadsScreen
 import com.vovoscan.app.ui.episode.EpisodeScreen
 import com.vovoscan.app.ui.library.LibraryScreen
+import com.vovoscan.app.ui.onboarding.OnboardingScreen
 import com.vovoscan.app.ui.player.PlayerScreen
 import com.vovoscan.app.ui.reader.ReaderScreen
 import com.vovoscan.app.ui.settings.SettingsScreen
@@ -54,9 +57,12 @@ import com.vovoscan.app.ui.sources.SourcesScreen
 import com.vovoscan.app.ui.theme.Brand
 import com.vovoscan.app.ui.theme.VovoscanTheme
 import com.vovoscan.app.ui.title.TitleScreen
+import com.vovoscan.core.common.i18n.I18n
+import com.vovoscan.feature.auth.presentation.DeletionBannerUi
 import com.vovoscan.feature.auth.presentation.SessionViewModel
 import com.vovoscan.feature.catalog.presentation.TitleDetailViewModel
 import com.vovoscan.feature.reader.domain.DownloadsRepository
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import org.koin.android.ext.android.inject
@@ -107,6 +113,8 @@ class MainActivity : ComponentActivity() {
                 Root()
             }
         }
+        // A new app language rebuilds every screen in it (the ViewModels survive; their labels are read on draw).
+        lifecycleScope.launch { I18n.locale.drop(1).collect { recreate() } }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             lifecycleScope.launch {
                 repeatOnLifecycle(Lifecycle.State.STARTED) {
@@ -139,13 +147,17 @@ class MainActivity : ComponentActivity() {
 
 /** The four tabs, an icon over each label (the iOS tab bar's symbols, drawn in `AppIcons`). */
 private enum class Tab(
-    val label: String,
+    private val labelKey: String,
     val icon: () -> ImageVector,
 ) {
-    Catalog("Catalog", { AppIcons.Catalog }),
-    Library("Library", { AppIcons.Library }),
-    Sources("Sources", { AppIcons.Sources }),
-    Settings("Settings", { AppIcons.Settings }),
+    Catalog("nav.catalog", { AppIcons.Catalog }),
+    Library("nav.library", { AppIcons.Library }),
+    Sources("nav.sources", { AppIcons.Sources }),
+    Settings("nav.settings", { AppIcons.Settings }),
+    ;
+
+    /** Read on every composition: the activity is recreated when the app's language changes. */
+    val label: String get() = I18n.text(labelKey)
 }
 
 /**
@@ -155,7 +167,11 @@ private enum class Tab(
 @Composable
 private fun Root(session: SessionViewModel = koinViewModel()) {
     val user by session.session.collectAsStateWithLifecycle()
+    val tutorial by session.tutorial.collectAsStateWithLifecycle()
+    val deletion by session.deletionBanner.collectAsStateWithLifecycle()
     var tab by rememberSaveable { mutableStateOf(Tab.Catalog) }
+    // Open settings screen (Settings tab): "account" or "preferences".
+    var openSettings by rememberSaveable { mutableStateOf<String?>(null) }
     // Open title page: "source|title".
     var openTitle by rememberSaveable { mutableStateOf<String?>(null) }
     // Downloads screen open (Library tab).
@@ -166,8 +182,32 @@ private fun Root(session: SessionViewModel = koinViewModel()) {
     var openReader by rememberSaveable { mutableStateOf<String?>(null) }
     // Open episode card (over the title page): "chapter|language" (language empty = the original).
     var openEpisode by rememberSaveable { mutableStateOf<String?>(null) }
-    // Open player (full screen): "chapter|next chapter or empty|language or empty".
+    // Open player (full screen): "chapter|next chapter or empty|language or empty|start page or empty".
     var openPlayer by rememberSaveable { mutableStateOf<String?>(null) }
+    if (user != null && tutorial.shown) {
+        // The first-launch tour, full screen over everything (replayable from Settings › Preferences).
+        Column(
+            Modifier
+                .fillMaxSize()
+                .background(Brand.Ink)
+                .statusBarsPadding()
+                .navigationBarsPadding(),
+        ) {
+            OnboardingScreen(
+                onClose = session::tutorialClosed,
+                onOpenLibrary = {
+                    tab = Tab.Library
+                    openSettings = null
+                },
+                onOpenTitle = { source, id ->
+                    tab = Tab.Catalog
+                    openSettings = null
+                    openTitle = "$source|$id"
+                },
+            )
+        }
+        return
+    }
     val player = openPlayer?.split("|")
     if (user != null && player != null) {
         val language = player.getOrNull(2).orEmpty()
@@ -176,6 +216,7 @@ private fun Root(session: SessionViewModel = koinViewModel()) {
             chapterId = player[0],
             nextChapterId = player[1].ifEmpty { null },
             language = language,
+            startPage = player.getOrNull(3)?.toIntOrNull(),
             onClose = { openPlayer = null },
             onNextChapter = {
                 // The next chapter's episode card, in the language just watched: watch it from there, or prepare it.
@@ -196,6 +237,7 @@ private fun Root(session: SessionViewModel = koinViewModel()) {
             SignInScreen()
             return@Column
         }
+        deletion?.let { DeletionBanner(it, session::keepAccount) }
         val reader = openReader?.split("|")
         if (reader != null) {
             BackHandler { openReader = null }
@@ -206,6 +248,8 @@ private fun Root(session: SessionViewModel = koinViewModel()) {
                 startPage = reader[3].toInt(),
                 onBack = { openReader = null },
                 onOpenChapter = { chapter, page -> openReader = "${reader[0]}|${reader[1]}|$chapter|$page" },
+                // The episode from the page being read; closing it comes back to the reader where it was.
+                onWatch = { chapter, page -> openPlayer = "$chapter|||$page" },
             )
             return@Column
         }
@@ -257,6 +301,7 @@ private fun Root(session: SessionViewModel = koinViewModel()) {
                         CatalogScreen(
                             onOpenTitle = { source, id -> openTitle = "$source|$id" },
                             onOpenSources = { tab = Tab.Sources },
+                            onResume = { source, id, chapter, page -> openReader = "$source|$id|$chapter|$page" },
                         )
                     Tab.Library ->
                         LibraryScreen(
@@ -271,7 +316,24 @@ private fun Root(session: SessionViewModel = koinViewModel()) {
                             onAdd = { repository -> openSource = if (repository == null) "add-source" else "add-source|$repository" },
                             onOpenSource = { openSource = "source-detail|$it" },
                         )
-                    Tab.Settings -> SettingsScreen(onSignOut = session::signOut)
+                    Tab.Settings ->
+                        when (openSettings) {
+                            "account" -> {
+                                BackHandler { openSettings = null }
+                                AccountScreen(onBack = { openSettings = null })
+                            }
+                            "preferences" -> {
+                                BackHandler { openSettings = null }
+                                PreferencesScreen(onBack = { openSettings = null }, onReplayTutorial = session::replayTutorial)
+                            }
+                            else ->
+                                SettingsScreen(
+                                    onSignOut = session::signOut,
+                                    accountDetail = user?.email.orEmpty(),
+                                    onOpenAccount = { openSettings = "account" },
+                                    onOpenPreferences = { openSettings = "preferences" },
+                                )
+                        }
                 }
             }
         }
@@ -288,6 +350,7 @@ private fun Root(session: SessionViewModel = koinViewModel()) {
                             openEpisode = null
                             openSource = null
                             openDownloads = false
+                            openSettings = null
                         }.padding(top = 10.dp, bottom = 8.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(3.dp),
@@ -300,5 +363,29 @@ private fun Root(session: SessionViewModel = koinViewModel()) {
                 }
             }
         }
+    }
+}
+
+/** While the account is scheduled for deletion: the date and "Keep my account", on every screen. */
+@Composable
+private fun DeletionBanner(
+    banner: DeletionBannerUi,
+    onKeep: () -> Unit,
+) {
+    Column(Modifier.fillMaxWidth().background(Brand.Yellow).padding(horizontal = 16.dp, vertical = 10.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(banner.text, style = MaterialTheme.typography.bodySmall.copy(color = Brand.Ink), modifier = Modifier.weight(1f))
+            Text(
+                banner.action,
+                style = MaterialTheme.typography.labelLarge.copy(color = if (banner.working) Brand.Ink.copy(alpha = 0.5f) else Brand.Ink),
+                modifier =
+                    Modifier
+                        .clickable(
+                            enabled = !banner.working,
+                            onClick = onKeep,
+                        ).padding(start = 12.dp, top = 4.dp, bottom = 4.dp),
+            )
+        }
+        banner.error?.let { Text(it, style = MaterialTheme.typography.bodySmall.copy(color = Brand.Ink)) }
     }
 }

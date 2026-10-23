@@ -4,6 +4,7 @@ import com.vovoscan.core.common.AppResult
 import com.vovoscan.core.testing.respondJson
 import com.vovoscan.core.testing.testHttpClient
 import com.vovoscan.feature.reader.domain.ChapterTranslation
+import com.vovoscan.feature.reader.domain.PanelBox
 import com.vovoscan.feature.reader.domain.PixelBox
 import com.vovoscan.feature.reader.domain.TranslatedPage
 import com.vovoscan.feature.reader.domain.TranslationStatus
@@ -73,5 +74,26 @@ class TranslationsRepositoryImplTest {
             assertEquals("#fefefe", text.fill)
             assertEquals("/api/v1/translations/chapters/c1/read", requests.single().url.encodedPath)
             assertEquals("fr", requests.single().url.parameters["lang"])
+        }
+
+    @Test
+    fun theReaderGetsThePanelsOfOurComicsAsShares() =
+        runTest {
+            val body =
+                """{"data":{"format":{"kind":"manga","direction":"rtl"},"pages":[""" +
+                    """{"index":0,"width":1000,"height":1500,"texts":[],"panels":[[500,0,500,600],[0,0,500,600],[0,650,1200,900]]},""" +
+                    """{"index":1,"width":1000,"height":1500,"texts":[]}]}}"""
+            val panels = repo(body).panels("vovoscan", "c1")
+            assertEquals(listOf(0), panels.keys.toList())
+            assertEquals(
+                listOf(PanelBox(0, 0.5f, 0f, 0.5f, 0.4f), PanelBox(0, 0f, 0f, 0.5f, 0.4f)),
+                panels.getValue(0).take(2),
+            )
+            // Clipped to the page.
+            assertEquals(1f, panels.getValue(0)[2].width)
+            assertEquals("/api/v1/translations/chapters/c1/read", requests.single().url.encodedPath)
+            // A source read on the device: nothing asked.
+            assertEquals(emptyMap(), repo(body).panels("gutenberg", "x"))
+            assertEquals(1, requests.size)
         }
 }

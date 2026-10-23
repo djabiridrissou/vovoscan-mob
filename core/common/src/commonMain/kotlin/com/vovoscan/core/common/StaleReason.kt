@@ -1,5 +1,7 @@
 package com.vovoscan.core.common
 
+import com.vovoscan.core.common.i18n.t
+
 /** Rule errors of a source read on the device: its rules no longer match what the site answers. */
 const val SOURCE_RULES = "SOURCE_RULES"
 
@@ -19,8 +21,8 @@ sealed interface StaleReason {
     /** The discreet banner, or the line under "not saved yet". `hasSaved`: something saved on this device is on screen. */
     fun notice(hasSaved: Boolean): String =
         when (this) {
-            Offline -> if (hasSaved) OFFLINE else "You're offline."
-            is SourceDown -> "$sourceName isn't answering right now." + if (hasSaved) " Showing what's saved." else ""
+            Offline -> if (hasSaved) OFFLINE else t("common.offline")
+            is SourceDown -> t(if (hasSaved) "common.sourceDownSaved" else "common.sourceDown", "source" to sourceName)
             SourceUnreadable -> UNREADABLE_SOURCE
         }
 
@@ -28,8 +30,8 @@ sealed interface StaleReason {
     val canRetry: Boolean get() = this is SourceDown
 
     companion object {
-        const val OFFLINE = "Offline: showing what's saved on this device."
-        const val UNREADABLE_SOURCE = "This source couldn't be read. It may need an update."
+        val OFFLINE: String get() = t("common.offlineSaved")
+        val UNREADABLE_SOURCE: String get() = t("common.sourceUnreadable")
 
         fun of(error: AppError): StaleReason? =
             when {

@@ -1,7 +1,10 @@
 package com.vovoscan.app.ui.reader
 
+import android.provider.Settings
 import androidx.activity.compose.LocalActivity
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.AnimationState
 import androidx.compose.animation.core.DecayAnimationSpec
 import androidx.compose.animation.core.animate
@@ -31,18 +34,15 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.VerticalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.systemGestureExclusion
 import androidx.compose.foundation.verticalScroll
@@ -83,8 +83,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -92,6 +94,9 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.lerp
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
 import coil3.memory.MemoryCache
@@ -107,6 +112,7 @@ import com.vovoscan.app.ui.common.ErrorText
 import com.vovoscan.app.ui.common.GhostButton
 import com.vovoscan.app.ui.common.PrimaryButton
 import com.vovoscan.app.ui.theme.Brand
+import com.vovoscan.core.common.i18n.I18n
 import com.vovoscan.feature.reader.domain.PageZoom
 import com.vovoscan.feature.reader.domain.ReaderPage
 import com.vovoscan.feature.reader.domain.TallPages
@@ -123,7 +129,6 @@ import com.vovoscan.feature.reader.presentation.TransitionCard
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.launch
 import org.koin.compose.viewmodel.koinViewModel
 import org.koin.core.parameter.parametersOf
@@ -144,6 +149,8 @@ fun ReaderScreen(
     startPage: Int,
     onBack: () -> Unit,
     onOpenChapter: (String, Int) -> Unit,
+    /** "Watch the episode from here": the episode of this chapter, from that page. */
+    onWatch: (chapterId: String, page: Int) -> Unit = { _, _ -> },
     viewModel: ReaderViewModel =
         koinViewModel(key = "reader:$sourceKey/$chapterId") { parametersOf(sourceKey, titleId, chapterId, startPage) },
 ) {
@@ -171,15 +178,37 @@ fun ReaderScreen(
             onIntent(ReaderIntent.CommandHandled(command.seq))
             onOpenChapter(command.chapterId, command.startPage)
         }
+        if (command is ReaderCommand.OpenEpisode) {
+            onIntent(ReaderIntent.CommandHandled(command.seq))
+            onWatch(command.chapterId, command.page)
+        }
+    }
+    // Remove animations (developer options, accessibility): jumps instead of the spring, no glide, no fades.
+    val context = LocalContext.current
+    LaunchedEffect(Unit) {
+        val scale = Settings.Global.getFloat(context.contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f)
+        onIntent(ReaderIntent.ReducedMotion(scale == 0f))
+    }
+    // Immersive: the system bars leave with the reader's own bars (a swipe from the edge shows them for a moment).
+    val window = activity?.window
+    DisposableEffect(window, state.chromeVisible, state.isBook) {
+        val controller = window?.let { WindowCompat.getInsetsController(it, view) }
+        controller?.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        if (state.chromeVisible || state.isBook) {
+            controller?.show(WindowInsetsCompat.Type.systemBars())
+        } else {
+            controller?.hide(WindowInsetsCompat.Type.systemBars())
+        }
+        onDispose { controller?.show(WindowInsetsCompat.Type.systemBars()) }
     }
 
     Box(Modifier.fillMaxSize().background(Brand.Ink)) {
         when {
             state.unavailable ->
                 Column(Modifier.align(Alignment.Center).padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("This chapter isn't saved on this device yet.", style = MaterialTheme.typography.bodyMedium)
+                    Text(I18n.text("reader.notSaved"), style = MaterialTheme.typography.bodyMedium)
                     state.error?.let { ErrorText(it) }
-                    GhostButton("Try again", { onIntent(ReaderIntent.Retry) })
+                    GhostButton(I18n.text("common.tryAgain"), { onIntent(ReaderIntent.Retry) })
                 }
             state.isBook -> BookReader(state, onIntent) { onOpenChapter(it, 0) }
             state.items.isEmpty() -> Unit
@@ -193,6 +222,37 @@ fun ReaderScreen(
                 shown?.let { TapZonesOverlay(it) }
             }
         }
+        // The bars hidden: a thin line at the very top says how much of the strip is read.
+        if (!state.chromeVisible && state.isStrip) {
+            Box(
+                Modifier
+                    .align(Alignment.TopStart)
+                    .fillMaxWidth(state.progress)
+                    .height(2.dp)
+                    .background(Brand.Red)
+                    .semantics { contentDescription = state.progressLabel },
+            )
+        }
+        // The chapter's title over the first page, for a moment.
+        AnimatedVisibility(
+            state.titleCard != null,
+            enter = if (state.reducedMotion) EnterTransition.None else fadeIn(tween(400)),
+            exit = if (state.reducedMotion) ExitTransition.None else fadeOut(tween(600)),
+            modifier = Modifier.align(Alignment.Center),
+        ) {
+            var shown by remember { mutableStateOf(state.titleCard.orEmpty()) }
+            state.titleCard?.let { shown = it }
+            Text(
+                shown,
+                style = MaterialTheme.typography.titleLarge.copy(color = Brand.Paper),
+                modifier =
+                    Modifier
+                        .background(
+                            Brand.Ink.copy(alpha = 0.78f),
+                            RoundedCornerShape(10.dp),
+                        ).padding(horizontal = 18.dp, vertical = 12.dp),
+            )
+        }
         // A book keeps its bars: the web view receives the taps (text scrolling).
         if (state.chromeVisible || state.isBook) {
             TopBar(
@@ -204,6 +264,7 @@ fun ReaderScreen(
                 },
                 { contentsOpen = true },
                 Modifier.align(Alignment.TopCenter),
+                onWatch = { onIntent(ReaderIntent.ReadWithVoice) },
             )
             BottomBar(state, onIntent, { onOpenChapter(it, 0) }, Modifier.align(Alignment.BottomCenter))
         }
@@ -290,7 +351,7 @@ private fun ComicReader(
             if (state.isPaged) {
                 PagedReader(state, onIntent, zoom, scrollEnabled = !zoomed)
             } else {
-                StripReader(state, onIntent, zoom, scrollEnabled = !zoomed)
+                FlowStrip(state, onIntent, scrollEnabled = !zoomed)
             }
         }
     }
@@ -572,6 +633,7 @@ private fun PagedPage(
             if (tall) Modifier.fillMaxWidth() else Modifier.fillMaxSize(),
             if (tall) ContentScale.FillWidth else ContentScale.Fit,
             reserve = tall,
+            onSize = { w, h -> onIntent(ReaderIntent.PageSized(page.index, w, h)) },
             // The page read, zoomed: decoded with all its pixels (sharp at 4×), else for the screen's width.
             detail = current && zoom.transform.zoomed,
             onLoadedRatio = { loadedRatio = it },
@@ -579,73 +641,9 @@ private fun PagedPage(
     }
 }
 
-/** Continuous vertical strip (webtoon), with the mode's gap between pages. */
-@Composable
-private fun StripReader(
-    state: ReaderUiState,
-    onIntent: (ReaderIntent) -> Unit,
-    zoom: ComicZoom,
-    scrollEnabled: Boolean,
-) {
-    // Resume (and a mode change) at the current item.
-    val list = rememberLazyListState(initialFirstVisibleItemIndex = state.currentItem)
-    val scope = rememberCoroutineScope()
-    // Until the strip moves (finger or tap scroll), positioning at the current item (clamped at the end of the
-    // chapter) must not change the page.
-    var moved by remember { mutableStateOf(false) }
-    LaunchedEffect(list) {
-        snapshotFlow { list.isScrollInProgress }.collect { if (it) moved = true }
-    }
-    // Zoomed, the whole strip is: a pan past the view's edge scrolls it (and counts as moving it).
-    DisposableEffect(list) {
-        zoom.scrollTarget = list
-        onDispose { if (zoom.scrollTarget === list) zoom.scrollTarget = null }
-    }
-    LaunchedEffect(state.zoomed) { if (state.zoomed) moved = true }
-    LaunchedEffect(list) {
-        snapshotFlow { if (moved) list.firstVisibleItemIndex else null }
-            .filterNotNull()
-            .distinctUntilChanged()
-            .collect { onIntent(ReaderIntent.ItemVisible(it)) }
-    }
-    LaunchedEffect(list) {
-        snapshotFlow { !list.canScrollBackward to !list.canScrollForward }
-            .distinctUntilChanged()
-            .collect { (top, bottom) -> onIntent(ReaderIntent.StripEdges(top, bottom)) }
-    }
-    val tapScroll = remember { TapScroll() }
-    val command = state.command
-    LaunchedEffect(command) {
-        if (command is ReaderCommand.ScrollBy) {
-            // Zoomed (a volume key): a fraction of what the screen shows.
-            tapScroll.run(scope, list, command.fraction * list.layoutInfo.viewportSize.height / zoom.transform.scale)
-            onIntent(ReaderIntent.CommandHandled(command.seq))
-        }
-        // The page slider: the page's top at the top of the screen.
-        if (command is ReaderCommand.JumpTo) {
-            moved = true
-            scope.launch { list.scrollToItem(command.item) }
-            onIntent(ReaderIntent.CommandHandled(command.seq))
-        }
-    }
-    LazyColumn(
-        state = list,
-        userScrollEnabled = scrollEnabled,
-        verticalArrangement = Arrangement.spacedBy(state.pageGap.dp),
-        modifier = Modifier.fillMaxSize(),
-    ) {
-        items(state.items, key = { it.key }) { item ->
-            when (item) {
-                is ReaderItem.Page -> PageImage(item.page, Modifier.fillMaxWidth())
-                is ReaderItem.Transition -> TransitionCardView(item.card, onIntent, Modifier.fillMaxWidth().heightIn(min = 280.dp))
-            }
-        }
-    }
-}
-
 /** "Finished: Chapter 3" / "Next: Chapter 4 · The last gate" and "Next chapter →". */
 @Composable
-private fun TransitionCardView(
+internal fun TransitionCardView(
     card: TransitionCard,
     onIntent: (ReaderIntent) -> Unit,
     modifier: Modifier,
@@ -770,11 +768,12 @@ private fun zoneColor(action: TapAction): Color =
     }
 
 @Composable
-private fun PageImage(
+internal fun PageImage(
     page: ReaderPage,
     modifier: Modifier,
     scale: ContentScale = ContentScale.FillWidth,
     reserve: Boolean = true,
+    onSize: ((Int, Int) -> Unit)? = null,
     detail: Boolean = false,
     onLoadedRatio: (Float) -> Unit = {},
 ) {
@@ -825,10 +824,10 @@ private fun PageImage(
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Text("This page didn't load.", style = MaterialTheme.typography.bodyMedium.copy(color = Brand.Muted))
+            Text(I18n.text("reader.pageFailed"), style = MaterialTheme.typography.bodyMedium.copy(color = Brand.Muted))
             Spacer(Modifier.size(12.dp))
             GhostButton(
-                "Retry",
+                I18n.text("common.retry"),
                 onClick = {
                     failed = false
                     attempt++
@@ -842,7 +841,7 @@ private fun PageImage(
     Box(sized.background(if (loading || reserve) Brand.Ink2 else Color.Transparent)) {
         AsyncImage(
             model = request,
-            contentDescription = "Page ${page.index + 1}",
+            contentDescription = I18n.textWith("library.page", mapOf("n" to page.index + 1)),
             contentScale = scale,
             onLoading = { loading = shownKey == null },
             onSuccess = { success ->
@@ -851,6 +850,7 @@ private fun PageImage(
                 val image = success.result.image
                 if (image.width > 0 && image.height > 0) {
                     loadedRatio = image.width.toFloat() / image.height
+                    if (!page.hasSize) onSize?.invoke(image.width, image.height)
                     onLoadedRatio(image.width.toFloat() / image.height)
                 }
             },
@@ -882,6 +882,7 @@ private fun TopBar(
     onSettings: () -> Unit,
     onContents: () -> Unit,
     modifier: Modifier,
+    onWatch: () -> Unit = {},
 ) {
     Row(
         modifier.fillMaxWidth().background(Brand.Ink.copy(alpha = 0.92f)).padding(horizontal = 16.dp, vertical = 12.dp),
@@ -894,12 +895,23 @@ private fun TopBar(
             modifier =
                 Modifier
                     .clickable(role = Role.Button, onClick = onBack)
-                    .semantics { contentDescription = "Back" }
+                    .semantics { contentDescription = I18n.text("common.back") }
                     .padding(end = 16.dp),
         )
         Column(Modifier.weight(1f)) {
             Text(state.titleName, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(state.subtitle, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        if (state.voiceAvailable) {
+            Text(
+                "▶︎",
+                style = MaterialTheme.typography.titleMedium.copy(color = Brand.Red),
+                modifier =
+                    Modifier
+                        .clickable(onClickLabel = state.voiceLabel) { onWatch() }
+                        .semantics { contentDescription = state.voiceLabel }
+                        .padding(start = 16.dp, top = 4.dp, bottom = 4.dp),
+            )
         }
         if (state.isBook && state.book.contents.isNotEmpty()) {
             Icon(
@@ -920,7 +932,7 @@ private fun TopBar(
             modifier =
                 Modifier
                     .clickable(role = Role.Button, onClick = onSettings)
-                    .semantics { contentDescription = "Reader settings" }
+                    .semantics { contentDescription = I18n.text("reader.settingsTitle") }
                     .padding(start = 16.dp, top = 4.dp, bottom = 4.dp),
         )
     }
@@ -1009,23 +1021,40 @@ private fun BottomBarRow(
         Text(
             if (dragged != null) state.sliderLabel(dragged) else state.positionLabel,
             style = MaterialTheme.typography.bodySmall.let { if (dragged != null) it.copy(color = Brand.Yellow) else it },
-            modifier = Modifier.weight(1f),
+            modifier = Modifier.weight(1f).semantics { liveRegion = LiveRegionMode.Polite },
         )
+        if (state.canFocus) {
+            Text(
+                state.focusLabel,
+                style = MaterialTheme.typography.labelLarge.copy(color = if (state.focusOn) Brand.Yellow else Brand.Muted),
+                modifier =
+                    Modifier
+                        .toggleable(state.focusOn, role = Role.Switch) { onIntent(ReaderIntent.ToggleFocus) }
+                        .padding(end = 20.dp),
+            )
+        }
         if (state.isBook && state.canGoForward) {
             Text(
-                "Next section →",
+                I18n.text("reader.nextSection"),
                 style = MaterialTheme.typography.labelLarge.copy(color = Brand.Red),
                 modifier = Modifier.clickable { onIntent(ReaderIntent.Next) },
             )
             return@Row
         }
         state.previousChapterId?.let { previous ->
-            Text("← Previous", style = MaterialTheme.typography.bodySmall, modifier = Modifier.clickable { onOpenChapter(previous) })
+            Text(
+                I18n.text("reader.previousArrow"),
+                style = MaterialTheme.typography.bodySmall,
+                modifier =
+                    Modifier.clickable {
+                        onOpenChapter(previous)
+                    },
+            )
             Spacer(Modifier.width(20.dp))
         }
         state.nextChapterId?.let { next ->
             Text(
-                "Next →",
+                I18n.text("reader.nextArrow"),
                 style = MaterialTheme.typography.labelLarge.copy(color = Brand.Red),
                 modifier = Modifier.clickable { onOpenChapter(next) },
             )

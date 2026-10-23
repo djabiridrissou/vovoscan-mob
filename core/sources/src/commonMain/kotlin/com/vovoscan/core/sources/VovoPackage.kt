@@ -1,6 +1,7 @@
 package com.vovoscan.core.sources
 
 import com.vovoscan.core.common.AppResult
+import com.vovoscan.core.common.i18n.t
 import okio.ByteString.Companion.toByteString
 import okio.FileSystem
 import okio.Path
@@ -49,7 +50,7 @@ class VovoPackageReader(
         }
     }
 
-    private val invalid get() = PluginErrors.rejected("PLUGIN_PACKAGE", "This file isn't a valid .vovo package.")
+    private val invalid get() = PluginErrors.rejected("PLUGIN_PACKAGE", t("plugins.invalidPackage"))
 
     private companion object {
         const val MANIFEST = "source.json"

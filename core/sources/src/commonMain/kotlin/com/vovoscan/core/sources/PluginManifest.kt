@@ -3,6 +3,7 @@ package com.vovoscan.core.sources
 import com.vovoscan.core.common.AppError
 import com.vovoscan.core.common.AppResult
 import com.vovoscan.core.common.HostPolicy
+import com.vovoscan.core.common.i18n.t
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
@@ -37,21 +38,20 @@ object PluginErrors {
         message: String,
     ): AppResult.Err = AppResult.Err(AppError.Rejected(code, message))
 
-    val notASource get() = rejected("PLUGIN_NOT_A_SOURCE", "This link isn't a vovoscan source or repository.")
-    val invalidFile get() = rejected("PLUGIN_INVALID", "This file isn't a valid vovoscan source.")
-    val tooLarge get() = rejected("PLUGIN_TOO_LARGE", "This file is too large.")
-    val newerApp get() = rejected("PLUGIN_CONTRACT", "Needs a newer version of vovoscan.")
-    val kindUnsupported get() = rejected("PLUGIN_KIND", "This kind of content isn't supported yet.")
-    val reservedKey get() = rejected("PLUGIN_KEY_RESERVED", "This source uses a reserved name.")
-    val invalidKey get() = rejected("PLUGIN_KEY_INVALID", "This source has an invalid key.")
-    val invalidVersion get() = rejected("PLUGIN_VERSION_INVALID", "This source has an invalid version.")
-    val checksum get() = rejected("PLUGIN_CHECKSUM", "This source doesn't match its repository. It wasn't installed.")
-    val mismatch get() = rejected("PLUGIN_MISMATCH", "This source doesn't match its repository entry. It wasn't installed.")
-    val linkNotAllowed get() = rejected("PLUGIN_LINK", "Use an https:// link.")
-    val privateHost get() = rejected("PLUGIN_HOST", "This source wants to reach a private network. It wasn't installed.")
+    val notASource get() = rejected("PLUGIN_NOT_A_SOURCE", t("plugins.notASource"))
+    val invalidFile get() = rejected("PLUGIN_INVALID", t("plugins.invalidFile"))
+    val tooLarge get() = rejected("PLUGIN_TOO_LARGE", t("plugins.tooLarge"))
+    val newerApp get() = rejected("PLUGIN_CONTRACT", t("plugins.newerApp"))
+    val kindUnsupported get() = rejected("PLUGIN_KIND", t("plugins.kindUnsupported"))
+    val reservedKey get() = rejected("PLUGIN_KEY_RESERVED", t("plugins.reservedKey"))
+    val invalidKey get() = rejected("PLUGIN_KEY_INVALID", t("plugins.invalidKey"))
+    val invalidVersion get() = rejected("PLUGIN_VERSION_INVALID", t("plugins.invalidVersion"))
+    val checksum get() = rejected("PLUGIN_CHECKSUM", t("plugins.checksum"))
+    val mismatch get() = rejected("PLUGIN_MISMATCH", t("plugins.mismatch"))
+    val linkNotAllowed get() = rejected("PLUGIN_LINK", t("plugins.httpsOnly"))
+    val privateHost get() = rejected("PLUGIN_HOST", t("plugins.privateHost"))
 
-    fun incomplete(missing: List<String>) =
-        rejected("PLUGIN_INCOMPLETE", "This source is incomplete (missing ${missing.joinToString(", ")}).")
+    fun incomplete(missing: List<String>) = rejected("PLUGIN_INCOMPLETE", t("plugins.incomplete", "fields" to missing.joinToString(", ")))
 }
 
 /** A setting a manifest asks for: `{{settings.name}}` in its templates. */
@@ -145,8 +145,8 @@ object ManifestCheck {
         kinds: List<String>,
     ): String? =
         when {
-            contractVersion > RULES_CONTRACT_VERSION -> "Needs a newer version of vovoscan."
-            kinds.isEmpty() || !PluginLimits.SUPPORTED_KINDS.containsAll(kinds) -> "This kind of content isn't supported yet."
+            contractVersion > RULES_CONTRACT_VERSION -> t("plugins.newerApp")
+            kinds.isEmpty() || !PluginLimits.SUPPORTED_KINDS.containsAll(kinds) -> t("plugins.kindUnsupported")
             else -> null
         }
 }

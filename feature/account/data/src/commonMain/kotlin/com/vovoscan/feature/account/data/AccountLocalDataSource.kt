@@ -31,6 +31,15 @@ interface AccountLocalDataSource {
 
     suspend fun saveReadingModel(model: ReadingModel)
 
+    fun observeTargetLanguage(): Flow<String?>
+
+    suspend fun saveTargetLanguage(code: String)
+
+    /** The language chosen on the device that the server has not taken yet. */
+    suspend fun targetLanguagePending(): Boolean
+
+    suspend fun setTargetLanguagePending(pending: Boolean)
+
     suspend fun clear()
 }
 
@@ -79,6 +88,22 @@ class SqlAccountLocalDataSource(
         withContext(io) { queries.putValue(READING_MODEL, model.wire) }
     }
 
+    override fun observeTargetLanguage(): Flow<String?> = queries.value(TARGET_LANGUAGE).asFlow().mapToOneOrNull(io)
+
+    override suspend fun saveTargetLanguage(code: String) {
+        withContext(io) { queries.putValue(TARGET_LANGUAGE, code) }
+    }
+
+    override suspend fun targetLanguagePending(): Boolean =
+        withContext(io) {
+            queries.value(TARGET_LANGUAGE_PENDING).executeAsOneOrNull() ==
+                "1"
+        }
+
+    override suspend fun setTargetLanguagePending(pending: Boolean) {
+        withContext(io) { queries.putValue(TARGET_LANGUAGE_PENDING, if (pending) "1" else "0") }
+    }
+
     override suspend fun clear() =
         withContext(io) {
             queries.transaction {
@@ -103,5 +128,7 @@ class SqlAccountLocalDataSource(
     private companion object {
         const val BYOK_ENABLED = "byok_enabled"
         const val READING_MODEL = "reading_model"
+        const val TARGET_LANGUAGE = "target_language"
+        const val TARGET_LANGUAGE_PENDING = "target_language_pending"
     }
 }

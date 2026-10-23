@@ -1,6 +1,7 @@
 package com.vovoscan.feature.reader.domain
 
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
 
 /** How far one tap scrolls a long strip, or a tall page inside its page, as a fraction of the screen height. */
 enum class ScrollAmount(
@@ -29,30 +30,39 @@ data class ReaderPreferences(
     val volumeKeysInverted: Boolean = false,
     /** The tap zones overlay was already shown once (on the reader's first opening on this device). */
     val tapZonesSeen: Boolean = false,
+    /** Continuous strips: the panel being read at full light, the rest dimmed (reader/SPEC.md §1). */
+    val focus: Boolean = false,
 ) {
     fun defaultFor(format: ComicFormat): ReadingMode? =
         when (format) {
             ComicFormat.Manga -> mangaMode
             ComicFormat.Webtoon -> webtoonMode
+            // No setting of its own yet: a manga's default (right to left) would read it backwards.
+            ComicFormat.Comic -> null
         }
 }
 
 object ReadingModes {
     /**
-     * Per-series override, then the user's default for the format, then the format rule (vertical pages for manga
-     * and webtoons alike). Books stay books.
+     * Per-series override, then the user's default for the format, then the format rule. Books stay books. Pages
+     * shaped as a strip ([strip]) are always read continuously unless the series was set otherwise: a strip is never
+     * shrunk into a page.
      */
     fun resolve(
         chapterMode: ReadingMode,
         format: ComicFormat,
         seriesMode: ReadingMode?,
         preferences: ReaderPreferences,
-    ): ReadingMode =
-        when {
-            chapterMode == ReadingMode.Book -> ReadingMode.Book
-            seriesMode != null && seriesMode != ReadingMode.Book -> seriesMode
-            else -> preferences.defaultFor(format)?.takeIf { it != ReadingMode.Book } ?: format.defaultMode
+        strip: Boolean = false,
+    ): ReadingMode {
+        if (chapterMode == ReadingMode.Book) return ReadingMode.Book
+        if (seriesMode != null && seriesMode != ReadingMode.Book) return seriesMode
+        val chosen = preferences.defaultFor(if (strip) ComicFormat.Webtoon else format)?.takeIf { it != ReadingMode.Book }
+        return when {
+            strip && chosen?.isStrip != true -> ReadingMode.LongStrip
+            else -> chosen ?: format.defaultMode
         }
+    }
 }
 
 /** Reader settings on the device: the preferences, and the mode chosen for a series (`sourceKey`, `titleId`). */
@@ -72,6 +82,72 @@ interface ReaderSettingsRepository {
         titleId: String,
         mode: ReadingMode?,
     )
+
+    /** Where a chapter was left on this device (null: never opened, or erased). */
+    suspend fun position(
+        sourceKey: String,
+        chapterId: String,
+    ): ReadingPosition? = null
+
+    suspend fun savePosition(
+        sourceKey: String,
+        chapterId: String,
+        position: ReadingPosition,
+    ) {}
+
+    /** The chapter each title was left at on this device, newest first (any title, followed or not). */
+    fun observeHistory(): Flow<List<LastRead>> = flowOf(emptyList())
+
+    suspend fun recordRead(read: LastRead) {}
+}
+
+/** Where a title was left on this device: the chapter, the page, and when (ms). */
+data class LastRead(
+    val sourceKey: String,
+    val titleId: String,
+    val chapterId: String,
+    val page: Int,
+    val readAt: Long,
+) {
+    /** "<source>/<title>": a source key never holds a "/" (`^[a-z0-9][a-z0-9-]{1,62}$`). */
+    val key: String get() = "$sourceKey/$titleId"
+
+    fun encode(): String = "$readAt:$page:$chapterId"
+
+    companion object {
+        fun decode(
+            key: String,
+            value: String,
+        ): LastRead? {
+            val sourceKey = key.substringBefore('/', "").ifEmpty { return null }
+            val titleId = key.substringAfter('/', "").ifEmpty { return null }
+            val parts = value.split(':', limit = 3)
+            if (parts.size < 3) return null
+            val readAt = parts[0].toLongOrNull() ?: return null
+            val page = parts[1].toIntOrNull()?.takeIf { it >= 0 } ?: return null
+            return parts[2].ifEmpty { null }?.let { LastRead(sourceKey, titleId, it, page, readAt) }
+        }
+    }
+}
+
+/**
+ * A reading position (reader/SPEC.md §7): the page at the top of the screen and the share of it already above the
+ * top (0..1), independent of the screen's width and the zoom.
+ */
+data class ReadingPosition(
+    val page: Int,
+    val offset: Float,
+) {
+    fun encode(): String = "$page:$offset"
+
+    companion object {
+        fun decode(value: String?): ReadingPosition? {
+            val parts = value?.split(":") ?: return null
+            val page = parts.getOrNull(0)?.toIntOrNull() ?: return null
+            val offset = parts.getOrNull(1)?.toFloatOrNull()?.takeIf { it.isFinite() } ?: 0f
+            return if (page < 0) null else ReadingPosition(page, offset.coerceIn(0f, 1f))
+        }
+    }
 }
 
 /** A chapter's number and name, for the chapter transition ("Next: Chapter 4 · The last gate"). */

@@ -6,8 +6,8 @@ import kotlin.test.assertEquals
 class ReaderTest {
     @Test
     fun readingMode() {
-        assertEquals(ReadingMode.PagedVertical, ReadingMode.from("comic", "webtoon"))
-        assertEquals(ReadingMode.PagedVertical, ReadingMode.from("comic", "manga"))
+        assertEquals(ReadingMode.LongStrip, ReadingMode.from("comic", "webtoon"))
+        assertEquals(ReadingMode.LongStrip, ReadingMode.from("comic", "manga"))
         assertEquals(ReadingMode.Book, ReadingMode.from("book", "text"))
     }
 

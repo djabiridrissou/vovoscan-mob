@@ -35,7 +35,7 @@ struct SignInView: View {
             SpeedLines(center: UnitPoint(x: 0.82, y: 0.25))
             HalftoneBackground(color: .brandRed, spacing: 11, maxOpacity: 0.22)
             // Sound effects in the margin, as in a panel.
-            Text("ドン!")
+            Text("BOOM!")
                 .font(.brandDisplay(64))
                 .foregroundStyle(Color.brandYellow)
                 .rotationEffect(.degrees(10))
@@ -56,8 +56,8 @@ struct SignInView: View {
                     .lineSpacing(-4)
                     .contentTransition(.opacity)
                 HStack(spacing: 8) {
-                    Kicker(text: "Invite only")
-                    Text("Your scans, fully voiced.").font(.brandBody(13)).foregroundStyle(Color.brandPaper.opacity(0.76))
+                    Kicker(text: L("auth.inviteOnly"))
+                    Text(L("auth.tagline")).font(.brandBody(13)).foregroundStyle(Color.brandPaper.opacity(0.76))
                 }
             }
             .padding(24)
@@ -71,25 +71,27 @@ struct SignInView: View {
 
     private var form: some View {
         VStack(alignment: .leading, spacing: 16) {
+            localeChips
             if model.state.mode == .invite {
-                IntentField(label: "Invite code", text: $inviteCode, value: model.state.inviteCode, error: model.state.inviteError,
+                IntentField(label: L("auth.inviteCode"), text: $inviteCode, value: model.state.inviteCode, error: model.state.inviteError,
                             placeholder: "VOVO-XXXX-XXXX") {
                     model.send(SignInIntentInviteCode(value: $0))
                 }
                 .textContentType(.oneTimeCode)
-                IntentField(label: "Display name", text: $displayName, value: model.state.displayName) {
+                IntentField(label: L("auth.displayName"), text: $displayName, value: model.state.displayName) {
                     model.send(SignInIntentDisplayName(value: $0))
                 }
                 .textContentType(.nickname)
             }
-            IntentField(label: "Email", text: $email, value: model.state.email, error: model.state.emailError, keyboard: .emailAddress) {
+            IntentField(label: L("auth.email"), text: $email, value: model.state.email, error: model.state.emailError, keyboard: .emailAddress) {
                 model.send(SignInIntentEmail(value: $0))
             }
             .textContentType(.username)
-            IntentField(label: "Password", text: $password, value: model.state.password, error: model.state.passwordError, secret: true) {
+            IntentField(label: L("auth.password"), text: $password, value: model.state.password, error: model.state.passwordError, secret: true) {
                 model.send(SignInIntentPassword(value: $0))
             }
             .textContentType(model.state.mode == .invite ? .newPassword : .password)
+            if model.state.mode == .invite { ageBox }
             if let error = model.state.error { ErrorText(text: error).transition(.opacity) }
             Button {
                 submitAfterCommittingInput {
@@ -118,12 +120,55 @@ struct SignInView: View {
             .buttonStyle(GhostButtonStyle())
             HStack(spacing: 6) {
                 Image(systemName: "lock.fill").font(.system(size: 11, weight: .bold))
-                Text("Locked down like a vault: invite only, sealed keys, sessions you can revoke.")
+                Text(L("auth.vault"))
             }
             .font(.brandBody(12))
             .foregroundStyle(Color.brandMuted)
             .padding(.top, 8)
         }
         .animation(.snappy, value: model.state.mode)
+    }
+
+    /// The app's own language, before any account exists: the choice is kept on the device and sent at sign-up.
+    private var localeChips: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "globe").font(.system(size: 13, weight: .bold)).foregroundStyle(Color.brandMuted)
+            ForEach(model.state.locales, id: \.code) { option in
+                Button {
+                    Haptics.select()
+                    model.send(SignInIntentChooseLocale(code: option.code))
+                } label: {
+                    Text(option.label)
+                        .font(.brandBody(13, weight: option.selected ? .bold : .regular))
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .foregroundStyle(option.selected ? Color.brandInk : Color.brandPaper)
+                        .background(option.selected ? Color.brandYellow : Color.brandPaper.opacity(0.08), in: Capsule())
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(option.selected ? .isSelected : [])
+            }
+        }
+    }
+
+    private var ageBox: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Button {
+                Haptics.select()
+                model.send(SignInIntentAgeConfirmed(value: !model.state.ageConfirmed))
+            } label: {
+                HStack(spacing: 10) {
+                    Image(systemName: model.state.ageConfirmed ? "checkmark.square.fill" : "square")
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundStyle(model.state.ageConfirmed ? Color.brandRed : Color.brandMuted)
+                    Text(model.state.ageLabel).font(.brandBody(14)).foregroundStyle(Color.brandPaper)
+                    Spacer(minLength: 0)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityAddTraits(model.state.ageConfirmed ? .isSelected : [])
+            if let error = model.state.ageError { ErrorText(text: error) }
+        }
     }
 }
