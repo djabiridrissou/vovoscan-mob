@@ -347,6 +347,19 @@ class ImmersiveReaderTest {
         }
 
     @Test
+    fun aPreviousTapGlidingBackKeepsTheBarsHidden() =
+        runTest(dispatcher) {
+            val vm = reader()
+            vm.onIntent(ReaderIntent.StripScrolled(900f, byUser = true, settled = true))
+            vm.onIntent(ReaderIntent.Previous)
+            assertFalse(vm.state.value.chromeVisible)
+            // The glide back is the reader's own playing, not a scroll up of the reader's.
+            vm.onIntent(ReaderIntent.StripScrolled(500f, byUser = false, settled = false))
+            vm.onIntent(ReaderIntent.StripScrolled(100f, byUser = false, settled = true))
+            assertFalse(vm.state.value.chromeVisible)
+        }
+
+    @Test
     fun progressPositionAndPrefetch() =
         runTest(dispatcher) {
             val settings = PositionSettings(ReaderPreferences(coachSeen = ALL_COACHES, tapZonesSeen = true, mangaMode = CONTINUOUS))

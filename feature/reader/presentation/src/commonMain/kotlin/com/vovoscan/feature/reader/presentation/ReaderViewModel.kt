@@ -1161,14 +1161,17 @@ class ReaderViewModel(
             mutableState.update { it.copy(focus = if (it.focusOn) stops.getOrNull(stopIndex)?.panel else null) }
         }
         if (strip == null || viewport <= 0f) return
-        // Bars: a scroll down hides them after a moment; a scroll up of a quarter screen brings them back.
+        // Bars: a scroll down hides them after a moment; a scroll up of a quarter screen brings them back. Only the
+        // reader's own scroll up does: a Previous tap hides them and glides back, and must not bring them back.
         if (at > before) {
             lowest = at
             if (state.value.chromeVisible && byUser) scheduleHide()
         } else if (lowest - at > CHROME_BACK * viewport) {
             lowest = at
-            hideJob?.cancel()
-            if (!state.value.chromeVisible) mutableState.update { it.copy(chromeVisible = true) }
+            if (byUser) {
+                hideJob?.cancel()
+                if (!state.value.chromeVisible) mutableState.update { it.copy(chromeVisible = true) }
+            }
         }
         stripAtBottom = stripAtBottom && at >= strip.total - viewport - ReadingStops.SAME_PX
         val read = ((at + viewport) / strip.total).coerceIn(0f, 1f)
