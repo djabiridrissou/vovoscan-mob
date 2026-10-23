@@ -30,6 +30,7 @@ struct ReaderView: View {
     @StateObject private var translation: TranslationModel
     @Environment(\.dismiss) private var dismiss
     @State private var settingsOpen = false
+    @State private var contentsOpen = false
     @State private var languagesOpen = false
     let onOpenChapter: (String, Int) -> Void
 
@@ -85,7 +86,15 @@ struct ReaderView: View {
                 .presentationBackground(Color.brandInk2)
         }
         .sheet(isPresented: $settingsOpen, onDismiss: { model.send(ReaderIntentSettingsClosed.shared) }) {
-            ReaderSettingsSheetView(model: model)
+            // Books have their own settings (typography, page colours), applied to the page behind the sheet.
+            Group {
+                if model.state.isBook { BookSettingsSheetView(model: model) } else { ReaderSettingsSheetView(model: model) }
+            }
+            .presentationDetents([.medium, .large])
+            .presentationBackground(Color.brandInk2)
+        }
+        .sheet(isPresented: $contentsOpen) {
+            BookContentsSheet(model: model)
                 .presentationDetents([.medium, .large])
                 .presentationBackground(Color.brandInk2)
         }
@@ -104,15 +113,19 @@ struct ReaderView: View {
                 if !model.state.isBook && translation.state.available {
                     LanguageButton(translation: translation) { languagesOpen = true }
                 }
-                if !model.state.isBook {
-                    Button {
-                        model.send(ReaderIntentSettingsOpened.shared)
-                        settingsOpen = true
-                    } label: {
-                        Image(systemName: "gearshape").font(.system(size: 18)).foregroundStyle(Color.brandPaper)
+                if model.state.isBook && !model.state.book.contents.isEmpty {
+                    Button { contentsOpen = true } label: {
+                        Image(systemName: "list.bullet").font(.system(size: 18)).foregroundStyle(Color.brandPaper)
                     }
-                    .accessibilityLabel("Reader settings")
+                    .accessibilityLabel(BookText.shared.CONTENTS_BUTTON)
                 }
+                Button {
+                    model.send(ReaderIntentSettingsOpened.shared)
+                    settingsOpen = true
+                } label: {
+                    Image(systemName: "gearshape").font(.system(size: 18)).foregroundStyle(Color.brandPaper)
+                }
+                .accessibilityLabel("Reader settings")
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
@@ -908,11 +921,21 @@ private struct BookReader: View {
     @ObservedObject var model: ReaderModel
     let onOpenChapter: (String) -> Void
     @StateObject private var pull = PullTracker()
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
         ZStack(alignment: .bottom) {
             if let document = model.state.sectionDocument {
-                BookWebView(html: document, fromEnd: model.state.sectionFromEnd, pull: pull) { overscroll in
+                BookWebView(
+                    html: document,
+                    section: Int(model.state.currentIndex),
+                    opening: model.state.book.opening,
+                    background: UInt32(truncatingIfNeeded: model.state.book.pageBackground),
+                    pull: pull,
+                    onScrolled: { section, fraction in
+                        model.send(BookIntentSectionScrolled(section: Int32(section), fraction: Float(fraction)))
+                    }
+                ) { overscroll in
                     model.send(ReaderIntentPullReleased(overscroll: Float(overscroll)))
                 }
             } else {
@@ -929,6 +952,12 @@ private struct BookReader: View {
         }
         .padding(.top, 72)
         .padding(.bottom, 56)
+        // The device's text size (Dynamic Type, as body text scales): the page's text follows it.
+        .onChange(of: dynamicTypeSize, initial: true) { _, size in
+            let traits = UITraitCollection(preferredContentSizeCategory: UIContentSizeCategory(size))
+            let scale = UIFontMetrics(forTextStyle: .body).scaledValue(for: 100, compatibleWith: traits) / 100
+            model.send(BookIntentSystemTextScale(scale: Float(scale)))
+        }
     }
 }
 
@@ -990,9 +1019,18 @@ private struct PullHintOverlay: View {
 
 private struct BookWebView: UIViewRepresentable {
     let html: String
-    let fromEnd: Bool
+    /// The section in `html`: openings and reports are for it only.
+    let section: Int
+    let opening: SectionOpening?
+    /// The page's colour (`0xRRGGBB`), shown while the section loads and past its edges.
+    let background: UInt32
     let pull: PullTracker
+    let onScrolled: (Int, CGFloat) -> Void
     let onRelease: (CGFloat) -> Void
+
+    /// The document's address, never fetched (no network): a jump to an anchor is a navigation inside this same
+    /// document, which WebKit does with the page's JavaScript off.
+    static let baseURL = URL(string: "https://book.vovoscan.invalid/section")!
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
@@ -1010,26 +1048,73 @@ private struct BookWebView: UIViewRepresentable {
         // web view still scrolls and rubber-bands as usual.
         view.scrollView.panGestureRecognizer.addTarget(context.coordinator, action: #selector(Coordinator.panned(_:)))
         view.navigationDelegate = context.coordinator
+        context.coordinator.watch(view.scrollView)
         return view
     }
 
     func updateUIView(_ view: WKWebView, context: Context) {
-        context.coordinator.pull = pull
-        context.coordinator.onRelease = onRelease
-        guard context.coordinator.loaded != html else { return }
-        context.coordinator.loaded = html
-        context.coordinator.fromEnd = fromEnd
-        view.loadHTMLString(html, baseURL: nil)
+        let coordinator = context.coordinator
+        coordinator.pull = pull
+        coordinator.onRelease = onRelease
+        coordinator.onScrolled = onScrolled
+        let color = UIColor(
+            red: CGFloat((background >> 16) & 0xFF) / 255,
+            green: CGFloat((background >> 8) & 0xFF) / 255,
+            blue: CGFloat(background & 0xFF) / 255,
+            alpha: 1
+        )
+        if view.backgroundColor != color {
+            view.backgroundColor = color
+            view.scrollView.backgroundColor = color
+        }
+        let forHere = opening.flatMap { Int($0.section) == section && Int($0.seq) != coordinator.appliedSeq ? $0 : nil }
+        if coordinator.loaded != html {
+            coordinator.loaded = html
+            coordinator.section = section
+            coordinator.pending = forHere
+            if let forHere { coordinator.appliedSeq = Int(forHere.seq) }
+            coordinator.loading = true
+            coordinator.placing = true
+            view.loadHTMLString(html, baseURL: Self.baseURL)
+        } else if let forHere, !coordinator.loading {
+            coordinator.appliedSeq = Int(forHere.seq)
+            coordinator.place(forHere, in: view)
+        }
     }
 
     @MainActor
     final class Coordinator: NSObject, WKNavigationDelegate {
         var loaded: String?
-        var fromEnd = false
         var pull: PullTracker?
         var onRelease: ((CGFloat) -> Void)?
+        var onScrolled: ((Int, CGFloat) -> Void)?
 
-        /// No link leaves the book: only the initial load of the section is allowed.
+        /// The section in the page, its opening to apply once loaded, the last opening applied.
+        var section = -1
+        var pending: SectionOpening?
+        var appliedSeq = -1
+        var loading = false
+
+        /// An opening is being applied (the page is not where it will be yet): nothing is reported meanwhile.
+        var placing = false
+        private var placeGeneration = 0
+        private var offsetWatch: NSKeyValueObservation?
+
+        /// Where the top of the page is, as a fraction of its height: the reader reopens there.
+        func watch(_ scroll: UIScrollView) {
+            offsetWatch = scroll.observe(\.contentOffset, options: [.new]) { [weak self] scroll, _ in
+                MainActor.assumeIsolated { self?.report(scroll) }
+            }
+        }
+
+        private func report(_ scroll: UIScrollView) {
+            let height = scroll.contentSize.height
+            guard !placing, !loading, section >= 0, height > 0 else { return }
+            let top = scroll.contentOffset.y + scroll.adjustedContentInset.top
+            onScrolled?(section, min(1, max(0, top / height)))
+        }
+
+        /// No link leaves the book: only the section's own load and jumps inside it are allowed.
         func webView(
             _ webView: WKWebView,
             decidePolicyFor action: WKNavigationAction,
@@ -1038,14 +1123,50 @@ private struct BookWebView: UIViewRepresentable {
             decisionHandler(action.navigationType == .other ? .allow : .cancel)
         }
 
-        /// A section reached going back opens at its end (its height settles over the first frames: tried again).
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-            guard fromEnd else { return }
-            for delay in [0.0, 0.12, 0.4] {
-                DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak webView] in
-                    guard let scroll = webView?.scrollView, !scroll.isTracking, !scroll.isDecelerating else { return }
-                    let bottom = scroll.contentSize.height - scroll.bounds.height + scroll.adjustedContentInset.bottom
-                    scroll.setContentOffset(CGPoint(x: 0, y: max(-scroll.adjustedContentInset.top, bottom)), animated: false)
+            // Once per load (a jump to an anchor inside the page is no new load).
+            guard loading else { return }
+            loading = false
+            place(pending, in: webView)
+        }
+
+        /// Puts the page where `opening` says (its top when nil). A section of several MB keeps growing for a moment
+        /// after it has loaded: placed again a few times, unless the reader touches it first. Then reports where it is.
+        func place(_ opening: SectionOpening?, in webView: WKWebView) {
+            placeGeneration += 1
+            let generation = placeGeneration
+            guard let opening, opening.fraction != nil || opening.anchor != nil || opening.fromEnd else {
+                placing = false
+                report(webView.scrollView)
+                return
+            }
+            placing = true
+            let steps = [0.0, 0.12, 0.4, 1.0]
+            for (step, delay) in steps.enumerated() {
+                DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self, weak webView] in
+                    guard let self, let webView, generation == self.placeGeneration else { return }
+                    let scroll = webView.scrollView
+                    // The reader took over: where the page is now is theirs.
+                    if scroll.isTracking || scroll.isDecelerating {
+                        self.placing = false
+                        return
+                    }
+                    let top = -scroll.adjustedContentInset.top
+                    if let anchor = opening.anchor {
+                        var address = URLComponents(url: BookWebView.baseURL, resolvingAgainstBaseURL: false)!
+                        address.fragment = anchor
+                        if let url = address.url { webView.load(URLRequest(url: url)) }
+                    } else if opening.fromEnd {
+                        let bottom = scroll.contentSize.height - scroll.bounds.height + scroll.adjustedContentInset.bottom
+                        scroll.setContentOffset(CGPoint(x: 0, y: max(top, bottom)), animated: false)
+                    } else if let fraction = opening.fraction?.doubleValue {
+                        let bottom = max(top, scroll.contentSize.height - scroll.bounds.height + scroll.adjustedContentInset.bottom)
+                        scroll.setContentOffset(CGPoint(x: 0, y: min(bottom, max(top, fraction * scroll.contentSize.height + top))), animated: false)
+                    }
+                    if step == steps.count - 1 {
+                        self.placing = false
+                        self.report(scroll)
+                    }
                 }
             }
         }
@@ -1069,6 +1190,11 @@ private struct BookWebView: UIViewRepresentable {
                 if pan.state == .began {
                     drag = 0
                     lastY = 0
+                    // The reader takes over: no opening moves the page any more.
+                    if placing && !loading {
+                        placeGeneration += 1
+                        placing = false
+                    }
                 }
                 // Positive: the finger goes up (towards what comes next).
                 let dy = lastY - y
