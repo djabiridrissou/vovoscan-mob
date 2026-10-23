@@ -723,6 +723,9 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
 - Library: one row per series (`LibrarySeries` port, wired in `shared` to `SeriesRepository`; the library's titles are
   asked about, the server knows them): the most recent progress wins, the heart is the series', unfollowing a row
   unfollows every member.
+- The title page's and the reader end card's heart (`FollowViewModel`, given `LibrarySeries`) is the series' too: red
+  when any member is hearted (a row the library shows under Favourites never opens on an empty heart), off takes it
+  from every member, on gives it to the title on screen.
 
 ## Margin (余白: notes, theories and salon of a chapter)
 

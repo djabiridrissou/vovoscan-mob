@@ -13,6 +13,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
@@ -21,6 +22,7 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -259,5 +261,39 @@ class LibraryViewModelTest {
                 vm.state.value.rows
                     .map { it.key },
             )
+        }
+
+    @Test
+    fun theTitlePageAndEndCardHeartIsTheSeries() =
+        runTest {
+            val library = FakeLibrary()
+            library.entries.value =
+                listOf(
+                    LibraryEntry("vovoscan", "v1", "Ink Road", null, "c1", 2, 100L, pendingSync = false, favorite = true, favoritedAt = 5L),
+                    LibraryEntry("inkwell", "i1", "Ink Road", null, "c3", 7, 200L, pendingSync = false),
+                )
+            val series =
+                object : LibrarySeries {
+                    override fun observe() = MutableStateFlow(mapOf("vovoscan/v1" to "s1", "inkwell/i1" to "s1"))
+
+                    override suspend fun resolve(keys: List<Pair<String, String>>) = Unit
+                }
+            // Read at the source where it was not hearted: red all the same, as the library row says.
+            val follow = FollowViewModel("inkwell", "i1", library, series)
+            val job = backgroundScope.launch { follow.state.collect {} }
+            assertTrue(follow.state.value.favorite)
+            assertEquals("c3", follow.state.value.resumeChapterId)
+            // Off takes it from every source of the series.
+            follow.toggleFavorite("Ink Road", null)
+            assertTrue(library.entries.value.none { it.favorite })
+            assertFalse(follow.state.value.favorite)
+            // On again gives it to this title.
+            follow.toggleFavorite("Ink Road", null)
+            assertTrue(
+                library.entries.value
+                    .single { it.favorite }
+                    .titleRef == "i1",
+            )
+            job.cancel()
         }
 }
