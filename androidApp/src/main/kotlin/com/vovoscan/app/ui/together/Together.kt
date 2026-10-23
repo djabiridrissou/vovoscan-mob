@@ -38,6 +38,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
@@ -151,6 +152,7 @@ fun TogetherButton(
 }
 
 /** The sheet: the two ways in, the code with its preview, or the admission ticket. */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TogetherSheetView(
     state: TogetherUiState,
@@ -752,6 +754,7 @@ private fun announce(
 }
 
 /** An invite link opened from outside: the circle's preview card, then Join (the reader opens there, following). */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TogetherInviteSheet(
     link: String,
