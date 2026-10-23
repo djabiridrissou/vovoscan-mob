@@ -103,8 +103,8 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
@@ -244,12 +244,12 @@ fun ReaderScreen(
     // What comes after this chapter in the language on the page (our catalog): end card, balloon, toast, series setting.
     val next: NextChapterViewModel = koinViewModel(key = "next:$sourceKey/$chapterId") { parametersOf(sourceKey, chapterId) }
     val nextState by next.state.collectAsStateWithLifecycle()
-    // The chapter's margin (余白): a chapter of the server only (a source's chapter read on the device has none).
+    // The chapter's margin: a chapter of the server only (a source's chapter read on the device has none).
     val forum: ForumViewModel? =
         if (sourceKey == OUR_SOURCE) koinViewModel(key = "forum:$chapterId") { parametersOf(chapterId) } else null
     val marginState = forum?.state?.collectAsStateWithLifecycle()?.value
     val pageMargin = forum?.let { vm -> marginState?.takeIf { it.visible }?.let { PageMargin(it, vm::onIntent) } }
-    // The reading circle (一緒に読む) on this chapter: a chapter of the server only, like the margin.
+    // The reading circle on this chapter: a chapter of the server only, like the margin.
     val together: TogetherViewModel? =
         if (sourceKey == OUR_SOURCE) koinViewModel(key = "together:$chapterId") { parametersOf(chapterId) } else null
     val togetherState = together?.state?.collectAsStateWithLifecycle()?.value
@@ -1061,7 +1061,7 @@ internal fun TransitionCardView(
             }
             // Reader SPEC §11: the language is one tap away here too.
             val language = LocalReaderLanguageAction.current
-            if (card.forward && language != null) GhostButton("文A  ${language.label}", language.open)
+            if (card.forward && language != null) GhostButton(language.label, language.open)
             // The chapter's margin: how many read this far, its best notes, a way into it.
             LocalPageMargin.current?.takeIf { card.forward }?.let { MarginEndCard(it) }
         }

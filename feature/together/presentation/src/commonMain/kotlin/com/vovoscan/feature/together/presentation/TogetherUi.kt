@@ -11,10 +11,10 @@ import com.vovoscan.feature.together.domain.Signal
 import com.vovoscan.feature.together.domain.SignalKind
 import com.vovoscan.feature.together.domain.Sticker
 
-/** What the 一緒 sheet shows: the two ways in, the code field, or the invite ticket. */
+/** What the Together sheet shows: the two ways in, the code field, or the invite ticket. */
 enum class TogetherSheet { Choose, Join, Ticket }
 
-/** A reader's hanko stamp in the dock: the initial in their colour, the host ringed red with 主, away dashed. */
+/** A reader's hanko stamp in the dock: the initial in their colour, the host ringed red with a star, away dashed. */
 data class StampUi(
     val userId: String,
     val initial: String,
@@ -24,7 +24,7 @@ data class StampUi(
     val host: Boolean,
     val away: Boolean,
     val me: Boolean,
-    /** 待って: this reader asked the host to wait (a cyan ring for a moment). */
+    /** Wait: this reader asked the host to wait (a cyan ring for a moment). */
     val asking: Boolean,
     val a11y: String,
 )
@@ -41,6 +41,8 @@ data class RailDot(
 data class StickerUi(
     val key: String,
     val glyph: String,
+    /** What it means, in the UI language (screen readers, the long press). */
+    val label: String,
 )
 
 /**
@@ -70,7 +72,7 @@ data class BalloonUi(
 
 enum class ToastAction { Follow, Go }
 
-/** One calm line at a time (joined, left, new host, 待って, 集合, moved on), also read out politely. */
+/** One calm line at a time (joined, left, new host, wait, gather, moved on), also read out politely. */
 data class ToastUi(
     val id: Long,
     val text: String,
@@ -94,7 +96,7 @@ data class MemberMenuUi(
     val removeLabel: String,
 )
 
-/** The admission ticket (入場券): the code in large type in a dashed frame. */
+/** The admission ticket: the code in large type in a dashed frame. */
 data class TicketUi(
     val code: String,
     val admission: String,
@@ -213,8 +215,8 @@ internal object TogetherText {
             when (signal.kind) {
                 SignalKind.Say -> signal.text?.let { t("together.logSay", "name" to name, "text" to it) }
                 SignalKind.Sticker -> signal.sticker?.let { t("together.logSay", "name" to name, "text" to it.glyph) }
-                SignalKind.Matte -> t("together.logSay", "name" to name, "text" to "待って")
-                SignalKind.Gather -> t("together.logSay", "name" to name, "text" to "集合")
+                SignalKind.Matte -> t("together.logSay", "name" to name, "text" to t("together.wait"))
+                SignalKind.Gather -> t("together.logSay", "name" to name, "text" to t("together.gather"))
                 SignalKind.Join -> t("together.joined", "name" to name)
                 SignalKind.Leave -> t("together.left", "name" to name)
                 SignalKind.Host -> if (signal.userId == room.myId) t("together.youHost") else t("together.newHost", "name" to name)
@@ -225,5 +227,5 @@ internal object TogetherText {
         return LogLineUi(signal.id, slot, text)
     }
 
-    val stickers: List<StickerUi> = Sticker.entries.map { StickerUi(it.key, it.glyph) }
+    val stickers: List<StickerUi> = Sticker.entries.map { StickerUi(it.key, it.glyph, t("sticker.${it.key}")) }
 }

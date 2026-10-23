@@ -35,7 +35,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 data class TogetherUiState(
-    /** The 一緒 button shows: the `shared_reading` flag is on (a chapter of the server). */
+    /** The Together button shows: the `shared_reading` flag is on (a chapter of the server). */
     val visible: Boolean = false,
     val sheet: TogetherSheet? = null,
     val codeInput: String = "",

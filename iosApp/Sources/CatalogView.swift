@@ -67,14 +67,14 @@ struct CatalogView: View {
                     if sources.state.needsSource {
                         // A new account has no source yet: nothing to read until one is added.
                         EmptyStateCard(
-                            sfx: "シーン",
+                            sfx: "SHHH",
                             title: sources.state.firstSourceTitle,
                             message: sources.state.firstSourceMessage,
                             actionLabel: sources.state.firstSourceAction
                         ) { openTab(.sources) }
                         .riseIn()
                     } else if model.state.empty {
-                        EmptyStateCard(sfx: "シーン", title: model.state.emptyMessage, message: L("catalog.pullToRefresh"))
+                        EmptyStateCard(sfx: "SHHH", title: model.state.emptyMessage, message: L("catalog.pullToRefresh"))
                     }
                     LazyVGrid(columns: columns, spacing: 14) {
                         // By title, never by the whole card: a card whose badges change (the title page saved its format or status)

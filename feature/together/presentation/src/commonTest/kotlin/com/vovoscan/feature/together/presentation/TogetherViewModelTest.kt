@@ -384,9 +384,9 @@ class TogetherViewModelTest {
                 ),
             )
             val state = vm.state.value
-            assertEquals(listOf("ドキ"), state.bursts.map { it.glyph })
+            assertEquals(listOf("DOKI"), state.bursts.map { it.glyph })
             assertEquals(listOf("on y va"), state.balloons.map { it.text })
-            assertEquals(listOf("Aya: old", "Aya: ドキ", "Aya: on y va"), state.circle!!.log.map { it.text })
+            assertEquals(listOf("Aya: old", "Aya: DOKI", "Aya: on y va"), state.circle!!.log.map { it.text })
             assertTrue(session.shown("s4"))
             // The same signals again: nothing new.
             advanceTimeBy(1_700)
@@ -428,7 +428,7 @@ class TogetherViewModelTest {
             runCurrent()
             push(room(me = "aya", host = "aya", signals = listOf(signal("m1", SignalKind.Matte, from = "ben"))))
             assertEquals(
-                "Ben: 待って！ Wait for me",
+                "Ben: Wait for me!",
                 vm.state.value.toast
                     ?.text,
             )

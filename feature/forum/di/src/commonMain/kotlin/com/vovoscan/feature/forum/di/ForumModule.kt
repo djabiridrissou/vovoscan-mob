@@ -13,7 +13,7 @@ import org.koin.core.module.dsl.viewModel
 import org.koin.dsl.module
 
 /**
- * Koin module for the margin (余白): the API and the last margin read per chapter. Expects from the app: `HttpClient`,
+ * Koin module for the margin: the API and the last margin read per chapter. Expects from the app: `HttpClient`,
  * `DatabaseDriverFactory`, `AppDispatchers`, and the `ForumAccess` and `WritingLanguage` ports.
  */
 val forumModule =

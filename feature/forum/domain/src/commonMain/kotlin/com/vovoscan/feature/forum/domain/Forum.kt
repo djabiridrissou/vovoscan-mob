@@ -4,23 +4,28 @@ import com.vovoscan.core.common.AppResult
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 
-/**
- * The margin (余白): what readers leave anchored to what they read. Not a forum of topics: notes on a chapter (pinned on a
+/*
+ * The margin: what readers leave anchored to what they read. Not a forum of topics: notes on a chapter (pinned on a
  * page or not), theories, the weekly salon of a series. Nobody sees what they have not read yet (the server masks it),
  * every list is capped. Online only: a post needs the server's spoiler and moderation rules.
+ */
+
+/**
+ * The eight stickers (the forum contract): stable keys on the wire, Latin onomatopoeia on screen (never Japanese), a
+ * label per UI language in the catalogues (`sticker.<key>`).
  */
 enum class Sticker(
     val key: String,
     val glyph: String,
 ) {
-    Doki("doki", "ドキ"),
-    Don("don", "ドン"),
-    Zawa("zawa", "ザワ"),
-    Gogogo("gogogo", "ゴゴゴ"),
-    Kusu("kusu", "クス"),
-    Gaan("gaan", "ガーン"),
-    Kira("kira", "キラ"),
-    Shiin("shiin", "シーン"),
+    Doki("doki", "DOKI"),
+    Don("don", "BOOM"),
+    Zawa("zawa", "BZZZ"),
+    Gogogo("gogogo", "GRRR"),
+    Kusu("kusu", "HAHA"),
+    Gaan("gaan", "GASP"),
+    Kira("kira", "BLING"),
+    Shiin("shiin", "SHHH"),
     ;
 
     companion object {

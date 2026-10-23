@@ -2,7 +2,7 @@ import Shared
 import SwiftUI
 import UIKit
 
-/// The reading circle (一緒に読む) next to a reader: a chapter of the server only (ours, or a source's copy), like the
+/// The reading circle next to a reader: a chapter of the server only (ours, or a source's copy), like the
 /// margin. `TogetherViewModel` (shared Kotlin) decides everything; this file draws the button, the sheet, the dock, the
 /// rail, the stickers, the lines and the toasts, and forwards the reader's place and gestures.
 @MainActor
@@ -36,7 +36,7 @@ enum CircleInk {
     static func of(_ slot: Int32) -> Color { slots[Int(slot) % slots.count] }
 }
 
-/// 一緒 in the reader's top bar: the sheet (read together, join with a code), or the ticket once in a circle.
+/// "Together" in the reader's top bar: the sheet (read together, join with a code), or the ticket once in a circle.
 struct TogetherButton: View {
     @ObservedObject var together: TogetherModel
 
@@ -47,7 +47,7 @@ struct TogetherButton: View {
             together.send(TogetherIntentOpenSheet.shared)
         } label: {
             HStack(spacing: 4) {
-                Text("一緒").font(.brandDisplay(13))
+                Text(together.state.buttonLabel).font(.brandDisplay(13))
                 if let count = together.state.circle?.stamps.count, count > 0 {
                     Text("\(count)").font(.brandBody(11, weight: .bold))
                 }
@@ -137,7 +137,7 @@ struct TogetherSheetView: View {
         }
     }
 
-    /// 入場券: the code in large type in a dashed frame, the link to share or copy, and the host's door.
+    /// The admission ticket: the code in large type in a dashed frame, the link to share or copy, and the host's door.
     private func ticket(_ ticket: TicketUi, _ state: TogetherUiState) -> some View {
         VStack(alignment: .leading, spacing: 14) {
             VStack(spacing: 10) {
@@ -191,7 +191,7 @@ struct TogetherSheetView: View {
     }
 }
 
-/// The dock at the bottom of the reader: the stamps, the follow pill, the stickers, 待って, a line, the log, Leave.
+/// The dock at the bottom of the reader: the stamps, the follow pill, the stickers, Wait, a line, the log, Leave.
 struct TogetherDock: View {
     @ObservedObject var together: TogetherModel
     @FocusState private var lineFocused: Bool
@@ -287,7 +287,7 @@ struct TogetherDock: View {
                         .frame(maxWidth: .infinity, minHeight: 44)
                         .background(Color.brandYellow, in: RoundedRectangle(cornerRadius: 6))
                 }
-                .accessibilityLabel(sticker.glyph)
+                .accessibilityLabel(sticker.label)
             }
         }
     }
@@ -351,7 +351,7 @@ struct TogetherDock: View {
     }
 }
 
-/// A reader's round hanko stamp: the initial in their ink; the host ringed red with 主; away dashed and faded; a cyan
+/// A reader's round hanko stamp: the initial in their ink; the host ringed red with a star; away dashed and faded; a cyan
 /// ring while they ask the host to wait.
 struct Hanko: View {
     let stamp: StampUi
@@ -372,7 +372,7 @@ struct Hanko: View {
                 )
                 .opacity(stamp.away ? 0.45 : 1)
             if stamp.host {
-                Text("主").font(.system(size: 9, weight: .heavy)).foregroundStyle(Color.brandInk)
+                Image(systemName: "star.fill").font(.system(size: 8, weight: .heavy)).foregroundStyle(Color.brandInk)
                     .frame(width: 15, height: 15)
                     .background(Color.brandRed, in: Circle())
                     .offset(x: 3, y: -3)
@@ -475,7 +475,7 @@ private struct BurstGlyph: View {
     }
 }
 
-/// One calm line at the top (joined, left, new host, 待って, 集合, moved on), read out politely by VoiceOver.
+/// One calm line at the top (joined, left, new host, wait, gather, moved on), read out politely by VoiceOver.
 struct TogetherToast: View {
     @ObservedObject var together: TogetherModel
 

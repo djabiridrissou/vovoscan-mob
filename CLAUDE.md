@@ -708,7 +708,7 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
 ## iOS finish (`iosApp/Sources/Premium.swift`)
 
 - Launch: the mark is stamped on the page (spring, haptic, speed lines), then the app or the sign-in fades in.
-- Sign-in: a printed-manga hero (speed lines, red halftone, ドン!, "Invite only" kicker), password AutoFill content
+- Sign-in: a printed-manga hero (speed lines, red halftone, BOOM!, "Invite only" kicker), password AutoFill content
   types, an error haptic.
 - Catalog: covers open their title page with the iOS 18 zoom transition (`matchedTransitionSource` +
   `.navigationTransition(.zoom)`), tiles sink when pressed (`PressableCardStyle`), rise in one after the other
@@ -815,26 +815,30 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   when any member is hearted (a row the library shows under Favourites never opens on an empty heart), off takes it
   from every member, on gives it to the title on screen.
 
-## Margin (余白: notes, theories and salon of a chapter)
+## Margin (notes, theories and salon of a chapter)
 
 - `feature/forum` (backend `api/v1/forum`, flag `forum`, off by default: the `ForumAccess` port, wired in `shared` to
   `Session.has("forum")`; `FEATURE_UNAVAILABLE` / `FEATURE_DISABLED` / `FEATURE_COMING_SOON` hide it too). Only a chapter
   of the server has a margin (`sourceKey` `vovoscan`, or a source's chapter reopened on its server copy): a chapter read
   on the device is never brought in for it, so browsing a source tells the server nothing.
-- `ForumViewModel(chapterId)` (`MarginUiState`, `MarginIntent`): the "余白 Margin" switch in the reader's bar (with the
+- `ForumViewModel(chapterId)` (`MarginUiState`, `MarginIntent`): the "Margin" switch in the reader's bar ("La marge" in French) (with the
   chapter's count: pins + notes, which the server sends disjoint; the chapter's list shows both, pins first), pins over
-  the pages while it is open (`pinsOn(page)`, `draftOn(page)`: sticker glyph on yellow, "？"
+  the pages while it is open (`pinsOn(page)`, `draftOn(page)`: sticker glyph on yellow, "?"
   on a note masked as a spoiler for this reader, "✎" for words only; frames and strokes drawn in red), three tabs
   (this chapter's notes, theories with their verdict votes, the weekly salon with its 8 latest weeks), orders best /
   new / old, replies, eight sticker reactions (the same again takes it back), reveal, translate into the writing
   language (`WritingLanguage` port: the reading language, else the UI's; polled every 2 s), edit within 15 minutes,
-  delete, report (reasons), mute (hides the author here at once). The end card shows "ここまで読んだ Read this far", how
+  delete, report (reasons), mute (hides the author here at once). The end card shows "Read this far" ("Lu jusqu’ici"), how
   many readers got there and the best three visible notes.
 - Marks (`Anchors`, domain, pure): a point, a frame (two corners; under 0.02 of the page it is a point) or a stroke
   (thinned with Ramer-Douglas-Peucker to at most 64 points), fractions of the page rounded to 4 decimals. With a tool
   chosen (`placing`), the page takes the finger before the pager, the strip or the tap zones (scrolling is off
   until the tool is turned off, so a quick drag draws at once), and shows a faint red
   hatch (5 %) with a 2 pt dashed red outline until the mark is placed or the tool turned off.
+- Stickers (`Sticker`, the forum contract; the circles use the same eight): the keys never change on the wire (`doki`,
+  `don`, `zawa`, `gogogo`, `kusu`, `gaan`, `kira`, `shiin`), the glyphs are Latin onomatopoeia (DOKI, BOOM, BZZZ, GRRR,
+  HAHA, GASP, BLING, SHHH) and each has a label in the UI language (`sticker.<key>`: "Heart racing" / "Cœur qui bat"…)
+  for screen readers. No Japanese anywhere in the UI: every label goes through the catalogues.
 - Rules (`ForumRules`): control and bidirectional characters dropped, one blank line at most, 500 / 1500 / 1000
   characters (note / theory / salon), 500 for a reply, at most 2 links; a sticker or a stroke is content on its own.
 - Online only: nothing is queued (spoilers and moderation are the server's). The last margin read per chapter is kept
@@ -848,7 +852,7 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   shortcuts (a letter typed into the composer never turns a page). Android `ui/forum/Margin.kt` (`LocalPageMargin`, a non-modal `MarginPanel` docked at the
   bottom, 45 % or 90 % of the height; Back closes the replies, then the panel).
 
-## Reading circles (一緒に読む: reading live together)
+## Reading circles (reading live together)
 
 - `feature/together` (backend `api/v1/reading-rooms`, flag `shared_reading`, gated by default: the `TogetherAccess` port,
   wired in `shared` to `Session.has("shared_reading")`; without it nothing shows, no "coming soon"). Two to eight
@@ -868,11 +872,11 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   300 signal ids). A host opening another chapter moves the circle first (`PUT …/chapter`, in the app scope). Cleared on
   sign-out.
 - `TogetherViewModel(chapterId)`: attaches to the open room on this chapter (the session's, else `GET /reading-rooms`
-  once per launch); while started (screen on and visible) the stream, the heartbeat and a 5 s tick. The 一緒 button and
-  sheet (read together / join with a code with its preview / the 入場券 ticket: code, share and copy the website's
+  once per launch); while started (screen on and visible) the stream, the heartbeat and a 5 s tick. The "Together" ("Ensemble") button
+  and sheet (read together / join with a code with its preview / the admission ticket: code, share and copy the website's
   `/together/CODE` link, the host's lock, new code, end; a reader's leave), the dock (hanko stamps in each reader's ink:
-  the eight slot colours of the web, host ringed red with 主, away dashed; the host's menu on a stamp: hand over, remove;
-  follow / on your own, 集合 for the host, 待って for a reader, the log, eight stickers from the margin, a line), the rail
+  the eight slot colours of the web, host ringed red with a star, away dashed; the host's menu on a stamp: hand over, remove;
+  follow / on your own, Gather for the host, Wait for a reader, the log, eight stickers from the margin, a line), the rail
   (each reader's share of the chapter, a tap goes there), bursts (1.6 s, 6 at most then "×n"), balloons (5 s) and one
   toast at a time (4 s, 8 s with an action). Followers glide only to a newer `positionSeq`; their own gesture
   (`ReaderUiState.userMoves`: taps, swipes, a strip drag, a section change, never a glide the reader played) lets go.

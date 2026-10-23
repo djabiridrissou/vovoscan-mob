@@ -289,12 +289,12 @@ fun appModules(
                 val auth = get<AuthRepository>()
                 EpisodeAccess { auth.session.map { it?.has(VIDEO_FEATURE) == true }.distinctUntilChanged() }
             }
-            // The margin (余白) shows only with the `forum` flag (gated by default; every feature for a super-admin).
+            // The margin shows only with the `forum` flag (gated by default; every feature for a super-admin).
             single<ForumAccess> {
                 val auth = get<AuthRepository>()
                 ForumAccess { auth.session.map { it?.has(FORUM_FEATURE) == true }.distinctUntilChanged() }
             }
-            // Reading circles (一緒に読む) show only with the `shared_reading` flag (gated by default).
+            // Reading circles show only with the `shared_reading` flag (gated by default).
             single<TogetherAccess> {
                 val auth = get<AuthRepository>()
                 TogetherAccess { auth.session.map { it?.has(SHARED_READING_FEATURE) == true }.distinctUntilChanged() }

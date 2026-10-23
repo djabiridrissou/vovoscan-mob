@@ -8,6 +8,19 @@ import kotlin.test.assertTrue
 
 class ForumRulesTest {
     @Test
+    fun stickersKeepTheirKeysAndShowLatinOnomatopoeia() {
+        // The forum contract: the keys never change on the wire, the glyphs are never Japanese.
+        assertEquals(
+            listOf("doki", "don", "zawa", "gogogo", "kusu", "gaan", "kira", "shiin"),
+            Sticker.entries.map { it.key },
+        )
+        assertEquals(
+            listOf("DOKI", "BOOM", "BZZZ", "GRRR", "HAHA", "GASP", "BLING", "SHHH"),
+            Sticker.entries.map { it.glyph },
+        )
+    }
+
+    @Test
     fun textIsKeptPlain() {
         assertEquals("a\n\nb", ForumRules.clean("  a\u202E\u0007\n\n\n\nb  "))
         assertEquals("line one\nline two", ForumRules.clean("line one   \r\nline two"))

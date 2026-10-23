@@ -88,7 +88,7 @@ import kotlin.math.min
 import kotlin.math.roundToInt
 
 /**
- * The margin (余白) as the reader's pages see it: the state and the intents. Provided only while the margin is visible
+ * The margin as the reader's pages see it: the state and the intents. Provided only while the margin is visible
  * (the `forum` flag, a chapter of the server); the pins show while it is open.
  */
 class PageMargin(
@@ -98,7 +98,7 @@ class PageMargin(
 
 val LocalPageMargin = staticCompositionLocalOf<PageMargin?> { null }
 
-/** "余白 Margin" in the reader's bar, with the chapter's count; yellow while open. */
+/** "Margin" in the reader's bar, with the chapter's count; yellow while open. */
 @Composable
 fun MarginButton(
     state: MarginUiState,
@@ -134,7 +134,7 @@ fun MarginButton(
 }
 
 /**
- * Over one page, in a box of the page's own shape: its pins (sticker glyph on yellow, "？" on a spoiler, frames and
+ * Over one page, in a box of the page's own shape: its pins (sticker glyph on yellow, "?" on a spoiler, frames and
  * strokes in red) and, while a tool is chosen, the surface that takes the mark (a tap, a frame dragged, a stroke drawn)
  * before the pager or the strip can scroll, in fractions of the page.
  */
@@ -486,7 +486,7 @@ private fun NoteComposer(
                         modifier =
                             Modifier
                                 .background(if (on) Brand.Yellow else Brand.Paper.copy(alpha = 0.85f))
-                                .clickable(onClickLabel = "${state.stickerLabel} ${sticker.glyph}") {
+                                .clickable(onClickLabel = "${state.stickerLabel} ${sticker.label}") {
                                     haptics.performHapticFeedback(HapticFeedbackType.SegmentTick)
                                     send(MarginIntent.PickSticker(if (on) null else sticker.key))
                                 }.semantics { selected = on }
@@ -625,7 +625,7 @@ private fun MarginPost(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Text(
-                    "？",
+                    "?",
                     style = MaterialTheme.typography.labelLarge.copy(color = Brand.Ink),
                     modifier = Modifier.background(Brand.Muted).padding(horizontal = 6.dp),
                 )
@@ -742,7 +742,7 @@ private fun PostMenu(
     }
 }
 
-/** Under the last page: "ここまで読んだ Read this far", how many readers got here, the best notes, and the way in. */
+/** Under the last page: "Read this far", how many readers got here, the best notes, and the way in. */
 @Composable
 fun MarginEndCard(margin: PageMargin) {
     val state = margin.state

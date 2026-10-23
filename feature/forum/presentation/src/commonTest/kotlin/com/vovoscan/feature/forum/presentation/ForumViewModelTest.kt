@@ -268,7 +268,7 @@ class ForumViewModelTest {
             // The chapter's list holds every post, pins first.
             assertEquals(listOf("p1", "p2", "n3"), s.notes.map { it.id })
             assertNull(s.empty)
-            assertEquals("ドン", s.pins[0]!!.single().label)
+            assertEquals("BOOM", s.pins[0]!!.single().label)
             // Pins show on the pages only while the margin is open.
             assertTrue(s.pinsOn(0).isEmpty())
             vm.onIntent(MarginIntent.Toggle)
@@ -279,8 +279,8 @@ class ForumViewModelTest {
                     .single()
                     .shape,
             )
-            // A spoiler for this reader: "？" on the page, no words in the list.
-            assertEquals("？", s.pins[2]!!.single().label)
+            // A spoiler for this reader: "?" on the page, no words in the list.
+            assertEquals("?", s.pins[2]!!.single().label)
             val masked = s.notes.single { it.id == "p2" }
             assertNull(masked.body)
             assertEquals("A spoiler from chapter 5. Show it anyway?", masked.maskedLine)

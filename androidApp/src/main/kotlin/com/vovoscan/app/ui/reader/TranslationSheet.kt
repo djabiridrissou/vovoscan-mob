@@ -13,6 +13,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
@@ -24,6 +25,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import com.vovoscan.app.ui.common.AppIcons
 import com.vovoscan.app.ui.common.BrandField
 import com.vovoscan.app.ui.settings.KeysScreen
 import com.vovoscan.app.ui.theme.Brand
@@ -51,7 +53,12 @@ fun LanguageButton(
         if (state.working || state.checking != null) {
             CircularProgressIndicator(Modifier.size(12.dp), color = Brand.Cyan, strokeWidth = 2.dp)
         } else {
-            Text("文A", style = MaterialTheme.typography.labelSmall.copy(color = if (state.translated) Brand.Ink else Brand.Paper))
+            Icon(
+                AppIcons.Translate,
+                contentDescription = null,
+                tint = if (state.translated) Brand.Ink else Brand.Paper,
+                modifier = Modifier.size(14.dp),
+            )
         }
         Text(
             state.buttonLabel,

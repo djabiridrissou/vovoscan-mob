@@ -37,9 +37,9 @@ struct ReaderView: View {
     @StateObject private var model: ReaderModel
     @StateObject private var translation: TranslationModel
     @StateObject private var next: NextChapterModel
-    /// The chapter's margin (余白): pins over the pages, the sheet, the end of chapter (a chapter of the server only).
+    /// The chapter's margin: pins over the pages, the sheet, the end of chapter (a chapter of the server only).
     @StateObject private var margin: MarginModel
-    /// The reading circle (一緒に読む) on this chapter: a chapter of the server only, like the margin.
+    /// The reading circle on this chapter: a chapter of the server only, like the margin.
     @StateObject private var together: TogetherModel
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.openURL) private var openURL

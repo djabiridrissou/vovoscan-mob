@@ -1,7 +1,7 @@
 import Shared
 import SwiftUI
 
-/// The margin (余白) of the chapter in the reader: the switch in the bar, pins over the pages, the sheet (this chapter,
+/// The margin of the chapter in the reader: the switch in the bar, pins over the pages, the sheet (this chapter,
 /// theories, salon) and the end of chapter. Only for a chapter of ours or a server copy (the server addresses the margin
 /// through its chapters); nothing shows without the `forum` flag.
 @MainActor
@@ -56,7 +56,7 @@ extension EnvironmentValues {
     }
 }
 
-/// "余白 Margin" in the reader's bar, with the chapter's count; yellow while open.
+/// "Margin" in the reader's bar, with the chapter's count; yellow while open.
 struct MarginButton: View {
     @ObservedObject var margin: MarginModel
 
@@ -88,7 +88,7 @@ struct MarginButton: View {
     }
 }
 
-/// Over one page: its pins (sticker glyph on yellow, "？" on a spoiler, frames and strokes in red) and, while a tool is
+/// Over one page: its pins (sticker glyph on yellow, "?" on a spoiler, frames and strokes in red) and, while a tool is
 /// chosen, the surface that takes the mark (a tap, a frame dragged, a stroke drawn), in fractions of the page.
 struct MarginPinsOverlay: View {
     let pageIndex: Int
@@ -415,7 +415,7 @@ struct MarginPanel: View {
                                     .frame(minHeight: 36)
                                     .background(c.sticker == sticker.key ? Color.brandYellow : Color.brandPaper.opacity(0.85))
                             }
-                            .accessibilityLabel("\(state.stickerLabel) \(sticker.glyph)")
+                            .accessibilityLabel("\(state.stickerLabel) \(sticker.label)")
                             .accessibilityAddTraits(c.sticker == sticker.key ? .isSelected : [])
                         }
                     }
@@ -517,7 +517,7 @@ struct MarginPostView: View {
                     send(MarginIntentReveal(postId: post.id))
                 } label: {
                     HStack {
-                        Text("？").font(.brandBody(14, weight: .bold)).foregroundStyle(Color.brandInk)
+                        Text("?").font(.brandBody(14, weight: .bold)).foregroundStyle(Color.brandInk)
                             .padding(.horizontal, 6).background(Color.brandMuted)
                         Text(masked).font(.brandBody(14)).foregroundStyle(Color.brandMuted).multilineTextAlignment(.leading)
                     }
@@ -616,7 +616,7 @@ struct MarginPostView: View {
     }
 }
 
-/// Under the last page: "ここまで読んだ Read this far", how many readers got here, the best notes, and the way in.
+/// Under the last page: "Read this far", how many readers got here, the best notes, and the way in.
 struct MarginEndCard: View {
     @ObservedObject var margin: MarginModel
 

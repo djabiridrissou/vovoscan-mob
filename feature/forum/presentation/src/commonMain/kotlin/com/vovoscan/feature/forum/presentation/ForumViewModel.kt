@@ -45,7 +45,7 @@ enum class MarkTool { None, Point, Frame, Draw }
 enum class PinShape { Point, Frame, Stroke }
 
 /**
- * A note pinned on a page: its sticker's glyph, "？" while it is a spoiler for this reader, "✎" for words only. Where, in
+ * A note pinned on a page: its sticker's glyph, "?" while it is a spoiler for this reader, "✎" for words only. Where, in
  * fractions of the page: the point ([x], [y]), the frame ([x], [y], [w], [h]) or the stroke ([path]: x, y, x, y…; the
  * label sits at its first point).
  */
@@ -83,6 +83,8 @@ data class ToolUi(
 data class StickerUi(
     val key: String,
     val glyph: String,
+    /** What it means, in the UI language (screen readers). */
+    val label: String,
 )
 
 data class ReasonUi(
@@ -207,7 +209,7 @@ data class SalonUi(
     val posts: List<PostUi>,
 )
 
-/** Under the last page: "ここまで読んだ Read this far", how many readers got here, the best notes. */
+/** Under the last page: "Read this far", how many readers got here, the best notes. */
 data class EndCardUi(
     val title: String,
     val readers: String,
@@ -238,10 +240,10 @@ data class MarginUiState(
     /** "Thanks. We'll look at it.", "Aya is muted.". */
     val toast: String? = null,
 ) {
-    /** "余白 Margin". */
+    /** "Margin". */
     val switchLabel: String get() = t("forum.switch")
 
-    /** "余白 Margin ✦ 12" for screen readers and the bar's badge. */
+    /** "Margin ✦ 12" for screen readers and the bar's badge. */
     val countLabel: String? get() = count.takeIf { it > 0 }?.toString()
 
     val tabs: List<TabUi>
@@ -260,7 +262,7 @@ data class MarginUiState(
                 OrderUi(Order.Old, t("forum.orderOld")),
             )
 
-    val stickers: List<StickerUi> get() = Sticker.entries.map { StickerUi(it.key, it.glyph) }
+    val stickers: List<StickerUi> get() = Sticker.entries.map { StickerUi(it.key, it.glyph, t("sticker.${it.key}")) }
 
     val tools: List<ToolUi>
         get() =
@@ -957,7 +959,7 @@ class ForumViewModel(
         val sticker = post.sticker
         val label =
             when {
-                post.masked -> "？"
+                post.masked -> "?"
                 sticker != null -> sticker.glyph
                 else -> "✎"
             }

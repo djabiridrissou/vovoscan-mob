@@ -326,7 +326,7 @@ private struct WalletCard: View {
                     .contentTransition(.numericText())
                 Text(state.unitLabel).font(.brandBody(15, weight: .bold)).foregroundStyle(Color.brandMuted)
                 Spacer()
-                Sticker(text: "クレ", color: .brandCyan, angle: 6)
+                Sticker(text: "CR", color: .brandCyan, angle: 6)
             }
             if let warning = state.warning {
                 Text(warning).font(.brandBody(13, weight: .bold)).foregroundStyle(Color.brandYellow)

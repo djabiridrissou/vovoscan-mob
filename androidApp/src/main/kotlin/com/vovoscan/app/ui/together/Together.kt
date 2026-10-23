@@ -38,6 +38,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
@@ -60,6 +61,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -75,6 +77,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.vovoscan.app.BuildConfig
+import com.vovoscan.app.ui.common.AppIcons
 import com.vovoscan.app.ui.common.ErrorText
 import com.vovoscan.app.ui.common.GhostButton
 import com.vovoscan.app.ui.common.PrimaryButton
@@ -96,7 +99,7 @@ import org.koin.compose.viewmodel.koinViewModel
 import org.koin.core.parameter.parametersOf
 
 /*
- * The reading circle (一緒に読む) next to a reader: `TogetherViewModel` (shared Kotlin) decides everything; these
+ * The reading circle next to a reader: `TogetherViewModel` (shared Kotlin) decides everything; these
  * Composables draw the button, the sheet, the dock, the rail, the stickers, the lines and the toasts, the same as iOS
  * (`TogetherViews.swift`).
  */
@@ -118,7 +121,7 @@ object CircleInk {
     fun of(slot: Int): Color = slots[Math.floorMod(slot, slots.size)]
 }
 
-/** 一緒 in the reader's top bar: the sheet (read together, join with a code), or the ticket once in a circle. */
+/** "Together" in the reader's top bar: the sheet (read together, join with a code), or the ticket once in a circle. */
 @Composable
 fun TogetherButton(
     state: TogetherUiState,
@@ -140,7 +143,7 @@ fun TogetherButton(
         horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         val ink = if (inCircle) Brand.Ink else Brand.Paper
-        Text("一緒", style = MaterialTheme.typography.labelLarge.copy(color = ink))
+        Text(state.buttonLabel, style = MaterialTheme.typography.labelLarge.copy(color = ink))
         state.circle?.stamps?.size?.takeIf { it > 0 }?.let {
             Text("$it", style = MaterialTheme.typography.labelSmall.copy(color = ink, fontWeight = FontWeight.Bold))
         }
@@ -227,7 +230,7 @@ private fun Join(
     PrimaryButton(state.joinAction, { send(TogetherIntent.Join) }, enabled = state.canJoin)
 }
 
-/** 入場券: the code in large type in a dashed frame, the link to share or copy, and the host's door. */
+/** The admission ticket: the code in large type in a dashed frame, the link to share or copy, and the host's door. */
 @Composable
 private fun Ticket(
     ticket: TicketUi,
@@ -316,7 +319,7 @@ private fun Modifier.dashedBorder(): Modifier =
 
 /**
  * The dock at the bottom of the reader: the stamps (tap one: the host's menu about that reader), follow / let go,
- * 集合 for the host or 待って for a reader, the log, the ticket, the eight stickers and a line.
+ * Gather for the host or Wait for a reader, the log, the ticket, the eight stickers and a line.
  */
 @Composable
 fun TogetherDock(
@@ -433,8 +436,27 @@ private fun Controls(
             DockText(state.waitLabel, Brand.Ink) { send(TogetherIntent.Wait) }
         }
         DockText("☰", Brand.Ink, state.logLabel) { send(TogetherIntent.ToggleLog) }
-        DockText("券", Brand.Ink, state.ticketTitle) { send(TogetherIntent.ShowTicket) }
+        DockIcon(AppIcons.Ticket, state.ticketTitle) { send(TogetherIntent.ShowTicket) }
     }
+}
+
+/** A dock control drawn as a line icon, with its [label] for TalkBack. */
+@Composable
+private fun DockIcon(
+    icon: ImageVector,
+    label: String,
+    onClick: () -> Unit,
+) {
+    Icon(
+        icon,
+        contentDescription = label,
+        tint = Brand.Ink,
+        modifier =
+            Modifier
+                .clickable(onClickLabel = label, onClick = onClick)
+                .padding(horizontal = 6.dp, vertical = 12.dp)
+                .size(20.dp),
+    )
 }
 
 @Composable
@@ -469,7 +491,7 @@ private fun Stickers(
                     .weight(1f)
                     .heightIn(min = 44.dp)
                     .background(Brand.Yellow, RoundedCornerShape(6.dp))
-                    .clickable(onClickLabel = sticker.glyph) {
+                    .clickable(onClickLabel = sticker.label) {
                         haptics.performHapticFeedback(HapticFeedbackType.SegmentTick)
                         send(TogetherIntent.SendSticker(sticker.key))
                     },
@@ -525,7 +547,7 @@ private fun Log(circle: CircleUi) {
     }
 }
 
-/** A reader's round hanko stamp: the initial in their ink; the host ringed red with 主; away dashed and faded. */
+/** A reader's round hanko stamp: the initial in their ink; the host ringed red with a star; away dashed and faded. */
 @Composable
 private fun Hanko(
     stamp: StampUi,
@@ -564,7 +586,7 @@ private fun Hanko(
         }
         if (stamp.host) {
             Text(
-                "主",
+                "★",
                 style = MaterialTheme.typography.labelSmall.copy(color = Brand.Ink, fontSize = 9.sp, fontWeight = FontWeight.Black),
                 modifier =
                     Modifier
@@ -684,7 +706,7 @@ private fun BurstGlyph(
     }
 }
 
-/** One calm line at the top (joined, left, new host, 待って, 集合, moved on), read out politely by TalkBack. */
+/** One calm line at the top (joined, left, new host, wait, gather, moved on), read out politely by TalkBack. */
 @Composable
 fun TogetherToast(
     state: TogetherUiState,

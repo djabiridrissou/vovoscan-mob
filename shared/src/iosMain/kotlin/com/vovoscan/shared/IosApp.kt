@@ -200,10 +200,10 @@ class ViewModels : KoinComponent {
         chapterId: String,
     ): NextChapterViewModel = remember("next:$sourceKey/$chapterId") { get<NextChapterViewModel> { parametersOf(sourceKey, chapterId) } }
 
-    /** The margin (余白) of a chapter of ours (or a server copy), next to the reader. */
+    /** The margin of a chapter of ours (or a server copy), next to the reader. */
     fun forum(chapterId: String): ForumViewModel = remember("forum:$chapterId") { get<ForumViewModel> { parametersOf(chapterId) } }
 
-    /** The reading circle (一緒) next to a reader of a chapter of ours (or a server copy). */
+    /** The reading circle next to a reader of a chapter of ours (or a server copy). */
     fun together(chapterId: String): TogetherViewModel =
         remember("together:$chapterId") { get<TogetherViewModel> { parametersOf(chapterId) } }
 

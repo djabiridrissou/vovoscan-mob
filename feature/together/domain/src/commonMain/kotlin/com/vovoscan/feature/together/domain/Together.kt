@@ -6,7 +6,7 @@ import kotlinx.coroutines.flow.flowOf
 import kotlin.math.round
 
 /*
- * Reading circles (一緒に読む): two to eight accounts read one chapter together, live, each on their own device, in their
+ * Reading circles: two to eight accounts read one chapter together, live, each on their own device, in their
  * own mode and language (shared-reading contract v1, backend `features/reading_rooms`). One reader hosts, the others
  * follow the host's place by default.
  */
@@ -84,19 +84,19 @@ data class Member(
     val lastSeenAtMillis: Long,
 )
 
-/** The margin's eight onomatopoeia (docs/FORUM.md), the same keys and glyphs: a circle's stickers. */
+/** The margin's eight stickers (the forum contract), the same keys and Latin glyphs: a circle's stickers. */
 enum class Sticker(
     val key: String,
     val glyph: String,
 ) {
-    Doki("doki", "ドキ"),
-    Don("don", "ドン"),
-    Zawa("zawa", "ザワ"),
-    Gogogo("gogogo", "ゴゴゴ"),
-    Kusu("kusu", "クス"),
-    Gaan("gaan", "ガーン"),
-    Kira("kira", "キラ"),
-    Shiin("shiin", "シーン"),
+    Doki("doki", "DOKI"),
+    Don("don", "BOOM"),
+    Zawa("zawa", "BZZZ"),
+    Gogogo("gogogo", "GRRR"),
+    Kusu("kusu", "HAHA"),
+    Gaan("gaan", "GASP"),
+    Kira("kira", "BLING"),
+    Shiin("shiin", "SHHH"),
     ;
 
     companion object {
@@ -110,10 +110,10 @@ enum class SignalKind(
     Sticker("sticker"),
     Say("say"),
 
-    /** 待って: wait for me. */
+    /** Wait: wait for me. */
     Matte("matte"),
 
-    /** 集合: the host calls readers on their own. */
+    /** Gather: the host calls readers on their own. */
     Gather("gather"),
     Join("join"),
     Leave("leave"),

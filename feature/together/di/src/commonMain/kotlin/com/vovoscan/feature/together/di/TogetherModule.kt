@@ -13,7 +13,7 @@ import org.koin.core.module.dsl.viewModel
 import org.koin.dsl.module
 
 /**
- * Koin module for reading circles (一緒に読む): the API and the circle kept while the app runs. Expects from the app:
+ * Koin module for reading circles: the API and the circle kept while the app runs. Expects from the app:
  * `HttpClient`, `CoroutineScope` (the app's), `ThisDevice`, and the `TogetherAccess`, `TogetherLanguage` and
  * `MutedReaders` ports.
  */
