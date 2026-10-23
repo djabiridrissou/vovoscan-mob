@@ -121,7 +121,7 @@ struct Kicker: View {
     }
 }
 
-/// Logo: red square tilted -6°, paper border, hard paper shadow, "ヴ" in ink.
+/// Logo: the brand mark (a red balloon holding a V and two sound waves), from the brand files.
 struct LogoMark: View {
     var size: CGFloat = 32
     var body: some View {

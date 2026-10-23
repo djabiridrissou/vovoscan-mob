@@ -189,7 +189,7 @@ fun Kicker(text: String) {
     )
 }
 
-/** Logo: red square tilted -6°, paper border, hard paper shadow, "ヴ" in ink. */
+/** Logo: the brand mark (a red balloon holding a V and two sound waves), from the brand files. */
 @Composable
 fun LogoMark(size: Int = 32) {
     // The brand files (res/drawable-nodpi/brand_logo.png): replacing the image changes the mark everywhere.
