@@ -150,7 +150,8 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   reading mode, tap zones, chapter transitions, reader settings, resume and progress.
 - Books (EPUB): downloaded once (signed URL from the API, or the source's host for a rule-based source),
   read by `EpubParser` (Okio + Ksoup: `container.xml` → OPF → reading order, nav/NCX table of contents), sections
-  sanitized (allowlist, images as `data:` only, links removed) and stored in the database: offline rereading.
+  sanitized (allowlist, ids kept, images as `data:` only, links removed) and stored in the database: offline
+  rereading.
   Displayed in a WebView / WKWebView with no JavaScript and no network, styles and CSP from `BookStyle`. A book's
   progress counts in sections. What is left of a removed link reads as the text around it (`a { color: inherit }`):
   red promised a tap that did nothing, and Gutenberg books wrap headings, and whole chapters, in anchors. A file
@@ -178,8 +179,48 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   `.sensoryFeedback`). Reduced motion (Android "Remove animations", iOS Reduce Motion): the hint neither slides, grows
   nor fades, its bar still fills. A short fling that reaches the end does not turn (only the drag past the edge counts);
   a long drag past it does, as the threshold says.
+- Books: typography (gear in the top bar, books too; `BookSettingsSheet`, `BookIntent`), kept on the device in
+  `reader_setting` (keys `book.…`, `SqlBookReadingRepository`) and applied live through `BookStyle`: text size =
+  18 px × the device's text size (`BookIntent.SystemTextScale`: Android `fontScale`, iOS Dynamic Type as body text
+  scales, `UIFontMetrics`) × the user's own (70–200 %, steps of 10, Reset), line spacing (compact 1.45 / normal 1.7 /
+  relaxed 2), margins (12 / 20 / 36 px), font (serif: `ui-serif` = New York on iOS, Noto Serif on Android; sans: the
+  system's; system fonts only, the web view has no network and the CSP loads nothing), justification, and the page's
+  colours (dark, the default and the old page; sepia; light): the book page only, the app and its bars stay dark, the
+  web view's own colour follows (`BookReaderState.pageBackground`). Headings and spacing are in `em`, so the page grows
+  as a whole. Android sets `textZoom` to 100 so nothing scales on top. Defaults (`BookTypography`) are the page as it was.
+- Books: the position inside a section (Gutenberg sections hold several chapters, 1–4 MB) is kept on the device only
+  (`book_position`: section + the fraction of its height at the top of the screen; the library's progress still
+  counts sections). The web view reports its top (`BookIntent.SectionScrolled(section, fraction)`: Android
+  `onScrollChanged`, iOS KVO on `contentOffset`); the view model saves it once scrolling has paused 1 s
+  (`POSITION_DELAY_MS`) and at once when the reader closes (`onCleared`, written in the app's scope). Where the
+  section opens comes from one value, `ReaderUiState.book.opening` (`SectionOpening`: fraction, anchor or end, with
+  a `seq`): the native side applies each seq once, after the section has loaded, again at 0 / 120 / 400 / 1000 ms
+  while a big section is still growing, stops as soon as the reader touches it, and reports nothing meanwhile.
+  Reopening a book opens its section at the saved fraction when that section is the one opened (the library's
+  progress, or a part opened from its start), never when coming back from the next part (its end); a typography change
+  (or the device's text size) styles the section again and opens it at the fraction last reported. A fraction, not an element: with no JavaScript the web view can't say which element is at the top;
+  text, headings and spacing scale together, so the same fraction is about the same text (checked on iOS: wide margins
+  and 110 % kept the same first line; Dynamic Type XXXL moved it by about a line). Images keep their size, so an
+  illustrated section can drift a little more.
+- Books: contents (button in the top bar when the book has some; `BookContents.rows`, `BookIntent.ChooseContents`;
+  Android `ModalBottomSheet`, iOS `.sheet`). `EpubParser` keeps every nav / NCX entry (`ParsedTocEntry`: depth,
+  section, anchor; an EPUB 3 entry without its own link opens where its first nested entry does, an anchor its
+  section doesn't hold opens the section's start) and the sanitizer keeps `id` attributes; `book_toc` stores them
+  with the sections (`putBook`, one transaction, removed with them). A section the contents leave out keeps a row;
+  the rows of the section being read are marked. An entry inside a section opens it at its element. iOS: the
+  document's address is a fake one (`https://book.vovoscan.invalid/section`, never fetched), so a jump to `#anchor` is
+  a navigation inside the same document, which WebKit does with the page's JavaScript off (checked: Moby Dick,
+  "CHAPTER 2" inside the file of chapters 1–3, at the top of the screen). Android keeps the `null` base URL and
+  scrolls to where the element's text starts (`BookAnchors.textFraction`: the share of the section's text before it,
+  markup and images left out): a `loadUrl("…#anchor")` after `loadDataWithBaseURL` may not count as the same
+  document there and would then try to load a page, so it is not used (approximate in an illustrated section). A book in several parts (the title's chapters, from `TitleChapters`)
+  lists its parts, the part being read holding its rows; another part opens at its start. Books opened before keep
+  their saved sections (no contents but the sections, no ids) until downloaded again. Migration `5.sqm` (v5 → v6):
+  `book_toc`, `book_position`; sign-out and a removed source erase both.
 - Progress goes through the `ReadingProgressSink` port, wired to the library in `shared`: the reader does not
   know about `library`. It is kept only for a followed title.
+  Leaving before the pause saves it at once: a flag, not the save job (`viewModelScope` is already cancelled when
+  `onCleared` runs, so the job never looked active and the last page was lost).
 - Images are signed URLs, unchanged for a day: the image cache serves pages already seen.
 
 ## Downloads (offline reading)
