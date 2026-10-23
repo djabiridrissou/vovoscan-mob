@@ -38,6 +38,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -79,6 +80,7 @@ import coil3.request.allowHardware
 import coil3.size.Dimension
 import coil3.size.Size
 import com.vovoscan.app.MainActivity
+import com.vovoscan.app.ui.common.AppIcons
 import com.vovoscan.app.ui.common.ErrorText
 import com.vovoscan.app.ui.common.GhostButton
 import com.vovoscan.app.ui.common.PrimaryButton
@@ -86,6 +88,7 @@ import com.vovoscan.app.ui.theme.Brand
 import com.vovoscan.feature.reader.domain.ReaderPage
 import com.vovoscan.feature.reader.domain.TallPages
 import com.vovoscan.feature.reader.domain.TapAction
+import com.vovoscan.feature.reader.presentation.BookText
 import com.vovoscan.feature.reader.presentation.ReaderCommand
 import com.vovoscan.feature.reader.presentation.ReaderIntent
 import com.vovoscan.feature.reader.presentation.ReaderItem
@@ -121,6 +124,7 @@ fun ReaderScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val onIntent = viewModel::onIntent
     var settingsOpen by rememberSaveable { mutableStateOf(false) }
+    var contentsOpen by rememberSaveable { mutableStateOf(false) }
 
     // Keep the screen awake while reading (setting, on by default).
     val view = LocalView.current
@@ -172,6 +176,7 @@ fun ReaderScreen(
                     onIntent(ReaderIntent.SettingsOpened)
                     settingsOpen = true
                 },
+                { contentsOpen = true },
                 Modifier.align(Alignment.TopCenter),
             )
             BottomBar(state, onIntent, { onOpenChapter(it, 0) }, Modifier.align(Alignment.BottomCenter))
@@ -182,6 +187,16 @@ fun ReaderScreen(
             settingsOpen = false
             onIntent(ReaderIntent.SettingsClosed)
         }
+    }
+    // Books: their own settings (typography, page colours) and contents.
+    if (settingsOpen && state.isBook) {
+        BookSettingsSheet(state.book.settings, onIntent) {
+            settingsOpen = false
+            onIntent(ReaderIntent.SettingsClosed)
+        }
+    }
+    if (contentsOpen && state.isBook) {
+        BookContentsSheet(state.book.contents, onIntent) { contentsOpen = false }
     }
 }
 
@@ -684,6 +699,7 @@ private fun TopBar(
     state: ReaderUiState,
     onBack: () -> Unit,
     onSettings: () -> Unit,
+    onContents: () -> Unit,
     modifier: Modifier,
 ) {
     Row(
@@ -704,18 +720,28 @@ private fun TopBar(
             Text(state.titleName, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(state.subtitle, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
-        if (!state.isBook) {
-            // Text presentation of the gear (not the emoji).
-            Text(
-                "⚙︎",
-                style = MaterialTheme.typography.titleMedium,
+        if (state.isBook && state.book.contents.isNotEmpty()) {
+            Icon(
+                AppIcons.Contents,
+                contentDescription = BookText.CONTENTS_BUTTON,
+                tint = Brand.Paper,
                 modifier =
                     Modifier
-                        .clickable(role = Role.Button, onClick = onSettings)
-                        .semantics { contentDescription = "Reader settings" }
-                        .padding(start = 16.dp, top = 4.dp, bottom = 4.dp),
+                        .clickable(role = Role.Button, onClick = onContents)
+                        .padding(start = 16.dp, top = 2.dp, bottom = 2.dp)
+                        .size(22.dp),
             )
         }
+        // Text presentation of the gear (not the emoji). Books have their own settings (typography, page colours).
+        Text(
+            "⚙︎",
+            style = MaterialTheme.typography.titleMedium,
+            modifier =
+                Modifier
+                    .clickable(role = Role.Button, onClick = onSettings)
+                    .semantics { contentDescription = "Reader settings" }
+                    .padding(start = 16.dp, top = 4.dp, bottom = 4.dp),
+        )
     }
 }
 
