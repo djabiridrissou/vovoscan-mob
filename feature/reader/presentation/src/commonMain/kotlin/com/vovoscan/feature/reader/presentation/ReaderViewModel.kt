@@ -6,10 +6,14 @@ import com.vovoscan.core.common.AppResult
 import com.vovoscan.core.common.Freshness
 import com.vovoscan.core.common.StaleReason
 import com.vovoscan.core.common.userMessage
+import com.vovoscan.feature.reader.domain.BookPosition
+import com.vovoscan.feature.reader.domain.BookReadingRepository
 import com.vovoscan.feature.reader.domain.BookSection
+import com.vovoscan.feature.reader.domain.BookTypography
 import com.vovoscan.feature.reader.domain.ChapterHeading
 import com.vovoscan.feature.reader.domain.ChapterHeadings
 import com.vovoscan.feature.reader.domain.ComicFormat
+import com.vovoscan.feature.reader.domain.DownloadableChapter
 import com.vovoscan.feature.reader.domain.ReaderChapter
 import com.vovoscan.feature.reader.domain.ReaderPage
 import com.vovoscan.feature.reader.domain.ReaderPreferences
@@ -24,6 +28,8 @@ import com.vovoscan.feature.reader.domain.TapInvert
 import com.vovoscan.feature.reader.domain.TapLayout
 import com.vovoscan.feature.reader.domain.TapZoneMap
 import com.vovoscan.feature.reader.domain.TapZones
+import com.vovoscan.feature.reader.domain.TitleChapters
+import com.vovoscan.feature.reader.domain.TocEntry
 import com.vovoscan.feature.reader.domain.ZoneRect
 import com.vovoscan.feature.reader.domain.chapterLabel
 import kotlinx.coroutines.Job
@@ -32,6 +38,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
@@ -192,6 +199,8 @@ data class ReaderUiState(
     /** Never opened and no network: nothing to show. */
     val unavailable: Boolean = false,
     val error: String? = null,
+    /** Book: the page's settings, the contents, how to open the section on screen. */
+    val book: BookReaderState = BookReaderState(),
 ) {
     val isBook: Boolean get() = mode == ReadingMode.Book
 
@@ -425,12 +434,19 @@ class ReaderViewModel(
     private val repository: ReaderRepository,
     private val settings: ReaderSettingsRepository,
     private val headings: ChapterHeadings,
+    /** Book: typography and the position inside a section, on this device. */
+    private val books: BookReadingRepository = BookReadingRepository.InMemory(),
+    /** Book: the title's parts (its chapters), for the contents of a book in several parts. */
+    private val parts: TitleChapters = TitleChapters { _, _ -> flowOf(null) },
     private val progress: ReadingProgressSink,
 ) : ViewModel() {
     private val mutableState =
         MutableStateFlow(ReaderUiState(currentIndex = startPage.coerceAtLeast(0), sectionFromEnd = startPage == START_AT_END))
     val state: StateFlow<ReaderUiState> = mutableState.asStateFlow()
     private var saveJob: Job? = null
+
+    /** A page or section is waiting for the pause before it is saved. */
+    private var progressPending = false
     private var overlayJob: Job? = null
     private var bookStarted = false
     private var chapter: ReaderChapter? = null
@@ -461,6 +477,7 @@ class ReaderViewModel(
             .observeBook(sourceKey, chapterId)
             .onEach { book ->
                 if (book != null) {
+                    toc = book.toc
                     mutableState.update {
                         it.copy(
                             sections = book.sections,
@@ -468,9 +485,11 @@ class ReaderViewModel(
                             currentIndex = it.currentIndex.coerceIn(0, book.sections.lastIndex),
                         )
                     }
+                    updateContents()
                     loadSection(state.value.currentIndex)
                 }
             }.launchIn(viewModelScope)
+        books.observeTypography().onEach(::typographyChanged).launchIn(viewModelScope)
         refresh()
     }
 
@@ -538,6 +557,7 @@ class ReaderViewModel(
             is ReaderIntent.SetKeepAwake -> updatePreferences { it.copy(keepAwake = intent.enabled) }
             is ReaderIntent.SetVolumeKeys -> updatePreferences { it.copy(volumeKeys = intent.enabled) }
             is ReaderIntent.SetVolumeKeysInverted -> updatePreferences { it.copy(volumeKeysInverted = intent.inverted) }
+            is BookIntent -> onBookIntent(intent)
         }
     }
 
@@ -828,6 +848,7 @@ class ReaderViewModel(
     }
 
     private fun prepareBook() {
+        if (!partsStarted) observeParts()
         bookStarted = true
         mutableState.update { it.copy(preparingBook = it.sections.isEmpty()) }
         viewModelScope.launch {
@@ -848,12 +869,23 @@ class ReaderViewModel(
     private fun loadSection(index: Int) {
         viewModelScope.launch {
             val html = repository.sectionHtml(sourceKey, chapterId, index) ?: return@launch
-            val title =
-                state.value.sections
-                    .getOrNull(index)
-                    ?.title
-                    .orEmpty()
-            mutableState.update { if (it.currentIndex == index) it.copy(sectionDocument = BookStyle.document(title, html)) else it }
+            if (state.value.currentIndex != index) return@launch
+            sectionHtml = index to html
+            val opening = if (resumeChecked) null else resumeOpening(index)
+            mutableState.update {
+                if (it.currentIndex != index) return@update it
+                it.copy(
+                    sectionDocument = bookDocument(index, html),
+                    book =
+                        if (opening !=
+                            null
+                        ) {
+                            it.book.copy(opening = opening)
+                        } else {
+                            it.book
+                        },
+                )
+            }
         }
     }
 
@@ -897,22 +929,208 @@ class ReaderViewModel(
                 sectionFromEnd = it.isBook && fromEnd,
             )
         }
-        if (current.isBook) loadSection(index)
+        if (current.isBook) {
+            sectionMoved(index, fromEnd)
+            loadSection(index)
+        }
         saveJob?.cancel()
+        progressPending = true
         saveJob =
             viewModelScope.launch {
                 delay(SAVE_DELAY_MS)
+                progressPending = false
                 progress.save(sourceKey, titleId, chapterId, index)
             }
     }
 
     override fun onCleared() {
-        // When leaving the reader, the last page seen is saved without waiting for the pause to end.
-        if (saveJob?.isActive == true) {
-            saveJob?.cancel()
+        // When leaving the reader, the last page seen is saved without waiting for the pause to end. A flag, not the
+        // job: `viewModelScope` is already cancelled when `onCleared` runs, so the job never looked active here.
+        if (progressPending) {
+            progressPending = false
             progress.save(sourceKey, titleId, chapterId, state.value.currentIndex)
         }
+        // The same for the position inside a book's section.
+        if (positionPending) {
+            positionPending = false
+            books.savePosition(sourceKey, chapterId, BookPosition(state.value.currentIndex, sectionFraction))
+        }
         super.onCleared()
+    }
+
+    // Books: typography, the position inside the section, the contents.
+
+    private var typography = BookTypography()
+    private var systemTextScale = 1f
+    private var toc: List<TocEntry> = emptyList()
+    private var titleParts: List<DownloadableChapter> = emptyList()
+    private var partsStarted = false
+
+    /** The current section's HTML (sanitized, unstyled): styled again when the typography changes. */
+    private var sectionHtml: Pair<Int, String>? = null
+
+    /** Where the top of the screen is in the current section, as the native side last reported it. */
+    private var sectionFraction = 0f
+    private var resumeChecked = false
+    private var positionJob: Job? = null
+    private var positionPending = false
+    private var openingSeq = 0
+
+    private fun onBookIntent(intent: BookIntent) {
+        when (intent) {
+            is BookIntent.SystemTextScale ->
+                if (intent.scale > 0f && intent.scale != systemTextScale) {
+                    systemTextScale = intent.scale
+                    restyle()
+                }
+            BookIntent.TextSmaller -> updateTypography { it.smaller() }
+            BookIntent.TextBigger -> updateTypography { it.bigger() }
+            BookIntent.ResetTextSize -> updateTypography { it.copy(textPercent = BookTypography().textPercent) }
+            is BookIntent.SetLineSpacing -> updateTypography { it.copy(lineSpacing = intent.spacing) }
+            is BookIntent.SetMargins -> updateTypography { it.copy(margins = intent.margins) }
+            is BookIntent.SetFont -> updateTypography { it.copy(font = intent.font) }
+            is BookIntent.SetJustify -> updateTypography { it.copy(justify = intent.justify) }
+            is BookIntent.SetTheme -> updateTypography { it.copy(theme = intent.theme) }
+            is BookIntent.SectionScrolled -> sectionScrolled(intent.section, intent.fraction)
+            is BookIntent.ChooseContents -> chooseContents(intent.key)
+        }
+    }
+
+    private fun updateTypography(transform: (BookTypography) -> BookTypography) {
+        viewModelScope.launch { books.updateTypography(transform) }
+    }
+
+    private fun typographyChanged(next: BookTypography) {
+        val changed = next != typography
+        typography = next
+        mutableState.update {
+            it.copy(book = it.book.copy(settings = BookSettingsSheet.of(next), pageBackground = BookPalette.of(next.theme).background))
+        }
+        if (changed) restyle()
+    }
+
+    private fun bookDocument(
+        index: Int,
+        html: String,
+    ): String {
+        val title =
+            state.value.sections
+                .getOrNull(index)
+                ?.title
+                .orEmpty()
+        return BookStyle.document(title, html, typography, systemTextScale)
+    }
+
+    /** The section on screen set again (typography, the device's text size), kept where the reader was in it. */
+    private fun restyle() {
+        val (index, html) = sectionHtml ?: return
+        val current = state.value
+        if (!current.isBook || current.currentIndex != index || current.sectionDocument == null) return
+        mutableState.update {
+            it.copy(sectionDocument = bookDocument(index, html), book = it.book.copy(opening = opening(index, fraction = sectionFraction)))
+        }
+    }
+
+    /**
+     * The first section shown: its end when the reader came back from the next part, else where the reader was in it
+     * on this device, if it is the one the reader opens (the library's progress says which section).
+     */
+    private suspend fun resumeOpening(index: Int): SectionOpening? {
+        resumeChecked = true
+        if (state.value.sectionFromEnd) return opening(index, fromEnd = true)
+        val saved = books.position(sourceKey, chapterId)?.takeIf { it.section == index && it.fraction > 0f } ?: return null
+        sectionFraction = saved.fraction
+        return opening(index, fraction = saved.fraction)
+    }
+
+    private fun opening(
+        section: Int,
+        fraction: Float? = null,
+        anchor: String? = null,
+        fromEnd: Boolean = false,
+    ): SectionOpening {
+        openingSeq += 1
+        return SectionOpening(openingSeq, section, fraction, anchor, fromEnd)
+    }
+
+    /** Another section: it opens at its top (or its end going back), and that is where the reader now is. */
+    private fun sectionMoved(
+        index: Int,
+        fromEnd: Boolean,
+    ) {
+        resumeChecked = true
+        sectionHtml = null
+        mutableState.update { it.copy(book = it.book.copy(opening = opening(index, fromEnd = fromEnd))) }
+        updateContents()
+        // Its end is not known before it is laid out: the native side reports it once there.
+        sectionScrolled(index, 0f)
+    }
+
+    private fun sectionScrolled(
+        section: Int,
+        fraction: Float,
+    ) {
+        val current = state.value
+        if (!current.isBook || section != current.currentIndex || fraction.isNaN()) return
+        sectionFraction = fraction.coerceIn(0f, 1f)
+        positionJob?.cancel()
+        positionPending = true
+        positionJob =
+            viewModelScope.launch {
+                delay(POSITION_DELAY_MS)
+                positionPending = false
+                books.savePosition(sourceKey, chapterId, BookPosition(section, sectionFraction))
+            }
+    }
+
+    private fun chooseContents(key: String) {
+        when (val target = BookContents.target(key, toc)) {
+            is BookContents.Target.Part -> if (target.chapterId != chapterId) command { ReaderCommand.OpenChapter(it, target.chapterId, 0) }
+            is BookContents.Target.Section -> {
+                val current = state.value
+                if (target.index !in current.sections.indices) return
+                if (target.index != current.currentIndex) moveTo(target.index)
+                // Its top, or the entry's element inside it: applied once the section is there.
+                mutableState.update {
+                    it.copy(
+                        book =
+                            it.book.copy(
+                                opening =
+                                    opening(
+                                        target.index,
+                                        fraction =
+                                            if (target.anchor ==
+                                                null
+                                            ) {
+                                                0f
+                                            } else {
+                                                null
+                                            },
+                                        anchor = target.anchor,
+                                    ),
+                            ),
+                    )
+                }
+                if (target.anchor == null) sectionScrolled(target.index, 0f)
+            }
+            null -> Unit
+        }
+    }
+
+    private fun observeParts() {
+        partsStarted = true
+        parts
+            .observe(sourceKey, titleId)
+            .onEach { title ->
+                titleParts = title?.takeIf { it.isBook }?.chapters.orEmpty()
+                updateContents()
+            }.launchIn(viewModelScope)
+    }
+
+    private fun updateContents() {
+        mutableState.update {
+            it.copy(book = it.book.copy(contents = BookContents.rows(it.sections, toc, it.currentIndex, chapterId, titleParts)))
+        }
     }
 
     companion object {
@@ -920,6 +1138,9 @@ class ReaderViewModel(
         const val START_AT_END = Int.MAX_VALUE
 
         private const val SAVE_DELAY_MS = 800L
+
+        /** Book: the position inside the section is saved once scrolling has paused this long. */
+        const val POSITION_DELAY_MS = 1000L
         const val OVERLAY_MS = 1500L
     }
 }

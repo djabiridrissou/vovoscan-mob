@@ -11,10 +11,18 @@ import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.random.Random
 
-/** A book section, ready to display: title and sanitized HTML (images inlined). */
+/** A book section, ready to display: title and sanitized HTML (images inlined), and the contents entries in it. */
 data class ParsedSection(
     val title: String,
     val html: String,
+    val toc: List<ParsedTocEntry> = emptyList(),
+)
+
+/** A table-of-contents entry inside a section: [anchor] is the element's id (kept in the HTML), null for its start. */
+data class ParsedTocEntry(
+    val title: String,
+    val depth: Int,
+    val anchor: String?,
 )
 
 class InvalidEpub(
@@ -35,6 +43,8 @@ class EpubParser(
             .relaxed()
             .addTags("section", "article", "figure", "figcaption", "aside", "hr", "small", "sup", "sub")
             .addProtocols("img", "src", "data")
+            // Ids stay: a contents entry inside a section (a Gutenberg file holds several chapters) points at one.
+            .addAttributes(":all", "id")
 
     /**
      * `checkpoint` runs before each section: a big book takes seconds to read, and the download queue must be able to
@@ -66,16 +76,24 @@ class EpubParser(
                     .mapNotNull { items[it.attr("idref")] }
                     .filter { it.attr("media-type").contains("html") }
             if (spine.isEmpty()) throw InvalidEpub("EPUB without readable sections.")
-            val titles = tableOfContents(opf, items, base, ::text)
+            val toc = tableOfContents(opf, items, base, ::text)
+            val titles = toc.filter { it.linked }.map { it.path to it.title }.firstPerFile()
             return spine.mapIndexed { index, item ->
                 checkpoint()
                 val path = resolve(base, item.attr("href"))
                 val document = Ksoup.parse(text(path).orEmpty())
                 inlineImages(document, path.substringBeforeLast('/', ""), ::binary)
+                val cleaned = clean(document)
+                // An anchor the section doesn't hold (any more) opens the section at its start.
+                val ids = cleaned.select("[id]").map { it.id() }.toSet()
                 ParsedSection(
                     title =
                         titles[path] ?: document.selectFirst("h1, h2, title")?.text()?.takeIf { it.isNotBlank() } ?: "Section ${index + 1}",
-                    html = clean(document),
+                    html = cleaned.body().html(),
+                    toc =
+                        toc
+                            .filter { it.path == path && it.title.isNotBlank() }
+                            .map { ParsedTocEntry(it.title, it.depth, it.anchor?.takeIf { anchor -> anchor in ids }) },
                 )
             }
         } finally {
@@ -83,46 +101,70 @@ class EpubParser(
         }
     }
 
-    /** Titles by section path: EPUB 3 nav, otherwise EPUB 2 NCX. */
+    /** A contents entry as the book lists it: the file and the anchor it opens, how deep it is nested. */
+    private class RawTocEntry(
+        val path: String,
+        val anchor: String?,
+        val title: String,
+        val depth: Int,
+        /** Its own link (else a label whose target is its first nested entry's). */
+        val linked: Boolean,
+    )
+
+    /** The table of contents in reading order, nested: EPUB 3 nav, otherwise EPUB 2 NCX. */
     private fun tableOfContents(
         opf: Document,
         items: Map<String, com.fleeksoft.ksoup.nodes.Element>,
         base: String,
         text: (String) -> String?,
-    ): Map<String, String> {
+    ): List<RawTocEntry> {
         items.values.firstOrNull { "nav" in it.attr("properties").split(" ") }?.let { nav ->
             val navPath = resolve(base, nav.attr("href"))
             val document = Ksoup.parse(text(navPath).orEmpty())
-            val toc = document.select("nav").firstOrNull { it.attr("epub:type") == "toc" } ?: document.selectFirst("nav")
+            val toc =
+                document.select("nav").firstOrNull { it.attr("epub:type") == "toc" } ?: document.selectFirst("nav") ?: return emptyList()
             val navDir = navPath.substringBeforeLast('/', "")
-            return toc
-                ?.select("a")
-                ?.map { resolve(navDir, it.attr("href").substringBefore('#')) to it.text().trim() }
-                .orEmpty()
-                .firstPerFile()
+            return toc.select("li").mapNotNull { li ->
+                // The entry's label (a link, or a heading such as a span) comes before its nested list.
+                val label = li.children().firstOrNull { it.normalName() != "ol" && it.normalName() != "ul" }
+                val own = label?.let { if (it.normalName() == "a") it else it.selectFirst("a[href]") }
+                val href = (own ?: li.selectFirst("a[href]"))?.attr("href")?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+                RawTocEntry(
+                    path = resolve(navDir, href.substringBefore('#')),
+                    anchor = href.substringAfter('#', "").takeIf { it.isNotBlank() },
+                    title = label?.text()?.trim().orEmpty(),
+                    depth = li.parents().takeWhile { it != toc }.count { it.normalName() == "li" },
+                    linked = own != null,
+                )
+            }
         }
         val ncxId = opf.selectFirst("spine")?.attr("toc").orEmpty()
-        val ncx = items[ncxId] ?: items.values.firstOrNull { it.attr("media-type") == "application/x-dtbncx+xml" } ?: return emptyMap()
+        val ncx = items[ncxId] ?: items.values.firstOrNull { it.attr("media-type") == "application/x-dtbncx+xml" } ?: return emptyList()
         val ncxPath = resolve(base, ncx.attr("href"))
         val document = Ksoup.parseXml(text(ncxPath).orEmpty())
         val ncxDir = ncxPath.substringBeforeLast('/', "")
-        return document
-            .select("navPoint")
-            .map { point ->
-                resolve(
-                    ncxDir,
+        return document.select("navPoint").map { point ->
+            val src =
+                point
+                    .children()
+                    .firstOrNull { it.normalName() == "content" }
+                    ?.attr("src")
+                    .orEmpty()
+            RawTocEntry(
+                path = resolve(ncxDir, src.substringBefore('#')),
+                anchor = src.substringAfter('#', "").takeIf { it.isNotBlank() },
+                title =
                     point
-                        .selectFirst("content")
-                        ?.attr("src")
-                        .orEmpty()
-                        .substringBefore('#'),
-                ) to
-                    point
-                        .selectFirst("navLabel text")
+                        .children()
+                        .firstOrNull { it.normalName() == "navlabel" }
+                        ?.selectFirst("text")
                         ?.text()
                         ?.trim()
-                        .orEmpty()
-            }.firstPerFile()
+                        .orEmpty(),
+                depth = point.parents().count { it.normalName() == "navpoint" },
+                linked = true,
+            )
+        }
     }
 
     /**
@@ -150,11 +192,11 @@ class EpubParser(
         }
     }
 
-    private fun clean(document: Document): String {
+    private fun clean(document: Document): Document {
         val cleaned = Ksoup.parse(Ksoup.clean(document.body().html(), safelist))
         // No navigation out of a book: links stay plain text.
         cleaned.select("a[href]").forEach { it.removeAttr("href") }
-        return cleaned.body().html()
+        return cleaned
     }
 
     private fun imageType(src: String): String? =

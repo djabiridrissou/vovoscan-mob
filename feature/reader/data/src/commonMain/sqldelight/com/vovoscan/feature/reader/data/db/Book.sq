@@ -1,0 +1,48 @@
+-- Books (EPUB): what the reader keeps besides the sections (Reader.sq), on this device only.
+
+-- A book's table of contents (nav or NCX), in reading order: how deep each entry is nested, the section it opens and
+-- the element it points at inside it (anchor: an id kept in the section's HTML; null for the section's start).
+CREATE TABLE book_toc (
+    chapter_key TEXT NOT NULL,
+    entry_index INTEGER NOT NULL,
+    section_index INTEGER NOT NULL,
+    depth INTEGER NOT NULL,
+    title TEXT NOT NULL,
+    anchor TEXT,
+    PRIMARY KEY (chapter_key, entry_index)
+);
+
+-- Where the reader was inside a book: the section, and the fraction of its height at the top of the screen.
+-- Device only: the library's progress counts sections.
+CREATE TABLE book_position (
+    chapter_key TEXT NOT NULL PRIMARY KEY,
+    section_index INTEGER NOT NULL,
+    fraction REAL NOT NULL
+);
+
+toc:
+SELECT section_index, depth, title, anchor FROM book_toc WHERE chapter_key = ? ORDER BY entry_index;
+
+putTocEntry:
+INSERT OR REPLACE INTO book_toc (chapter_key, entry_index, section_index, depth, title, anchor) VALUES (?, ?, ?, ?, ?, ?);
+
+deleteToc:
+DELETE FROM book_toc WHERE chapter_key = ?;
+
+clearToc:
+DELETE FROM book_toc;
+
+clearTocOf:
+DELETE FROM book_toc WHERE chapter_key IN (SELECT chapter_key FROM reader_chapter WHERE source_key = ?);
+
+position:
+SELECT section_index, fraction FROM book_position WHERE chapter_key = ?;
+
+putPosition:
+INSERT OR REPLACE INTO book_position (chapter_key, section_index, fraction) VALUES (?, ?, ?);
+
+clearPositions:
+DELETE FROM book_position;
+
+clearPositionsOf:
+DELETE FROM book_position WHERE chapter_key IN (SELECT chapter_key FROM reader_chapter WHERE source_key = ?);
