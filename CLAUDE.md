@@ -701,7 +701,7 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   The same wallet feeds the balance chip (`WalletUiState.badge`, iOS `CreditChip` in `Components.swift`, Android
   `ui/common/CreditChip.kt`) on the title page, the episode card, both language pickers and the language dock (reader
   and player); red when empty. Quotes carry the balance (`TranslationQuote.balance`, `RunCost.balance`): short of the
-  price, the offer says what it costs and what is held ("About 12 credits, you have 3.") with "Add a key"; every quote,
+  price, the offer says what it costs and what is held ("About 12 credits, you have 3.") with "Add a key" (an unfundable quote priced 0, a server that leaves the price out, shows the balance alone: "You have 0 credits: not enough…"); every quote,
   run asked, run finished or credit refusal reads the wallet again (`changed()` on the quote ports), so every chip moves.
 - The creator studio is web only: Settings links to `WEB_BASE_URL` + `contribute` (`project.yml`), "Creator studio"
   for creators, "Publish your own series" otherwise. The apps never upload, translate or schedule releases.
@@ -883,7 +883,7 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   the eight slot colours of the web, host ringed red with a star, away dashed; the host's menu on a stamp: hand over, remove;
   follow / on your own, Gather for the host, Wait for a reader, the log, eight stickers from the margin, a line), the rail
   (each reader's share of the chapter, a tap goes there), bursts (1.6 s, 6 at most then "×n"), balloons (5 s) and one
-  toast at a time (4 s, 8 s with an action). Followers glide only to a newer `positionSeq`; their own gesture
+  toast at a time (4 s, 8 s with an action). The dock steps aside while a language's offer or progress is docked, so its buttons are never under it; the rail takes taps only with the bars. Followers glide only to a newer `positionSeq`; their own gesture
   (`ReaderUiState.userMoves`: taps, swipes, a strip drag, a section change, never a glide the reader played) lets go.
   Places sent: the host every 300 ms (trailing), a reader on their own every second, a follower never. A circle moved
   on: a follower's reader opens that chapter (`TogetherCommand.OpenChapter`), others get "Go".

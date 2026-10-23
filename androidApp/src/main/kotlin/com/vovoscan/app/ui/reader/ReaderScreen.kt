@@ -512,7 +512,9 @@ fun ReaderScreen(
                 sendTogether,
                 Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = if (barsShown) 56.dp else 8.dp),
             )
-            if (barsShown || togetherState.typing || togetherState.collapsed) {
+            // A language's offer or progress owns the bottom: the circle's dock steps aside, so "Translate" and "Add a
+            // key" are never under it, and comes back when that dock closes.
+            if (translationState.dock == null && (barsShown || togetherState.typing || togetherState.collapsed)) {
                 TogetherDock(
                     togetherState,
                     sendTogether,

@@ -197,7 +197,9 @@ struct ReaderView: View {
         TogetherToast(together: together)
             .padding(.top, model.state.chromeVisible ? 64 : 8)
             .zIndex(0.65)
-        if model.state.chromeVisible || model.state.isBook || state.typing || state.collapsed {
+        // A language's offer or progress owns the bottom: the circle's dock steps aside, so "Translate" and "Add a key"
+        // are never under it, and comes back when that dock closes.
+        if translation.state.dock == nil && (model.state.chromeVisible || model.state.isBook || state.typing || state.collapsed) {
             TogetherDock(together: together)
                 .frame(maxHeight: .infinity, alignment: .bottom)
                 .padding(.bottom, (model.state.chromeVisible || model.state.isBook ? bottomBarHeight : 0) + 8)

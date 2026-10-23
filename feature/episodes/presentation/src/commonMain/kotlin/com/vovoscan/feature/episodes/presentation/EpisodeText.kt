@@ -139,6 +139,9 @@ object EpisodeText {
             cost.alreadyAvailable -> t("episode.costAlreadyMade")
             cost.coveredByOwnKeys -> t("episode.costOwnKeys")
             !cost.meteredRun -> null
+            // A price of 0 on an unfundable quote is no price (a server that leaves it out): the balance and what to do.
+            !cost.fundable && cost.maxCredits <= 0 ->
+                cost.balance?.let { t("episode.costShortNoPrice", "balance" to it) } ?: t("episode.noCredits")
             !cost.fundable ->
                 cost.balance?.let { t("episode.costShortBalance", "count" to cost.maxCredits, "balance" to it) }
                     ?: t("episode.costShort", "count" to cost.maxCredits)

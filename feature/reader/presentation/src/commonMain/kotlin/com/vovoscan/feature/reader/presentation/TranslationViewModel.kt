@@ -333,8 +333,14 @@ class TranslationViewModel(
                                         quote.coveredByOwnKeys -> t("translation.offer.ownKeys")
                                         quote.fundable -> t("translation.offer.credits", "credits" to quote.credits)
                                         else ->
+                                            // A price of 0 on an unfundable quote is no price (a server that leaves it out):
+                                            // the balance and what to do, never "needs about 0 credits".
                                             quote.balance?.let { balance ->
-                                                t("translation.offer.shortBalance", "credits" to quote.maxCredits, "balance" to balance)
+                                                if (quote.maxCredits <= 0) {
+                                                    t("translation.offer.shortNoPrice", "balance" to balance)
+                                                } else {
+                                                    t("translation.offer.shortBalance", "credits" to quote.maxCredits, "balance" to balance)
+                                                }
                                             } ?: t("translation.offer.short")
                                     },
                                 canTranslate = quote.fundable || quote.coveredByOwnKeys,

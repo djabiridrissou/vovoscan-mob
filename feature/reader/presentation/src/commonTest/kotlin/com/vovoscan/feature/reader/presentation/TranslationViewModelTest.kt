@@ -434,6 +434,23 @@ class TranslationViewModelTest {
         }
 
     @Test
+    fun anUnfundableQuoteWithNoPriceShowsTheBalanceNeverZeroCredits() =
+        runTest(dispatcher) {
+            val repo = FakeTranslations()
+            val quotes = TranslationQuotes { _, _ -> TranslationQuote(0, 0, false, false, fundable = false, balance = 0) }
+            val vm = TranslationViewModel("vovoscan", "c1", repo, quotes)
+            advanceUntilIdle()
+            vm.onIntent(TranslationIntent.Choose("yo"))
+            advanceUntilIdle()
+            val dock = assertNotNull(vm.state.value.dock)
+            assertEquals(
+                "You have 0 credits: not enough for this one. Add your own Anthropic key (no credits needed), or ask the owner for a top-up.",
+                dock.line,
+            )
+            assertEquals("Add a key", dock.addKeyLabel)
+        }
+
+    @Test
     fun aRunAskedForAndFinishedReadsTheWalletAgain() =
         runTest(dispatcher) {
             val repo = FakeTranslations()

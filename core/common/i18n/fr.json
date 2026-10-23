@@ -960,5 +960,7 @@
   "translation.offer.shortBalance": "Celle-ci demande environ {credits, plural, one {# crédit} other {# crédits}} et vous avez {balance, plural, one {# crédit} other {# crédits}}. Ajoutez votre propre clé Anthropic (sans crédits), ou demandez une recharge au propriétaire.",
   "episode.readyFree": "Prêt ✦ gratuit",
   "episode.costShortBalance": "Crédits insuffisants : cette préparation demande {count, plural, one {# crédit} other {# crédits}} et vous avez {balance, plural, one {# crédit} other {# crédits}}. Ajoutez vos propres clés (sans crédits), ou demandez une recharge au propriétaire.",
-  "wallet.badgeA11y": "Vos crédits : {balance}"
+  "wallet.badgeA11y": "Vos crédits : {balance}",
+  "translation.offer.shortNoPrice": "Vous avez {balance, plural, one {# crédit} other {# crédits}} : pas assez pour celle-ci. Ajoutez votre propre clé Anthropic (sans crédits), ou demandez une recharge au propriétaire.",
+  "episode.costShortNoPrice": "Vous avez {balance, plural, one {# crédit} other {# crédits}} : pas assez pour cette préparation. Ajoutez vos propres clés (sans crédits), ou demandez une recharge au propriétaire."
 }
