@@ -46,7 +46,7 @@ struct ColdOpen: View {
                 Panel(slant: 0.06) {
                     ZStack {
                         HalftoneBackground(color: .brandInk, spacing: 9, maxOpacity: 0.5)
-                        Text("ゴゴゴ").font(.brandDisplay(40)).foregroundStyle(Color.brandInk).rotationEffect(.degrees(-8))
+                        Text("GRRR").font(.brandDisplay(40)).foregroundStyle(Color.brandInk).rotationEffect(.degrees(-8))
                     }
                 }
                 .frame(width: w, height: h * 0.42)
@@ -78,7 +78,7 @@ struct ColdOpen: View {
                     .scaleEffect(beat >= 4 ? 1 : 2.4)
                     .opacity(beat >= 4 ? 1 : 0)
                     .offset(x: w - 70, y: -22)
-                Onomatopoeia(text: "ドン!", size: 34, color: .brandYellow)
+                Onomatopoeia(text: "BOOM!", size: 34, color: .brandYellow)
                     .opacity(beat >= 5 ? 1 : 0)
                     .scaleEffect(beat >= 5 ? 1 : 0.4)
                     .offset(x: 6, y: h * 0.36)

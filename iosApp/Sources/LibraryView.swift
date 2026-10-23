@@ -20,13 +20,13 @@ struct LibraryView: View {
                 if model.state.empty {
                     if sources.state.needsSource {
                         EmptyStateCard(
-                            sfx: "パラ",
+                            sfx: "FLIP",
                             title: sources.state.firstSourceTitle,
                             message: sources.state.firstSourceMessage,
                             actionLabel: sources.state.firstSourceAction
                         ) { openTab(.sources) }
                     } else {
-                        EmptyStateCard(sfx: "パラ", title: model.state.emptyMessage, message: L("library.emptyMessage"),
+                        EmptyStateCard(sfx: "FLIP", title: model.state.emptyMessage, message: L("library.emptyMessage"),
                                        actionLabel: L("library.browse")) { openTab(.catalog) }
                     }
                 }
