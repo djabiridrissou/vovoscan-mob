@@ -370,10 +370,6 @@ private struct Leaderboard: View {
     }
 }
 
-extension Array {
-    subscript(safe index: Int) -> Element? { indices.contains(index) ? self[index] : nil }
-}
-
 // MARK: - A group's settings
 
 struct GroupAdminView: View {

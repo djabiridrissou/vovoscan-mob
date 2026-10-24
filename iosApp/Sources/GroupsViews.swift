@@ -88,13 +88,13 @@ struct GroupsView: View {
                     .buttonStyle(PrimaryButtonStyle())
                     .padding(.bottom, 6)
                 if state.discovering {
-                    SectionTitle(text: L("groups.mine"))
+                    GroupSectionTitle(text: L("groups.mine"))
                     if !state.loading && state.mine.isEmpty {
                         Text(state.emptyMine).font(.brandBody(14)).foregroundStyle(Color.brandMuted)
                     }
                     ForEach(state.mine, id: \.id) { row in card(row) }
                 }
-                SectionTitle(text: state.resultsTitle)
+                GroupSectionTitle(text: state.resultsTitle)
                 ForEach(state.results, id: \.id) { row in card(row) }
                 if let empty = state.emptyResults { Text(empty).font(.brandBody(14)).foregroundStyle(Color.brandMuted) }
                 if state.searching {
@@ -131,7 +131,7 @@ struct GroupsView: View {
     }
 }
 
-struct SectionTitle: View {
+struct GroupSectionTitle: View {
     let text: String
     var body: some View {
         Text(text.uppercased()).font(.brandBody(11, weight: .bold)).tracking(1.2).foregroundStyle(Color.brandMuted).padding(.top, 10)
