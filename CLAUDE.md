@@ -608,7 +608,8 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   what it serves; the device applies the same rule to titles read on the device: `RulesSource` reads
   `catalog.item.contentRating` (mapped by the manifest's `ratings.map`, a value off the scale and unmapped = unknown;
   nothing read = `ratings.default`), stored in `title.content_rating` (catalog `3.sqm`), and `CatalogViewModel` filters
-  listings and search through the `ContentPolicy` port (wired in `shared` to the session; signed out = safe) with one
+  listings and search (`TitleSummary.shownIn`: the internal source's unrated titles pass, its API having filtered them; a
+  rated one still follows the rule) through the `ContentPolicy` port (wired in `shared` to the session; signed out = safe) with one
   line when titles were hidden (`safeNote`). A manifest without ratings has every title unknown, so hidden in safe mode.
 - `video` gates episodes: the `EpisodeAccess` port (episodes domain, wired in `shared` to the session) turns the
   episode card into "Episodes are coming soon." with no action (`EpisodeUiState.comingSoon`); a server answer

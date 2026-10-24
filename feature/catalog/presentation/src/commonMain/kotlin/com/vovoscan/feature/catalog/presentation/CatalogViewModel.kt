@@ -3,7 +3,6 @@ package com.vovoscan.feature.catalog.presentation
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.vovoscan.core.common.AppResult
-import com.vovoscan.core.common.ContentRating
 import com.vovoscan.core.common.Freshness
 import com.vovoscan.core.common.StaleReason
 import com.vovoscan.core.common.i18n.t
@@ -362,7 +361,7 @@ class CatalogViewModel(
             mergedListings(nextReadings)
                 .combine(content.showAdult()) { titles, adult -> titles to adult }
                 .onEach { (titles, adult) ->
-                    val shown = titles.filter { t -> ContentRating.shown(t.contentRating, adult) }
+                    val shown = titles.filter { t -> t.shownIn(adult) }
                     hiddenInListing = shown.size < titles.size
                     mutableState.update {
                         it.copy(cards = shown.map { t -> card(t, names) }, safeNote = safeNote(hiddenInListing))
@@ -443,7 +442,7 @@ class CatalogViewModel(
                             async { repository.search(reading.source.key, query.trim(), reading.categoryId) }
                         }.awaitAll()
                 val all = CatalogMerge.mix(found.map { it.titles }, Random(seed.value))
-                val titles = all.filter { t -> ContentRating.shown(t.contentRating, showAdult) }
+                val titles = all.filter { t -> t.shownIn(showAdult) }
                 mutableState.update {
                     it.copy(
                         results = titles.map { t -> card(t, names) },

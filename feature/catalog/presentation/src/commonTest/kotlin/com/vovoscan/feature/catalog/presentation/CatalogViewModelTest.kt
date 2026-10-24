@@ -135,6 +135,30 @@ class CatalogViewModelTest {
         }
 
     @Test
+    fun safeModeLeavesTheInternalSourceToTheServer() =
+        runTest(dispatcher) {
+            val repository =
+                FakeCatalog().apply {
+                    remote["vovoscan" to null] =
+                        listOf(
+                            listOf(
+                                title("vovoscan", "unrated"),
+                                title("vovoscan", "suggestive").copy(contentRating = ContentRating.Suggestive),
+                            ),
+                        )
+                    remote["gutenberg" to null] = listOf(listOf(title("gutenberg", "plugin-unrated")))
+                }
+            val vm = CatalogViewModel(repository) { MutableStateFlow(false) }
+            vm.onIntent(CatalogIntent.SourcesChanged(listOf(vovoscan, gutenberg)))
+            advanceUntilIdle()
+            // The API filtered its own titles: an unrated one stays, a rated one still follows the rule.
+            assertEquals(listOf("unrated"), ids(vm))
+            vm.onIntent(CatalogIntent.Query("unrated"))
+            advanceUntilIdle()
+            assertEquals(listOf("unrated"), ids(vm))
+        }
+
+    @Test
     fun pickingSourcesNarrowsTheGridAndIsRemembered() =
         runTest(dispatcher) {
             val repository = twoSources()
