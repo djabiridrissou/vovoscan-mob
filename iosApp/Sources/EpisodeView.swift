@@ -9,6 +9,10 @@ struct EpisodeRoute: Hashable {
     let title: TitleDetailUiState
     /// The episode's language when the card opens: "" = the original; the next chapter keeps the one just watched.
     var language: String = ""
+    /// The chapter's source and title (default: the title page's). A source read on the device has its pages brought to
+    /// the server first; the card then plays that copy.
+    var sourceKey: String? = nil
+    var titleId: String? = nil
 }
 
 /// "Next chapter →" at the end of the player swaps the card for the next chapter's, like the reader does.
@@ -16,7 +20,9 @@ struct EpisodeContainer: View {
     @State var route: EpisodeRoute
 
     var body: some View {
-        EpisodeView(route: route) { route = EpisodeRoute(chapterId: $0, title: route.title, language: $1) }
+        EpisodeView(route: route) {
+            route = EpisodeRoute(chapterId: $0, title: route.title, language: $1, sourceKey: route.sourceKey, titleId: route.titleId)
+        }
             .id(route.chapterId)
     }
 }
@@ -35,7 +41,14 @@ struct EpisodeView: View {
     init(route: EpisodeRoute, onOpenChapter: @escaping (String, String) -> Void) {
         self.route = route
         self.onOpenChapter = onOpenChapter
-        _model = StateObject(wrappedValue: EpisodeModel(chapterId: route.chapterId, language: route.language))
+        _model = StateObject(
+            wrappedValue: EpisodeModel(
+                chapterId: route.chapterId,
+                language: route.language,
+                sourceKey: route.sourceKey ?? route.title.sourceKey,
+                titleId: route.titleId ?? route.title.titleId
+            )
+        )
     }
 
     var body: some View {
@@ -116,8 +129,9 @@ struct EpisodeView: View {
 
             if state.canWatch {
                 Button(state.watchLabel) {
+                    // Our chapter id: a source's chapter plays its copy on the server.
                     player = PlayerRoute(
-                        chapterId: route.chapterId,
+                        chapterId: state.chapterId,
                         nextChapterId: route.title.nextChapterId(chapterId: route.chapterId),
                         language: state.language
                     )

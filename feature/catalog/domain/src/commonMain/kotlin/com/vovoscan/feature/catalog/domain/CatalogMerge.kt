@@ -51,6 +51,8 @@ data class CategoryOption(
     val name: String,
     /** Source key → that source's category id, in the reader's order of sources. */
     val ids: Map<String, String>,
+    /** The title format it stands for: a source without the category shows its titles of that format under it. */
+    val format: ReadingFormat? = null,
 )
 
 object CategoryUnion {
@@ -62,6 +64,7 @@ object CategoryUnion {
     fun of(categories: List<Pair<String, List<SourceCategory>>>): List<CategoryOption> {
         val names = linkedMapOf<String, String>()
         val ids = mutableMapOf<String, LinkedHashMap<String, String>>()
+        val formats = mutableMapOf<String, ReadingFormat>()
         for ((sourceKey, list) in categories) {
             for (category in list) {
                 val name = category.name.trim()
@@ -69,9 +72,10 @@ object CategoryUnion {
                 val key = name.lowercase()
                 names.getOrPut(key) { name }
                 ids.getOrPut(key) { linkedMapOf() }.getOrPut(sourceKey) { category.id }
+                category.format?.let { formats.getOrPut(key) { it } }
             }
         }
-        return names.map { (key, name) -> CategoryOption(name, ids.getValue(key)) }
+        return names.map { (key, name) -> CategoryOption(name, ids.getValue(key), formats[key]) }
     }
 
     /** The option of that name (case-insensitive), if the selected sources have it. */

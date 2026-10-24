@@ -4,7 +4,10 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.vovoscan.core.common.AppError
 import com.vovoscan.core.common.AppResult
+import com.vovoscan.core.common.ChapterImports
 import com.vovoscan.core.common.Language
+import com.vovoscan.core.common.SourceUnit
+import com.vovoscan.core.common.bringIn
 import com.vovoscan.core.common.i18n.t
 import com.vovoscan.core.common.userMessage
 import com.vovoscan.feature.reader.domain.ChapterTranslation
@@ -73,8 +76,25 @@ data class TranslationDock(
     val failed: Boolean,
 )
 
+/**
+ * A chapter of a source read on the device, translated on the server's copy of it (its pages copied there, strips cut
+ * into reader pages): the reader opens that copy, in [language], at [startPage] (the same share of the chapter).
+ */
+data class TranslatedCopy(
+    val titleId: String,
+    val chapterId: String,
+    val language: String,
+    val pageCount: Int,
+) {
+    /** The copy's page at the same share of the chapter as [page] of [pages] on the device. */
+    fun startPage(
+        page: Int,
+        pages: Int,
+    ): Int = if (pages <= 1 || pageCount <= 1) 0 else (page.toLong() * pageCount / pages).toInt().coerceIn(0, pageCount - 1)
+}
+
 data class TranslationUiState(
-    /** Translations exist for chapters of our catalog only: elsewhere the reader shows no language button. */
+    /** Every comic chapter can be translated: ours as they are, a source's once its pages are on the server. */
     val available: Boolean = false,
     val selected: String? = null,
     /** The reader's language button: "Original", "Français". */
@@ -98,6 +118,8 @@ data class TranslationUiState(
     val shown: String? = null,
     /** 0..1 while the selected language is made; null when unknown. */
     val progress: Float? = null,
+    /** Open this copy now (then send [TranslationIntent.CopyOpened]): a source's chapter, translated. */
+    val openCopy: TranslatedCopy? = null,
 ) {
     /** The panel over the reader; null when the page shows what was asked. */
     val dock: TranslationDock?
@@ -177,6 +199,9 @@ sealed interface TranslationIntent {
 
     /** The dock's "Not now" / "Cancel" / "Close": back to the lettering on the page, whatever the dock showed. */
     data object CloseDock : TranslationIntent
+
+    /** The screen opened [TranslationUiState.openCopy]. */
+    data object CopyOpened : TranslationIntent
 }
 
 /**
@@ -185,12 +210,22 @@ sealed interface TranslationIntent {
  * laid over each page (`LetteringLayout`, the web reader's rules). Online only.
  */
 class TranslationViewModel(
-    private val sourceKey: String,
-    private val chapterId: String,
+    sourceKey: String,
+    chapterId: String,
     private val repository: TranslationsRepository,
     private val quotes: TranslationQuotes = TranslationQuotes.None,
+    titleId: String = "",
+    private val imports: ChapterImports = ChapterImports.None,
+    /** Opened in this language (a source's chapter translated, reopened on its copy): shown at once when ready. */
+    initialLanguage: String? = null,
 ) : ViewModel() {
-    private val mutableState = MutableStateFlow(TranslationUiState(available = sourceKey == INTERNAL_SOURCE))
+    /** A chapter of a source read on the device: translated on its copy on the server. Null for our own. */
+    private val unit = SourceUnit(sourceKey, titleId, chapterId).takeUnless { it.internal }
+
+    /** Our chapter id: the chapter's own, or its server copy's once brought in ("" until then). */
+    private var chapterId = if (unit == null) chapterId else ""
+    private var copy: TranslatedCopy? = null
+    private val mutableState = MutableStateFlow(TranslationUiState(available = sourceKey.isNotEmpty()))
     val state: StateFlow<TranslationUiState> = mutableState.asStateFlow()
     private var known: Map<String, ChapterTranslation> = emptyMap()
     private var job: Job? = null
@@ -198,7 +233,10 @@ class TranslationViewModel(
     init {
         if (state.value.available) {
             render()
-            viewModelScope.launch { reloadLanguages() }
+            viewModelScope.launch {
+                reloadLanguages()
+                initialLanguage?.takeIf { known[it]?.status == TranslationStatus.Ready }?.let { choose(it) }
+            }
         }
     }
 
@@ -221,6 +259,7 @@ class TranslationViewModel(
             }
             TranslationIntent.DismissMessage -> mutableState.update { it.copy(notice = null, error = null) }
             TranslationIntent.CloseDock -> closeDock()
+            TranslationIntent.CopyOpened -> mutableState.update { it.copy(openCopy = null) }
         }
     }
 
@@ -256,6 +295,7 @@ class TranslationViewModel(
     private fun offerOrChoose(code: String?) {
         quoteJob?.cancel()
         mutableState.update { it.copy(offer = null, checking = null) }
+        if (code != null && Language.of(code) != null && chapterId.isEmpty()) return bringIn(code)
         if (code == null ||
             Language.of(code) == null ||
             known[code]?.status == TranslationStatus.Ready ||
@@ -288,6 +328,33 @@ class TranslationViewModel(
                                 addKeyLabel = if (quote.coveredByOwnKeys) null else t("translation.offer.addKey"),
                             ),
                     )
+                }
+            }
+    }
+
+    /**
+     * A source's chapter, the first time a language is asked: its pages go to the server once (the dock shows it),
+     * then the language is quoted like any other. Nothing is paid before "Translate".
+     */
+    private fun bringIn(code: String) {
+        val unit = unit ?: return
+        mutableState.update { it.copy(checking = TranslationText.IMPORTING, error = null, notice = null) }
+        quoteJob =
+            viewModelScope.launch {
+                when (val result = imports.bringIn(unit)) {
+                    is AppResult.Err -> {
+                        mutableState.update { it.copy(checking = null) }
+                        failed(result.error)
+                    }
+                    is AppResult.Ok -> {
+                        val imported = result.value
+                        chapterId = imported.chapterId
+                        copy = TranslatedCopy(imported.titleId, imported.chapterId, code, imported.pageCount)
+                        reloadLanguages()
+                        // This job's work is done: the quote that follows is its own.
+                        quoteJob = null
+                        offerOrChoose(code)
+                    }
                 }
             }
     }
@@ -327,6 +394,19 @@ class TranslationViewModel(
                     }
                     if (known[code]?.status == TranslationStatus.Failed) return@launch failed(null)
                 }
+                // A source's chapter: its lettering belongs to the copy's pages, so the reader opens the copy.
+                copy?.let { made ->
+                    mutableState.update {
+                        it.copy(
+                            working = false,
+                            progressLabel = null,
+                            progress = null,
+                            selected = it.shown,
+                            openCopy = made.copy(language = code),
+                        )
+                    }
+                    return@launch render()
+                }
                 when (val pages = repository.pages(chapterId, code)) {
                     is AppResult.Err -> failed(pages.error)
                     is AppResult.Ok -> {
@@ -360,6 +440,7 @@ class TranslationViewModel(
     }
 
     private suspend fun reloadLanguages() {
+        if (chapterId.isEmpty()) return
         val result = repository.languages(chapterId)
         if (result is AppResult.Ok) {
             known = result.value.associateBy { it.lang }
@@ -422,8 +503,6 @@ class TranslationViewModel(
     }
 
     companion object {
-        /** The only source whose chapters the server translates. */
-        const val INTERNAL_SOURCE = "vovoscan"
         private const val POLL_MS = 4_000L
     }
 }
@@ -434,6 +513,7 @@ private fun Language.matches(needle: String): Boolean =
 
 object TranslationText {
     val ORIGINAL: String get() = t("translation.original")
+    val IMPORTING: String get() = t("translation.importing")
     val READY: String get() = t("translation.ready")
     val QUEUED: String get() = t("translation.queued")
     val FAILED: String get() = t("translation.failed")

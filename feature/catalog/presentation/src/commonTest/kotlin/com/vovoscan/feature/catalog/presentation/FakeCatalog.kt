@@ -13,6 +13,7 @@ import com.vovoscan.feature.catalog.domain.TitleDetail
 import com.vovoscan.feature.catalog.domain.TitleSummary
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 
 fun title(
@@ -54,10 +55,32 @@ class FakeCatalog : CatalogRepository {
     var titleResult: AppResult<Unit> = AppResult.Ok(Unit)
     private val loadedPages = mutableMapOf<Pair<String, String?>, Int>()
 
+    /** What the server learned of titles read on the device ("<source>/<id>" → format), and what was asked of it. */
+    val serverFormats = mutableMapOf<String, ReadingFormat>()
+    val formatsAsked = mutableListOf<Pair<String, List<String>>>()
+    private val learned = MutableStateFlow<Map<String, ReadingFormat>>(emptyMap())
+
     override fun observeListing(
         sourceKey: String,
         categoryId: String?,
-    ): Flow<List<ListedTitle>> = saved.map { it[sourceKey to categoryId].orEmpty() }
+    ): Flow<List<ListedTitle>> =
+        saved.combine(learned) { all, known ->
+            all[sourceKey to categoryId].orEmpty().map { t ->
+                known["$sourceKey/${t.title.id}"]?.let { t.copy(title = t.title.copy(format = it)) } ?: t
+            }
+        }
+
+    override suspend fun learnFormats(
+        sourceKey: String,
+        ids: List<String>,
+    ): Map<String, ReadingFormat> {
+        val fresh = ids.filter { "$sourceKey/$it" !in learned.value && formatsAsked.none { (s, asked) -> s == sourceKey && it in asked } }
+        if (fresh.isNotEmpty()) {
+            formatsAsked += sourceKey to fresh
+            learned.value += fresh.mapNotNull { id -> serverFormats["$sourceKey/$id"]?.let { "$sourceKey/$id" to it } }
+        }
+        return ids.mapNotNull { id -> learned.value["$sourceKey/$id"]?.let { id to it } }.toMap()
+    }
 
     override suspend fun refreshListing(
         sourceKey: String,

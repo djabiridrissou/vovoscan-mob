@@ -10,6 +10,8 @@ struct ReaderRoute: Hashable {
     let titleId: String
     let chapterId: String
     let startPage: Int
+    /// A source's chapter reopened on its translated copy (our catalog) shows this language at once.
+    var language: String? = nil
 }
 
 struct ReaderContainer: View {
@@ -18,6 +20,8 @@ struct ReaderContainer: View {
     var body: some View {
         ReaderView(route: route) { chapterId, startPage in
             route = ReaderRoute(sourceKey: route.sourceKey, titleId: route.titleId, chapterId: chapterId, startPage: startPage)
+        } onOpenCopy: { copy in
+            route = copy
         }
         .id(route)
     }
@@ -38,17 +42,24 @@ struct ReaderView: View {
     /// The bottom bar's height: the language dock sits above it while the bars show.
     @State private var bottomBarHeight: CGFloat = 0
     @State private var player: PlayerRoute?
+    /// "Watch from here" on a source's chapter: its card first (pages to the server, the cost, then Prepare).
+    @State private var sourceEpisode: SourceEpisode?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// A hardware keyboard (iPad, Magic Keyboard): arrows, space, page keys and Escape reach the reader.
     @FocusState private var keysFocused: Bool
+    private let route: ReaderRoute
     /// The page under the slider's thumb while it is dragged.
     @State private var dragged: Int?
     let onOpenChapter: (String, Int) -> Void
+    /// A source's chapter, translated: its copy on the server replaces this reader, in that language, at the same share.
+    let onOpenCopy: (ReaderRoute) -> Void
 
-    init(route: ReaderRoute, onOpenChapter: @escaping (String, Int) -> Void) {
+    init(route: ReaderRoute, onOpenChapter: @escaping (String, Int) -> Void, onOpenCopy: @escaping (ReaderRoute) -> Void = { _ in }) {
+        self.route = route
         _model = StateObject(wrappedValue: ReaderModel(route: route))
         _translation = StateObject(wrappedValue: TranslationModel(route: route))
         self.onOpenChapter = onOpenChapter
+        self.onOpenCopy = onOpenCopy
     }
 
     var body: some View {
@@ -136,10 +147,28 @@ struct ReaderView: View {
             // "Watch from here": the episode from the first beat of the page being read.
             if let episode = model.state.command as? ReaderCommandOpenEpisode {
                 model.send(ReaderIntentCommandHandled(seq: episode.seq))
-                player = PlayerRoute(chapterId: episode.chapterId, nextChapterId: nil, startPage: Int(episode.page))
+                if route.sourceKey == "vovoscan" {
+                    player = PlayerRoute(chapterId: episode.chapterId, nextChapterId: nil, startPage: Int(episode.page))
+                } else {
+                    sourceEpisode = SourceEpisode(sourceKey: route.sourceKey, titleId: route.titleId, chapterId: episode.chapterId)
+                }
             }
         }
+        .onChange(of: translation.state.openCopy) { _, copy in
+            guard let copy else { return }
+            translation.send(TranslationIntentCopyOpened.shared)
+            onOpenCopy(
+                ReaderRoute(
+                    sourceKey: "vovoscan",
+                    titleId: copy.titleId,
+                    chapterId: copy.chapterId,
+                    startPage: Int(copy.startPage(page: model.state.currentIndex, pages: Int32(model.state.pages.count))),
+                    language: copy.language
+                )
+            )
+        }
         .fullScreenCover(item: $player) { route in PlayerView(route: route) { _, _ in player = nil } }
+        .sheet(item: $sourceEpisode) { SourceEpisodeSheet(episode: $0) }
         // Reduce Motion: jumps instead of the spring, no spotlight glide, no fades.
         .onChange(of: reduceMotion, initial: true) { _, on in model.send(ReaderIntentReducedMotion(on: on)) }
         // VoiceOver: "Page 5 of 19" when the page changes, never on every frame.
@@ -2032,5 +2061,46 @@ private struct BookWebView: UIViewRepresentable {
             let height = scroll.bounds.height
             return height > 0 ? drag * Self.resistance / height : 0
         }
+    }
+}
+
+/// A source's chapter whose episode was asked from the reader.
+struct SourceEpisode: Identifiable {
+    let sourceKey: String
+    let titleId: String
+    let chapterId: String
+    var id: String { "\(sourceKey)/\(chapterId)" }
+}
+
+/// The episode card of a source's chapter over the reader: the title page's state gives its label and next chapter.
+private struct SourceEpisodeSheet: View {
+    @StateObject private var title: TitleModel
+    @State private var chapterId: String
+    @State private var language = ""
+    private let episode: SourceEpisode
+
+    init(episode: SourceEpisode) {
+        self.episode = episode
+        _title = StateObject(wrappedValue: TitleModel(sourceKey: episode.sourceKey, titleId: episode.titleId))
+        _chapterId = State(initialValue: episode.chapterId)
+    }
+
+    var body: some View {
+        NavigationStack {
+            EpisodeView(
+                route: EpisodeRoute(
+                    chapterId: chapterId,
+                    title: title.state,
+                    language: language,
+                    sourceKey: episode.sourceKey,
+                    titleId: episode.titleId
+                )
+            ) { next, lang in
+                chapterId = next
+                language = lang
+            }
+            .id("\(chapterId)~\(language)")
+        }
+        .task { await title.observe() }
     }
 }

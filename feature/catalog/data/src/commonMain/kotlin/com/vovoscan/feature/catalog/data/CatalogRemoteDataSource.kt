@@ -9,10 +9,13 @@ import com.vovoscan.core.sources.ManifestProvider
 import com.vovoscan.core.sources.RulesHttp
 import com.vovoscan.core.sources.RulesSource
 import com.vovoscan.core.sources.RulesTitleSummary
+import com.vovoscan.core.sources.declaresFormat
+import com.vovoscan.feature.catalog.domain.ReadingFormat
 import com.vovoscan.feature.catalog.domain.SourceCategory
 import io.ktor.client.HttpClient
 import io.ktor.client.request.get
 import io.ktor.client.request.parameter
+import io.ktor.http.encodeURLPathPart
 import kotlinx.serialization.Serializable
 
 @Serializable
@@ -55,6 +58,8 @@ data class CategoryDto(
     val key: String,
     val name: String,
     val position: Int = 0,
+    /** `manga`, `webtoon` or `text` for our default categories (the format they stand for); null for a curated one. */
+    val format: String? = null,
 )
 
 /** A catalog page, whatever the source. */
@@ -85,6 +90,15 @@ interface CatalogRemoteDataSource {
         sourceKey: String,
         id: String,
     ): AppResult<TitleDetailDto>
+
+    /**
+     * Title ref → format (`manga`, `webtoon`) the server learned from imported pages, for a source read on the device
+     * whose catalog names no format; empty otherwise, offline, or for refs it has not seen.
+     */
+    suspend fun learnedFormats(
+        sourceKey: String,
+        refs: List<String>,
+    ): Map<String, String> = emptyMap()
 }
 
 /** `api/v1/catalog/…`: the internal source (our published titles). */
@@ -123,15 +137,32 @@ class ApiCatalogRemoteDataSource(
     override suspend fun categories(sourceKey: String): AppResult<List<SourceCategory>> =
         http
             .apiCall<ApiData<List<CategoryDto>>> { get("api/v1/catalog/sources/$sourceKey/categories") }
-            .map { list -> list.data.sortedBy { it.position }.map { SourceCategory(it.key, it.name) } }
+            .map { list ->
+                list.data.sortedBy { it.position }.map { SourceCategory(it.key, it.name, it.format?.let(ReadingFormat::fromApi)) }
+            }
 
     override suspend fun title(
         sourceKey: String,
         id: String,
     ): AppResult<TitleDetailDto> = http.apiCall<ApiData<TitleDetailDto>> { get("api/v1/catalog/titles/$id") }.map { it.data }
 
+    override suspend fun learnedFormats(
+        sourceKey: String,
+        refs: List<String>,
+    ): Map<String, String> =
+        refs.distinct().chunked(MAX_FORMAT_REFS).fold(emptyMap()) { found, chunk ->
+            val result =
+                http.apiCall<ApiData<Map<String, String>>> {
+                    get("api/v1/source-reader/${sourceKey.encodeURLPathPart()}/formats") { chunk.forEach { parameter("ref", it) } }
+                }
+            found + ((result as? AppResult.Ok)?.value?.data ?: return found)
+        }
+
     private companion object {
         const val PAGE_SIZE = 24
+
+        /** Refs per formats request (the server's limit). */
+        const val MAX_FORMAT_REFS = 100
     }
 }
 
@@ -217,4 +248,13 @@ class RoutingCatalogRemoteDataSource(
         sourceKey: String,
         id: String,
     ) = pick(sourceKey).title(sourceKey, id)
+
+    /** Asked of the API for a source read on the device whose catalog names no format; nothing for the others. */
+    override suspend fun learnedFormats(
+        sourceKey: String,
+        refs: List<String>,
+    ): Map<String, String> {
+        val manifest = manifests.manifest(sourceKey) ?: return emptyMap()
+        return if (manifest.declaresFormat || refs.isEmpty()) emptyMap() else api.learnedFormats(sourceKey, refs)
+    }
 }

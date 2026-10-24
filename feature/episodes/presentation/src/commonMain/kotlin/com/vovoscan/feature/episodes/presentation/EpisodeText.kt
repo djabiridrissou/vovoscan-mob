@@ -19,6 +19,13 @@ object EpisodeText {
     val READY: String get() = t("episode.ready")
     val FAILED: String get() = t("episode.failed")
     val LOADING: String get() = t("episode.loading")
+    val IMPORTING: String get() = t("episode.importing")
+    val IMPORTING_DETAIL: String get() = t("episode.importingDetail")
+    val IMPORT_NOTE: String get() = t("episode.importNote")
+    val IMPORTED: String get() = t("episode.imported")
+
+    fun importedPages(count: Int): String = t("episode.importedPages", "count" to count)
+
     val OFFLINE_COPY: String get() = t("episode.offlineCopy")
     val UNAVAILABLE_OFFLINE: String get() = t("episode.unavailableOffline")
     val PREPARE: String get() = t("episode.prepare")

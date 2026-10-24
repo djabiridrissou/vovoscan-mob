@@ -4,8 +4,13 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.vovoscan.core.common.AppError
 import com.vovoscan.core.common.AppResult
+import com.vovoscan.core.common.ChapterImports
 import com.vovoscan.core.common.Freshness
+import com.vovoscan.core.common.INTERNAL_SOURCE_KEY
+import com.vovoscan.core.common.ImportStatus
 import com.vovoscan.core.common.Language
+import com.vovoscan.core.common.SourceUnit
+import com.vovoscan.core.common.bringIn
 import com.vovoscan.core.common.userMessage
 import com.vovoscan.feature.episodes.domain.Episode
 import com.vovoscan.feature.episodes.domain.EpisodeAccess
@@ -146,6 +151,11 @@ data class EpisodeUiState(
     /** The picker's rows, filtered by [languageQuery]. */
     val languageOptions: List<EpisodeLanguageOption> = emptyList(),
     val languageQuery: String = "",
+    /**
+     * Our chapter id, the one the player opens: the chapter's own, or for a source read on the device its copy on the
+     * server once brought in ("" until then).
+     */
+    val chapterId: String = "",
 ) {
     /** False for a book: show nothing about episodes. */
     val visible: Boolean get() = phase != EpisodePhase.Unsupported
@@ -213,13 +223,28 @@ sealed interface EpisodeIntent {
  * own episode (`?lang=`): dubbed when ElevenLabs speaks it, else the original voices with captions in it.
  */
 class EpisodeViewModel(
-    private val chapterId: String,
+    chapterId: String,
     private val repository: EpisodesRepository,
     private val keys: KeyStatusProvider,
     private val access: EpisodeAccess = EpisodeAccess.Open,
     private val quotes: RunQuotes = RunQuotes.None,
     language: String = "",
+    sourceKey: String = INTERNAL_SOURCE_KEY,
+    titleId: String = "",
+    private val imports: ChapterImports = ChapterImports.None,
 ) : ViewModel() {
+    /** A chapter of a source read on the device: its pages are brought to the server first. Null for our own. */
+    private val unit = SourceUnit(sourceKey, titleId, chapterId).takeUnless { it.internal }
+
+    /** Our chapter id: the chapter's own, or its copy on the server once brought in ("" until then). */
+    private var chapterId = if (unit == null) chapterId else ""
+    private var importing = false
+    private var importedPages = 0
+
+    /** The server was asked once whether a copy exists. */
+    private var lookedUp = false
+    private var lookupJob: Job? = null
+
     private val mutableState = MutableStateFlow(EpisodeUiState())
     val state: StateFlow<EpisodeUiState> = mutableState.asStateFlow()
     private var episode: Episode? = null
@@ -244,7 +269,7 @@ class EpisodeViewModel(
     private var observeJob: Job? = null
 
     init {
-        observe()
+        if (chapterId.isNotEmpty()) observe()
         keys
             .observe()
             .onEach { status ->
@@ -264,6 +289,7 @@ class EpisodeViewModel(
     /** The stored episode in the current language: the card shows it, and follows it while something is made. */
     private fun observe() {
         observeJob?.cancel()
+        if (chapterId.isEmpty()) return
         observeJob =
             repository
                 .observe(chapterId, lang)
@@ -390,6 +416,7 @@ class EpisodeViewModel(
     }
 
     private fun refresh() {
+        if (chapterId.isEmpty()) return lookUp()
         if (refreshJob?.isActive == true) return
         mutableState.update { it.copy(freshness = Freshness.Refreshing) }
         refreshJob =
@@ -409,6 +436,7 @@ class EpisodeViewModel(
     private fun run(reread: Boolean) {
         val current = state.value
         if (current.comingSoon || current.working) return
+        if (chapterId.isEmpty()) return if (reread) Unit else bringIn()
         if (reread && !current.canReread) return
         if (!reread && !current.canPrepare) return
         mutableState.update { it.copy(working = true, notice = null, error = null) }
@@ -438,9 +466,67 @@ class EpisodeViewModel(
         }
     }
 
+    /** A copy made before (by this account, or anyone for an official source) is used at once; nothing is started. */
+    private fun lookUp() {
+        val unit = unit ?: return
+        if (!allowed || lookedUp || importing || lookupJob?.isActive == true) return
+        lookupJob =
+            viewModelScope.launch {
+                val found = imports.find(unit)
+                lookedUp = true
+                when (found?.status) {
+                    ImportStatus.Ready -> adopt(found.chapterId)
+                    // Asked before and still fetching: follow it.
+                    ImportStatus.Fetching -> bringIn()
+                    else -> render()
+                }
+            }
+    }
+
+    /**
+     * "Prepare" on a chapter not on the server yet: its pages are copied first (shown as they come), then the card is
+     * the chapter's own, with its cost. Nothing is paid before Prepare is pressed again on that cost.
+     */
+    private fun bringIn() {
+        val unit = unit ?: return
+        if (importing) return
+        importing = true
+        importedPages = 0
+        lookupJob?.cancel()
+        mutableState.update { it.copy(working = true, notice = null, error = null) }
+        render()
+        viewModelScope.launch {
+            val result =
+                imports.bringIn(unit) {
+                    importedPages = it.pageCount
+                    render()
+                }
+            importing = false
+            lookedUp = true
+            when (result) {
+                is AppResult.Ok -> {
+                    mutableState.update { it.copy(working = false, notice = EpisodeText.IMPORTED) }
+                    adopt(result.value.chapterId)
+                }
+                is AppResult.Err -> {
+                    mutableState.update { it.copy(working = false, error = result.error.userMessage()) }
+                    render()
+                }
+            }
+        }
+    }
+
+    /** From now on the card is the server copy's: stored episode, live progress, cost. */
+    private fun adopt(id: String) {
+        chapterId = id
+        observe()
+        refreshNow()
+        render()
+    }
+
     /** Asks once per refresh what a run would cost; the card shows it next to Prepare. */
     private fun quote() {
-        if (!allowed || quoteJob?.isActive == true) return
+        if (!allowed || chapterId.isEmpty() || quoteJob?.isActive == true) return
         quoteJob =
             viewModelScope.launch {
                 cost = quotes.episode(chapterId, lang)
@@ -484,7 +570,7 @@ class EpisodeViewModel(
 
     /** Follows the run while the screen is visible and the episode is not final. */
     private fun follow() {
-        if (!started || !allowed || followJob?.isActive == true) return
+        if (!started || !allowed || chapterId.isEmpty() || followJob?.isActive == true) return
         mutableState.update { it.copy(live = true) }
         followJob =
             viewModelScope.launch {
@@ -531,10 +617,12 @@ class EpisodeViewModel(
         mutableState.update { state ->
             // `comingSoon` is set again below only while the feature stays closed.
             val base =
-                exportState(state.copy(keyLines = keyLines, keyWarning = keyWarning, comingSoon = false), current).withLanguages()
+                exportState(state.copy(keyLines = keyLines, keyWarning = keyWarning, comingSoon = false, chapterId = chapterId), current)
+                    .withLanguages()
             when {
                 unsupported -> EpisodeUiState(phase = EpisodePhase.Unsupported)
                 !allowed -> comingSoonState(base)
+                chapterId.isEmpty() -> importState(base)
                 current != null -> episodeState(base, current).withCost()
                 known -> noneState(base).withCost()
                 state.freshness == Freshness.Offline ->
@@ -653,6 +741,24 @@ class EpisodeViewModel(
                     canRequestExport = true,
                     exportActionLabel = EpisodeText.TRY_AGAIN,
                 )
+        }
+    }
+
+    /** A chapter of a source read on the device, before its pages are on the server: Prepare brings them in first. */
+    private fun importState(base: EpisodeUiState): EpisodeUiState {
+        val none = noneState(base).copy(freshness = Freshness.Fresh, costLine = null)
+        return when {
+            importing ->
+                none.copy(
+                    phase = EpisodePhase.Running,
+                    headline = EpisodeText.IMPORTING,
+                    detail = EpisodeText.IMPORTING_DETAIL,
+                    progressLabel = importedPages.takeIf { it > 0 }?.let(EpisodeText::importedPages),
+                    canPrepare = false,
+                    working = true,
+                )
+            !lookedUp -> none.copy(phase = EpisodePhase.Loading, headline = EpisodeText.LOADING, detail = null, canPrepare = false)
+            else -> none.copy(detail = EpisodeText.IMPORT_NOTE)
         }
     }
 

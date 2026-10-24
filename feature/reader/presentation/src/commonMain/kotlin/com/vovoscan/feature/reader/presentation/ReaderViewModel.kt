@@ -1285,7 +1285,7 @@ class ReaderViewModel(
         updateZones(mode, preferences)
         coachIfNew(mode, preferences)
         mutableState.update {
-            it.copy(voiceAvailable = sourceKey == INTERNAL_SOURCE && chapter.pages.isNotEmpty(), prefetch = prefetch(it))
+            it.copy(voiceAvailable = chapter.pages.isNotEmpty(), prefetch = prefetch(it))
         }
         rebuildStops()
         showTitleCard(chapter)

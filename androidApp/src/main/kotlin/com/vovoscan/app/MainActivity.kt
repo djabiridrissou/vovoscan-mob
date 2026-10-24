@@ -65,6 +65,7 @@ import com.vovoscan.app.ui.sources.SourcesScreen
 import com.vovoscan.app.ui.theme.Brand
 import com.vovoscan.app.ui.theme.VovoscanTheme
 import com.vovoscan.app.ui.title.TitleScreen
+import com.vovoscan.core.common.INTERNAL_SOURCE_KEY
 import com.vovoscan.core.common.Navigation
 import com.vovoscan.core.common.i18n.I18n
 import com.vovoscan.feature.auth.presentation.DeletionBannerUi
@@ -187,7 +188,8 @@ private fun Root(session: SessionViewModel = koinViewModel()) {
     var openDownloads by rememberSaveable { mutableStateOf(false) }
     // Open sources screen (Sources tab): "add-source", "add-source|repository id" or "source-detail|source key".
     var openSource by rememberSaveable { mutableStateOf<String?>(null) }
-    // Open reader: "source|title|chapter|start page" (`ReaderViewModel.START_AT_END`: from its last page).
+    // Open reader: "source|title|chapter|start page|language" (`ReaderViewModel.START_AT_END`: from its last page; the
+    // language, optional, for a source's chapter reopened on its translated copy).
     var openReader by rememberSaveable { mutableStateOf<String?>(null) }
     // Open episode card (over the title page): "chapter|language" (language empty = the original).
     var openEpisode by rememberSaveable { mutableStateOf<String?>(null) }
@@ -257,8 +259,20 @@ private fun Root(session: SessionViewModel = koinViewModel()) {
                 startPage = reader[3].toInt(),
                 onBack = { openReader = null },
                 onOpenChapter = { chapter, page -> openReader = "${reader[0]}|${reader[1]}|$chapter|$page" },
-                // The episode from the page being read; closing it comes back to the reader where it was.
-                onWatch = { chapter, page -> openPlayer = "$chapter|||$page" },
+                onWatch = { chapter, page ->
+                    if (reader[0] == INTERNAL_SOURCE_KEY) {
+                        // The episode from the page being read; closing it comes back to the reader where it was.
+                        openPlayer = "$chapter|||$page"
+                    } else {
+                        // A source's chapter: its card first (its pages go to the server, then the cost, then Prepare).
+                        openReader = null
+                        openTitle = "${reader[0]}|${reader[1]}"
+                        openEpisode = chapter
+                    }
+                },
+                language = reader.getOrNull(4)?.ifEmpty { null },
+                // A source's chapter translated: its copy on the server, in that language, at the same share.
+                onOpenCopy = { title, chapter, language, page -> openReader = "$INTERNAL_SOURCE_KEY|$title|$chapter|$page|$language" },
             )
             return@Column
         }
@@ -293,8 +307,13 @@ private fun Root(session: SessionViewModel = koinViewModel()) {
                         titleName = titleState.name,
                         chapterLabel = titleState.chapterLabel(episode),
                         onBack = { openEpisode = null },
-                        onWatch = { language -> openPlayer = "$episode|${titleState.nextChapterId(episode).orEmpty()}|$language" },
+                        // The player plays our chapter (a source's: its copy); "Next chapter →" comes back to this title.
+                        onWatch = { played, language ->
+                            openPlayer = "$played|${titleState.nextChapterId(episode).orEmpty()}|$language"
+                        },
                         language = episodeRoute.getOrNull(1).orEmpty(),
+                        sourceKey = title[0],
+                        titleId = title[1],
                     )
                 } else if (title != null) {
                     BackHandler { openTitle = null }

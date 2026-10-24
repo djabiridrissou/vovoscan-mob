@@ -3,9 +3,12 @@ package com.vovoscan.shared
 import com.vovoscan.core.common.AppDispatchers
 import com.vovoscan.core.common.AppError
 import com.vovoscan.core.common.AppResult
+import com.vovoscan.core.common.ChapterImports
+import com.vovoscan.core.common.Language
 import com.vovoscan.core.common.NetworkMonitor
 import com.vovoscan.core.common.SystemClock
 import com.vovoscan.core.common.i18n.UiLanguage
+import com.vovoscan.core.network.ApiChapterImports
 import com.vovoscan.core.network.ApiConfig
 import com.vovoscan.core.network.createHttpClient
 import com.vovoscan.core.network.platformHttpEngine
@@ -17,6 +20,7 @@ import com.vovoscan.core.sources.ManifestProvider
 import com.vovoscan.core.sources.PluginLinkPolicy
 import com.vovoscan.core.sources.RulesHttp
 import com.vovoscan.core.sources.createRulesHttpClient
+import com.vovoscan.core.sources.sourceLanguage
 import com.vovoscan.feature.account.di.accountModule
 import com.vovoscan.feature.account.domain.COACHED_UNSUPPORTED
 import com.vovoscan.feature.account.domain.Provider
@@ -242,6 +246,11 @@ fun appModules(
                         RunCost(it.credits, it.coveredByOwnKeys, it.alreadyAvailable, it.maxCredits, it.fundable, it.metered, it.unfunded)
                     }
                 }
+            }
+            // Translating or voicing a chapter of a source read on the device: its pages are copied to the server first,
+            // read there in the same `{{lang}}` as on the device (a language the server doesn't take reads in English).
+            single<ChapterImports> {
+                ApiChapterImports(get()) { sourceLanguage().takeIf { Language.of(it) != null } ?: "en" }
             }
             // The reader guide seen per format, on the account (the device keeps its own list too).
             single<CoachSync> {

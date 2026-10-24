@@ -178,16 +178,27 @@ fun ReaderScreen(
     onOpenChapter: (String, Int) -> Unit,
     /** "Watch the episode from here": the episode of this chapter, from that page. */
     onWatch: (chapterId: String, page: Int) -> Unit = { _, _ -> },
+    /** The language to show at once (a source's chapter reopened on its translated copy); null: the original. */
+    language: String? = null,
+    /** A source's chapter, translated: open its copy on the server (title, chapter, language, page). */
+    onOpenCopy: (titleId: String, chapterId: String, language: String, page: Int) -> Unit = { _, _, _, _ -> },
     viewModel: ReaderViewModel =
         koinViewModel(key = "reader:$sourceKey/$chapterId") { parametersOf(sourceKey, titleId, chapterId, startPage) },
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val onIntent = viewModel::onIntent
     var settingsOpen by rememberSaveable { mutableStateOf(false) }
-    // The reader's language (chapters of our catalog): any time from the bar, free when already made, quoted first.
+    // The reader's language, any comic: any time from the bar, free when already made, quoted first. A source's chapter
+    // is translated on its copy on the server, which then opens here in that language.
     val translation: TranslationViewModel =
-        koinViewModel(key = "translation:$sourceKey/$chapterId") { parametersOf(sourceKey, chapterId) }
+        koinViewModel(key = "translation:$sourceKey/$chapterId") { parametersOf(sourceKey, chapterId, titleId, language) }
     val translationState by translation.state.collectAsStateWithLifecycle()
+    val copy = translationState.openCopy
+    LaunchedEffect(copy) {
+        if (copy == null) return@LaunchedEffect
+        translation.onIntent(TranslationIntent.CopyOpened)
+        onOpenCopy(copy.titleId, copy.chapterId, copy.language, copy.startPage(state.currentIndex, state.pages.size))
+    }
     var languagesOpen by rememberSaveable { mutableStateOf(false) }
     var keysOpen by rememberSaveable { mutableStateOf(false) }
     // The bottom bar's height: the language dock sits above it while the bars show.

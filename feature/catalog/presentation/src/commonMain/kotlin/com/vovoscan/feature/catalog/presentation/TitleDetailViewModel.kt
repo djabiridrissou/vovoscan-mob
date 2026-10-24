@@ -10,7 +10,6 @@ import com.vovoscan.core.common.i18n.t
 import com.vovoscan.core.common.userMessage
 import com.vovoscan.feature.catalog.domain.CatalogRepository
 import com.vovoscan.feature.catalog.domain.ContentKind
-import com.vovoscan.feature.catalog.domain.INTERNAL_SOURCE
 import com.vovoscan.feature.catalog.domain.ReadingFormat
 import com.vovoscan.feature.catalog.domain.ReadingResume
 import com.vovoscan.feature.catalog.domain.ResumePoint
@@ -50,6 +49,7 @@ data class ReadAction(
 
 data class TitleDetailUiState(
     val sourceKey: String = "",
+    val titleId: String = "",
     val isBook: Boolean = false,
     val name: String = "",
     val coverUrl: String? = null,
@@ -77,8 +77,11 @@ data class TitleDetailUiState(
     /** A source that didn't answer may answer now: "Retry" (or "Try again" when nothing is saved). */
     val canRetry: Boolean get() = stale?.canRetry == true
 
-    /** A comic of our own catalog: each chapter can become a voiced episode (not books, not rule-based sources). */
-    val offersEpisodes: Boolean get() = !isBook && sourceKey == INTERNAL_SOURCE && chapters.isNotEmpty()
+    /**
+     * A comic, at any source: each chapter can become a voiced episode (a source's chapter has its pages brought to the
+     * server first, when asked). Not books.
+     */
+    val offersEpisodes: Boolean get() = !isBook && chapters.isNotEmpty()
 
     /** "Chapter 98 · The last gate" for a chapter of this title; "" when unknown. */
     fun chapterLabel(chapterId: String): String = chapters.firstOrNull { it.id == chapterId }?.label.orEmpty()
@@ -207,6 +210,7 @@ class TitleDetailViewModel(
             unavailable = false,
             error = if (stale != null) null else error,
             sourceKey = detail.summary.sourceKey,
+            titleId = detail.summary.id,
             isBook = detail.summary.kind == ContentKind.Book,
             name = detail.summary.name,
             coverUrl = detail.summary.coverUrl,

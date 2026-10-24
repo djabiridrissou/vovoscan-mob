@@ -1,6 +1,7 @@
 package com.vovoscan.feature.reader.di
 
 import com.vovoscan.core.common.AppDispatchers
+import com.vovoscan.core.common.ChapterImports
 import com.vovoscan.core.common.SystemClock
 import com.vovoscan.core.database.AppFolders
 import com.vovoscan.core.database.DatabaseDriverFactory
@@ -100,12 +101,16 @@ val readerModule =
         viewModelOf(::DownloadsViewModel)
         // Translations of our catalog's chapters: read fresh from the API, lettering laid out in shared code.
         single { TranslationsRepositoryImpl(get()) } binds arrayOf(TranslationsRepository::class, ChapterPanels::class)
-        viewModel { (sourceKey: String, chapterId: String) ->
+        // (source, chapter, title, language to open in): a source's chapter is translated on its copy on the server.
+        viewModel { params ->
             TranslationViewModel(
-                sourceKey,
-                chapterId,
+                params.values[0] as String,
+                params.values[1] as String,
                 get(),
                 getOrNull() ?: TranslationQuotes.None,
+                titleId = params.values.getOrNull(2) as String? ?: "",
+                imports = getOrNull() ?: ChapterImports.None,
+                initialLanguage = params.values.getOrNull(3) as String?,
             )
         }
     }

@@ -14,7 +14,8 @@ class TitleDetailUiStateTest {
     fun episodesAreOfferedOnlyForComicsOfOurCatalog() {
         assertTrue(TitleDetailUiState(sourceKey = "vovoscan", chapters = chapters).offersEpisodes)
         assertFalse(TitleDetailUiState(sourceKey = "vovoscan", isBook = true, chapters = chapters).offersEpisodes)
-        assertFalse(TitleDetailUiState(sourceKey = "gutenberg", chapters = chapters).offersEpisodes)
+        // A comic of a source read on the device too: its pages go to the server when an episode is asked.
+        assertTrue(TitleDetailUiState(sourceKey = "inkwell", chapters = chapters).offersEpisodes)
         assertFalse(TitleDetailUiState(sourceKey = "vovoscan").offersEpisodes)
     }
 

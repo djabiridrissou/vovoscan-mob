@@ -72,11 +72,15 @@ fun EpisodeScreen(
     titleName: String,
     chapterLabel: String,
     onBack: () -> Unit,
-    /** Opens the player in the episode's language ("" = the original). */
-    onWatch: (language: String) -> Unit,
+    /** Opens the player on our chapter id (a source's chapter: its copy on the server) in the episode's language. */
+    onWatch: (chapterId: String, language: String) -> Unit,
     /** The language the card opens in: the next chapter keeps the one just watched. */
     language: String = "",
-    viewModel: EpisodeViewModel = koinViewModel(key = "episode:$chapterId~$language") { parametersOf(chapterId, language) },
+    /** The chapter's source and title: a source read on the device has its pages brought to the server first. */
+    sourceKey: String = "vovoscan",
+    titleId: String = "",
+    viewModel: EpisodeViewModel =
+        koinViewModel(key = "episode:$sourceKey/$chapterId~$language") { parametersOf(chapterId, language, sourceKey, titleId) },
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
@@ -105,7 +109,7 @@ fun EpisodeScreen(
                 state.offlineNotice?.let { OfflineNotice(it) }
             }
         }
-        if (state.visible) item { EpisodeCard(state, viewModel::onIntent) { onWatch(state.language) } }
+        if (state.visible) item { EpisodeCard(state, viewModel::onIntent) { onWatch(state.chapterId, state.language) } }
     }
 }
 
