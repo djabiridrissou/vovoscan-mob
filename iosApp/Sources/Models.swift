@@ -169,6 +169,13 @@ final class CatalogModel: ObservableObject {
 
     func send(_ intent: CatalogIntent) { viewModel.onIntent(intent: intent) }
 
+    /// Pull to refresh: returns once the new listing is in, so the system's spinner ends with it (a refresh that
+    /// returned at once left it spinning while the grid was replaced underneath).
+    func refresh() async {
+        send(CatalogIntentRefresh.shared)
+        for await next in viewModel.state where next.freshness != .refreshing { break }
+    }
+
     deinit { owner.clear() }
 }
 

@@ -3,7 +3,6 @@ package com.vovoscan.feature.catalog.presentation
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.vovoscan.core.common.AppResult
-import com.vovoscan.core.common.ContentRating
 import com.vovoscan.core.common.Freshness
 import com.vovoscan.core.common.StaleReason
 import com.vovoscan.core.common.i18n.t
@@ -664,7 +663,7 @@ class CatalogViewModel(
             viewModelScope.launch {
                 delay(SUGGEST_DEBOUNCE_MS)
                 val found = search.suggest(query.trim(), SearchRepository.SUGGEST_LIMIT, format, episodes)
-                val titles = found.titles.filter { it.sourceKey in names && ContentRating.shown(it.contentRating, showAdult) }
+                val titles = found.titles.filter { it.sourceKey in names && it.toSummary().shownIn(showAdult) }
                 val covers = titles.associate { (it.sourceKey to it.titleRef) to (it.coverUrl ?: savedCover(it)) }
                 suggestionPicks = titles.associate { (it.sourceKey to it.titleRef) to (it.toSummary() to it.format) }
                 mutableState.update {
@@ -809,7 +808,7 @@ class CatalogViewModel(
             mergedListings(nextReadings)
                 .combine(content.showAdult()) { titles, adult -> titles to adult }
                 .onEach { (titles, adult) ->
-                    val shown = titles.filter { t -> ContentRating.shown(t.contentRating, adult) }
+                    val shown = titles.filter { t -> t.shownIn(adult) }
                     hiddenInListing = shown.size < titles.size
                     mutableState.update {
                         it.copy(cards = shown.map { t -> card(t, names) }, safeNote = safeNote(hiddenInListing))
@@ -988,7 +987,7 @@ class CatalogViewModel(
                             t
                         }
                     }
-                val titles = all.filter { t -> ContentRating.shown(t.contentRating, showAdult) }
+                val titles = all.filter { t -> t.shownIn(showAdult) }
                 val popular =
                     suggested.filter { it.reason == SuggestReason.Popular }.mapTo(HashSet()) { it.sourceKey to it.titleRef }
                 val serverFormats = suggested.associate { (it.sourceKey to it.titleRef) to it.format }

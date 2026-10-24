@@ -50,11 +50,19 @@ data class TitleSummary(
     val kind: ContentKind,
     val format: ReadingFormat,
     val status: String,
-    /** null: the source doesn't say (hidden in safe mode, like an adult title). */
+    /** null: the source doesn't say (hidden in safe mode, like an adult title, except from the internal source). */
     val contentRating: ContentRating? = null,
     /** Chapters with an episode this account can watch, any language (the server's word; 0 when unknown). */
     val episodeCount: Int = 0,
-)
+) {
+    /**
+     * Safe mode on the device. The API already filters what it serves by the account's choice, so an internal title it
+     * sent without a rating stays; a rated one still follows the rule (a listing saved before safe mode was turned on).
+     * A source read on the device is filtered here, an unrated title hidden.
+     */
+    fun shownIn(showAdult: Boolean): Boolean =
+        ContentRating.shown(contentRating, showAdult) || (sourceKey == INTERNAL_SOURCE && contentRating == null)
+}
 
 data class Chapter(
     val id: String,

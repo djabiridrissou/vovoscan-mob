@@ -166,27 +166,29 @@ struct PressableCardStyle: ButtonStyle {
 /// A light band sweeping over a placeholder while it loads; still under Reduce Motion.
 struct Shimmer: ViewModifier {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var phase: CGFloat = -1
 
     func body(content: Content) -> some View {
         content
             .overlay {
                 if !reduceMotion {
-                    GeometryReader { geo in
-                        LinearGradient(
-                            colors: [.clear, Color.brandPaper.opacity(0.08), .clear],
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        )
-                        .frame(width: geo.size.width * 0.6)
-                        .offset(x: phase * geo.size.width * 1.6)
+                    // Driven by the clock, not by `withAnimation(.repeatForever)` in `onAppear`: that transaction also
+                    // caught the layout around it, so the catalog's scroll view drifted forever under a stuck
+                    // refresh spinner.
+                    TimelineView(.animation) { context in
+                        let cycle = context.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 1.3) / 1.3
+                        GeometryReader { geo in
+                            LinearGradient(
+                                colors: [.clear, Color.brandPaper.opacity(0.08), .clear],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                            .frame(width: geo.size.width * 0.6)
+                            .offset(x: (CGFloat(cycle) * 2 - 1) * geo.size.width * 1.6)
+                        }
                     }
                     .clipped()
+                    .allowsHitTesting(false)
                 }
-            }
-            .onAppear {
-                guard !reduceMotion else { return }
-                withAnimation(.linear(duration: 1.3).repeatForever(autoreverses: false)) { phase = 1 }
             }
     }
 }

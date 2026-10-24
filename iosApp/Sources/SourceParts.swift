@@ -37,6 +37,8 @@ struct OriginChip: View {
         let color = thirdParty ? Color.brandYellow : Color.brandMuted
         Text(label)
             .font(.brandBody(12, weight: .bold))
+            .lineLimit(1)
+            .fixedSize()
             .foregroundStyle(color)
             .padding(.horizontal, 8)
             .padding(.vertical, 2)
@@ -51,6 +53,8 @@ struct UpdateBadge: View {
     var body: some View {
         Text(label)
             .font(.brandBody(12, weight: .bold))
+            .lineLimit(1)
+            .fixedSize()
             .foregroundStyle(Color.brandInk)
             .padding(.horizontal, 8)
             .padding(.vertical, 2)

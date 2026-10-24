@@ -6,6 +6,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -113,6 +115,7 @@ fun SourcesScreen(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun SourceRowItem(
     row: SourceRow,
@@ -133,8 +136,13 @@ private fun SourceRowItem(
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(row.name, style = MaterialTheme.typography.bodyMedium)
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                if (row.versionLabel.isNotEmpty()) Text(row.versionLabel, style = MaterialTheme.typography.bodySmall)
+            // Chips never break inside a word ("Upda/te"): on a narrow row they go to the next line.
+            FlowRow(
+                itemVerticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                if (row.versionLabel.isNotEmpty()) Text(row.versionLabel, style = MaterialTheme.typography.bodySmall, maxLines = 1)
                 OriginChip(row.originLabel, row.thirdParty)
                 if (row.updateAvailable) UpdateBadge()
                 // Cyan: change waiting to be sent (the brand reserves cyan for work in progress).

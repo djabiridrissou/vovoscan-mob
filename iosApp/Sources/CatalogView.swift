@@ -163,7 +163,7 @@ struct CatalogView: View {
             }
         }
         .background(Color.brandInk)
-        .refreshable { model.send(CatalogIntentRefresh.shared) }
+        .refreshable { await model.refresh() }
         .sheet(item: $sheet) { which in
             FilterSheet(model: model, which: which)
                 .presentationDetents([.medium, .large])

@@ -684,7 +684,8 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   what it serves; the device applies the same rule to titles read on the device: `RulesSource` reads
   `catalog.item.contentRating` (mapped by the manifest's `ratings.map`, a value off the scale and unmapped = unknown;
   nothing read = `ratings.default`), stored in `title.content_rating` (catalog `3.sqm`), and `CatalogViewModel` filters
-  listings and search through the `ContentPolicy` port (wired in `shared` to the session; signed out = safe) with one
+  listings and search (`TitleSummary.shownIn`: the internal source's unrated titles pass, its API having filtered them; a
+  rated one still follows the rule) through the `ContentPolicy` port (wired in `shared` to the session; signed out = safe) with one
   line when titles were hidden (`safeNote`). A manifest without ratings has every title unknown, so hidden in safe mode.
 - `video` gates episodes: the `EpisodeAccess` port (episodes domain, wired in `shared` to the session) turns the
   episode card into "Episodes are coming soon." with no action (`EpisodeUiState.comingSoon`); a server answer
@@ -1015,6 +1016,9 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   animation, with the scroll's target as proposal: apply a gesture rule only while a finger drag is in progress, or a
   `scrollTo` is bent too. A `scrollTo(id:)` towards an item a lazy stack has not laid out yet aims at an estimated
   place (with tall items, far off). Measured frames come back as non-integers: compare offsets with a tolerance.
+- No `withAnimation(.repeatForever)` started in `onAppear` (a skeleton's shimmer): that transaction also catches the
+  layout around the view, and in the catalog's `ScrollView` the content drifted down forever under a stuck refresh
+  spinner, swallowing taps (gone under Reduce Motion). Loops are driven by the clock (`TimelineView(.animation)`, `Shimmer`).
 - AVAudioEngine: `AVAudioPlayerNode.play()` while the engine is not running raises an Objective-C exception (a
   crash): `CueMixer` starts the engine first and never plays a node in a stopped engine. Do not run audio work in a
   SwiftUI view's body other than through `PlayerAudio.sync` (cheap: volume, pan, a drift check every 300 ms).
