@@ -164,6 +164,9 @@ SELECT * FROM chapter WHERE source_key = ? AND id = ?;
 deleteChaptersOf:
 DELETE FROM chapter WHERE source_key = ? AND title_id = ?;
 
+deleteChapter:
+DELETE FROM chapter WHERE source_key = ? AND title_id = ? AND id = ?;
+
 insertChapter:
 INSERT OR REPLACE INTO chapter (source_key, title_id, id, number, name, page_count, published_at, episode_languages) VALUES (?, ?, ?, ?, ?, ?, ?, ?);
 

@@ -1,5 +1,6 @@
 package com.vovoscan.feature.catalog.data
 
+import com.vovoscan.core.common.AppError
 import com.vovoscan.core.common.AppResult
 import com.vovoscan.core.common.map
 import com.vovoscan.core.network.ApiData
@@ -71,6 +72,16 @@ data class TitleDetailDto(
     val episodeCount: Int = 0,
     /** false: read on the device; the chapters' episode languages saved before stay. */
     @Transient val episodesKnown: Boolean = true,
+    /** How many chapters the caller can see (our API, sent with or without them); 0 from a server that doesn't say. */
+    val chapterCount: Int = 0,
+)
+
+/** One page of a long series' chapters (`GET …/titles/{id}/chapters`); [nextCursor] null: the last page. */
+@Serializable
+data class ChapterPageDto(
+    val data: List<ChapterDto> = emptyList(),
+    val total: Int = 0,
+    val nextCursor: String? = null,
 )
 
 @Serializable
@@ -142,6 +153,24 @@ interface CatalogRemoteDataSource {
         sourceKey: String,
         id: String,
     ): AppResult<TitleDetailDto>
+
+    /**
+     * The title without its chapters ([TitleDetailDto.chapterCount] says how many), for a series read by pages of
+     * chapters ([chapterPage]); null: this source sends every chapter with the title (read on the device).
+     */
+    suspend fun titleHead(
+        sourceKey: String,
+        id: String,
+    ): AppResult<TitleDetailDto>? = null
+
+    /** A page of [id]'s chapters, from the oldest or the newest, after [after] (a page's `nextCursor`; null: the first). */
+    suspend fun chapterPage(
+        sourceKey: String,
+        id: String,
+        newestFirst: Boolean,
+        after: String?,
+        limit: Int,
+    ): AppResult<ChapterPageDto> = AppResult.Err(AppError.Unknown("NO_CHAPTER_PAGES"))
 
     /**
      * Title ref → format (`manga`, `webtoon`) the server learned from imported pages, for a source read on the device
@@ -248,6 +277,27 @@ class ApiCatalogRemoteDataSource(
         sourceKey: String,
         id: String,
     ): AppResult<TitleDetailDto> = http.apiCall<ApiData<TitleDetailDto>> { get("api/v1/catalog/titles/$id") }.map { it.data }
+
+    override suspend fun titleHead(
+        sourceKey: String,
+        id: String,
+    ): AppResult<TitleDetailDto> =
+        http.apiCall<ApiData<TitleDetailDto>> { get("api/v1/catalog/titles/$id") { parameter("chapters", "none") } }.map { it.data }
+
+    override suspend fun chapterPage(
+        sourceKey: String,
+        id: String,
+        newestFirst: Boolean,
+        after: String?,
+        limit: Int,
+    ): AppResult<ChapterPageDto> =
+        http.apiCall<ChapterPageDto> {
+            get("api/v1/catalog/titles/$id/chapters") {
+                parameter("order", if (newestFirst) "desc" else "asc")
+                parameter("limit", limit)
+                after?.let { parameter("after", it) }
+            }
+        }
 
     override suspend fun learnedFormats(
         sourceKey: String,
@@ -361,6 +411,19 @@ class RoutingCatalogRemoteDataSource(
     private val onDevice: CatalogRemoteDataSource,
 ) : CatalogRemoteDataSource {
     private suspend fun pick(key: String) = if (manifests.manifest(key) != null) onDevice else api
+
+    override suspend fun titleHead(
+        sourceKey: String,
+        id: String,
+    ) = pick(sourceKey).titleHead(sourceKey, id)
+
+    override suspend fun chapterPage(
+        sourceKey: String,
+        id: String,
+        newestFirst: Boolean,
+        after: String?,
+        limit: Int,
+    ) = pick(sourceKey).chapterPage(sourceKey, id, newestFirst, after, limit)
 
     /** With [episodes], always the server: only it knows which titles have one. */
     override suspend fun titles(

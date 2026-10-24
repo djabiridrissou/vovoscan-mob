@@ -238,6 +238,11 @@ final class TitleModel: ObservableObject {
 
     func openHandled(_ seq: Int64) { detail.onIntent(intent: TitleDetailIntentOpenHandled(seq: seq)) }
 
+    /// A long list: a chapter number typed (or the nearest one), the chapter being read; answered once scrolled.
+    func jump(_ query: String) { detail.onIntent(intent: TitleDetailIntentJumpTo(query: query)) }
+    func jumpToCurrent() { detail.onIntent(intent: TitleDetailIntentJumpToCurrent.shared) }
+    func scrollHandled(_ seq: Int64) { detail.onIntent(intent: TitleDetailIntentScrollHandled(seq: seq)) }
+
     deinit { owner.clear() }
 }
 

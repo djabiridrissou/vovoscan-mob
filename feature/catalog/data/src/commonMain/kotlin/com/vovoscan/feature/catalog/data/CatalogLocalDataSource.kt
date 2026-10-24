@@ -119,9 +119,25 @@ interface CatalogLocalDataSource {
         id: String,
     ): Flow<TitleDetail?>
 
+    /** The title and, unless [keepChapters], its chapters (replacing the saved ones). */
     suspend fun saveDetail(
         sourceKey: String,
         detail: TitleDetailDto,
+        keepChapters: Boolean = false,
+    )
+
+    /** One page of a long series' chapters, added to or replacing the saved ones (with the server's episode languages). */
+    suspend fun saveChapters(
+        sourceKey: String,
+        titleId: String,
+        chapters: List<ChapterDto>,
+    )
+
+    /** Every page read: the saved chapters not in [kept] are gone from the source. */
+    suspend fun pruneChapters(
+        sourceKey: String,
+        titleId: String,
+        kept: Set<String>,
     )
 
     suspend fun clear()
@@ -339,9 +355,35 @@ class SqlCatalogLocalDataSource(
             }
         }
 
+    override suspend fun saveChapters(
+        sourceKey: String,
+        titleId: String,
+        chapters: List<ChapterDto>,
+    ) = withContext(io) {
+        queries.transaction {
+            chapters.forEach {
+                val languages = encodeLanguages(it.episodeLanguages)
+                queries.insertChapter(sourceKey, titleId, it.id, it.number, it.name, it.pageCount.toLong(), it.publishedAt, languages)
+            }
+        }
+    }
+
+    override suspend fun pruneChapters(
+        sourceKey: String,
+        titleId: String,
+        kept: Set<String>,
+    ) = withContext(io) {
+        queries.transaction {
+            queries.chaptersOf(sourceKey, titleId).executeAsList().filter { it.id !in kept }.forEach {
+                queries.deleteChapter(sourceKey, titleId, it.id)
+            }
+        }
+    }
+
     override suspend fun saveDetail(
         sourceKey: String,
         detail: TitleDetailDto,
+        keepChapters: Boolean,
     ) = withContext(io) {
         queries.transaction {
             upsertSummary(
@@ -360,6 +402,7 @@ class SqlCatalogLocalDataSource(
                 ),
             )
             queries.updateDetail(detail.description, detail.authors.joinList(), detail.genres.joinList(), sourceKey, detail.id)
+            if (keepChapters) return@transaction
             // Read on the device: the languages the server gave before stay with their chapters.
             val saved =
                 if (detail.episodesKnown) {

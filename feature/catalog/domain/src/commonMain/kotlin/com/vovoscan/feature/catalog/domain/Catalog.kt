@@ -218,10 +218,21 @@ interface CatalogRepository {
         chapterId: String,
     ): Flow<Set<String>> = flowOf(emptySet())
 
+    /**
+     * Reloads the title. A long series of our catalog comes by pages of chapters, each saved as it arrives (the list
+     * grows on screen, [observeChapterLoad] says how far it is); the chapters gone from the server go once every page is
+     * read, so a reload cut short keeps what was saved.
+     */
     suspend fun refreshTitle(
         sourceKey: String,
         id: String,
     ): AppResult<Unit>
+
+    /** While [id]'s chapters come by pages: how many are in and how many there are; null otherwise. */
+    fun observeChapterLoad(
+        sourceKey: String,
+        id: String,
+    ): Flow<ChapterLoad?> = flowOf(null)
 
     suspend fun clearLocal()
 
@@ -290,3 +301,9 @@ fun interface EpisodeFeature {
         val Off = EpisodeFeature { flowOf(false) }
     }
 }
+
+/** A long series' chapters on their way: [loaded] of [total]. */
+data class ChapterLoad(
+    val loaded: Int,
+    val total: Int,
+)

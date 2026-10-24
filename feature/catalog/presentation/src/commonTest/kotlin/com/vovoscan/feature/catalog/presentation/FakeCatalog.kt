@@ -4,6 +4,7 @@ import com.vovoscan.core.common.AppError
 import com.vovoscan.core.common.AppResult
 import com.vovoscan.feature.catalog.domain.CatalogFilter
 import com.vovoscan.feature.catalog.domain.CatalogRepository
+import com.vovoscan.feature.catalog.domain.ChapterLoad
 import com.vovoscan.feature.catalog.domain.ContentKind
 import com.vovoscan.feature.catalog.domain.ListedTitle
 import com.vovoscan.feature.catalog.domain.ReadingFormat
@@ -203,6 +204,14 @@ class FakeCatalog : CatalogRepository {
         titlesRefreshed += "$sourceKey/$id"
         return titleResult
     }
+
+    /** A long series' chapters on their way, by "<sourceKey>/<id>". */
+    val chapterLoads = MutableStateFlow<Map<String, ChapterLoad>>(emptyMap())
+
+    override fun observeChapterLoad(
+        sourceKey: String,
+        id: String,
+    ): Flow<ChapterLoad?> = chapterLoads.map { it["$sourceKey/$id"] }
 
     override suspend fun clearLocal() = Unit
 

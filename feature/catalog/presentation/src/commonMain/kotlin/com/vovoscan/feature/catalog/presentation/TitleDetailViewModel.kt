@@ -12,6 +12,7 @@ import com.vovoscan.core.common.i18n.t
 import com.vovoscan.core.common.userMessage
 import com.vovoscan.feature.catalog.domain.CatalogRepository
 import com.vovoscan.feature.catalog.domain.Chapter
+import com.vovoscan.feature.catalog.domain.ChapterLoad
 import com.vovoscan.feature.catalog.domain.ChapterTranslationBadge
 import com.vovoscan.feature.catalog.domain.ChapterTranslations
 import com.vovoscan.feature.catalog.domain.ContentKind
@@ -44,6 +45,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlin.math.abs
 
 data class ChapterRow(
     val id: String,
@@ -67,6 +69,8 @@ data class ChapterRow(
     val titleId: String = "",
     /** The other source's name on a chapter this page's source doesn't have; null for this page's own chapters. */
     val sourceBadge: String? = null,
+    /** Its number (98.5), for a jump to a chapter. */
+    val number: Double = 0.0,
 ) {
     /** "Translate" and "Episode" are offered on this page's own chapters. */
     val ownChapter: Boolean get() = sourceBadge == null
@@ -94,6 +98,12 @@ data class ChapterOpen(
     val seq: Long,
     val chapterId: String,
     val target: ChapterTarget,
+)
+
+/** The list scrolls to [chapterId] once (a jump), then the screen answers `ScrollHandled(seq)`. */
+data class ChapterScroll(
+    val seq: Long,
+    val chapterId: String,
 )
 
 /** The title page's main action: where reading picks up ("Continue reading") or starts ("Start reading"). */
@@ -150,7 +160,25 @@ data class TitleDetailUiState(
     val ratingError: String? = null,
     /** The series' other sources (turned on), each opening its title page. */
     val alsoOn: List<AlsoOn> = emptyList(),
+    /** A long series' chapters on their way (pages of them, saved as they come); null once all are in. */
+    val chapterLoad: ChapterLoad? = null,
+    /** A jump waiting for the list to scroll. */
+    val scroll: ChapterScroll? = null,
+    /** "Type a chapter number." after a jump that named none. */
+    val jumpError: String? = null,
 ) {
+    /** "Loading chapters ✦ 600 of 3,012" while a long series' chapters come in. */
+    val chapterLoading: String?
+        get() = chapterLoad?.let { t("catalog.chaptersLoading", "loaded" to it.loaded, "total" to it.total) }
+
+    /** A long list gets a jump to a chapter number and to the chapter being read. */
+    val showJump: Boolean get() = chapters.size >= JUMP_FROM
+    val jumpPlaceholder: String get() = t("catalog.jumpPlaceholder")
+    val jumpGo: String get() = t("catalog.jumpGo")
+
+    /** "Chapter being read", when it is in the list. */
+    val jumpCurrent: String? get() = if (chapters.any { it.current }) t("catalog.jumpCurrent") else null
+
     val alsoOnTitle: String get() = t("catalog.alsoOn")
 
     /** "★ 4.3 (12)" and "♥ 30" next to the title, only when known. */
@@ -245,6 +273,19 @@ sealed interface TitleDetailIntent {
 
     /** "Clear": the rating taken back. */
     data object ClearRating : TitleDetailIntent
+
+    /** A chapter number typed in the jump field: the list goes to it, or to the nearest one listed. */
+    data class JumpTo(
+        val query: String,
+    ) : TitleDetailIntent
+
+    /** The list goes to the chapter being read. */
+    data object JumpToCurrent : TitleDetailIntent
+
+    /** The screen scrolled for [seq]. */
+    data class ScrollHandled(
+        val seq: Long,
+    ) : TitleDetailIntent
 }
 
 /** Title page: name, description, chapters. Readable offline once it has been opened. */
@@ -274,6 +315,7 @@ class TitleDetailViewModel(
     private var badges: TitleTranslationBadges? = null
     private var shown: Triple<TitleDetail, Boolean, ResumePoint?>? = null
     private var openSeq = 0L
+    private var scrollSeq = 0L
 
     init {
         val point = resume.observe().map { points -> points.firstOrNull { it.sourceKey == sourceKey && it.titleId == titleId } }
@@ -347,6 +389,10 @@ class TitleDetailViewModel(
                         ?: now.copy(alsoOn = also)
                 }
             }.launchIn(viewModelScope)
+        repository
+            .observeChapterLoad(sourceKey, titleId)
+            .onEach { load -> mutableState.update { it.copy(chapterLoad = load) } }
+            .launchIn(viewModelScope)
         refresh()
     }
 
@@ -374,6 +420,13 @@ class TitleDetailViewModel(
             is TitleDetailIntent.RateAt -> rate(Stars.at(intent.x))
             is TitleDetailIntent.StepRating -> rate(Stars.step(state.value.myRating, intent.up))
             TitleDetailIntent.ClearRating -> rate(null)
+            is TitleDetailIntent.JumpTo -> jump(intent.query)
+            TitleDetailIntent.JumpToCurrent ->
+                state.value.chapters
+                    .firstOrNull { it.current }
+                    ?.let { scrollTo(it.id) }
+            is TitleDetailIntent.ScrollHandled ->
+                mutableState.update { if (it.scroll?.seq == intent.seq) it.copy(scroll = null) else it }
             TitleDetailIntent.ToggleEpisodes -> {
                 val (detail, newestFirst, at) = shown ?: return
                 mutableState.update { now ->
@@ -387,6 +440,22 @@ class TitleDetailViewModel(
                 }
             }
         }
+    }
+
+    private fun jump(query: String) {
+        val wanted = query.trim().replace(',', '.').toDoubleOrNull()
+        val rows = state.value.chapters
+        if (wanted == null) {
+            mutableState.update { it.copy(jumpError = if (query.isBlank()) null else t("catalog.jumpInvalid")) }
+            return
+        }
+        // The chapter with that number, else the nearest one listed (a gap in the numbering lands next to it).
+        val target = rows.minByOrNull { abs(it.number - wanted) } ?: return
+        scrollTo(target.id)
+    }
+
+    private fun scrollTo(chapterId: String) {
+        mutableState.update { it.copy(scroll = ChapterScroll(++scrollSeq, chapterId), jumpError = null) }
     }
 
     private fun rate(score: Double?) {
@@ -470,6 +539,7 @@ class TitleDetailViewModel(
                         current = chapter.id == at?.chapterId,
                         sourceKey = member.sourceKey,
                         titleId = member.titleRef,
+                        number = chapter.number,
                     )
                 } else {
                     val badge = badges?.chapters?.get(chapter.id)?.takeIf { !elsewhere }
@@ -487,6 +557,7 @@ class TitleDetailViewModel(
                         sourceKey = member.sourceKey,
                         titleId = member.titleRef,
                         sourceBadge = if (elsewhere) sourceNames[member.sourceKey] ?: member.sourceKey else null,
+                        number = chapter.number,
                     )
                 }
             }
@@ -559,6 +630,9 @@ class TitleDetailViewModel(
         )
     }
 }
+
+/** From this many chapters, the list offers a jump. */
+private const val JUMP_FROM = 50
 
 /** At most this many language badges on a chapter row, then "+n". */
 private const val EPISODE_BADGES = 3

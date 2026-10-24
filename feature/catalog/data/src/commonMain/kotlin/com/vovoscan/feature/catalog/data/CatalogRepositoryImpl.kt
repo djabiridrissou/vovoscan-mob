@@ -5,6 +5,7 @@ import com.vovoscan.core.common.AppResult
 import com.vovoscan.core.common.map
 import com.vovoscan.feature.catalog.domain.CatalogFilter
 import com.vovoscan.feature.catalog.domain.CatalogRepository
+import com.vovoscan.feature.catalog.domain.ChapterLoad
 import com.vovoscan.feature.catalog.domain.ListedTitle
 import com.vovoscan.feature.catalog.domain.ReadingFormat
 import com.vovoscan.feature.catalog.domain.SearchResult
@@ -13,6 +14,9 @@ import com.vovoscan.feature.catalog.domain.TitleDetail
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -182,12 +186,81 @@ class CatalogRepositoryImpl(
     override suspend fun refreshTitle(
         sourceKey: String,
         id: String,
-    ): AppResult<Unit> =
-        remote
-            .title(sourceKey, id)
-            .map { detail -> if (detail.episodesKnown) detail else withServerEpisodes(sourceKey, detail) }
-            .also { if (it is AppResult.Ok) local.saveDetail(sourceKey, it.value) }
-            .map { }
+    ): AppResult<Unit> {
+        // Our catalog: the title alone, then its chapters by pages. A server that ignores the ask sends them all.
+        when (val head = remote.titleHead(sourceKey, id)) {
+            null -> Unit
+            is AppResult.Err -> return head
+            is AppResult.Ok ->
+                if (head.value.chapters.isEmpty() && head.value.chapterCount > 0) {
+                    return byPages(sourceKey, head.value)
+                } else {
+                    return save(sourceKey, head.value)
+                }
+        }
+        return when (val full = remote.title(sourceKey, id)) {
+            is AppResult.Err -> full
+            is AppResult.Ok -> save(sourceKey, if (full.value.episodesKnown) full.value else withServerEpisodes(sourceKey, full.value))
+        }
+    }
+
+    private suspend fun save(
+        sourceKey: String,
+        detail: TitleDetailDto,
+    ): AppResult<Unit> {
+        local.saveDetail(sourceKey, detail)
+        return AppResult.Ok(Unit)
+    }
+
+    private val chapterLoads = MutableStateFlow<Map<String, ChapterLoad>>(emptyMap())
+    private val pagedLock = Mutex()
+    private val paging = mutableMapOf<String, Mutex>()
+
+    override fun observeChapterLoad(
+        sourceKey: String,
+        id: String,
+    ): Flow<ChapterLoad?> = chapterLoads.map { it["$sourceKey/$id"] }.distinctUntilChanged()
+
+    /**
+     * A small first page in the order the list shows (its top paints at once), then large ones; each saved as it comes.
+     * One load per title at a time: a pull to refresh while it runs waits for it and reads again.
+     */
+    private suspend fun byPages(
+        sourceKey: String,
+        head: TitleDetailDto,
+    ): AppResult<Unit> {
+        val key = "$sourceKey/${head.id}"
+        val lock = pagedLock.withLock { paging.getOrPut(key) { Mutex() } }
+        return lock.withLock {
+            local.saveDetail(sourceKey, head, keepChapters = true)
+            val newestFirst = local.observeNewestFirst().first()
+            val kept = mutableSetOf<String>()
+            var after: String? = null
+            var limit = FIRST_CHAPTER_PAGE
+            chapterLoads.update { it + (key to ChapterLoad(0, head.chapterCount)) }
+            try {
+                while (true) {
+                    val page =
+                        when (val result = remote.chapterPage(sourceKey, head.id, newestFirst, after, limit)) {
+                            is AppResult.Err -> return@withLock result
+                            is AppResult.Ok -> result.value
+                        }
+                    local.saveChapters(sourceKey, head.id, page.data)
+                    kept += page.data.map { it.id }
+                    chapterLoads.update { it + (key to ChapterLoad(kept.size, maxOf(page.total, kept.size))) }
+                    // A page that brings nothing new ends it too: a cursor that never moves can't loop for ever.
+                    val next = page.nextCursor
+                    if (next == null || next == after || page.data.isEmpty()) break
+                    after = next
+                    limit = CHAPTER_PAGE
+                }
+                local.pruneChapters(sourceKey, head.id, kept)
+                AppResult.Ok(Unit)
+            } finally {
+                chapterLoads.update { it - key }
+            }
+        }
+    }
 
     /**
      * A title read on the device that the server said has an episode (a listing or search of the Episodes filter): its
@@ -232,5 +305,11 @@ class CatalogRepositoryImpl(
 
         /** The default a source's listing gives a comic it names no format for. */
         const val MANGA = "manga"
+
+        /** The first page of a long series' chapters: a screen's worth and more, so its top paints at once. */
+        const val FIRST_CHAPTER_PAGE = 100
+
+        /** The pages after it: the server's largest, the fewest calls. */
+        const val CHAPTER_PAGE = 500
     }
 }

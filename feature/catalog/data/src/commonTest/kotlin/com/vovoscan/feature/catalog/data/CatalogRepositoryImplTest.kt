@@ -365,6 +365,101 @@ class CatalogRepositoryImplTest {
         }
 
     @Test
+    fun aLongSeriesComesByPagesSavedAsTheyArrive() =
+        runTest {
+            fun chapter(n: Int) = """{"id":"c$n","number":$n,"pageCount":10}"""
+            val head =
+                """{"data":{"id":"t1","name":"Ink Road","format":"webtoon","status":"ongoing","chapterCount":5,"chapters":[]}}"""
+            val asked = mutableListOf<String>()
+            var failSecond = false
+            var server = (1..5).toList()
+            val repo =
+                repository { request ->
+                    val path = request.url.encodedPath
+                    asked += path + "?" + request.url.encodedQuery
+                    when {
+                        path.endsWith("/titles/t1") -> respondJson(head)
+                        path.endsWith("/titles/t1/chapters") -> {
+                            val after = request.url.parameters["after"]
+                            val limit = request.url.parameters["limit"]!!.toInt()
+                            if (after != null && failSecond) return@repository respond("", HttpStatusCode.ServiceUnavailable)
+                            val rest = server.filter { after == null || it > after.removePrefix("k").toInt() }
+                            val slice = rest.take(minOf(limit, 2))
+                            val next = if (rest.size > slice.size) "\"k${slice.last()}\"" else "null"
+                            respondJson(
+                                """{"data":[${slice.joinToString(",") { chapter(it) }}],"total":${server.size},"nextCursor":$next}""",
+                            )
+                        }
+                        else -> respond("", HttpStatusCode.NotFound)
+                    }
+                }
+
+            assertEquals(AppResult.Ok(Unit), repo.refreshTitle("vovoscan", "t1"))
+            // The title alone, then a small first page in the list's order (oldest first), then large ones.
+            assertEquals("/api/v1/catalog/titles/t1?chapters=none", asked.first())
+            val pages = asked.filter { it.contains("/chapters?") }
+            assertEquals(3, pages.size)
+            assertTrue(pages[0].contains("order=asc") && pages[0].contains("limit=100") && !pages[0].contains("after="))
+            assertTrue(pages[1].contains("limit=500") && pages[1].contains("after=k2"))
+            assertEquals(
+                (1..5).map { "c$it" }.toSet(),
+                repo
+                    .observeTitle("vovoscan", "t1")
+                    .first()!!
+                    .chapters
+                    .map { it.id }
+                    .toSet(),
+            )
+            assertEquals(null, repo.observeChapterLoad("vovoscan", "t1").first())
+
+            // A reload cut short keeps every chapter saved, even those it didn't reach.
+            server = listOf(1, 2, 3)
+            failSecond = true
+            assertTrue(repo.refreshTitle("vovoscan", "t1") is AppResult.Err)
+            assertEquals(
+                5,
+                repo
+                    .observeTitle("vovoscan", "t1")
+                    .first()!!
+                    .chapters.size,
+            )
+
+            // Read to the end, the chapters gone from the server go.
+            failSecond = false
+            assertEquals(AppResult.Ok(Unit), repo.refreshTitle("vovoscan", "t1"))
+            assertEquals(
+                setOf("c1", "c2", "c3"),
+                repo
+                    .observeTitle("vovoscan", "t1")
+                    .first()!!
+                    .chapters
+                    .map { it.id }
+                    .toSet(),
+            )
+        }
+
+    @Test
+    fun aServerThatSendsEveryChapterIsReadAsItIs() =
+        runTest {
+            val asked = mutableListOf<String>()
+            val repo =
+                repository {
+                    asked += it.url.encodedPath
+                    respondJson(detail)
+                }
+            assertEquals(AppResult.Ok(Unit), repo.refreshTitle("vovoscan", "t1"))
+            assertEquals(listOf("/api/v1/catalog/titles/t1"), asked)
+            assertEquals(
+                listOf("c1"),
+                repo
+                    .observeTitle("vovoscan", "t1")
+                    .first()!!
+                    .chapters
+                    .map { it.id },
+            )
+        }
+
+    @Test
     fun internalSourceThroughTheApi() =
         runTest {
             val repo = repository { respondJson(page) }
