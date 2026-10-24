@@ -11,3 +11,7 @@ iosApp/Vovoscan.xcodeproj/
 iosApp/build/
 iosApp/Info.plist
 iosApp/.ios-build/
+androidApp/google-services.json
+iosApp/GoogleService-Info.plist
+iosApp/NotificationService/Info.plist
+iosApp/*.entitlements

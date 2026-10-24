@@ -4,7 +4,7 @@ import UIKit
 
 /// The tabs of the signed-in app.
 enum AppTab: Hashable {
-    case catalog, library, sources, settings
+    case catalog, library, groups, sources, settings
 }
 
 /// Lets a screen send the reader to another tab ("Add a source →" from an empty catalog).
@@ -49,6 +49,12 @@ struct RootView: View {
     /// Each tab's navigation, one typed path (see `AppRoute`): the tutorial ends by opening a title in the catalog's.
     @State private var catalogPath: [AppRoute] = []
     @State private var libraryPath: [AppRoute] = []
+    @State private var groupsPath: [AppRoute] = []
+    /// The Groups tab shows only with the `forum` feature; the inbox runs while the app is on screen and signed in.
+    @StateObject private var groups = GroupsModel()
+    @StateObject private var inbox = NotificationsModel()
+    @ObservedObject private var groupLinks = GroupLinkCenter.shared
+    @Environment(\.scenePhase) private var scenePhase
     /// A reading circle's invite (`vovoscan://together/CODE`): its card over the app, then the reader, following.
     @State private var invite: InviteLink?
     @State private var joined: JoinedChapter?
@@ -71,6 +77,14 @@ struct RootView: View {
                             .environment(\.push, PushAction { libraryPath.append($0) })
                             .environment(\.pop, PopAction { if !libraryPath.isEmpty { libraryPath.removeLast() } })
                     }
+                    if groups.state.visible {
+                        Tab(L("nav.groups"), systemImage: "person.3", value: AppTab.groups) {
+                            NavigationStack(path: $groupsPath) { GroupsView(model: groups) }
+                                .environment(\.push, PushAction { groupsPath.append($0) })
+                                .environment(\.pop, PopAction { if !groupsPath.isEmpty { groupsPath.removeLast() } })
+                        }
+                        .badge(inbox.state.badge.map { Text($0) })
+                    }
                     Tab(L("nav.sources"), systemImage: "square.stack.3d.up", value: AppTab.sources) {
                         NavigationStack { SourcesView() }
                     }
@@ -80,8 +94,8 @@ struct RootView: View {
                 }
                 .tabViewStyle(.sidebarAdaptable)
                 .tint(Color.brandRed)
-                // A hardware keyboard: ⌘1 to ⌘4 open the tabs (listed when ⌘ is held on iPad).
-                .background { TabShortcuts(tab: $tab) }
+                // A hardware keyboard: ⌘1 to ⌘5 open the tabs (listed when ⌘ is held on iPad).
+                .background { TabShortcuts(tab: $tab, groups: groups.state.visible) }
                 .environment(\.openTab, OpenTabAction { tab = $0 })
                 .sensoryFeedback(.selection, trigger: tab)
                 .safeAreaInset(edge: .top, spacing: 0) {
@@ -110,8 +124,18 @@ struct RootView: View {
         .animation(.easeInOut(duration: 0.3), value: session.session == nil)
         // Signed out, the link waits for nothing: the card needs an account (it opens again from the link later).
         .onOpenURL { url in
-            if session.session != nil, let link = InviteLink(url) { invite = link }
+            guard session.session != nil else { return }
+            if let link = InviteLink(url) { invite = link } else { openGroup(url) }
         }
+        .onChange(of: groupLinks.link) { _, link in
+            guard let link, let url = URL(string: link) else { return }
+            groupLinks.link = nil
+            if session.session != nil { openGroup(url) }
+        }
+        .onChange(of: scenePhase, initial: true) { _, phase in inboxFollows(phase == .active && session.session != nil) }
+        .onChange(of: session.session == nil) { _, signedOut in inboxFollows(!signedOut && scenePhase == .active) }
+        .task { await groups.observe() }
+        .task { await inbox.observe() }
         .task { await session.observe() }
         .task { await session.observeTutorial() }
         .task { await session.observeDeletion() }
@@ -123,6 +147,23 @@ struct RootView: View {
         joined = nil
         tab = .catalog
         catalogPath.append(.reader(ReaderRoute(sourceKey: "vovoscan", titleId: chapter.titleRef, chapterId: chapter.chapterId, startPage: 0)))
+    }
+
+    /// `vovoscan://g/<handle>` (a shared group, a tapped notification), `?game=<id>` for one of its games: the Groups
+    /// tab, the group, then the game.
+    private func openGroup(_ url: URL) {
+        guard url.scheme == "vovoscan", url.host() == "g", groups.state.visible,
+              let handle = url.pathComponents.dropFirst().first, !handle.isEmpty else { return }
+        var path: [AppRoute] = [.group("@\(handle)")]
+        if let game = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first(where: { $0.name == "game" })?.value, !game.isEmpty {
+            path.append(.game(game))
+        }
+        tab = .groups
+        groupsPath = path
+    }
+
+    private func inboxFollows(_ on: Bool) {
+        inbox.send(on ? NotificationsIntentStart.shared : NotificationsIntentStop.shared)
     }
 
     /// Ink bars with a hairline, brand fonts in the navigation titles: the system chrome follows the brand.
@@ -153,16 +194,23 @@ struct RootView: View {
     }
 }
 
-/// ⌘1 to ⌘4: one invisible button per tab, so the keyboard shortcuts are registered with the system.
+/// ⌘1 to ⌘5: one invisible button per tab, so the keyboard shortcuts are registered with the system.
 private struct TabShortcuts: View {
     @Binding var tab: AppTab
+    let groups: Bool
 
     var body: some View {
         ZStack {
             shortcut(.catalog, "1", "nav.catalog")
             shortcut(.library, "2", "nav.library")
-            shortcut(.sources, "3", "nav.sources")
-            shortcut(.settings, "4", "nav.settings")
+            if groups {
+                shortcut(.groups, "3", "nav.groups")
+                shortcut(.sources, "4", "nav.sources")
+                shortcut(.settings, "5", "nav.settings")
+            } else {
+                shortcut(.sources, "3", "nav.sources")
+                shortcut(.settings, "4", "nav.settings")
+            }
         }
         .frame(width: 0, height: 0)
         .opacity(0)

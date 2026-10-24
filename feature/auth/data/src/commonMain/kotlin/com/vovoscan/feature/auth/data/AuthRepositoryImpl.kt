@@ -29,6 +29,8 @@ class AuthRepositoryImpl(
     private val local: SessionLocalDataSource,
     /** Called on sign-out: the other features erase their local data. */
     private val onSignedOut: suspend () -> Unit = {},
+    /** Called before the session ends, while it still opens the API (this device's push registration goes). */
+    private val beforeSignOut: suspend () -> Unit = {},
 ) : AuthRepository,
     AccountRepository {
     private val current = MutableStateFlow<Session?>(null)
@@ -90,6 +92,7 @@ class AuthRepositoryImpl(
     }
 
     override suspend fun signOut() {
+        beforeSignOut()
         remote.signOut()
         clearEverything()
     }

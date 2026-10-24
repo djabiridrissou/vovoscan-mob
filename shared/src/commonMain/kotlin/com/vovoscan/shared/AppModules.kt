@@ -30,6 +30,7 @@ import com.vovoscan.feature.account.domain.ProviderKeysRepository
 import com.vovoscan.feature.account.domain.QuoteKind
 import com.vovoscan.feature.account.domain.ReadingSettingsRepository
 import com.vovoscan.feature.account.domain.WalletRepository
+import com.vovoscan.feature.auth.di.BeforeSignOut
 import com.vovoscan.feature.auth.di.SignOutCleanup
 import com.vovoscan.feature.auth.di.authModule
 import com.vovoscan.feature.auth.domain.AuthRepository
@@ -62,11 +63,20 @@ import com.vovoscan.feature.forum.di.forumModule
 import com.vovoscan.feature.forum.domain.ForumAccess
 import com.vovoscan.feature.forum.domain.ForumRepository
 import com.vovoscan.feature.forum.domain.WritingLanguage
+import com.vovoscan.feature.groups.di.groupsModule
+import com.vovoscan.feature.groups.domain.GroupsAccess
+import com.vovoscan.feature.groups.domain.GroupsRepository
+import com.vovoscan.feature.groups.domain.GroupsUser
 import com.vovoscan.feature.library.di.libraryModule
 import com.vovoscan.feature.library.domain.LibraryRepository
 import com.vovoscan.feature.library.domain.LibrarySeries
 import com.vovoscan.feature.library.domain.NewChapters
 import com.vovoscan.feature.library.domain.TitleRef
+import com.vovoscan.feature.notifications.di.notificationsModule
+import com.vovoscan.feature.notifications.domain.NotificationsRepository
+import com.vovoscan.feature.notifications.domain.PushDevice
+import com.vovoscan.feature.notifications.presentation.NotificationsViewModel
+import com.vovoscan.feature.notifications.presentation.PushRegistrar
 import com.vovoscan.feature.reader.di.readerModule
 import com.vovoscan.feature.reader.domain.ChapterHeading
 import com.vovoscan.feature.reader.domain.ChapterHeadings
@@ -167,7 +177,23 @@ fun appModules(
                     get<EpisodesRepository>().clearLocal()
                     get<ForumRepository>().clearLocal()
                     get<TogetherSession>().clear()
+                    get<GroupsRepository>().clearLocal()
+                    get<NotificationsRepository>().clearLocal()
+                    get<NotificationsViewModel>().reset()
                 }
+            }
+            // While the session still opens the API: this device stops receiving pushes, its key is erased.
+            single { BeforeSignOut { get<PushRegistrar>().signingOut() } }
+            // Sealed pushes (no Firebase on this build or no platform device: notifications stay in the app).
+            single {
+                val auth = get<AuthRepository>()
+                PushRegistrar(
+                    repository = get(),
+                    device = getOrNull() ?: PushDevice.None,
+                    signedIn = auth.session.map { it != null }.distinctUntilChanged(),
+                    locale = I18n.locale,
+                    scope = get(),
+                )
             }
             // A source left the list (third-party source removed, here or on another device): its catalog and
             // reader caches go; library entries stay ("Source removed").
@@ -294,6 +320,16 @@ fun appModules(
             single<ForumAccess> {
                 val auth = get<AuthRepository>()
                 ForumAccess { auth.session.map { it?.has(FORUM_FEATURE) == true }.distinctUntilChanged() }
+            }
+            // Groups (and their games) ride on the margin's flag, `forum`, as on the server.
+            single<GroupsAccess> {
+                val auth = get<AuthRepository>()
+                GroupsAccess { auth.session.map { it?.has(FORUM_FEATURE) == true }.distinctUntilChanged() }
+            }
+            // Who is signed in: one's own messages can be edited and deleted, one's seat is known in a game.
+            single<GroupsUser> {
+                val auth = get<AuthRepository>()
+                GroupsUser { auth.session.value?.userId }
             }
             // Reading circles show only with the `shared_reading` flag (gated by default).
             single<TogetherAccess> {
@@ -508,7 +544,9 @@ fun appModules(
         catalogModule,
         episodesModule,
         forumModule,
+        groupsModule,
         libraryModule,
+        notificationsModule,
         readerModule,
         sourcesModule,
         togetherModule,

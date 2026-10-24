@@ -21,6 +21,11 @@ fun interface SignOutCleanup {
     suspend fun run()
 }
 
+/** Runs before signing out, while the session still opens the API (wired in `shared`; optional). */
+fun interface BeforeSignOut {
+    suspend fun run()
+}
+
 /**
  * Koin module of the feature. Expects from the app: `HttpClient`, `SecureStore`, `SignOutCleanup`, `UiLanguage`,
  * `DevicePreferences` and `OnboardingServices`.
@@ -29,7 +34,15 @@ val authModule =
     module {
         single<AuthRemoteDataSource> { KtorAuthRemoteDataSource(get()) }
         single<SessionLocalDataSource> { SecureSessionLocalDataSource(get()) }
-        single { AuthRepositoryImpl(get(), get()) { get<SignOutCleanup>().run() } }
+        single {
+            // Resolved when signing out: what it needs may itself read the session.
+            AuthRepositoryImpl(
+                get(),
+                get(),
+                onSignedOut = { get<SignOutCleanup>().run() },
+                beforeSignOut = { getOrNull<BeforeSignOut>()?.run() },
+            )
+        }
         single<AuthRepository> { get<AuthRepositoryImpl>() }
         single<AccountRepository> { get<AuthRepositoryImpl>() }
         viewModelOf(::SignInViewModel)

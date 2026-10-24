@@ -1,0 +1,26 @@
+-- Groups live on the server (every message, every member): the device keeps, for display offline, the last list of the
+-- account's groups (key `mine`) and the last snapshot of each group opened (key `live:<groupId>`), as the server
+-- answered them to this account. Erased on sign-out.
+-- SQLite 3.18 (Android 8, minSdk 26): no ON CONFLICT … DO UPDATE.
+CREATE TABLE group_cache (
+    key TEXT NOT NULL PRIMARY KEY,
+    body TEXT NOT NULL,
+    saved_at INTEGER NOT NULL
+);
+
+cached:
+SELECT body FROM group_cache WHERE key = ?;
+
+put:
+INSERT OR REPLACE INTO group_cache (key, body, saved_at) VALUES (?, ?, ?);
+
+trimLive:
+DELETE FROM group_cache WHERE key LIKE 'live:%' AND key NOT IN (
+    SELECT key FROM group_cache WHERE key LIKE 'live:%' ORDER BY saved_at DESC LIMIT ?
+);
+
+forget:
+DELETE FROM group_cache WHERE key = ?;
+
+clear:
+DELETE FROM group_cache;

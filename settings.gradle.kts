@@ -21,7 +21,7 @@ include(":core:common", ":core:network", ":core:security", ":core:database", ":c
 
 // A feature = a vertical slice, split into layers: domain (pure Kotlin), data (local and remote
 // data sources, repository), presentation (shared ViewModels), di (Koin module).
-listOf("account", "auth", "catalog", "episodes", "forum", "library", "reader", "sources", "together").forEach { name ->
+listOf("account", "auth", "catalog", "episodes", "forum", "groups", "library", "notifications", "reader", "sources", "together").forEach { name ->
     include(":feature:$name:domain", ":feature:$name:data", ":feature:$name:presentation", ":feature:$name:di")
 }
 

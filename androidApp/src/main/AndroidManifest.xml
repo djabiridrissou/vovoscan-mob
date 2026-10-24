@@ -37,12 +37,42 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="vovoscan" android:host="together" />
             </intent-filter>
+            <!-- Group links (vovoscan://g/HANDLE, ?game=ID): the website's /g/HANDLE page, a QR code, a notification. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="vovoscan" android:host="g" />
+            </intent-filter>
         </activity>
         <!-- WorkManager's foreground service runs the download worker: type dataSync (Android 14+ requires a type). -->
         <service
             android:name="androidx.work.impl.foreground.SystemForegroundService"
             android:foregroundServiceType="dataSync"
             tools:node="merge" />
+        <!-- Sealed pushes (Firebase Cloud Messaging, data only): opened with this device's key, shown in the app's language. -->
+        <service
+            android:name=".push.PushService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
+        <!-- Firebase starts only when the app sets it up (a build with a Firebase app): no automatic start, no token
+             made before, nothing collected. -->
+        <provider
+            android:name="com.google.firebase.provider.FirebaseInitProvider"
+            android:authorities="${applicationId}.firebaseinitprovider"
+            tools:node="remove" />
+        <meta-data
+            android:name="firebase_messaging_auto_init_enabled"
+            android:value="false" />
+        <meta-data
+            android:name="firebase_analytics_collection_enabled"
+            android:value="false" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="groups" />
         <!-- The downloads notification's Cancel. -->
         <receiver
             android:name=".downloads.CancelDownloadsReceiver"
