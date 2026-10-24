@@ -1,0 +1,16 @@
+-- Notifications live on the server; the device keeps the last inbox it saw (newest first, as answered to this
+-- account) for display offline. Erased on sign-out.
+CREATE TABLE inbox_cache (
+    id INTEGER NOT NULL PRIMARY KEY,
+    body TEXT NOT NULL,
+    saved_at INTEGER NOT NULL
+);
+
+cached:
+SELECT body FROM inbox_cache WHERE id = 1;
+
+put:
+INSERT OR REPLACE INTO inbox_cache (id, body, saved_at) VALUES (1, ?, ?);
+
+clear:
+DELETE FROM inbox_cache;

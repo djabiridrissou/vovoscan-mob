@@ -8,6 +8,11 @@ enum AppRoute: Hashable {
     case reader(ReaderRoute)
     case episode(EpisodeRoute)
     case downloads
+    /// A group, by id or `@handle`.
+    case group(String)
+    case game(String)
+    case groupAdmin(String)
+    case notifications
 }
 
 /// Pushes a route on the current tab's stack (the title page's pills, a suggestion picked under the search field).
@@ -61,6 +66,14 @@ struct AppRouteView: View {
             EpisodeContainer(route: episode)
         case .downloads:
             DownloadsView()
+        case let .group(ref):
+            GroupView(ref: ref)
+        case let .game(id):
+            GameView(gameId: id)
+        case let .groupAdmin(id):
+            GroupAdminView(groupId: id)
+        case .notifications:
+            NotificationsView()
         }
     }
 }

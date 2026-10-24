@@ -6,9 +6,12 @@ import coil3.PlatformContext
 import coil3.SingletonImageLoader
 import com.vovoscan.app.downloads.AppVisibility
 import com.vovoscan.app.downloads.WorkManagerDownloadScheduler
+import com.vovoscan.app.push.AndroidPushDevice
+import com.vovoscan.app.push.PushSetup
 import com.vovoscan.app.ui.common.vovoscanImageLoader
 import com.vovoscan.core.common.i18n.UiLanguage
 import com.vovoscan.feature.auth.domain.AuthRepository
+import com.vovoscan.feature.notifications.domain.PushDevice
 import com.vovoscan.feature.reader.domain.DownloadScheduler
 import com.vovoscan.feature.reader.domain.DownloadsRepository
 import com.vovoscan.shared.AppConfig
@@ -32,7 +35,12 @@ class VovoscanApplication :
             androidContext(this@VovoscanApplication)
             val config = AppConfig(BuildConfig.API_BASE_URL, allowLocalPlugins = BuildConfig.DEBUG)
             // Downloads keep going in the background through WorkManager.
-            val background = module { single<DownloadScheduler> { WorkManagerDownloadScheduler(this@VovoscanApplication) } }
+            val background =
+                module {
+                    single<DownloadScheduler> { WorkManagerDownloadScheduler(this@VovoscanApplication) }
+                    // Sealed pushes: this install's key pair (Keystore-protected), opened by `PushService`.
+                    single<PushDevice> { AndroidPushDevice(this@VovoscanApplication) }
+                }
             modules(appModules(config, androidPlatformModule(this@VovoscanApplication)) + background)
         }
         // The app's language before the first screen: the device's choice, then the account's once it is known.
@@ -44,6 +52,8 @@ class VovoscanApplication :
         GlobalContext.get().get<DownloadsRepository>().resume()
         // Page images of sources that ask for a Referer (Coil's interceptor reads `ImageReferers`).
         GlobalContext.get().get<ImageRefererSync>().start()
+        // Group and game notifications pushed to this phone when the build has Firebase (else they stay in the app).
+        PushSetup.start(this)
     }
 
     override fun newImageLoader(context: PlatformContext): ImageLoader = vovoscanImageLoader(this)

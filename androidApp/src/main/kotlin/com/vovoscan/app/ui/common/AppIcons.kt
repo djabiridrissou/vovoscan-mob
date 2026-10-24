@@ -161,6 +161,60 @@ object AppIcons {
         }
     }
 
+    /** Groups: two speech balloons, one over the other (iOS `bubble.left.and.bubble.right`). */
+    val Groups: ImageVector by lazy {
+        icon("Groups") {
+            roundRect(2.5f, 3.5f, 12f, 9f, 3f)
+            moveTo(5.5f, 12.5f)
+            lineTo(4.5f, 15.5f)
+            lineTo(8.5f, 12.5f)
+            moveTo(16.5f, 8.5f)
+            lineTo(18.5f, 8.5f)
+            quadTo(21.5f, 8.5f, 21.5f, 11.5f)
+            lineTo(21.5f, 14.5f)
+            quadTo(21.5f, 17.5f, 18.5f, 17.5f)
+            lineTo(18.5f, 20.5f)
+            lineTo(15f, 17.5f)
+            lineTo(12f, 17.5f)
+            quadTo(9.5f, 17.5f, 9.2f, 15f)
+        }
+    }
+
+    /** The inbox: a bell. */
+    val Bell: ImageVector by lazy {
+        icon("Bell") {
+            moveTo(6f, 16.5f)
+            lineTo(6f, 10.5f)
+            quadTo(6f, 4.5f, 12f, 4.5f)
+            quadTo(18f, 4.5f, 18f, 10.5f)
+            lineTo(18f, 16.5f)
+            lineTo(19.5f, 18f)
+            lineTo(4.5f, 18f)
+            close()
+            moveTo(10f, 20.5f)
+            lineTo(14f, 20.5f)
+            moveTo(12f, 2.5f)
+            lineTo(12f, 4.5f)
+        }
+    }
+
+    /** Share: a box with an arrow out of it. */
+    val Share: ImageVector by lazy {
+        icon("Share") {
+            moveTo(8f, 9f)
+            lineTo(5.5f, 9f)
+            lineTo(5.5f, 20.5f)
+            lineTo(18.5f, 20.5f)
+            lineTo(18.5f, 9f)
+            lineTo(16f, 9f)
+            moveTo(12f, 14f)
+            lineTo(12f, 3f)
+            moveTo(8.5f, 6.5f)
+            lineTo(12f, 3f)
+            lineTo(15.5f, 6.5f)
+        }
+    }
+
     private fun icon(
         name: String,
         draw: PathBuilder.() -> Unit,

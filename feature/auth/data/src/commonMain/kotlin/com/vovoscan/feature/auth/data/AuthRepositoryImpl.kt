@@ -27,7 +27,9 @@ import kotlinx.serialization.json.buildJsonObject
 class AuthRepositoryImpl(
     private val remote: AuthRemoteDataSource,
     private val local: SessionLocalDataSource,
-    /** Called on sign-out: the other features erase their local data. */
+    /** Called before the session ends, while it still opens the API (this device's push registration goes). */
+    private val beforeSignOut: suspend () -> Unit = {},
+    /** Called on sign-out: the other features erase their local data. Last, so a trailing lambda is always this one. */
     private val onSignedOut: suspend () -> Unit = {},
 ) : AuthRepository,
     AccountRepository {
@@ -90,6 +92,7 @@ class AuthRepositoryImpl(
     }
 
     override suspend fun signOut() {
+        beforeSignOut()
         remote.signOut()
         clearEverything()
     }

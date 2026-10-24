@@ -48,7 +48,11 @@ final class LocaleModel: ObservableObject {
     @Published private(set) var code: String = I18n.shared.locale.value
 
     func observe() async {
-        for await next in I18n.shared.locale { code = next }
+        for await next in I18n.shared.locale {
+            code = next
+            // The notification service extension writes its sentences in the app's language.
+            PushSeal.setLocale(next)
+        }
     }
 }
 

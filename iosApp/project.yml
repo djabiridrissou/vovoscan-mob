@@ -7,6 +7,12 @@ options:
   # kAudioFileUnsupportedFileTypeError, 18.4 plays it (iosApp/Tests/Audio). See CLAUDE.md, "iOS audio".
   deploymentTarget:
     iOS: "18.4"
+# Firebase Messaging carries the sealed pushes to APNs (docs/NOTIFICATIONS.md). Only the Messaging product is linked;
+# it is configured only when the build has its GoogleService-Info.plist (git-ignored), otherwise it stays idle.
+packages:
+  Firebase:
+    url: https://github.com/firebase/firebase-ios-sdk
+    exactVersion: 13.1.0
 settings:
   base:
     SWIFT_VERSION: "5.0"
@@ -26,6 +32,16 @@ targets:
       # App icon (any, dark, tinted), the in-app logo (BrandLogo) and the launch screen (LaunchMark on
       # LaunchBackground). Replacing these images is enough to change the brand everywhere.
       - Assets.xcassets
+    dependencies:
+      - package: Firebase
+        product: FirebaseMessaging
+      - target: VovoscanNotifications
+    entitlements:
+      path: Vovoscan.entitlements
+      properties:
+        # APNs; the Keychain group the notification service extension shares (this install's push key).
+        aps-environment: development
+        keychain-access-groups: [$(AppIdentifierPrefix)com.vovoscan.push]
     info:
       path: Info.plist
       properties:
@@ -34,7 +50,8 @@ targets:
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         API_BASE_URL: $(API_BASE_URL)
         WEB_BASE_URL: $(WEB_BASE_URL)
-        # Reading circle invites (vovoscan://together/CODE): the website's /together/CODE page hands over to the app.
+        # Reading circle invites (vovoscan://together/CODE) and group links (vovoscan://g/<handle>): the website's
+        # /together/CODE and /g/<handle> pages hand over to the app.
         CFBundleURLTypes:
           - CFBundleURLName: $(PRODUCT_BUNDLE_IDENTIFIER).together
             CFBundleURLSchemes: [vovoscan]
@@ -42,6 +59,10 @@ targets:
           UIImageName: LaunchMark
           UIColorName: LaunchBackground
           UIImageRespectsSafeAreaInsets: true
+        # PushSeal.swift: the shared Keychain group is <prefix>com.vovoscan.push.
+        AppIdentifierPrefix: $(AppIdentifierPrefix)
+        # No method swizzling: AppDelegate hands the APNs token to Firebase itself.
+        FirebaseAppDelegateProxyEnabled: false
         UIStatusBarStyle: UIStatusBarStyleLightContent
         UIUserInterfaceStyle: Dark
         # ProMotion: the reader's spring and the player run at up to 120 Hz.
@@ -60,7 +81,7 @@ targets:
         # Downloads that carry on later (BackgroundDownloads.swift): a processing task (network required) and an app
         # refresh task; on iOS 26+, a continued processing task for downloads the user starts (one identifier per
         # request, hence the wildcard; it needs no background mode). The identifiers follow the bundle id (".dev" in Debug).
-        UIBackgroundModes: [processing, fetch]
+        UIBackgroundModes: [processing, fetch, remote-notification]
         BGTaskSchedulerPermittedIdentifiers:
           - $(PRODUCT_BUNDLE_IDENTIFIER).downloads
           - $(PRODUCT_BUNDLE_IDENTIFIER).downloads.refresh
@@ -93,6 +114,45 @@ targets:
         script: |
           cd "$SRCROOT/.."
           ./gradlew :shared:embedAndSignAppleFrameworkForXcode
+    postBuildScripts:
+      # Firebase's configuration for this app (git-ignored): copied only when it is there, so a build without it still
+      # succeeds and keeps every notification in the in-app inbox.
+      - name: Copy GoogleService-Info.plist when present
+        basedOnDependencyAnalysis: false
+        script: |
+          if [ -f "$SRCROOT/GoogleService-Info.plist" ]; then
+            cp "$SRCROOT/GoogleService-Info.plist" "$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/"
+          fi
+  # Opens each sealed push on the device and writes it in the app's language (NotificationService/, PushSeal.swift):
+  # the server only sends a placeholder alert with mutable-content.
+  VovoscanNotifications:
+    type: app-extension
+    platform: iOS
+    sources:
+      - NotificationService
+      - Sources/Push/PushSeal.swift
+    entitlements:
+      path: VovoscanNotifications.entitlements
+      properties:
+        keychain-access-groups: [$(AppIdentifierPrefix)com.vovoscan.push]
+    info:
+      path: NotificationService/Info.plist
+      properties:
+        CFBundleDisplayName: vovoscan
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        AppIdentifierPrefix: $(AppIdentifierPrefix)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.usernotifications.service
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).NotificationService
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.vovoscan.app.notifications
+        CODE_SIGN_STYLE: Automatic
+        EXCLUDED_ARCHS[sdk=iphonesimulator*]: x86_64
+      configs:
+        Debug:
+          PRODUCT_BUNDLE_IDENTIFIER: com.vovoscan.app.dev.notifications
   # The episode audio (Sources/Audio: AVAudioEngine, Ogg Opus) tested offline in the simulator, without the app or the
   # Kotlin framework: xcodebuild test -project Vovoscan.xcodeproj -scheme Vovoscan -destination 'platform=iOS Simulator,name=iPhone 16 Pro,OS=18.6'
   VovoscanAudioTests:

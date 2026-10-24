@@ -29,8 +29,15 @@ import com.vovoscan.feature.catalog.presentation.TitleDetailViewModel
 import com.vovoscan.feature.episodes.presentation.EpisodeViewModel
 import com.vovoscan.feature.episodes.presentation.PlayerViewModel
 import com.vovoscan.feature.forum.presentation.ForumViewModel
+import com.vovoscan.feature.groups.presentation.GameViewModel
+import com.vovoscan.feature.groups.presentation.GroupAdminViewModel
+import com.vovoscan.feature.groups.presentation.GroupViewModel
+import com.vovoscan.feature.groups.presentation.GroupsViewModel
 import com.vovoscan.feature.library.presentation.FollowViewModel
 import com.vovoscan.feature.library.presentation.LibraryViewModel
+import com.vovoscan.feature.notifications.domain.PushDevice
+import com.vovoscan.feature.notifications.presentation.NotificationsViewModel
+import com.vovoscan.feature.notifications.presentation.PushRegistrar
 import com.vovoscan.feature.reader.domain.DownloadActivity
 import com.vovoscan.feature.reader.domain.DownloadBlock
 import com.vovoscan.feature.reader.domain.DownloadsRepository
@@ -64,12 +71,14 @@ import kotlin.experimental.ExperimentalNativeApi
 /**
  * Called once when the iOS app launches (VovoscanApp.swift). Debug builds may add sources from a local server, and
  * may simulate having no network (`simulateOffline`, from the `VOVOSCAN_OFFLINE=1` launch environment): the simulator
- * shares the Mac's network and has no switch of its own.
+ * shares the Mac's network and has no switch of its own. [pushDevice]: this install's sealed-push key
+ * (`PushKeychain.swift`, CryptoKit and the Keychain shared with the notification service extension).
  */
 @OptIn(ExperimentalNativeApi::class)
 fun initKoin(
     apiBaseUrl: String,
     simulateOffline: Boolean = false,
+    pushDevice: PushDevice = PushDevice.None,
 ) {
     val offline = simulateOffline && Platform.isDebugBinary
     startKoin {
@@ -85,6 +94,7 @@ fun initKoin(
                     single<AppFolders> { appFolders() }
                     single<DevicePreferences> { IosDevicePreferences() }
                     single { ThisDevice(Device.Ios) }
+                    single { pushDevice }
                 },
             ),
         )
@@ -98,6 +108,13 @@ fun initKoin(
     KoinPlatform.getKoin().get<DownloadsRepository>().resume()
     // Page images of sources that ask for a Referer (the URL protocol of the iOS app reads `ImageReferers`).
     KoinPlatform.getKoin().get<ImageRefererSync>().start()
+    // Sealed pushes: registered once Firebase hands a token over (`PushBridge`), never without one.
+    KoinPlatform.getKoin().get<PushRegistrar>().start()
+}
+
+/** From the app delegate: the Firebase registration token (null: Firebase is not set up on this build). */
+class PushBridge : KoinComponent {
+    fun tokenChanged(token: String?) = get<PushRegistrar>().tokenChanged(token)
 }
 
 /**
@@ -210,6 +227,20 @@ class ViewModels : KoinComponent {
     /** An invite link opened from outside (`vovoscan://together/CODE`): the preview card, then Join. */
     fun togetherInvite(link: String): TogetherInviteViewModel =
         remember("invite:$link") { get<TogetherInviteViewModel> { parametersOf(link) } }
+
+    /** The Groups tab: the caller's groups, search, Discover, "New group". */
+    fun groups(): GroupsViewModel = remember("groups") { get<GroupsViewModel>() }
+
+    /** One group, by id or `@handle`. */
+    fun group(ref: String): GroupViewModel = remember("group:$ref") { get<GroupViewModel> { parametersOf(ref) } }
+
+    fun groupAdmin(groupId: String): GroupAdminViewModel =
+        remember("group-admin:$groupId") { get<GroupAdminViewModel> { parametersOf(groupId) } }
+
+    fun game(gameId: String): GameViewModel = remember("game:$gameId") { get<GameViewModel> { parametersOf(gameId) } }
+
+    /** The inbox: one for the app (the bell and the screen share it), so it is never kept in this store. */
+    fun notifications(): NotificationsViewModel = get()
 
     fun providerKeys(): ProviderKeysViewModel = remember("providerKeys") { get<ProviderKeysViewModel>() }
 

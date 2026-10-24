@@ -30,6 +30,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -43,6 +44,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
@@ -54,7 +56,12 @@ import com.vovoscan.app.ui.common.AppIcons
 import com.vovoscan.app.ui.common.LocalAdaptive
 import com.vovoscan.app.ui.downloads.DownloadsScreen
 import com.vovoscan.app.ui.episode.EpisodeScreen
+import com.vovoscan.app.ui.groups.GameScreen
+import com.vovoscan.app.ui.groups.GroupAdminScreen
+import com.vovoscan.app.ui.groups.GroupScreen
+import com.vovoscan.app.ui.groups.GroupsScreen
 import com.vovoscan.app.ui.library.LibraryScreen
+import com.vovoscan.app.ui.notifications.NotificationsScreen
 import com.vovoscan.app.ui.onboarding.OnboardingScreen
 import com.vovoscan.app.ui.player.PlayerScreen
 import com.vovoscan.app.ui.reader.ReaderScreen
@@ -74,12 +81,17 @@ import com.vovoscan.core.common.i18n.I18n
 import com.vovoscan.feature.auth.presentation.DeletionBannerUi
 import com.vovoscan.feature.auth.presentation.SessionViewModel
 import com.vovoscan.feature.catalog.presentation.TitleDetailViewModel
+import com.vovoscan.feature.groups.domain.GroupLinks
+import com.vovoscan.feature.groups.presentation.GroupsViewModel
+import com.vovoscan.feature.notifications.presentation.NotificationsIntent
+import com.vovoscan.feature.notifications.presentation.NotificationsViewModel
 import com.vovoscan.feature.reader.domain.DownloadsRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import org.koin.android.ext.android.inject
+import org.koin.compose.koinInject
 import org.koin.compose.viewmodel.koinViewModel
 import org.koin.core.parameter.parametersOf
 
@@ -91,6 +103,9 @@ class MainActivity : ComponentActivity() {
 
     /** A reading circle's invite opened from outside (`vovoscan://together/CODE`), until its card is closed. */
     private val invite = MutableStateFlow<String?>(null)
+
+    /** A group's link opened from outside or from a notification (`vovoscan://g/<handle>?game=<id>`). */
+    private val groupLink = MutableStateFlow<String?>(null)
 
     // Android 13+: the downloads notification needs the permission, asked once at the first download. Refused, the
     // downloads go on all the same (the foreground service shows in the system's task manager only).
@@ -125,11 +140,23 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        if (savedInstanceState == null) invite.value = inviteLinkOf(intent)
+        if (savedInstanceState == null) {
+            invite.value = inviteLinkOf(intent)
+            groupLink.value = groupLinkOf(intent)
+        }
         setContent {
             VovoscanTheme {
                 val link by invite.collectAsStateWithLifecycle()
-                AdaptiveWindow { Root(invite = link, onInviteDone = { invite.value = null }) }
+                val group by groupLink.collectAsStateWithLifecycle()
+                AdaptiveWindow {
+                    Root(
+                        invite = link,
+                        onInviteDone = { invite.value = null },
+                        groupLink = group,
+                        onGroupLinkDone = { groupLink.value = null },
+                        onGroupsOpened = ::askNotificationsOnce,
+                    )
+                }
             }
         }
         // A new app language rebuilds every screen in it (the ViewModels survive; their labels are read on draw).
@@ -147,6 +174,7 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         inviteLinkOf(intent)?.let { invite.value = it }
+        groupLinkOf(intent)?.let { groupLink.value = it }
     }
 
     override fun onStart() {
@@ -169,13 +197,14 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-/** The four tabs, an icon over each label (the iOS tab bar's symbols, drawn in `AppIcons`). */
+/** The tabs (Groups only with the feature), an icon over each label (the iOS tab bar's symbols, drawn in `AppIcons`). */
 private enum class Tab(
     private val labelKey: String,
     val icon: () -> ImageVector,
 ) {
     Catalog("nav.catalog", { AppIcons.Catalog }),
     Library("nav.library", { AppIcons.Library }),
+    Groups("nav.groups", { AppIcons.Groups }),
     Sources("nav.sources", { AppIcons.Sources }),
     Settings("nav.settings", { AppIcons.Settings }),
     ;
@@ -192,7 +221,12 @@ private enum class Tab(
 private fun Root(
     invite: String? = null,
     onInviteDone: () -> Unit = {},
+    groupLink: String? = null,
+    onGroupLinkDone: () -> Unit = {},
+    onGroupsOpened: () -> Unit = {},
     session: SessionViewModel = koinViewModel(),
+    groups: GroupsViewModel = koinViewModel(),
+    notifications: NotificationsViewModel = koinInject(),
 ) {
     val user by session.session.collectAsStateWithLifecycle()
     val tutorial by session.tutorial.collectAsStateWithLifecycle()
@@ -213,6 +247,31 @@ private fun Root(
     var openEpisode by rememberSaveable { mutableStateOf<String?>(null) }
     // Open player (full screen): "chapter|next chapter or empty|language or empty|start page or empty".
     var openPlayer by rememberSaveable { mutableStateOf<String?>(null) }
+    // Groups: the group open (an id or "@handle"), a game over it, its settings, the inbox.
+    var openGroup by rememberSaveable { mutableStateOf<String?>(null) }
+    var openGame by rememberSaveable { mutableStateOf<String?>(null) }
+    var openGroupAdmin by rememberSaveable { mutableStateOf<String?>(null) }
+    var openNotifications by rememberSaveable { mutableStateOf(false) }
+    val groupsState by groups.state.collectAsStateWithLifecycle()
+    val tabs = Tab.entries.filter { it != Tab.Groups || groupsState.visible }
+    if (user != null) {
+        // The inbox follows live while the app is on screen: the bell's count moves at once.
+        LifecycleEventEffect(Lifecycle.Event.ON_START) { notifications.onIntent(NotificationsIntent.Start) }
+        LifecycleEventEffect(Lifecycle.Event.ON_STOP) { notifications.onIntent(NotificationsIntent.Stop) }
+    }
+    LaunchedEffect(groupLink, user != null) {
+        val link = groupLink ?: return@LaunchedEffect
+        if (user == null) return@LaunchedEffect
+        GroupLinks.handleOf(link)?.let { handle ->
+            tab = Tab.Groups
+            openTitle = null
+            openGroupAdmin = null
+            openGroup = "@$handle"
+            openGame = Regex("[?&]game=([A-Za-z0-9-]+)").find(link)?.groupValues?.get(1)
+        }
+        onGroupLinkDone()
+    }
+    LaunchedEffect(tab) { if (tab == Tab.Groups) onGroupsOpened() }
     if (user != null && tutorial.shown) {
         // The first-launch tour, full screen over everything (replayable from Settings › Preferences).
         Column(
@@ -311,19 +370,49 @@ private fun Root(
             openSource = null
             openDownloads = false
             openSettings = null
+            openGroup = null
+            openGame = null
+            openGroupAdmin = null
+            openNotifications = false
         }
         val isSelected: (Tab) -> Boolean = { entry -> entry == tab && openTitle == null && (entry != Tab.Sources || openSource == null) }
         Row(Modifier.weight(1f)) {
             // A tablet or an unfolded foldable: the tabs on the side (a rail, or a sidebar when wide).
             if (adaptive.navigation != Navigation.BottomBar) {
-                SideTabs(adaptive.navigation == Navigation.Sidebar, isSelected, select)
+                SideTabs(adaptive.navigation == Navigation.Sidebar, tabs, isSelected, select)
             }
             Column(Modifier.weight(1f)) {
                 val title = openTitle?.split("|")
                 val source = openSource?.split("|", limit = 2)
                 val episodeRoute = openEpisode?.split("|")
                 val episode = episodeRoute?.first()
-                if (title != null && episode != null) {
+                if (openGame != null) {
+                    BackHandler { openGame = null }
+                    GameScreen(gameId = openGame!!, onBack = { openGame = null })
+                } else if (openGroupAdmin != null) {
+                    BackHandler { openGroupAdmin = null }
+                    GroupAdminScreen(groupId = openGroupAdmin!!, onBack = { openGroupAdmin = null }, onClosed = { openGroupAdmin = null })
+                } else if (openGroup != null) {
+                    BackHandler { openGroup = null }
+                    GroupScreen(
+                        ref = openGroup!!,
+                        onBack = { openGroup = null },
+                        onOpenGame = { openGame = it },
+                        onOpenAdmin = { openGroupAdmin = it },
+                    )
+                } else if (openNotifications) {
+                    BackHandler { openNotifications = false }
+                    NotificationsScreen(
+                        onBack = { openNotifications = false },
+                        onOpen = { target ->
+                            val ref = target.groupId ?: target.handle?.let { "@$it" }
+                            if (ref != null) {
+                                openGroup = ref
+                                openGame = target.gameId
+                            }
+                        },
+                    )
+                } else if (title != null && episode != null) {
                     BackHandler { openEpisode = null }
                     // The title page's own ViewModel (same key): chapter label and the next chapter in reading order.
                     val detail: TitleDetailViewModel =
@@ -385,6 +474,8 @@ private fun Root(
                                 onOpenCatalog = { tab = Tab.Catalog },
                                 onSignOut = session::signOut,
                             )
+                        Tab.Groups ->
+                            GroupsScreen(onOpenGroup = { openGroup = it }, onOpenNotifications = { openNotifications = true })
                         Tab.Sources ->
                             SourcesScreen(
                                 onAdd = { repository -> openSource = if (repository == null) "add-source" else "add-source|$repository" },
@@ -412,18 +503,19 @@ private fun Root(
                 }
             }
         }
-        if (adaptive.navigation == Navigation.BottomBar) BottomTabs(isSelected, select)
+        if (adaptive.navigation == Navigation.BottomBar) BottomTabs(tabs, isSelected, select)
     }
 }
 
 /** Phones: the tabs along the bottom, an icon over each label. */
 @Composable
 private fun BottomTabs(
+    tabs: List<Tab>,
     isSelected: (Tab) -> Boolean,
     onSelect: (Tab) -> Unit,
 ) {
     Row(Modifier.fillMaxWidth().background(Brand.Ink2)) {
-        Tab.entries.forEach { entry ->
+        tabs.forEach { entry ->
             val color = if (isSelected(entry)) Brand.Red else Brand.Muted
             Column(
                 Modifier
@@ -450,6 +542,7 @@ private fun BottomTabs(
 @Composable
 private fun SideTabs(
     wide: Boolean,
+    tabs: List<Tab>,
     isSelected: (Tab) -> Boolean,
     onSelect: (Tab) -> Unit,
 ) {
@@ -468,7 +561,7 @@ private fun SideTabs(
                 modifier = Modifier.padding(start = 20.dp, bottom = 16.dp),
             )
         }
-        Tab.entries.forEach { entry ->
+        tabs.forEach { entry ->
             val selected = isSelected(entry)
             val color = if (selected) Brand.Red else Brand.Muted
             Box(
@@ -538,4 +631,10 @@ private fun DeletionBanner(
         }
         banner.error?.let { Text(it, style = MaterialTheme.typography.bodySmall.copy(color = Brand.Ink)) }
     }
+}
+
+/** Only the app's own group links (`vovoscan://g/<handle>`, from a notification or a QR code read by the camera). */
+private fun groupLinkOf(intent: Intent?): String? {
+    val data = intent?.data ?: return null
+    return data.toString().takeIf { data.scheme == "vovoscan" && data.host == "g" }
 }

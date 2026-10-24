@@ -4,6 +4,7 @@ import SwiftUI
 @main
 struct VovoscanApp: App {
     @Environment(\.scenePhase) private var scenePhase
+    @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
     init() {
         // Covers: kept by the shared HTTP cache that AsyncImage uses.
@@ -11,7 +12,11 @@ struct VovoscanApp: App {
         // The last registered protocol is asked first: offline simulation wins over the Referer.
         URLProtocol.registerClass(SourceRefererProtocol.self)
         if AppEnvironment.simulateOffline { URLProtocol.registerClass(SimulatedOffline.self) }
-        IosAppKt.doInitKoin(apiBaseUrl: AppEnvironment.apiBaseUrl, simulateOffline: AppEnvironment.simulateOffline)
+        IosAppKt.doInitKoin(
+            apiBaseUrl: AppEnvironment.apiBaseUrl,
+            simulateOffline: AppEnvironment.simulateOffline,
+            pushDevice: IosPushDevice()
+        )
         // Background tasks must be registered before the app finishes launching.
         BackgroundDownloads.shared.register()
     }
