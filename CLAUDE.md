@@ -754,6 +754,9 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   animation, with the scroll's target as proposal: apply a gesture rule only while a finger drag is in progress, or a
   `scrollTo` is bent too. A `scrollTo(id:)` towards an item a lazy stack has not laid out yet aims at an estimated
   place (with tall items, far off). Measured frames come back as non-integers: compare offsets with a tolerance.
+- No `withAnimation(.repeatForever)` started in `onAppear` (a skeleton's shimmer): that transaction also catches the
+  layout around the view, and in the catalog's `ScrollView` the content drifted down forever under a stuck refresh
+  spinner, swallowing taps (gone under Reduce Motion). Loops are driven by the clock (`TimelineView(.animation)`, `Shimmer`).
 - AVAudioEngine: `AVAudioPlayerNode.play()` while the engine is not running raises an Objective-C exception (a
   crash): `CueMixer` starts the engine first and never plays a node in a stopped engine. Do not run audio work in a
   SwiftUI view's body other than through `PlayerAudio.sync` (cheap: volume, pan, a drift check every 300 ms).
