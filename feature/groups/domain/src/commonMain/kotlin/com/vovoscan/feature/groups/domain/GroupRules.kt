@@ -3,7 +3,9 @@ package com.vovoscan.feature.groups.domain
 /** The contract's limits, checked before sending (the server checks them again and has the last word). */
 object GroupRules {
     const val NAME_MIN = 3
-    const val NAME_MAX = 60
+
+    // Not NAME_MAX: the Objective-C header would meet libc's NAME_MAX macro.
+    const val NAME_LIMIT = 60
     const val HANDLE_MIN = 3
     const val HANDLE_MAX = 32
     const val ABOUT_MAX = 500
@@ -72,7 +74,7 @@ object GroupRules {
             .trim()
     }
 
-    fun nameOk(name: String): Boolean = clean(name, lines = false).length in NAME_MIN..NAME_MAX
+    fun nameOk(name: String): Boolean = clean(name, lines = false).length in NAME_MIN..NAME_LIMIT
 
     /** A share name as typed: `@` and case dropped, spaces and underscores as dashes. */
     fun normalizeHandle(text: String): String =
