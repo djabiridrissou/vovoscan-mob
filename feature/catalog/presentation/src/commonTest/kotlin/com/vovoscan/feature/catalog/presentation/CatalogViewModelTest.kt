@@ -149,7 +149,7 @@ class CatalogViewModelTest {
                         )
                     remote["gutenberg" to null] = listOf(listOf(title("gutenberg", "plugin-unrated")))
                 }
-            val vm = CatalogViewModel(repository) { MutableStateFlow(false) }
+            val vm = CatalogViewModel(repository, content = { MutableStateFlow(false) })
             vm.onIntent(CatalogIntent.SourcesChanged(listOf(vovoscan, gutenberg)))
             advanceUntilIdle()
             // The API filtered its own titles: an unrated one stays, a rated one still follows the rule.
