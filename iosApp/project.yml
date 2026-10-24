@@ -32,10 +32,6 @@ targets:
       # App icon (any, dark, tinted), the in-app logo (BrandLogo) and the launch screen (LaunchMark on
       # LaunchBackground). Replacing these images is enough to change the brand everywhere.
       - Assets.xcassets
-      # Firebase's configuration for this app (git-ignored): pushes reach the phone only when it is there.
-      - path: GoogleService-Info.plist
-        optional: true
-        buildPhase: resources
     dependencies:
       - package: Firebase
         product: FirebaseMessaging
@@ -118,6 +114,15 @@ targets:
         script: |
           cd "$SRCROOT/.."
           ./gradlew :shared:embedAndSignAppleFrameworkForXcode
+    postBuildScripts:
+      # Firebase's configuration for this app (git-ignored): copied only when it is there, so a build without it still
+      # succeeds and keeps every notification in the in-app inbox.
+      - name: Copy GoogleService-Info.plist when present
+        basedOnDependencyAnalysis: false
+        script: |
+          if [ -f "$SRCROOT/GoogleService-Info.plist" ]; then
+            cp "$SRCROOT/GoogleService-Info.plist" "$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/"
+          fi
   # Opens each sealed push on the device and writes it in the app's language (NotificationService/, PushSeal.swift):
   # the server only sends a placeholder alert with mutable-content.
   VovoscanNotifications:
