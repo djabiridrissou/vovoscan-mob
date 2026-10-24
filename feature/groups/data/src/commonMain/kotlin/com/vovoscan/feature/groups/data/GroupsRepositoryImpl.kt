@@ -360,7 +360,9 @@ class GroupsRepositoryImpl(
             onItem = onGame,
         )
 
-    override suspend fun clearLocal() = withContext(io) { queries.clear() }
+    override suspend fun clearLocal() {
+        withContext(io) { queries.clear() }
+    }
 
     private suspend fun save(
         key: String,

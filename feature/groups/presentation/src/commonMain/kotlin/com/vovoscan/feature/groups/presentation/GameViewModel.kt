@@ -340,9 +340,11 @@ class GameViewModel(
                 else -> null
             }
         return g.players.map { p ->
+            val before = p.ratingBefore
+            val after = p.ratingAfter
             val change =
-                if (p.ratingBefore != null && p.ratingAfter != null) {
-                    val d = (p.ratingAfter - p.ratingBefore).let { kotlin.math.round(it).toInt() }
+                if (before != null && after != null) {
+                    val d = kotlin.math.round(after - before).toInt()
                     if (d >= 0) "+$d" else "−${-d}"
                 } else {
                     null

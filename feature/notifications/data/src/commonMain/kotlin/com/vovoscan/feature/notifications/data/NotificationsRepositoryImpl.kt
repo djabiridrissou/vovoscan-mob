@@ -173,7 +173,9 @@ class NotificationsRepositoryImpl(
             delete("$BASE/devices/${deviceId.encodeURLPathPart()}")
         }
 
-    override suspend fun clearLocal() = withContext(io) { queries.clear() }
+    override suspend fun clearLocal() {
+        withContext(io) { queries.clear() }
+    }
 
     private suspend fun save(dto: InboxDto) =
         withContext(io) { queries.put(ApiJson.encodeToString(InboxDto.serializer(), dto), clock.nowMillis()) }

@@ -6,20 +6,26 @@ plugins {
 // local google-services.json next to this file (git-ignored; the Google Services plugin is not used), whose client for
 // the build's package is taken. Without one the build has no Firebase: notifications stay in the app.
 fun firebase(packageName: String): Map<String, String> {
-    val props = listOf("appId", "apiKey", "projectId", "senderId").associateWith { providers.gradleProperty("vovoscan.firebase.$it").orNull }
+    val props =
+        listOf("appId", "apiKey", "projectId", "senderId").associateWith {
+            providers.gradleProperty("vovoscan.firebase.$it").orNull
+        }
     if (props.values.all { it != null }) return props.mapValues { it.value!! }
     val file = file("google-services.json")
     if (!file.exists()) return emptyMap()
     @Suppress("UNCHECKED_CAST")
     val json = groovy.json.JsonSlurper().parse(file) as Map<String, Any?>
     val project = json["project_info"] as Map<String, Any?>
+
     @Suppress("UNCHECKED_CAST")
     val client =
         (json["client"] as List<Map<String, Any?>>).firstOrNull { c ->
             ((c["client_info"] as Map<String, Any?>)["android_client_info"] as Map<String, Any?>)["package_name"] == packageName
         } ?: return emptyMap()
+
     @Suppress("UNCHECKED_CAST")
     val info = client["client_info"] as Map<String, Any?>
+
     @Suppress("UNCHECKED_CAST")
     val key = (client["api_key"] as List<Map<String, Any?>>).first()["current_key"].toString()
     return mapOf(
@@ -32,8 +38,12 @@ fun firebase(packageName: String): Map<String, String> {
 
 fun com.android.build.api.dsl.ApplicationBuildType.firebaseFields(packageName: String) {
     val values = firebase(packageName)
-    listOf("appId" to "FIREBASE_APP_ID", "apiKey" to "FIREBASE_API_KEY", "projectId" to "FIREBASE_PROJECT_ID", "senderId" to "FIREBASE_SENDER_ID")
-        .forEach { (key, field) -> buildConfigField("String", field, "\"${values[key].orEmpty()}\"") }
+    listOf(
+        "appId" to "FIREBASE_APP_ID",
+        "apiKey" to "FIREBASE_API_KEY",
+        "projectId" to "FIREBASE_PROJECT_ID",
+        "senderId" to "FIREBASE_SENDER_ID",
+    ).forEach { (key, field) -> buildConfigField("String", field, "\"${values[key].orEmpty()}\"") }
 }
 
 android {
