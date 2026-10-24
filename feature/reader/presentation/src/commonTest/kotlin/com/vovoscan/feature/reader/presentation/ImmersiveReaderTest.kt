@@ -233,6 +233,22 @@ class ImmersiveReaderTest {
         }
 
     @Test
+    fun aPageKeepsItsMeasuredSizeOnScreenOnceItsImageIsLetGo() =
+        runTest(dispatcher) {
+            // The native strip draws the items: once an image far from the one read is let go, the page must keep its
+            // measured height there too, or the pages above shrink on screen while the stops still count them tall
+            // (one Next then glided past dozens of pages).
+            val strip = manga.copy(sourceKey = "inkwell-press", pages = manga.pages.map { it.copy(width = 0, height = 0) })
+            val vm = reader(sourceKey = "inkwell-press", chapter = strip)
+            vm.onIntent(ReaderIntent.PageSized(0, 400, 1600))
+            vm.onIntent(ReaderIntent.PageSized(1, 400, 1600))
+            val drawn = vm.state.value.items.filterIsInstance<ReaderItem.Page>().map { it.page }
+            assertEquals(vm.state.value.pages, drawn)
+            assertEquals(1600, drawn[1].height)
+            assertFalse(drawn[2].hasSize)
+        }
+
+    @Test
     fun aTapGlidesToTheNextStopAndTapsAddUp() =
         runTest(dispatcher) {
             val vm = reader()

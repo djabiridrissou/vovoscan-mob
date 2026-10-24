@@ -1012,7 +1012,10 @@ class ReaderViewModel(
             // The images turn out to be a vertical strip (or not): the mode follows their shape.
             show(open, current.preferences, seriesMode)
         } else {
-            mutableState.update { it.copy(pages = sized(open.pages)) }
+            // The items carry the size too: the page keeps its drawn height once its image is let go (far from the
+            // one read), so the native strip and these stops agree. Back at the placeholder's height, the pages above
+            // shrank on screen but not here, and one Next glided past dozens of pages.
+            mutableState.update { it.copy(pages = sized(open.pages), items = items(open)) }
         }
         rebuildStops()
     }
@@ -1336,7 +1339,7 @@ class ReaderViewModel(
                 actionLabel = chapter.nextChapterId?.let { t("reader.nextChapter") },
                 chapterId = chapter.nextChapterId,
             )
-        return listOf(ReaderItem.Transition(previous)) + chapter.pages.map { ReaderItem.Page(it) } + ReaderItem.Transition(next)
+        return listOf(ReaderItem.Transition(previous)) + sized(chapter.pages).map { ReaderItem.Page(it) } + ReaderItem.Transition(next)
     }
 
     /** Number and name of the neighbouring chapters, when the device knows them (once per pair of ids). */
