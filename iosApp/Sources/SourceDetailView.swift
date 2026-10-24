@@ -45,6 +45,7 @@ struct SourceDetailView: View {
                 Text(model.state.removalMessage)
             }
         }
+        .readableWidth()
         .background(Color.brandInk)
         .alert(
             L("sources.newConnections"),

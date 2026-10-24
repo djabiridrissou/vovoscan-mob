@@ -51,6 +51,8 @@ data class ReaderSettingsSheet(
     val keepAwake: Boolean,
     val volumeKeys: Boolean,
     val volumeKeysInverted: Boolean,
+    /** Two pages side by side when the screen is wide enough (shown on every device: a phone can join a display). */
+    val doublePages: Boolean,
 ) {
     companion object {
         fun of(
@@ -83,6 +85,7 @@ data class ReaderSettingsSheet(
                 keepAwake = preferences.keepAwake,
                 volumeKeys = preferences.volumeKeys,
                 volumeKeysInverted = preferences.volumeKeysInverted,
+                doublePages = preferences.doublePages,
             )
         }
     }
@@ -109,6 +112,8 @@ object ReaderText {
     val VOLUME_KEYS: String get() = t("reader.volumeKeys")
     val VOLUME_KEYS_HELP: String get() = t("reader.volumeKeysHelp")
     val VOLUME_KEYS_INVERTED: String get() = t("reader.volumeKeysInverted")
+    val DOUBLE_PAGES: String get() = t("reader.doublePages")
+    val DOUBLE_PAGES_HELP: String get() = t("reader.doublePagesHelp")
 
     fun mode(mode: ReadingMode): String =
         when (mode) {

@@ -95,6 +95,7 @@ internal fun ReaderSettingsSheet(
             Toggle(ReaderText.DOUBLE_TAP_ZOOM, ReaderText.DOUBLE_TAP_ZOOM_HELP, sheet.doubleTapZoom) {
                 onIntent(ReaderIntent.SetDoubleTapZoom(it))
             }
+            Toggle(ReaderText.DOUBLE_PAGES, ReaderText.DOUBLE_PAGES_HELP, sheet.doublePages) { onIntent(ReaderIntent.SetDoublePages(it)) }
             Toggle(ReaderText.KEEP_AWAKE, ReaderText.KEEP_AWAKE_HELP, sheet.keepAwake) { onIntent(ReaderIntent.SetKeepAwake(it)) }
             Toggle(ReaderText.VOLUME_KEYS, ReaderText.VOLUME_KEYS_HELP, sheet.volumeKeys) { onIntent(ReaderIntent.SetVolumeKeys(it)) }
             if (sheet.volumeKeys) {

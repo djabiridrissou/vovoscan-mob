@@ -34,6 +34,8 @@ data class ReaderPreferences(
     val focus: Boolean = false,
     /** The kinds whose "How to read" coach was already closed on this device (`CoachKind`). */
     val coachSeen: Set<CoachKind> = emptySet(),
+    /** Paged modes on a wide reading area (iPad in landscape, an unfolded foldable): two pages side by side. */
+    val doublePages: Boolean = true,
 ) {
     fun defaultFor(format: ComicFormat): ReadingMode? =
         when (format) {

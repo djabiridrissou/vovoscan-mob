@@ -370,8 +370,11 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   2.5 s after a Next or a scroll down, come back on a scroll up of 0.25 × the screen; a 2 pt red progress line while
   hidden; immersive system bars (Android), hidden status bar (iOS). Title card for 1.6 s on opening. Focus (off by
   default, `ReaderPreferences.focus`): the panel at full light, the rest at 0.72, gliding 380 ms. Position
-  `{page, offset}` (share of the page) in `reader_setting` (`pos/<source>/<chapter>`, at most every 500 ms),
-  restored when the chapter opens at its saved page. The next 3 pages are prefetched. Our catalogue's comics have
+  `{page, offset}` in `reader_setting` (`pos/<source>/<chapter>`, at most every 500 ms): the reading line (a third of
+  the screen down) as a share of its page. "Continue reading" (`Resume`, reader SPEC §9): the stop whose panel holds
+  that line is the anchor; the strip opens one stop before it (a third of a screen back without stops, or when that
+  stop is more than a screen up), the anchor panel lit for 1.2 s; the placement is not saved back until the reader
+  moves (no drift). The next 3 pages are prefetched. Our catalogue's comics have
   "Watch from here" (`ReadWithVoice` → `OpenEpisode(chapterId, page)` → `PlayerViewModel(…, startPage)`, the first
   beat of that page). Reduce Motion / Remove animations: jumps, no glide, no fades.
 - Tall pages in the paged modes (`TallPages`, as Mihon's paged viewer): a page whose height / width is more than
@@ -502,6 +505,26 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   left a blank grey page. A page fitted to the screen keeps the reader's black around it once loaded (Android drew
   the placeholder's grey beside a wide xkcd strip). The reader's back, settings and previous-section controls have
   TalkBack / VoiceOver labels ("Back", "Reader settings", "Previous section"), not "left arrow".
+
+## Large screens (iPad, tablets, foldables)
+
+- Shared rules, never the device's name: `core/common/Adaptive.kt` (`Adaptive.of(width, height, hinge)` → width class at
+  600 / 840 dp, navigation BottomBar / Rail / Sidebar, tile width, readable width 720, two panes, posture Flat / Book /
+  Tabletop, a separating vertical hinge) and `feature/reader/domain/Spreads.kt` (`Spreads.fit`: two pages from 600 wide
+  and 1.15 width / height, or across a vertical hinge; `Spreads.of`: the cover, chapter cards, double spreads and strips
+  (`STRIP_ALONE`, height ≥ 2 × width) stand alone, other pages pair; `ReaderKeys`: arrows follow the page direction,
+  space / page keys turn, Escape closes).
+- Reader: paged horizontal modes show `ReaderUiState.spreads` (setting "Two pages side by side", `doublePages`, on);
+  the native side reports `Viewport(width, height, verticalHinge)` and keys as `ReaderIntent.Key`; `positionLabel`
+  "4–5 / 19"; `ReaderCommand.Close` for Escape.
+- iOS: native on iPad (`TARGETED_DEVICE_FAMILY` 1,2, every orientation), `TabView` with `Tab` and `.sidebarAdaptable`,
+  ⌘1-4 (`TabShortcuts`), `.readableWidth()` on text screens, cards lift under the pointer (`.hoverEffect(.lift)`),
+  spreads in `HorizontalPages`, keys through `onKeyPress` (`ReaderKeyMap`).
+- Android: `AdaptiveWindow` (`ui/common/WindowLayout.kt`: window size + Jetpack WindowManager `FoldingFeature`, the only
+  way to know the hinge; `androidx.window`) provides `LocalAdaptive`; tabs as a rail or a sidebar (`SideTabs`) from
+  600 dp; the activity handles size, orientation and fold changes itself (`configChanges`), so folding or unfolding
+  keeps the screen and the reading position; spreads in `HorizontalPager` with the hinge's gap between the pages;
+  keys through `onPreviewKeyEvent`.
 
 ## Account (keys, reading model, costs)
 

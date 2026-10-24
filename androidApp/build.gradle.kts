@@ -39,5 +39,6 @@ dependencies {
     implementation(libs.coil.network.okhttp)
     implementation(libs.media3.exoplayer)
     implementation(libs.androidx.work.runtime)
+    implementation(libs.androidx.window)
     debugImplementation(libs.androidx.compose.ui.tooling)
 }

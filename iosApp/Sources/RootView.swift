@@ -55,20 +55,25 @@ struct RootView: View {
         ZStack {
             Color.brandInk.ignoresSafeArea()
             if let current = session.session {
+                // iPhone: the tab bar. iPad: the floating tab bar, which turns into a sidebar (same tabs, same state).
                 TabView(selection: $tab) {
-                    NavigationStack(path: $catalogPath) { CatalogView() }
-                        .tabItem { Label(L("nav.catalog"), systemImage: "square.grid.2x2") }
-                        .tag(AppTab.catalog)
-                    NavigationStack { LibraryView(onSignOut: session.signOut) }
-                        .tabItem { Label(L("nav.library"), systemImage: "books.vertical") }
-                        .tag(AppTab.library)
-                    NavigationStack { SourcesView() }
-                        .tabItem { Label(L("nav.sources"), systemImage: "square.stack.3d.up") }
-                        .tag(AppTab.sources)
-                    NavigationStack { SettingsView(session: current, onSignOut: session.signOut, onReplayTutorial: session.replayTutorial) }
-                        .tabItem { Label(L("nav.settings"), systemImage: "gearshape") }
-                        .tag(AppTab.settings)
+                    Tab(L("nav.catalog"), systemImage: "square.grid.2x2", value: AppTab.catalog) {
+                        NavigationStack(path: $catalogPath) { CatalogView() }
+                    }
+                    Tab(L("nav.library"), systemImage: "books.vertical", value: AppTab.library) {
+                        NavigationStack { LibraryView(onSignOut: session.signOut) }
+                    }
+                    Tab(L("nav.sources"), systemImage: "square.stack.3d.up", value: AppTab.sources) {
+                        NavigationStack { SourcesView() }
+                    }
+                    Tab(L("nav.settings"), systemImage: "gearshape", value: AppTab.settings) {
+                        NavigationStack { SettingsView(session: current, onSignOut: session.signOut, onReplayTutorial: session.replayTutorial) }
+                    }
                 }
+                .tabViewStyle(.sidebarAdaptable)
+                .tint(Color.brandRed)
+                // A hardware keyboard: ⌘1 to ⌘4 open the tabs (listed when ⌘ is held on iPad).
+                .background { TabShortcuts(tab: $tab) }
                 .environment(\.openTab, OpenTabAction { tab = $0 })
                 .sensoryFeedback(.selection, trigger: tab)
                 .safeAreaInset(edge: .top, spacing: 0) {
@@ -116,6 +121,27 @@ struct RootView: View {
         UINavigationBar.appearance().scrollEdgeAppearance = nav
         UINavigationBar.appearance().compactAppearance = nav
         UINavigationBar.appearance().tintColor = UIColor(Color.brandRed)
+    }
+}
+
+/// ⌘1 to ⌘4: one invisible button per tab, so the keyboard shortcuts are registered with the system.
+private struct TabShortcuts: View {
+    @Binding var tab: AppTab
+
+    var body: some View {
+        ZStack {
+            shortcut(.catalog, "1", "nav.catalog")
+            shortcut(.library, "2", "nav.library")
+            shortcut(.sources, "3", "nav.sources")
+            shortcut(.settings, "4", "nav.settings")
+        }
+        .frame(width: 0, height: 0)
+        .opacity(0)
+        .accessibilityHidden(true)
+    }
+
+    private func shortcut(_ target: AppTab, _ key: KeyEquivalent, _ label: String) -> some View {
+        Button(L(label)) { tab = target }.keyboardShortcut(key, modifiers: .command)
     }
 }
 

@@ -70,6 +70,9 @@ struct ReaderSettingsSheetView: View {
                 toggle(ReaderText.shared.DOUBLE_TAP_ZOOM, ReaderText.shared.DOUBLE_TAP_ZOOM_HELP, sheet.doubleTapZoom) {
                     model.send(ReaderIntentSetDoubleTapZoom(enabled: $0))
                 }
+                toggle(ReaderText.shared.DOUBLE_PAGES, ReaderText.shared.DOUBLE_PAGES_HELP, sheet.doublePages) {
+                    model.send(ReaderIntentSetDoublePages(enabled: $0))
+                }
                 toggle(ReaderText.shared.KEEP_AWAKE, ReaderText.shared.KEEP_AWAKE_HELP, sheet.keepAwake) {
                     model.send(ReaderIntentSetKeepAwake(enabled: $0))
                 }

@@ -20,18 +20,25 @@ import com.vovoscan.feature.reader.domain.ComicFormat
 import com.vovoscan.feature.reader.domain.DownloadableChapter
 import com.vovoscan.feature.reader.domain.Glide
 import com.vovoscan.feature.reader.domain.Gutters
+import com.vovoscan.feature.reader.domain.KeyAction
 import com.vovoscan.feature.reader.domain.PanelBox
 import com.vovoscan.feature.reader.domain.ReaderChapter
+import com.vovoscan.feature.reader.domain.ReaderKey
+import com.vovoscan.feature.reader.domain.ReaderKeys
 import com.vovoscan.feature.reader.domain.ReaderPage
 import com.vovoscan.feature.reader.domain.ReaderPreferences
 import com.vovoscan.feature.reader.domain.ReaderRepository
 import com.vovoscan.feature.reader.domain.ReaderSettingsRepository
+import com.vovoscan.feature.reader.domain.ReaderSpread
 import com.vovoscan.feature.reader.domain.ReadingMode
 import com.vovoscan.feature.reader.domain.ReadingModes
 import com.vovoscan.feature.reader.domain.ReadingPosition
 import com.vovoscan.feature.reader.domain.ReadingProgressSink
 import com.vovoscan.feature.reader.domain.ReadingStops
+import com.vovoscan.feature.reader.domain.Resume
 import com.vovoscan.feature.reader.domain.ScrollAmount
+import com.vovoscan.feature.reader.domain.SpreadSlot
+import com.vovoscan.feature.reader.domain.Spreads
 import com.vovoscan.feature.reader.domain.Stop
 import com.vovoscan.feature.reader.domain.StripLayout
 import com.vovoscan.feature.reader.domain.TapAction
@@ -173,6 +180,11 @@ sealed interface ReaderCommand {
         val page: Int,
     ) : ReaderCommand
 
+    /** Leave the reader (Escape on a hardware keyboard). */
+    data class Close(
+        override val seq: Int,
+    ) : ReaderCommand
+
     /**
      * The page slider let go on a page: show this item (index in `items`) at once, its top at the top of the screen,
      * in every mode (a strip scrolls to the page's top, a tall page shows its top).
@@ -252,9 +264,32 @@ data class ReaderUiState(
     val reducedMotion: Boolean = false,
     /** Our catalogue's comics have episodes: "Watch the episode from here". */
     val voiceAvailable: Boolean = false,
+    /** The reading area takes two pages side by side (wide, or split by a foldable's hinge) and the setting is on. */
+    val twoPages: Boolean = false,
     /** Book: the page's settings, the contents, how to open the section on screen. */
     val book: BookReaderState = BookReaderState(),
 ) {
+    /**
+     * Paged modes: the screens, in order. Two pages side by side on a wide reading area in a horizontal mode
+     * (`Spreads`), else one item per screen. The native pager shows `spreads[i]` and reports `ItemVisible(first)`.
+     */
+    val spreads: List<ReaderSpread> by lazy {
+        if (!isPaged) {
+            emptyList()
+        } else {
+            Spreads.of(
+                items.map { item -> if (item is ReaderItem.Page) Spreads.slotOf(item.page) else SpreadSlot.Alone },
+                paired = twoPages && pagedHorizontally,
+            )
+        }
+    }
+
+    /** The screen (index in `spreads`) showing [item]. */
+    fun spreadOf(item: Int): Int = Spreads.indexOf(spreads, item)
+
+    /** The screen on display now. */
+    val currentSpread: Int get() = spreadOf(currentItem)
+
     /** The focus switch shows on continuous strips only. */
     val canFocus: Boolean get() = isStrip
 
@@ -310,7 +345,12 @@ data class ReaderUiState(
             when {
                 count == 0 -> ""
                 isBook -> t("reader.section", "n" to currentIndex + 1, "total" to count)
-                else -> "${currentIndex + 1} / $count"
+                else -> {
+                    // Two pages on screen: "4–5 / 19".
+                    val pair = spreads.getOrNull(currentSpread)?.takeIf { it.double }
+                    val second = (pair?.second?.let { items.getOrNull(it) } as? ReaderItem.Page)?.page?.index
+                    if (second != null) "${currentIndex + 1}–${second + 1} / $count" else "${currentIndex + 1} / $count"
+                }
             }
 
     val sectionTitle: String? get() = sections.getOrNull(currentIndex)?.title
@@ -492,6 +532,25 @@ sealed interface ReaderIntent {
     /** A tap anywhere while the coach is up: it closes, and reading starts. */
     data object DismissCoach : ReaderIntent
 
+    /**
+     * Paged modes: the reading area's size (dp / pt) whenever it changes, and whether a foldable's vertical hinge
+     * splits it (book posture, or flat with a separating hinge): decides two pages side by side.
+     */
+    data class Viewport(
+        val width: Float,
+        val height: Float,
+        val verticalHinge: Boolean = false,
+    ) : ReaderIntent
+
+    /** A hardware key (keyboard): arrows follow the page direction, Escape leaves. True when the reader used it. */
+    data class Key(
+        val key: ReaderKey,
+    ) : ReaderIntent
+
+    data class SetDoublePages(
+        val enabled: Boolean,
+    ) : ReaderIntent
+
     data object ToggleFocus : ReaderIntent
 
     data object ReadWithVoice : ReaderIntent
@@ -669,7 +728,8 @@ class ReaderViewModel(
             rebuildStops()
         }
         viewModelScope.launch {
-            restore = settings.position(sourceKey, chapterId)?.takeIf { it.page == startPage }
+            // The place saved here, when it is the one asked for (the page shown at its top, or its reading line's).
+            restore = settings.position(sourceKey, chapterId)?.takeIf { it.page - startPage in 0..1 }
             restoreIfReady()
         }
     }
@@ -698,6 +758,12 @@ class ReaderViewModel(
             is ReaderIntent.PageLuminance -> luminance(intent.page, intent.values)
             is ReaderIntent.PageSized -> pageSized(intent.page, intent.width, intent.height)
             is ReaderIntent.ReducedMotion -> mutableState.update { it.copy(reducedMotion = intent.on) }
+            is ReaderIntent.Viewport -> viewport(intent.width, intent.height, intent.verticalHinge)
+            is ReaderIntent.Key -> key(intent.key)
+            is ReaderIntent.SetDoublePages -> {
+                updatePreferences { it.copy(doublePages = intent.enabled) }
+                mutableState.update { it.copy(twoPages = twoPagesFit && intent.enabled) }
+            }
             ReaderIntent.ToggleFocus -> {
                 val on = !state.value.preferences.focus
                 updatePreferences { it.copy(focus = on) }
@@ -802,15 +868,18 @@ class ReaderViewModel(
     }
 
     private fun forward() {
+        holdPosition = false
         val current = state.value
         if (current.items.isEmpty()) return
         mutableState.update { it.copy(chromeVisible = false) }
         val tall = tallPage(current)
         when {
-            // A tall page scrolls inside itself first, then the next page comes.
+            // A tall page scrolls inside itself first, then the next page (or spread) comes.
             tall != null && !tall.atBottom -> command { ReaderCommand.ScrollBy(it, current.preferences.scrollAmount.fraction) }
-            current.isPaged ->
-                if (current.currentItem < current.items.lastIndex) goTo(current.currentItem + 1) else openNext()
+            current.isPaged -> {
+                val next = current.spreads.getOrNull(current.currentSpread + 1)
+                if (next != null) goTo(next.first) else openNext()
+            }
             stops.isNotEmpty() && layout != null -> nextStop(current)
             stripAtBottom -> openNext()
             else -> command { ReaderCommand.ScrollBy(it, current.preferences.scrollAmount.fraction) }
@@ -818,6 +887,7 @@ class ReaderViewModel(
     }
 
     private fun backward() {
+        holdPosition = false
         val current = state.value
         if (current.items.isEmpty()) return
         mutableState.update { it.copy(chromeVisible = false) }
@@ -825,7 +895,10 @@ class ReaderViewModel(
         when {
             tall != null && !tall.atTop -> command { ReaderCommand.ScrollBy(it, -current.preferences.scrollAmount.fraction) }
             // Going back, a tall page opens at its bottom (reading backwards).
-            current.isPaged -> if (current.currentItem > 0) goTo(current.currentItem - 1, atBottom = true) else openPrevious()
+            current.isPaged -> {
+                val previous = current.spreads.getOrNull(current.currentSpread - 1)
+                if (previous != null) goTo(previous.first, atBottom = true) else openPrevious()
+            }
             stops.isNotEmpty() && layout != null -> previousStop()
             stripAtTop -> openPrevious()
             else -> command { ReaderCommand.ScrollBy(it, -current.preferences.scrollAmount.fraction) }
@@ -864,6 +937,33 @@ class ReaderViewModel(
         gliding = true
         userScrolled = false
         command { ReaderCommand.GlideTo(it, stop.offset, animated = !state.value.reducedMotion) }
+    }
+
+    /** Whether the reading area takes two pages (whatever the setting). */
+    private var twoPagesFit = false
+
+    private fun viewport(
+        width: Float,
+        height: Float,
+        verticalHinge: Boolean,
+    ) {
+        twoPagesFit = Spreads.fit(width, height, verticalHinge)
+        val on = twoPagesFit && state.value.preferences.doublePages
+        if (on != state.value.twoPages) mutableState.update { it.copy(twoPages = on) }
+    }
+
+    private fun key(key: ReaderKey) {
+        val current = state.value
+        val action = ReaderKeys.action(key, current.mode)
+        // Any reading key closes "How to read" first (Escape too: it never leaves from the coach).
+        if (current.coach != null && action != null) return dismissCoach()
+        when (action) {
+            KeyAction.Next -> onIntent(ReaderIntent.Next)
+            KeyAction.Previous -> onIntent(ReaderIntent.Previous)
+            KeyAction.Close -> command { ReaderCommand.Close(it) }
+            KeyAction.Help -> showCoach()
+            null -> Unit
+        }
     }
 
     private fun measured(
@@ -938,9 +1038,25 @@ class ReaderViewModel(
         val strip = layout ?: return
         if (restored || position.page !in strip.tops.indices) return
         restored = true
-        val target = strip.tops[position.page] + position.offset * strip.heights[position.page]
-        command { ReaderCommand.GlideTo(it, target, animated = false) }
+        // The reading line saved, on this screen: a panel before it, that panel marked for a moment; not saved back
+        // until the reader moves.
+        val line = strip.tops[position.page] + position.offset * strip.heights[position.page]
+        val target = Resume.target(stops, strip, line, viewport)
+        holdPosition = true
+        command { ReaderCommand.GlideTo(it, target.offset, animated = false) }
+        val mark = target.mark ?: return
+        mutableState.update { it.copy(focus = mark) }
+        markJob?.cancel()
+        markJob =
+            viewModelScope.launch {
+                delay(Resume.MARK_MS)
+                mutableState.update { it.copy(focus = if (it.focusOn) stops.getOrNull(stopIndex)?.panel else null) }
+            }
     }
+
+    /** A resume placed the strip: its position is not saved until the reader moves (no drift backwards). */
+    private var holdPosition = false
+    private var markJob: Job? = null
 
     private fun scrolled(
         at: Float,
@@ -953,6 +1069,7 @@ class ReaderViewModel(
         if (byUser) {
             userScrolled = true
             gliding = false
+            holdPosition = false
         }
         if (settled) {
             gliding = false
@@ -975,12 +1092,16 @@ class ReaderViewModel(
         if (abs(read - state.value.progress) >= PROGRESS_STEP || read == 1f) mutableState.update { it.copy(progress = read) }
         val page = strip.pageAt(at.coerceAtLeast(0f))
         moveTo(page)
+        if (holdPosition) return
         positionJob?.cancel()
         positionJob =
             viewModelScope.launch {
                 delay(POSITION_MS)
-                val share = ((at - strip.tops[page]) / strip.heights[page]).coerceIn(0f, 1f)
-                settings.savePosition(sourceKey, chapterId, ReadingPosition(page, share))
+                // The anchor is the reading line, as a share of its page: it holds on another screen or device.
+                val line = (at + Resume.READING_LINE * viewport).coerceIn(0f, strip.total)
+                val anchor = strip.pageAt(line)
+                val share = ((line - strip.tops[anchor]) / strip.heights[anchor]).coerceIn(0f, 1f)
+                settings.savePosition(sourceKey, chapterId, ReadingPosition(anchor, share))
             }
     }
 
@@ -1141,6 +1262,7 @@ class ReaderViewModel(
                 previousChapterId = chapter.previousChapterId,
                 nextChapterId = chapter.nextChapterId,
                 preferences = preferences,
+                twoPages = twoPagesFit && preferences.doublePages,
                 settings =
                     ReaderSettingsSheet.of(
                         if (isBook) chapter.format.defaultMode else mode,

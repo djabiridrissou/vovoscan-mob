@@ -39,6 +39,8 @@ struct ReaderView: View {
     @State private var bottomBarHeight: CGFloat = 0
     @State private var player: PlayerRoute?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// A hardware keyboard (iPad, Magic Keyboard): arrows, space, page keys and Escape reach the reader.
+    @FocusState private var keysFocused: Bool
     /// The page under the slider's thumb while it is dragged.
     @State private var dragged: Int?
     let onOpenChapter: (String, Int) -> Void
@@ -108,6 +110,15 @@ struct ReaderView: View {
         .toolbar(.hidden, for: .navigationBar)
         .toolbar(.hidden, for: .tabBar)
         .statusBarHidden(!model.state.chromeVisible)
+        .focusable()
+        .focused($keysFocused)
+        .focusEffectDisabled()
+        .onAppear { keysFocused = true }
+        .onKeyPress(phases: .down) { press in
+            guard let key = ReaderKeyMap.key(press) else { return .ignored }
+            model.send(ReaderIntentKey(key: key))
+            return .handled
+        }
         .task { await model.observe() }
         .task { await translation.observe() }
         .animation(.easeInOut(duration: 0.25), value: translation.state.translated)
@@ -117,6 +128,10 @@ struct ReaderView: View {
             if let open = model.state.command as? ReaderCommandOpenChapter {
                 model.send(ReaderIntentCommandHandled(seq: open.seq))
                 onOpenChapter(open.chapterId, Int(open.startPage))
+            }
+            if let close = model.state.command as? ReaderCommandClose {
+                model.send(ReaderIntentCommandHandled(seq: close.seq))
+                dismiss()
             }
             // "Watch from here": the episode from the first beat of the page being read.
             if let episode = model.state.command as? ReaderCommandOpenEpisode {
@@ -278,6 +293,23 @@ struct ReaderView: View {
             .padding(.vertical, 12)
             .background(Color.brandInk.opacity(0.92))
             .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { bottomBarHeight = $0 }
+        }
+    }
+}
+
+/// A key press as the shared reader names it (directions are decided there, from the reading mode).
+enum ReaderKeyMap {
+    static func key(_ press: KeyPress) -> ReaderKey? {
+        switch press.key {
+        case .leftArrow: return .left
+        case .rightArrow: return .right
+        case .upArrow: return .up
+        case .downArrow: return .down
+        case .pageUp: return .pageUp
+        case .pageDown: return .pageDown
+        case .escape: return .escape
+        case .space: return press.modifiers.contains(.shift) ? .shiftSpace : .space
+        default: return press.characters == "?" ? .help : nil
         }
     }
 }
@@ -525,29 +557,30 @@ private struct HorizontalPages: View {
         self.ratios = ratios
         self.scroller = scroller
         self.zoomed = zoomed
-        _position = State(initialValue: Int(model.state.currentItem))
+        _position = State(initialValue: Int(model.state.currentSpread))
     }
 
     var body: some View {
-        let items = model.state.items
+        let spreads = model.state.spreads
         ScrollView(.horizontal) {
             LazyHStack(spacing: 0) {
-                ForEach(Array(items.enumerated()), id: \.offset) { index, item in
+                ForEach(Array(spreads.enumerated()), id: \.offset) { screen, spread in
                     Group {
-                        if let page = item as? ReaderItemPage {
-                            let detail = zoomed && index == Int(model.state.currentItem)
-                            if ratios.isTall(page.page, in: size) {
-                                TallPageView(model: model, page: page.page, index: index, size: size, scroller: scroller, detail: detail)
-                            } else {
-                                PageImage(page: page.page, fit: true, detail: detail, onLoaded: { ratios.set(page.page.url, $0) })
+                        if let second = spread.second?.intValue {
+                            // Two facing pages, against the spine: the first on the right in a manga.
+                            let first = Int(spread.first)
+                            let (left, right) = model.state.rightToLeft ? (second, first) : (first, second)
+                            HStack(spacing: 0) {
+                                item(left, alignment: .trailing).frame(width: size.width / 2)
+                                item(right, alignment: .leading).frame(width: size.width / 2)
                             }
-                        } else if let transition = item as? ReaderItemTransition {
-                            TransitionCardView(card: transition.card, model: model)
+                        } else {
+                            item(Int(spread.first), alignment: .center)
                         }
                     }
                     .environment(\.layoutDirection, .leftToRight)
                     .frame(width: size.width, height: size.height)
-                    .id(index)
+                    .id(screen)
                 }
             }
             .scrollTargetLayout()
@@ -557,40 +590,66 @@ private struct HorizontalPages: View {
         .scrollIndicators(.hidden)
         .scrollTargetBehavior(.paging)
         .scrollPosition(id: $position)
-        // The page on screen comes from what is visible, not from the position binding alone: a pager made while the
+        // The screen shown comes from what is visible, not from the position binding alone: a pager made while the
         // chapter is open (Continuous → Right to left from the settings) could keep its first position and never
         // report a swipe, so the counter, the slider and the saved page stayed where the strip had left them.
         .onScrollTargetVisibilityChange(idType: Int.self, threshold: 0.6) { ids in
-            guard let item = ids.first else { return }
-            if position != item { position = item }
-            if item != Int(model.state.currentItem) { model.send(ReaderIntentItemVisible(item: Int32(item))) }
-        }
-        .id(model.state.mode)
-        .onAppear {
-            // Placed once laid out, and again once the lazy stack has measured its neighbours: a pager made mid-chapter
-            // may not have reached the current page yet.
-            let item = Int(model.state.currentItem)
-            DispatchQueue.main.async { position = item }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                if position != item, Int(model.state.currentItem) == item { position = item }
+            guard let screen = ids.first else { return }
+            if position != screen { position = screen }
+            if screen != Int(model.state.currentSpread), let spread = model.state.spreads[safe: screen] {
+                model.send(ReaderIntentItemVisible(item: spread.first))
             }
         }
-        .onChange(of: position) { _, item in
-            if let item { model.send(ReaderIntentItemVisible(item: Int32(item))) }
+        .id("\(model.state.mode)-\(model.state.twoPages)")
+        .onAppear {
+            // Placed once laid out, and again once the lazy stack has measured its neighbours: a pager made mid-chapter
+            // may not have reached the current screen yet.
+            let screen = Int(model.state.currentSpread)
+            DispatchQueue.main.async { position = screen }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                if position != screen, Int(model.state.currentSpread) == screen { position = screen }
+            }
         }
+        .onChange(of: position) { _, screen in
+            if let screen, let spread = model.state.spreads[safe: screen] {
+                model.send(ReaderIntentItemVisible(item: spread.first))
+            }
+        }
+        // Turned sideways or back, a window resized: one or two pages per screen, the same page kept.
+        .onChange(of: size, initial: true) { _, size in
+            model.send(ReaderIntentViewport(width: Float(size.width), height: Float(size.height), verticalHinge: false))
+        }
+        .onChange(of: model.state.twoPages) { _, _ in position = Int(model.state.currentSpread) }
         .onChange(of: model.state.command?.seq) { _, _ in
             // The page slider: that page at once (a tall page shows its top, `TallPageView`).
             if let jump = model.state.command as? ReaderCommandJumpTo {
                 model.send(ReaderIntentCommandHandled(seq: jump.seq))
-                position = Int(jump.item)
+                position = Int(model.state.spreadOf(item: jump.item))
             }
             guard let go = model.state.command as? ReaderCommandGoToItem else { return }
             model.send(ReaderIntentCommandHandled(seq: go.seq))
+            let screen = Int(model.state.spreadOf(item: go.item))
             if go.animated {
-                withAnimation(.easeInOut(duration: 0.25)) { position = Int(go.item) }
+                withAnimation(.easeInOut(duration: 0.25)) { position = screen }
             } else {
-                position = Int(go.item)
+                position = screen
             }
+        }
+    }
+
+    /// One item of a screen: a page (a tall one scrolls inside itself, alone on its screen), or a chapter card. The
+    /// page read, zoomed, is decoded with all its pixels.
+    @ViewBuilder
+    private func item(_ index: Int, alignment: Alignment) -> some View {
+        if let page = model.state.items[safe: index] as? ReaderItemPage {
+            let detail = zoomed && index == Int(model.state.currentItem)
+            if alignment == .center && ratios.isTall(page.page, in: size) {
+                TallPageView(model: model, page: page.page, index: index, size: size, scroller: scroller, detail: detail)
+            } else {
+                PageImage(page: page.page, fit: true, alignment: alignment, detail: detail, onLoaded: { ratios.set(page.page.url, $0) })
+            }
+        } else if let transition = model.state.items[safe: index] as? ReaderItemTransition {
+            TransitionCardView(card: transition.card, model: model)
         }
     }
 }
@@ -971,6 +1030,10 @@ private struct TallPaging: ScrollTargetBehavior {
         target.rect = CGRect(origin: CGPoint(x: target.rect.minX, y: CGFloat(rest)), size: context.containerSize)
         target.anchor = .topLeading
     }
+}
+
+extension Array {
+    subscript(safe index: Int) -> Element? { indices.contains(index) ? self[index] : nil }
 }
 
 /// The continuous strip (`flow`, reader/SPEC.md): every page stacked at the screen's width, no gap. It reports its
@@ -1484,6 +1547,8 @@ private struct TapZonesOverlay: View {
 private struct PageImage: View {
     let page: ReaderPage
     var fit = false
+    /// Two facing pages: each against the spine (the page on the left aligned trailing, on the right leading).
+    var alignment: Alignment = .center
     /// A page the source gave no size for: the image's own size once loaded (the strip lays out from it).
     var onSize: ((CGSize) -> Void)? = nil
     @Environment(\.pageLettering) private var lettering
@@ -1522,7 +1587,7 @@ private struct PageImage: View {
             let items = lettering(Int(page.index))
             if !items.isEmpty { LetteringOverlay(items: items) }
         }
-        .frame(maxWidth: .infinity, maxHeight: fit ? .infinity : nil)
+        .frame(maxWidth: .infinity, maxHeight: fit ? .infinity : nil, alignment: alignment)
         .onAppear {
             loader.maxWidth = detail ? 0 : decodeWidth
             if active { loader.show(page.url) }

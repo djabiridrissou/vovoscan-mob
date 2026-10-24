@@ -50,6 +50,7 @@ struct SourcesView: View {
             }
             .padding(20)
         }
+        .readableWidth()
         .background(Color.brandInk)
         .refreshable { model.send(SourcesIntentRefresh.shared) }
         .navigationDestination(for: AddSourceRoute.self) { AddSourceView(route: $0) }

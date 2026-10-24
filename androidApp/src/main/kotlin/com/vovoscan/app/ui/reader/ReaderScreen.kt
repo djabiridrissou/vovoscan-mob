@@ -18,6 +18,7 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.ScrollableState
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -34,6 +35,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -62,6 +64,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -72,10 +75,20 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEvent
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isShiftPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.key.utf16CodePoint
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerInputScope
 import androidx.compose.ui.input.pointer.pointerInput
@@ -117,11 +130,13 @@ import com.vovoscan.app.ui.common.AppIcons
 import com.vovoscan.app.ui.common.ErrorText
 import com.vovoscan.app.ui.common.GhostButton
 import com.vovoscan.app.ui.common.LanguageDock
+import com.vovoscan.app.ui.common.LocalAdaptive
 import com.vovoscan.app.ui.common.PrimaryButton
 import com.vovoscan.app.ui.common.content
 import com.vovoscan.app.ui.theme.Brand
 import com.vovoscan.core.common.i18n.I18n
 import com.vovoscan.feature.reader.domain.PageZoom
+import com.vovoscan.feature.reader.domain.ReaderKey
 import com.vovoscan.feature.reader.domain.ReaderPage
 import com.vovoscan.feature.reader.domain.TallPages
 import com.vovoscan.feature.reader.domain.TapAction
@@ -206,7 +221,15 @@ fun ReaderScreen(
             onIntent(ReaderIntent.CommandHandled(command.seq))
             onWatch(command.chapterId, command.page)
         }
+        // Escape on a keyboard.
+        if (command is ReaderCommand.Close) {
+            onIntent(ReaderIntent.CommandHandled(command.seq))
+            onBack()
+        }
     }
+    // A hardware keyboard (tablet, Chromebook, a foldable's keyboard cover): the reader holds the focus.
+    val keys = remember { FocusRequester() }
+    LaunchedEffect(keys) { runCatching { keys.requestFocus() } }
     // Remove animations (developer options, accessibility): jumps instead of the spring, no glide, no fades.
     val context = LocalContext.current
     LaunchedEffect(Unit) {
@@ -226,7 +249,18 @@ fun ReaderScreen(
         onDispose { controller?.show(WindowInsetsCompat.Type.systemBars()) }
     }
 
-    Box(Modifier.fillMaxSize().background(Brand.Ink)) {
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(Brand.Ink)
+            .focusRequester(keys)
+            .focusable()
+            .onPreviewKeyEvent { event ->
+                val key = readerKey(event) ?: return@onPreviewKeyEvent false
+                onIntent(ReaderIntent.Key(key))
+                true
+            },
+    ) {
         when {
             state.unavailable ->
                 Column(Modifier.align(Alignment.Center).padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -561,73 +595,133 @@ private fun PagedReader(
     zoom: ComicZoom,
     scrollEnabled: Boolean,
 ) {
-    val pager = rememberPagerState(initialPage = state.currentItem) { state.items.size }
-    val scope = rememberCoroutineScope()
-    // A tall page asked to show its bottom (going back), until it has.
-    var bottomRequest by remember { mutableStateOf<Int?>(null) }
-    LaunchedEffect(pager) {
-        snapshotFlow { pager.settledPage }.distinctUntilChanged().collect { onIntent(ReaderIntent.ItemVisible(it)) }
-    }
-    val command = state.command
-    LaunchedEffect(command) {
-        if (command is ReaderCommand.GoToItem) {
-            if (command.atBottom) bottomRequest = command.item
-            // Its own scope: the animation goes on once the command is cleared.
-            scope.launch { if (command.animated) pager.animateScrollToPage(command.item) else pager.scrollToPage(command.item) }
-            onIntent(ReaderIntent.CommandHandled(command.seq))
+    val adaptive = LocalAdaptive.current
+    // A screen is one item, or two facing pages on a wide area or across a foldable's hinge (`spreads`, shared rules).
+    val screens = state.spreads
+    // One or two pages per screen: a new pager, opened on the screen of the page being read.
+    key(state.twoPages, state.pagedHorizontally) {
+        val pager = rememberPagerState(initialPage = state.spreadOf(state.currentItem)) { screens.size }
+        val scope = rememberCoroutineScope()
+        // A tall page asked to show its bottom (going back), until it has.
+        var bottomRequest by remember { mutableStateOf<Int?>(null) }
+        LaunchedEffect(pager) {
+            snapshotFlow { pager.settledPage }
+                .distinctUntilChanged()
+                .collect { screen -> state.spreads.getOrNull(screen)?.let { onIntent(ReaderIntent.ItemVisible(it.first)) } }
         }
-        // The page slider: that page at once, from its top.
-        if (command is ReaderCommand.JumpTo) {
-            bottomRequest = null
-            scope.launch { pager.scrollToPage(command.item) }
-            onIntent(ReaderIntent.CommandHandled(command.seq))
+        val command = state.command
+        LaunchedEffect(command) {
+            if (command is ReaderCommand.GoToItem) {
+                if (command.atBottom) bottomRequest = command.item
+                val screen = state.spreadOf(command.item)
+                // Its own scope: the animation goes on once the command is cleared.
+                scope.launch { if (command.animated) pager.animateScrollToPage(screen) else pager.scrollToPage(screen) }
+                onIntent(ReaderIntent.CommandHandled(command.seq))
+            }
+            // The page slider: that page's screen at once, from its top.
+            if (command is ReaderCommand.JumpTo) {
+                bottomRequest = null
+                val screen = state.spreadOf(command.item)
+                scope.launch { pager.scrollToPage(screen) }
+                onIntent(ReaderIntent.CommandHandled(command.seq))
+            }
         }
-    }
-    BoxWithConstraints(Modifier.fillMaxSize()) {
-        val area = IntSize(constraints.maxWidth, constraints.maxHeight)
-        val page: @Composable (Int) -> Unit = { index ->
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                when (val item = state.items[index]) {
-                    is ReaderItem.Page ->
-                        PagedPage(
-                            item.page,
-                            index,
-                            state,
-                            onIntent,
-                            area,
-                            zoom,
-                            scrollEnabled,
-                            showBottom = bottomRequest == index,
-                            onBottomShown = { if (bottomRequest == index) bottomRequest = null },
-                        )
-                    is ReaderItem.Transition -> {
-                        if (index == state.currentItem) {
-                            LaunchedEffect(index) { onIntent(ReaderIntent.PageScroll(index, tall = false, atTop = true, atBottom = true)) }
+        BoxWithConstraints(Modifier.fillMaxSize()) {
+            // Turned, unfolded, folded, half opened, a window resized: one or two pages per screen, the same page kept.
+            LaunchedEffect(maxWidth, maxHeight, adaptive.verticalHinge) {
+                onIntent(ReaderIntent.Viewport(maxWidth.value, maxHeight.value, adaptive.verticalHinge))
+            }
+            val area = IntSize(constraints.maxWidth, constraints.maxHeight)
+            val item: @Composable (Int) -> Unit = { index ->
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    when (val item = state.items[index]) {
+                        is ReaderItem.Page ->
+                            PagedPage(
+                                item.page,
+                                index,
+                                state,
+                                onIntent,
+                                area,
+                                zoom,
+                                scrollEnabled,
+                                showBottom = bottomRequest == index,
+                                onBottomShown = { if (bottomRequest == index) bottomRequest = null },
+                            )
+                        is ReaderItem.Transition -> {
+                            if (index == state.currentItem) {
+                                LaunchedEffect(
+                                    index,
+                                ) { onIntent(ReaderIntent.PageScroll(index, tall = false, atTop = true, atBottom = true)) }
+                            }
+                            TransitionCardView(item.card, onIntent, Modifier.fillMaxSize())
                         }
-                        TransitionCardView(item.card, onIntent, Modifier.fillMaxSize())
                     }
                 }
             }
+            val screen: @Composable (Int) -> Unit = { position ->
+                val spread = screens[position]
+                val second = spread.second
+                if (second == null) {
+                    item(spread.first)
+                } else {
+                    // Reading order on screen: the first page on the right in a manga; both against the spine, which
+                    // sits on the hinge of a half-open foldable.
+                    val (left, right) = if (state.rightToLeft) second to spread.first else spread.first to second
+                    Row(Modifier.fillMaxSize()) {
+                        SpreadPage(state.items[left], Alignment.CenterEnd, Modifier.weight(1f))
+                        if (adaptive.hingeGap > 0f) Spacer(Modifier.width(adaptive.hingeGap.dp))
+                        SpreadPage(state.items[right], Alignment.CenterStart, Modifier.weight(1f))
+                    }
+                }
+            }
+            if (state.pagedHorizontally) {
+                // reverseLayout: the first page is on the right, swiping right moves forward (manga direction).
+                HorizontalPager(
+                    state = pager,
+                    reverseLayout = state.rightToLeft,
+                    beyondViewportPageCount = 1,
+                    userScrollEnabled = scrollEnabled,
+                    key = { screens[it].let { s -> state.items[s.first].key + (s.second?.let { i -> "+" + state.items[i].key } ?: "") } },
+                    modifier = Modifier.fillMaxSize(),
+                ) { screen(it) }
+            } else {
+                VerticalPager(
+                    state = pager,
+                    beyondViewportPageCount = 1,
+                    userScrollEnabled = scrollEnabled,
+                    key = { state.items[screens[it].first].key },
+                    modifier = Modifier.fillMaxSize(),
+                ) { screen(it) }
+            }
         }
-        if (state.pagedHorizontally) {
-            // reverseLayout: the first page is on the right, swiping right moves forward (manga direction).
-            HorizontalPager(
-                state = pager,
-                reverseLayout = state.rightToLeft,
-                beyondViewportPageCount = 1,
-                userScrollEnabled = scrollEnabled,
-                key = { state.items[it].key },
-                modifier = Modifier.fillMaxSize(),
-            ) { page(it) }
-        } else {
-            VerticalPager(
-                state = pager,
-                beyondViewportPageCount = 1,
-                userScrollEnabled = scrollEnabled,
-                key = { state.items[it].key },
-                modifier = Modifier.fillMaxSize(),
-            ) { page(it) }
-        }
+    }
+}
+
+/** A key press as the shared reader names it (directions are decided there, from the reading mode). */
+private fun readerKey(event: KeyEvent): ReaderKey? {
+    if (event.type != KeyEventType.KeyDown) return null
+    return when (event.key) {
+        Key.DirectionLeft -> ReaderKey.Left
+        Key.DirectionRight -> ReaderKey.Right
+        Key.DirectionUp -> ReaderKey.Up
+        Key.DirectionDown -> ReaderKey.Down
+        Key.PageUp -> ReaderKey.PageUp
+        Key.PageDown -> ReaderKey.PageDown
+        Key.Escape -> ReaderKey.Escape
+        Key.Spacebar -> if (event.isShiftPressed) ReaderKey.ShiftSpace else ReaderKey.Space
+        else -> if (event.utf16CodePoint == '?'.code) ReaderKey.Help else null
+    }
+}
+
+/** One of two facing pages: fitted to its half, against the spine. */
+@Composable
+private fun SpreadPage(
+    item: ReaderItem,
+    alignment: Alignment,
+    modifier: Modifier,
+) {
+    Box(modifier.fillMaxHeight(), contentAlignment = alignment) {
+        if (item is ReaderItem.Page) PageImage(item.page, Modifier.fillMaxHeight(), ContentScale.Fit)
     }
 }
 

@@ -14,6 +14,7 @@ import com.vovoscan.feature.reader.domain.ReaderRepository
 import com.vovoscan.feature.reader.domain.ReaderSettingsRepository
 import com.vovoscan.feature.reader.domain.ReadingMode
 import com.vovoscan.feature.reader.domain.ReadingPosition
+import com.vovoscan.feature.reader.domain.Resume
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -32,6 +33,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
+import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -355,7 +357,10 @@ class ImmersiveReaderTest {
             assertEquals(2, vm.state.value.currentIndex)
             assertEquals(listOf("https://api.test/p3", "https://api.test/p4"), vm.state.value.prefetch)
             advanceTimeBy(600)
-            assertEquals(ReadingPosition(2, 0.5f), settings.positions["vovoscan/c3"])
+            // The reading line, a third of the screen down (1500 + 800 / 3), as a share of page 2 (1200 to 1800).
+            val saved = assertNotNull(settings.positions["vovoscan/c3"])
+            assertEquals(2, saved.page)
+            assertEquals((1500f + 800f / 3f - 1200f) / 600f, saved.offset, 0.001f)
         }
 
     @Test
@@ -365,8 +370,34 @@ class ImmersiveReaderTest {
             settings.positions["vovoscan/c3"] = ReadingPosition(2, 0.25f)
             val vm = reader(settings = settings, startPage = 2)
             val restore = vm.glide()
-            assertEquals(1350f, restore.offset)
+            // The reading line in page 2 (stop 1100): one stop back, page 1's.
+            assertEquals(500f, restore.offset, 0.01f)
             assertFalse(restore.animated)
+            // The panel read there is marked for a moment, then the mark goes.
+            assertEquals(
+                2,
+                vm.state.value.focus
+                    ?.page,
+            )
+            advanceTimeBy(Resume.MARK_MS + 1)
+            assertNull(vm.state.value.focus)
+        }
+
+    @Test
+    fun aResumeNeverSavesItsOwnPlacementBack() =
+        runTest(dispatcher) {
+            val settings = PositionSettings(ReaderPreferences(coachSeen = ALL_COACHES, tapZonesSeen = true, mangaMode = CONTINUOUS))
+            settings.positions["vovoscan/c3"] = ReadingPosition(2, 0.25f)
+            val vm = reader(settings = settings, startPage = 2)
+            val restore = vm.glide()
+            vm.onIntent(ReaderIntent.CommandHandled(restore.seq))
+            vm.onIntent(ReaderIntent.StripScrolled(restore.offset, byUser = false, settled = true))
+            advanceUntilIdle()
+            assertEquals(ReadingPosition(2, 0.25f), settings.positions["vovoscan/c3"])
+            // The reader moves on: from then on the position follows.
+            vm.onIntent(ReaderIntent.StripScrolled(1700f, byUser = true, settled = true))
+            advanceUntilIdle()
+            assertNotEquals(ReadingPosition(2, 0.25f), settings.positions["vovoscan/c3"])
         }
 
     @Test

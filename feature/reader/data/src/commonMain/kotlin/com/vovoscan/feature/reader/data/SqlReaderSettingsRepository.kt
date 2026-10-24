@@ -130,6 +130,7 @@ class SqlReaderSettingsRepository(
                         ?.mapNotNull(CoachKind::fromWire)
                         ?.toSet()
                         ?: defaults.coachSeen,
+                doublePages = flag("doublePages", defaults.doublePages),
             )
         }
 
@@ -148,6 +149,7 @@ class SqlReaderSettingsRepository(
                 "tapZonesSeen" to preferences.tapZonesSeen.toString(),
                 "focus" to preferences.focus.toString(),
                 "coachSeen" to preferences.coachSeen.joinToString(",") { it.wire },
+                "doublePages" to preferences.doublePages.toString(),
             )
 
         /** A comic mode by name; a book or anything unknown is no choice. */

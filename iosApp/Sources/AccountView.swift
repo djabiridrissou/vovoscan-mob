@@ -28,6 +28,7 @@ struct AccountView: View {
             }
             .padding(20)
         }
+        .readableWidth()
         .scrollDismissesKeyboard(.interactively)
         .background(Color.brandInk)
         .refreshable { model.send(AccountIntentRefreshDevices.shared) }
@@ -257,6 +258,7 @@ struct PreferencesView: View {
             }
             .padding(20)
         }
+        .readableWidth()
         .background(Color.brandInk)
         .alert(state.adultTitle, isPresented: Binding(get: { model.state.confirmingAdult }, set: { _ in })) {
             Button(state.adultAction, role: .destructive) { model.send(PreferencesIntentConfirmAdult.shared) }
