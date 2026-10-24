@@ -242,7 +242,10 @@ class ImmersiveReaderTest {
             val vm = reader(sourceKey = "inkwell-press", chapter = strip)
             vm.onIntent(ReaderIntent.PageSized(0, 400, 1600))
             vm.onIntent(ReaderIntent.PageSized(1, 400, 1600))
-            val drawn = vm.state.value.items.filterIsInstance<ReaderItem.Page>().map { it.page }
+            val drawn =
+                vm.state.value.items
+                    .filterIsInstance<ReaderItem.Page>()
+                    .map { it.page }
             assertEquals(vm.state.value.pages, drawn)
             assertEquals(1600, drawn[1].height)
             assertFalse(drawn[2].hasSize)
