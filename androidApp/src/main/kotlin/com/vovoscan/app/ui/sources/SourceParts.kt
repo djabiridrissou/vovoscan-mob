@@ -76,6 +76,8 @@ fun OriginChip(
     Text(
         label,
         style = MaterialTheme.typography.labelSmall.copy(color = color),
+        maxLines = 1,
+        softWrap = false,
         modifier =
             Modifier
                 .border(1.dp, color, RoundedCornerShape(999.dp))
@@ -89,6 +91,8 @@ fun UpdateBadge(label: String = I18n.text("sources.update")) {
     Text(
         label,
         style = MaterialTheme.typography.labelSmall.copy(color = Brand.Ink),
+        maxLines = 1,
+        softWrap = false,
         modifier =
             Modifier
                 .background(Brand.Red, RoundedCornerShape(999.dp))
