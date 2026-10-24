@@ -32,7 +32,8 @@ const val RULES_USER_AGENT = "vovoscan/0.1 (+https://vovoscan.yieldgrowth.org)"
 
 /**
  * HTTP client for rule-based sources, separate from the API client: it never sends the vovoscan session, does not
- * follow redirects on its own (each one is checked again) and only contacts the hosts the source declares.
+ * follow redirects on its own (each one is checked again) and only contacts the hosts the source declares (page images:
+ * any public host, see [RulesHttp.get]).
  */
 fun createRulesHttpClient(engine: HttpClientEngine): HttpClient =
     HttpClient(engine) {
@@ -84,6 +85,9 @@ class RulesHttp(
         transfer: Transfer = Transfer.Page,
         // The source's page images only (`content.comic.referer`): sent to its allowed hosts, redirects included.
         referer: String? = null,
+        // Page images: any public http(s) host the rules produced (per-chapter image servers), as the server's FETCH
+        // does. The Referer still goes to the declared hosts only; never the session, never the local network.
+        anyPublicHost: Boolean = false,
         // POST requests (`request.method: "post"`): the body is a rendered template, sent as-is.
         method: String = "GET",
         body: String? = null,
@@ -99,7 +103,8 @@ class RulesHttp(
             val scheme = current.startsWith("https://", ignoreCase = true) || current.startsWith("http://", ignoreCase = true)
             // Checked again on every hop: a redirect can't lead off the source's declared hosts — an exact
             // host, or a subdomain of one (download CDNs live on *.host) — nor off the internet.
-            if (host == null || hosts.none { host == it || host.endsWith(".$it") } || !HostPolicy.isPublic(host) || !scheme) {
+            val declared = host != null && hosts.any { host == it || host.endsWith(".$it") }
+            if (host == null || !(declared || anyPublicHost) || !HostPolicy.isPublic(host) || !scheme) {
                 return AppResult.Err(AppError.Rejected("HOST_NOT_ALLOWED", t("plugins.hostNotAllowed", "host" to host)))
             }
             wait(manifest)
@@ -111,7 +116,7 @@ class RulesHttp(
                             this.method = HttpMethod.parse(currentMethod)
                             timeout { requestTimeoutMillis = transfer.totalMillis }
                             header(HttpHeaders.UserAgent, RULES_USER_AGENT)
-                            if (referer != null) header(HttpHeaders.Referrer, referer)
+                            if (referer != null && declared) header(HttpHeaders.Referrer, referer)
                             params.forEach { (k, v) -> parameter(k, v) }
                             if (currentBody != null) {
                                 header(HttpHeaders.ContentType, contentType ?: "application/x-www-form-urlencoded")

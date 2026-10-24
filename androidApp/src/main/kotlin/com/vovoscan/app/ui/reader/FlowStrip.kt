@@ -45,6 +45,7 @@ import coil3.request.ImageRequest
 import coil3.request.SuccessResult
 import coil3.request.allowHardware
 import coil3.toBitmap
+import com.vovoscan.app.ui.forum.LocalPageMargin
 import com.vovoscan.feature.reader.domain.Glide
 import com.vovoscan.feature.reader.domain.Gutters
 import com.vovoscan.feature.reader.domain.ReaderPage
@@ -151,7 +152,8 @@ internal fun FlowStrip(
     }
 
     // Focus: the panel's box in strip coordinates (dp), gliding from panel to panel; drawn against the live scroll.
-    val focus = state.focus
+    // Never while the margin is open: its marks sit on the art at full light.
+    val focus = state.spotlight.takeIf { LocalPageMargin.current?.state?.open != true }
     val focusRect =
         if (focus != null && layout != null && focus.page in layout.tops.indices) {
             val top = layout.tops[focus.page] + focus.y * layout.heights[focus.page]

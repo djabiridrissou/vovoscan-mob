@@ -211,6 +211,7 @@ struct PreferencesView: View {
     let onReplayTutorial: () -> Void
     @StateObject private var model = PreferencesModel()
     @StateObject private var reading = ReadingSettingsModel()
+    @StateObject private var search = SearchPrivacyModel()
     @State private var regionsOpen = false
     @State private var readingOpen = false
 
@@ -244,6 +245,25 @@ struct PreferencesView: View {
                             model.send(PreferencesIntentSetSafeMode(on: !state.safeMode))
                         }
                         .disabled(state.savingSafeMode)
+                    }
+                }
+                // Search learned from picks: whether this account takes part, and its history (online only).
+                Card {
+                    SectionTitle(text: search.state.title)
+                    Text(search.state.privacy).font(.brandBody(13)).foregroundStyle(Color.brandMuted)
+                    if let status = search.state.status { Text(status).font(.brandBody(15)).foregroundStyle(Color.brandPaper) }
+                    if let notice = search.state.notice { Notice(text: notice) }
+                    if let error = search.state.error { ErrorText(text: error) }
+                    if search.state.learning == nil && !search.state.busy {
+                        Button(L("common.retry")) { search.send(SearchPrivacyIntentLoad.shared) }
+                            .buttonStyle(GhostButtonStyle())
+                    } else {
+                        Button(search.state.toggleLabel) { search.send(SearchPrivacyIntentToggle.shared) }
+                            .buttonStyle(GhostButtonStyle())
+                            .disabled(!search.state.canAct)
+                        Button(search.state.clearLabel) { search.send(SearchPrivacyIntentClearHistory.shared) }
+                            .buttonStyle(GhostButtonStyle())
+                            .disabled(!search.state.canAct)
                     }
                 }
                 Card {
@@ -281,6 +301,7 @@ struct PreferencesView: View {
         }
         .task { await model.observe() }
         .task { await reading.observe() }
+        .task { await search.observe() }
     }
 }
 

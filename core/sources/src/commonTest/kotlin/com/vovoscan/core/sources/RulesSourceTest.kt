@@ -292,6 +292,8 @@ class RulesSourceTest {
             assertEquals("Alpha", title.summary.name)
             assertEquals(listOf("Author One"), title.authors)
             assertEquals(listOf("Action"), title.genres)
+            // No format named and no strip genre: a manga.
+            assertEquals("manga", title.summary.format)
             assertEquals(
                 listOf(RulesUnit("u1", 1.0, "Start"), RulesUnit("u2", 1.5, null), RulesUnit("u3", 3.0, "Oneshot")),
                 title.units,

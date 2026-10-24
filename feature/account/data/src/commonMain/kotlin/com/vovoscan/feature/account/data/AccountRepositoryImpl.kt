@@ -11,6 +11,7 @@ import com.vovoscan.feature.account.domain.ProviderKeys
 import com.vovoscan.feature.account.domain.ProviderKeysRepository
 import com.vovoscan.feature.account.domain.ReadingModel
 import com.vovoscan.feature.account.domain.ReadingSettingsRepository
+import com.vovoscan.feature.account.domain.SERIES_MODES_UNSUPPORTED
 import com.vovoscan.feature.account.domain.UnitType
 import com.vovoscan.feature.account.domain.Usage
 import com.vovoscan.feature.account.domain.UsageEntry
@@ -121,6 +122,21 @@ class AccountRepositoryImpl(
         }
 
     override suspend fun markCoached(kind: String): AppResult<Unit> = remote.markCoached(kind).map { }
+
+    override suspend fun seriesModes(): AppResult<Map<String, String>> =
+        when (val settings = remote.readingSettings()) {
+            is AppResult.Err -> settings
+            // No `seriesModes` field: an older server. "None chosen" would make the device forget its own choices.
+            is AppResult.Ok ->
+                settings.value.seriesModes?.let { modes -> AppResult.Ok(modes.mapNotNull { (k, v) -> v?.let { k to it } }.toMap()) }
+                    ?: AppResult.Err(AppError.Rejected(SERIES_MODES_UNSUPPORTED, ""))
+        }
+
+    override suspend fun setSeriesMode(
+        sourceKey: String,
+        titleRef: String,
+        mode: String?,
+    ): AppResult<Unit> = remote.putSeriesMode(sourceKey, titleRef, mode)
 
     // The current model goes with it: a server without `targetLanguage` (it requires `ocrModel` and ignores the rest)
     // takes the request, a newer one keeps both.

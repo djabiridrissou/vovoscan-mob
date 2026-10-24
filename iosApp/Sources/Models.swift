@@ -93,6 +93,26 @@ final class PreferencesModel: ObservableObject {
 }
 
 @MainActor
+final class SearchPrivacyModel: ObservableObject {
+    @Published private(set) var state: SearchPrivacyUiState
+    private let owner = ViewModels()
+    private let viewModel: SearchPrivacyViewModel
+
+    init() {
+        viewModel = owner.searchPrivacy()
+        state = viewModel.state.value
+    }
+
+    func observe() async {
+        for await next in viewModel.state { state = next }
+    }
+
+    func send(_ intent: SearchPrivacyIntent) { viewModel.onIntent(intent: intent) }
+
+    deinit { owner.clear() }
+}
+
+@MainActor
 final class OnboardingModel: ObservableObject {
     @Published private(set) var state: OnboardingUiState
     private let owner = ViewModels()
@@ -203,7 +223,32 @@ final class TitleModel: ObservableObject {
 
     func toggleFollow() { following.toggle(name: state.name, coverUrl: state.coverUrl) }
 
+    /// The heart (it follows the title too).
+    func toggleFavorite() { following.toggleFavorite(name: state.name, coverUrl: state.coverUrl) }
+
+    /// The stars: a tap or a drag let go at `x` across the five (0...1), a screen reader's step, or "Clear".
+    func rate(at x: Double) { detail.onIntent(intent: TitleDetailIntentRateAt(x: x)) }
+
+    func stepRating(up: Bool) { detail.onIntent(intent: TitleDetailIntentStepRating(up: up)) }
+
+    func clearRating() { detail.onIntent(intent: TitleDetailIntentClearRating.shared) }
+
     func toggleOrder() { detail.onIntent(intent: TitleDetailIntentToggleOrder.shared) }
+
+    /// "▶ Episodes": only the chapters with an episode, or every chapter again.
+    func toggleEpisodes() { detail.onIntent(intent: TitleDetailIntentToggleEpisodes.shared) }
+
+    /// A chapter row's pill: the view model answers with `state.open`, which the page opens once.
+    func translate(_ chapterId: String) { detail.onIntent(intent: TitleDetailIntentTranslate(chapterId: chapterId)) }
+
+    func episode(_ chapterId: String) { detail.onIntent(intent: TitleDetailIntentEpisode(chapterId: chapterId)) }
+
+    func openHandled(_ seq: Int64) { detail.onIntent(intent: TitleDetailIntentOpenHandled(seq: seq)) }
+
+    /// A long list: a chapter number typed (or the nearest one), the chapter being read; answered once scrolled.
+    func jump(_ query: String) { detail.onIntent(intent: TitleDetailIntentJumpTo(query: query)) }
+    func jumpToCurrent() { detail.onIntent(intent: TitleDetailIntentJumpToCurrent.shared) }
+    func scrollHandled(_ seq: Int64) { detail.onIntent(intent: TitleDetailIntentScrollHandled(seq: seq)) }
 
     deinit { owner.clear() }
 }
@@ -255,19 +300,31 @@ final class DownloadsModel: ObservableObject {
 @MainActor
 final class ReaderModel: ObservableObject {
     @Published private(set) var state: ReaderUiState
+    /// The library's heart for this title, on the end card (two features side by side, unaware of each other).
+    @Published private(set) var follow: FollowUiState
     private let owner = ViewModels()
     private let viewModel: ReaderViewModel
+    private let following: FollowViewModel
 
     init(route: ReaderRoute) {
         viewModel = owner.reader(sourceKey: route.sourceKey, titleId: route.titleId, chapterId: route.chapterId, startPage: Int32(route.startPage))
+        following = owner.follow(sourceKey: route.sourceKey, titleId: route.titleId)
         state = viewModel.state.value
+        follow = following.state.value
     }
 
     func observe() async {
         for await next in viewModel.state { state = next }
     }
 
+    func observeFollow() async {
+        for await next in following.state { follow = next }
+    }
+
     func send(_ intent: ReaderIntent) { viewModel.onIntent(intent: intent) }
+
+    /// The heart on the end card (it follows the title too).
+    func toggleFavorite() { following.toggleFavorite(name: state.titleName, coverUrl: nil) }
 
     deinit { owner.clear() }
 }

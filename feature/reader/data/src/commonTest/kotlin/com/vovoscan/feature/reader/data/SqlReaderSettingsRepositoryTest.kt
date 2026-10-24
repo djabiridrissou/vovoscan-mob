@@ -6,6 +6,8 @@ import com.vovoscan.feature.reader.domain.LastRead
 import com.vovoscan.feature.reader.domain.ReaderPreferences
 import com.vovoscan.feature.reader.domain.ReadingMode
 import com.vovoscan.feature.reader.domain.ScrollAmount
+import com.vovoscan.feature.reader.domain.SeriesKey
+import com.vovoscan.feature.reader.domain.SeriesModeSync
 import com.vovoscan.feature.reader.domain.TapInvert
 import com.vovoscan.feature.reader.domain.TapLayout
 import kotlinx.coroutines.flow.first
@@ -100,12 +102,16 @@ class SqlReaderSettingsRepositoryTest {
                 listOf(LastRead("vovoscan", "t1", "c2", 7, 300), LastRead("inkwell", "a/b:c", "ch:1", 3, 100)),
                 settings.observeHistory().first(),
             )
+            // The language last read in (the series page's badges) is not a preference either.
+            settings.recordLanguage("fr")
+            assertEquals("fr", settings.lastLanguage())
             // History rows are not preferences.
             assertEquals(ReaderPreferences(), settings.observePreferences().first())
             local.clearSource("inkwell")
             assertEquals(listOf("t1"), settings.observeHistory().first().map { it.titleId })
             local.clear()
             assertEquals(emptyList(), settings.observeHistory().first())
+            assertNull(settings.lastLanguage())
         }
 
     @Test
@@ -116,4 +122,61 @@ class SqlReaderSettingsRepositoryTest {
         assertNull(LastRead.decode("vovoscan", "1:2:c"))
         assertEquals(LastRead("s", "t", "c", 2, 1), LastRead.decode("s/t", "1:2:c"))
     }
+
+    /** The account in memory: what it holds, what reached it; offline refuses everything. */
+    private class FakeAccount(
+        val modes: MutableMap<SeriesKey, ReadingMode> = mutableMapOf(),
+    ) : SeriesModeSync {
+        var online = true
+        val pushed = mutableListOf<Pair<SeriesKey, ReadingMode?>>()
+
+        override suspend fun pull(): Map<SeriesKey, ReadingMode>? = if (online) modes.toMap() else null
+
+        override suspend fun push(
+            series: SeriesKey,
+            mode: ReadingMode?,
+        ): Boolean {
+            if (!online) return false
+            pushed += series to mode
+            if (mode == null) modes.remove(series) else modes[series] = mode
+            return true
+        }
+    }
+
+    @Test
+    fun seriesModesFollowTheAccountAndAChoiceMadeOfflineGoesOutLater() =
+        runTest {
+            val database = ReaderDatabase(inMemoryDriver(ReaderDatabase.Schema))
+            val io = StandardTestDispatcher(testScheduler)
+            val t1 = SeriesKey("vovoscan", "t1")
+            val t2 = SeriesKey("inkwell", "ink:road")
+            // A choice from before the account kept them: sent once at the first sync.
+            SqlReaderSettingsRepository(database, io).setSeriesMode(t2.sourceKey, t2.titleId, ReadingMode.PagedRightToLeft)
+            val account = FakeAccount(mutableMapOf(t1 to ReadingMode.PagedVertical))
+            val settings = SqlReaderSettingsRepository(database, io, account)
+            settings.syncSeriesModes()
+            assertEquals(ReadingMode.PagedVertical, settings.observeSeriesMode(t1.sourceKey, t1.titleId).first())
+            assertEquals(ReadingMode.PagedRightToLeft, account.modes[t2])
+
+            // Offline: the choice shows at once and waits; the account's older value does not undo it.
+            account.online = false
+            settings.setSeriesMode(t1.sourceKey, t1.titleId, ReadingMode.LongStrip)
+            assertEquals(ReadingMode.LongStrip, settings.observeSeriesMode(t1.sourceKey, t1.titleId).first())
+            account.online = true
+            settings.syncSeriesModes()
+            assertEquals(ReadingMode.LongStrip, account.modes[t1])
+            assertEquals(ReadingMode.LongStrip, settings.observeSeriesMode(t1.sourceKey, t1.titleId).first())
+
+            // Reset on another device: this one goes back to the default too.
+            account.modes.remove(t2)
+            settings.syncSeriesModes()
+            assertNull(settings.observeSeriesMode(t2.sourceKey, t2.titleId).first())
+            // Nothing is sent twice.
+            assertEquals(
+                listOf<Pair<SeriesKey, ReadingMode?>>(t2 to ReadingMode.PagedRightToLeft, t1 to ReadingMode.LongStrip),
+                account.pushed,
+            )
+            // The bookkeeping never reaches the preferences.
+            assertEquals(ReaderPreferences(), settings.observePreferences().first())
+        }
 }

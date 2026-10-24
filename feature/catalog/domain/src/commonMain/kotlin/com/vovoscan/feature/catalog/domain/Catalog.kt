@@ -52,6 +52,8 @@ data class TitleSummary(
     val status: String,
     /** null: the source doesn't say (hidden in safe mode, like an adult title, except from the internal source). */
     val contentRating: ContentRating? = null,
+    /** Chapters with an episode this account can watch, any language (the server's word; 0 when unknown). */
+    val episodeCount: Int = 0,
 ) {
     /**
      * Safe mode on the device. The API already filters what it serves by the account's choice, so an internal title it
@@ -68,6 +70,8 @@ data class Chapter(
     val name: String?,
     val pageCount: Int,
     val publishedAt: String?,
+    /** Languages its episode can be watched in, sorted; `""` = the original; empty: none (or not known). */
+    val episodeLanguages: List<String> = emptyList(),
 ) {
     /** "98" or "98.5", never "98.0". */
     val label: String get() = if (number % 1.0 == 0.0) number.toLong().toString() else number.toString()
@@ -106,6 +110,8 @@ data class ListedTitle(
 data class CatalogFilter(
     val sourceKeys: List<String> = emptyList(),
     val categoryName: String? = null,
+    /** Only titles with an episode (`has=episode`; needs the `video` feature). */
+    val episodesOnly: Boolean = false,
 )
 
 /** Where a title was left: its chapter and page, and when (ms). */
@@ -140,30 +146,35 @@ object ResumePoints {
 /**
  * Each source's catalog, offline first: screens read the local database (`observe…`), `refresh…` replaces it
  * with what the source says (the vovoscan API for the internal source, the device itself for the others). A source
- * has one listing per category (`categoryId`), and one for everything (`null`).
+ * has one listing per category (`categoryId`), and one for everything (`null`); with [episodes], the titles that have an
+ * episode (the server's word: for a source read on the device, the titles imported from it that have one, any category).
  */
 interface CatalogRepository {
     fun observeListing(
         sourceKey: String,
         categoryId: String? = null,
+        episodes: Boolean = false,
     ): Flow<List<ListedTitle>>
 
     /** Reloads the first page; true if more pages remain. */
     suspend fun refreshListing(
         sourceKey: String,
         categoryId: String? = null,
+        episodes: Boolean = false,
     ): AppResult<Boolean>
 
     /** The next page, when there is one; true if more pages remain. */
     suspend fun loadMoreListing(
         sourceKey: String,
         categoryId: String? = null,
+        episodes: Boolean = false,
     ): AppResult<Boolean>
 
     /** True while the saved listing has pages left to load (known before any network answer). */
     suspend fun hasMore(
         sourceKey: String,
         categoryId: String? = null,
+        episodes: Boolean = false,
     ): Boolean
 
     /** Searches the source; offline (or the source isn't answering), searches the titles already saved on the device. */
@@ -171,6 +182,7 @@ interface CatalogRepository {
         sourceKey: String,
         query: String,
         categoryId: String? = null,
+        episodes: Boolean = false,
     ): SearchResult
 
     /** The source's categories as last read (none until then, or when it has none). */
@@ -185,6 +197,12 @@ interface CatalogRepository {
         sourceKey: String,
         ids: List<String>,
     ): Map<String, ReadingFormat> = emptyMap()
+
+    /**
+     * The titles of [sourceKey] the server knew no format for may be asked again (it learns a few more on each call):
+     * on pull to refresh and Load more, never while browsing.
+     */
+    fun askFormatsAgain(sourceKey: String) = Unit
 
     suspend fun refreshCategories(sourceKey: String): AppResult<Unit>
 
@@ -202,10 +220,27 @@ interface CatalogRepository {
         id: String,
     ): Flow<TitleDetail?>
 
+    /** The languages a chapter's episode is made in ("" = the original), as its title page last said; empty unknown. */
+    fun observeEpisodeLanguages(
+        sourceKey: String,
+        chapterId: String,
+    ): Flow<Set<String>> = flowOf(emptySet())
+
+    /**
+     * Reloads the title. A long series of our catalog comes by pages of chapters, each saved as it arrives (the list
+     * grows on screen, [observeChapterLoad] says how far it is); the chapters gone from the server go once every page is
+     * read, so a reload cut short keeps what was saved.
+     */
     suspend fun refreshTitle(
         sourceKey: String,
         id: String,
     ): AppResult<Unit>
+
+    /** While [id]'s chapters come by pages: how many are in and how many there are; null otherwise. */
+    fun observeChapterLoad(
+        sourceKey: String,
+        id: String,
+    ): Flow<ChapterLoad?> = flowOf(null)
 
     suspend fun clearLocal()
 
@@ -233,3 +268,50 @@ fun interface ContentPolicy {
         val ShowAll = ContentPolicy { flowOf(true) }
     }
 }
+
+/** A chapter's translation in the language last read in: ready, or on its way (with its progress). */
+data class ChapterTranslationBadge(
+    val ready: Boolean,
+    /** 0..100 while it is made; null while it waits in the queue. */
+    val progress: Int?,
+)
+
+/** The badges of a title's chapters in [language] (code), by chapter id; chapters without one are left out. */
+data class TitleTranslationBadges(
+    val language: String,
+    val chapters: Map<String, ChapterTranslationBadge>,
+)
+
+/**
+ * Port: each chapter's translation in the language this device last read the catalog in (next-chapter contract, the
+ * series page's badges). Our catalog only; null when there is none to show (no language read yet, offline, a source
+ * read on the device). Wired by the app; the catalog does not know the reader.
+ */
+fun interface ChapterTranslations {
+    suspend fun of(
+        sourceKey: String,
+        titleId: String,
+    ): TitleTranslationBadges?
+
+    companion object {
+        val None = ChapterTranslations { _, _ -> null }
+    }
+}
+
+/**
+ * Port: the account has the `video` feature (wired in `shared` to the session). Without it the catalog shows neither
+ * the Episodes filter nor episode badges.
+ */
+fun interface EpisodeFeature {
+    fun enabled(): Flow<Boolean>
+
+    companion object {
+        val Off = EpisodeFeature { flowOf(false) }
+    }
+}
+
+/** A long series' chapters on their way: [loaded] of [total]. */
+data class ChapterLoad(
+    val loaded: Int,
+    val total: Int,
+)

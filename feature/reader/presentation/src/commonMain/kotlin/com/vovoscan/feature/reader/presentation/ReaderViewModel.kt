@@ -202,6 +202,20 @@ sealed interface ReaderCommand {
     ) : ReaderCommand
 }
 
+/**
+ * Where the reader is, whatever the screen (reading circles): a comic's [page] under the reading line (a third of the
+ * screen down) and how far down that page the line is ([fraction], 0..1; 0 for a paged page), with the strip's stop
+ * ([panel], -1 unknown); a book's [section] of [count].
+ */
+data class ReaderPlace(
+    val book: Boolean,
+    val page: Int,
+    val fraction: Float,
+    val panel: Int,
+    val section: Int,
+    val count: Int,
+)
+
 /** A chapter button of the reader's bar; [forward]: the next chapter (the red one). */
 data class ChapterButton(
     val chapterId: String,
@@ -266,6 +280,10 @@ data class ReaderUiState(
     val voiceAvailable: Boolean = false,
     /** The reading area takes two pages side by side (wide, or split by a foldable's hinge) and the setting is on. */
     val twoPages: Boolean = false,
+    /** Where the reader is (at most every 200 ms while scrolling), for a reading circle. */
+    val place: ReaderPlace? = null,
+    /** Counts the reader's own reading gestures (drag, tap zone, key, swipe): a circle's follower lets go on each. */
+    val userMoves: Int = 0,
     /** Book: the page's settings, the contents, how to open the section on screen. */
     val book: BookReaderState = BookReaderState(),
 ) {
@@ -367,6 +385,21 @@ data class ReaderUiState(
 
     val atEnd: Boolean get() = count > 0 && currentIndex >= count - 1
 
+    /** How much of the chapter is read, 0..1 (what comes next is offered at 40 %, prepared by the series setting at 70 %). */
+    val readShare: Float
+        get() =
+            when {
+                count == 0 -> 0f
+                isStrip -> progress
+                else -> ((currentIndex + 1).toFloat() / count).coerceIn(0f, 1f)
+            }
+
+    /** What Focus lights: the panel read, never past the last page (the end card is never dimmed). */
+    val spotlight: PanelBox? get() = focus?.takeUnless { onEndCard }
+
+    /** The card after the last page is on screen (or the strip's end). */
+    val onEndCard: Boolean get() = items.isNotEmpty() && (currentItem == items.lastIndex || (isStrip && progress >= 1f))
+
     /** End-of-unit button. */
     val nextLabel: String? get() = nextChapterId?.let { t(if (isBook) "reader.nextPart" else "reader.nextChapter") }
 
@@ -443,6 +476,17 @@ data class ReaderUiState(
 }
 
 sealed interface ReaderIntent {
+    /**
+     * A reading circle's place to go to (`ReaderPlace`): that point of [page] on this screen's reading line (strips),
+     * [page] (paged), or [section] (books). Not a gesture of the reader's own.
+     */
+    data class GoToPlace(
+        val page: Int,
+        val fraction: Float,
+        val section: Int,
+        val animated: Boolean,
+    ) : ReaderIntent
+
     /** Most visible page on screen (comic), or chosen section (book). */
     data class PageVisible(
         val index: Int,
@@ -704,6 +748,8 @@ class ReaderViewModel(
         ) { chapter, preferences, mode -> Triple(chapter, preferences, mode) }
             .onEach { (chapter, preferences, mode) -> show(chapter, preferences, mode) }
             .launchIn(viewModelScope)
+        // The account's modes per series (another device's choice shows here): the device's copy follows.
+        viewModelScope.launch { settings.syncSeriesModes() }
         repository
             .observeBook(sourceKey, chapterId)
             .onEach { book ->
@@ -718,6 +764,8 @@ class ReaderViewModel(
                     }
                     updateContents()
                     loadSection(state.value.currentIndex)
+                    placeSoon()
+                    applyPendingPlace()
                 }
             }.launchIn(viewModelScope)
         books.observeTypography().onEach(::typographyChanged).launchIn(viewModelScope)
@@ -736,8 +784,18 @@ class ReaderViewModel(
 
     fun onIntent(intent: ReaderIntent) {
         when (intent) {
-            is ReaderIntent.PageVisible -> moveTo(intent.index)
+            is ReaderIntent.GoToPlace -> goToPlace(intent)
+            is ReaderIntent.PageVisible -> {
+                // A section picked from the contents is a move of the reader's own.
+                if (state.value.isBook && intent.index != state.value.currentIndex) userMoved()
+                moveTo(intent.index)
+            }
             is ReaderIntent.ItemVisible -> {
+                if (placing) {
+                    if (intent.item == placedItem) placing = false
+                } else if (state.value.isPaged && intent.item != state.value.currentItem) {
+                    userMoved()
+                }
                 if (state.value.isStrip) stripItem = intent.item
                 itemVisible(stripItemShown(intent.item))
             }
@@ -748,7 +806,10 @@ class ReaderViewModel(
                 stripItem?.let { itemVisible(stripItemShown(it)) }
             }
             is ReaderIntent.PageScroll -> pageScroll = intent
-            is ReaderIntent.PullReleased -> pullReleased(intent.overscroll)
+            is ReaderIntent.PullReleased -> {
+                if (state.value.pullHint(intent.overscroll)?.armed == true) userMoved()
+                pullReleased(intent.overscroll)
+            }
             is ReaderIntent.Tap -> if (state.value.coach != null) dismissCoach() else tap(intent.x, intent.y)
             ReaderIntent.ShowCoach -> showCoach()
             ReaderIntent.DismissCoach -> dismissCoach()
@@ -774,14 +835,26 @@ class ReaderViewModel(
             ReaderIntent.Next ->
                 when {
                     state.value.coach != null -> dismissCoach()
-                    state.value.isBook -> moveTo(state.value.currentIndex + 1)
-                    else -> forward()
+                    state.value.isBook -> {
+                        userMoved()
+                        moveTo(state.value.currentIndex + 1)
+                    }
+                    else -> {
+                        userMoved()
+                        forward()
+                    }
                 }
             ReaderIntent.Previous ->
                 when {
                     state.value.coach != null -> dismissCoach()
-                    state.value.isBook -> moveTo(state.value.currentIndex - 1)
-                    else -> backward()
+                    state.value.isBook -> {
+                        userMoved()
+                        moveTo(state.value.currentIndex - 1)
+                    }
+                    else -> {
+                        userMoved()
+                        backward()
+                    }
                 }
             is ReaderIntent.ZoomChanged -> mutableState.update { it.copy(zoomed = intent.zoomed) }
             is ReaderIntent.SeekTo -> seekTo(intent.page)
@@ -862,8 +935,14 @@ class ReaderViewModel(
         }
         when (TapZones.resolve(current.preferences.tapLayout, current.preferences.tapInvert, current.mode, x, y)) {
             TapAction.Menu -> mutableState.update { it.copy(chromeVisible = !it.chromeVisible) }
-            TapAction.Next -> forward()
-            TapAction.Previous -> backward()
+            TapAction.Next -> {
+                userMoved()
+                forward()
+            }
+            TapAction.Previous -> {
+                userMoved()
+                backward()
+            }
         }
     }
 
@@ -990,6 +1069,8 @@ class ReaderViewModel(
         stopIndex = ReadingStops.current(stops, offset)
         mutableState.update { it.copy(focus = if (it.focusOn) stops.getOrNull(stopIndex)?.panel else null) }
         restoreIfReady()
+        applyPendingPlace()
+        placeSoon()
     }
 
     /**
@@ -1070,6 +1151,8 @@ class ReaderViewModel(
         val before = offset
         offset = at
         if (byUser) {
+            // One gesture of the reader's own (a drag and its fling) counts once.
+            if (!userScrolled) userMoved()
             userScrolled = true
             gliding = false
             holdPosition = false
@@ -1081,20 +1164,24 @@ class ReaderViewModel(
             mutableState.update { it.copy(focus = if (it.focusOn) stops.getOrNull(stopIndex)?.panel else null) }
         }
         if (strip == null || viewport <= 0f) return
-        // Bars: a scroll down hides them after a moment; a scroll up of a quarter screen brings them back.
+        // Bars: a scroll down hides them after a moment; a scroll up of a quarter screen brings them back. Only the
+        // reader's own scroll up does: a Previous tap hides them and glides back, and must not bring them back.
         if (at > before) {
             lowest = at
             if (state.value.chromeVisible && byUser) scheduleHide()
         } else if (lowest - at > CHROME_BACK * viewport) {
             lowest = at
-            hideJob?.cancel()
-            if (!state.value.chromeVisible) mutableState.update { it.copy(chromeVisible = true) }
+            if (byUser) {
+                hideJob?.cancel()
+                if (!state.value.chromeVisible) mutableState.update { it.copy(chromeVisible = true) }
+            }
         }
         stripAtBottom = stripAtBottom && at >= strip.total - viewport - ReadingStops.SAME_PX
         val read = ((at + viewport) / strip.total).coerceIn(0f, 1f)
         if (abs(read - state.value.progress) >= PROGRESS_STEP || read == 1f) mutableState.update { it.copy(progress = read) }
         val page = strip.pageAt(at.coerceAtLeast(0f))
         moveTo(page)
+        placeSoon()
         if (holdPosition) return
         positionJob?.cancel()
         positionJob =
@@ -1288,6 +1375,7 @@ class ReaderViewModel(
             it.copy(voiceAvailable = chapter.pages.isNotEmpty(), prefetch = prefetch(it))
         }
         rebuildStops()
+        applyPendingPlace()
         showTitleCard(chapter)
     }
 
@@ -1540,6 +1628,7 @@ class ReaderViewModel(
             sectionMoved(index, fromEnd)
             loadSection(index)
         }
+        if (!current.isStrip) placeSoon()
         saveJob?.cancel()
         progressPending = true
         saveJob =
@@ -1548,6 +1637,122 @@ class ReaderViewModel(
                 progressPending = false
                 progress.save(sourceKey, titleId, chapterId, index)
             }
+    }
+
+    // --- Reading circles: where the reader is, and going where the host is ------------------------------------------
+
+    private var placeJob: Job? = null
+    private var pendingPlace: ReaderIntent.GoToPlace? = null
+
+    /** A place going to a paged item: the pager's reports on the way are not gestures of the reader's own. */
+    private var placing = false
+    private var placedItem = -1
+    private var placingJob: Job? = null
+
+    private fun applyPendingPlace() {
+        val place = pendingPlace ?: return
+        pendingPlace = null
+        goToPlace(place)
+    }
+
+    private fun userMoved() = mutableState.update { it.copy(userMoves = it.userMoves + 1) }
+
+    /** The place, at most every [PLACE_MS] while the strip moves (read at the end of the wait: the latest). */
+    private fun placeSoon() {
+        if (placeJob?.isActive == true) return
+        placeJob =
+            viewModelScope.launch {
+                delay(PLACE_MS)
+                val next = currentPlace() ?: return@launch
+                if (next != state.value.place) mutableState.update { it.copy(place = next) }
+            }
+    }
+
+    private fun currentPlace(): ReaderPlace? {
+        val current = state.value
+        if (current.isBook) {
+            if (current.sections.isEmpty()) return null
+            return ReaderPlace(
+                book = true,
+                page = 0,
+                fraction = 0f,
+                panel = -1,
+                section = current.currentIndex,
+                count = current.sections.size,
+            )
+        }
+        if (current.pages.isEmpty()) return null
+        val strip = layout
+        if (!current.isStrip || strip == null || viewport <= 0f) {
+            return ReaderPlace(
+                book = false,
+                page = current.currentIndex,
+                fraction = 0f,
+                panel = -1,
+                section = 0,
+                count = current.pages.size,
+            )
+        }
+        val line = (offset + Resume.READING_LINE * viewport).coerceIn(0f, strip.total)
+        val anchor = strip.pageAt(line)
+        val share = ((line - strip.tops[anchor]) / strip.heights[anchor]).coerceIn(0f, 1f)
+        return ReaderPlace(
+            book = false,
+            page = anchor,
+            fraction = share,
+            panel = if (stops.isEmpty()) -1 else stopIndex,
+            section = 0,
+            count = current.pages.size,
+        )
+    }
+
+    private fun goToPlace(place: ReaderIntent.GoToPlace) {
+        val current = state.value
+        val animated = place.animated && !current.reducedMotion
+        when {
+            current.isBook ->
+                when {
+                    current.sections.isEmpty() -> pendingPlace = place
+                    place.section in current.sections.indices -> moveTo(place.section)
+                }
+            current.isStrip -> {
+                val strip = layout
+                if (strip == null || viewport <= 0f || place.page !in strip.tops.indices) {
+                    // Laid out later (pages still loading): the place waits for the strip.
+                    pendingPlace = place
+                    return
+                }
+                // The circle's place wins over this device's own resume.
+                restored = true
+                holdPosition = false
+                val line = strip.tops[place.page] + place.fraction.coerceIn(0f, 1f) * strip.heights[place.page]
+                val target = (line - Resume.READING_LINE * viewport).coerceIn(0f, (strip.total - viewport).coerceAtLeast(0f))
+                stopIndex = ReadingStops.current(stops, target)
+                mutableState.update { it.copy(focus = if (it.focusOn) stops.getOrNull(stopIndex)?.panel else null) }
+                gliding = true
+                userScrolled = false
+                command { ReaderCommand.GlideTo(it, target, animated) }
+            }
+            else -> {
+                val item = current.items.indexOfFirst { (it as? ReaderItem.Page)?.page?.index == place.page }
+                if (item < 0) {
+                    pendingPlace = place
+                    return
+                }
+                val first = current.spreads.getOrNull(current.spreadOf(item))?.first ?: item
+                if (first == current.currentItem) return
+                placing = true
+                placedItem = first
+                placingJob?.cancel()
+                placingJob =
+                    viewModelScope.launch {
+                        delay(PLACING_MS)
+                        placing = false
+                    }
+                itemVisible(first)
+                command { ReaderCommand.GoToItem(it, first, animated) }
+            }
+        }
     }
 
     override fun onCleared() {
@@ -1755,6 +1960,8 @@ class ReaderViewModel(
         private const val CHROME_BACK = 0.25f
         const val TITLE_MS = 1600L
         private const val POSITION_MS = 500L
+        private const val PLACE_MS = 200L
+        private const val PLACING_MS = 1500L
         private const val PROGRESS_STEP = 0.002f
         private const val PREFETCH = 3
         private const val INTERNAL_SOURCE = "vovoscan"

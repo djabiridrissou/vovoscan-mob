@@ -120,7 +120,7 @@ clearChaptersOf:
 DELETE FROM reader_chapter WHERE source_key = ?;
 
 settings:
-SELECT * FROM reader_setting WHERE name NOT LIKE 'pos/%' AND name NOT LIKE 'last/%';
+SELECT * FROM reader_setting WHERE name NOT LIKE 'pos/%' AND name NOT LIKE 'last/%' AND name NOT LIKE 'seriesPending/%' AND name <> 'seriesMigrated' AND name <> 'readLanguage';
 
 putSetting:
 INSERT OR REPLACE INTO reader_setting (name, setting_value) VALUES (?, ?);
@@ -137,6 +137,17 @@ DELETE FROM series_mode WHERE source_key = ? AND title_id = ?;
 clearSeriesModes:
 DELETE FROM series_mode;
 
+allSeriesModes:
+SELECT source_key, title_id, mode FROM series_mode;
+
+-- Series modes chosen on the device and not on the account yet ("seriesPending/<sourceKey>:<titleRef>" = mode or "-"),
+-- and "seriesMigrated" once the device's earlier choices were sent.
+pendingSeriesModes:
+SELECT name, setting_value FROM reader_setting WHERE name LIKE 'seriesPending/%';
+
+deleteSetting:
+DELETE FROM reader_setting WHERE name = ?;
+
 clearSeriesModesOf:
 DELETE FROM series_mode WHERE source_key = ?;
 
@@ -145,7 +156,7 @@ SELECT setting_value FROM reader_setting WHERE name = ?;
 
 -- Reading positions ("pos/<source>/<chapter>" = "<page>:<share of the page above the screen's top>").
 clearPositions:
-DELETE FROM reader_setting WHERE name LIKE 'pos/%' OR name LIKE 'last/%';
+DELETE FROM reader_setting WHERE name LIKE 'pos/%' OR name LIKE 'last/%' OR name LIKE 'seriesPending/%' OR name = 'seriesMigrated' OR name = 'readLanguage';
 
 -- The chapter each title was left at ("last/<source>/<title>" = "<time ms>:<page>:<chapter id>").
 history:

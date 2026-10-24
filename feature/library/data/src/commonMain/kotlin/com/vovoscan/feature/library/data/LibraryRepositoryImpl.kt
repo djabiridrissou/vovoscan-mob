@@ -23,6 +23,9 @@ class LibraryRepositoryImpl(
 ) : LibraryRepository {
     private val syncing = Mutex()
 
+    /** Hearts the server refused for good during a sync, by title and time, for the [setFavorite] that queued them. */
+    private val refused = mutableMapOf<Triple<String, String, Long>, AppError>()
+
     override fun observe(): Flow<List<LibraryEntry>> = local.observe()
 
     override fun isFollowed(
@@ -55,6 +58,35 @@ class LibraryRepositoryImpl(
         val current = local.entry(sourceKey, titleRef) ?: return
         local.applyLocal(current.copy(updatedAt = clock.nowMillis(), pendingSync = true), deleted = true)
         sync()
+    }
+
+    override fun isFavorite(
+        sourceKey: String,
+        titleRef: String,
+    ): Flow<Boolean> = local.isFavorite(sourceKey, titleRef)
+
+    override suspend fun setFavorite(
+        title: TitleRef,
+        favorite: Boolean,
+    ): AppResult<Unit> {
+        val now = clock.nowMillis()
+        val current = local.entry(title.sourceKey, title.id)
+        val followed =
+            LibraryEntry(
+                title.sourceKey,
+                title.id,
+                title.name,
+                title.coverUrl,
+                current?.lastChapterRef,
+                current?.lastPage ?: 0,
+                now,
+                true,
+            )
+        val pending = PendingFavorite(title.sourceKey, title.id, favorite, current?.titleName ?: title.name, title.coverUrl, now)
+        local.applyFavorite(pending, followed)
+        sync()
+        val key = Triple(title.sourceKey, title.id, now)
+        return syncing.withLock { refused.remove(key) }?.let { AppResult.Err(it) } ?: AppResult.Ok(Unit)
     }
 
     override suspend fun saveProgress(
@@ -102,8 +134,43 @@ class LibraryRepositoryImpl(
                         }
                 }
             }
+            sendFavorites()?.let { return@withLock it }
             pull()
         }
+
+    /** Drains the hearts; an error that should stop the sync (offline, signed out, rate limited) is returned. */
+    private suspend fun sendFavorites(): AppResult.Err? {
+        for (heart in local.pendingFavorites()) {
+            val at = isoUtc(heart.updatedAt)
+            val result =
+                if (heart.favorite) {
+                    remote.favorite(heart.sourceKey, heart.titleRef, at, heart.titleName, heart.coverUrl)
+                } else {
+                    remote.unfavorite(heart.sourceKey, heart.titleRef, at)
+                }
+            when (result) {
+                is AppResult.Ok -> {
+                    local.dequeueFavorite(heart)
+                    local.applyServer(result.value, parseIsoMillis(result.value.updatedAt) ?: heart.updatedAt)
+                }
+                is AppResult.Err ->
+                    when {
+                        result.error.waits() -> return result
+                        // Taking back a heart on a title the server no longer has in the library: done.
+                        !heart.favorite && (result.error as? AppError.Rejected)?.code == "FAVORITE_NOT_FOUND" ->
+                            local.dequeueFavorite(heart)
+                        else -> {
+                            local.dequeueFavorite(heart)
+                            local.revertFavorite(heart)
+                            refused[Triple(heart.sourceKey, heart.titleRef, heart.updatedAt)] = result.error
+                        }
+                    }
+            }
+        }
+        return null
+    }
+
+    private fun AppError.waits() = this == AppError.Network || this == AppError.Unauthorized || this == AppError.RateLimited
 
     private suspend fun pull(): AppResult<Unit> =
         when (val result = remote.entries(local.lastPulledAt())) {

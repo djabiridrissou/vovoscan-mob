@@ -9,6 +9,8 @@ import com.vovoscan.core.database.appFolders
 import com.vovoscan.core.network.AndroidNetworkMonitor
 import com.vovoscan.core.security.AndroidSecureStore
 import com.vovoscan.core.security.SecureStore
+import com.vovoscan.feature.together.domain.Device
+import com.vovoscan.feature.together.domain.ThisDevice
 import org.koin.core.module.Module
 import org.koin.dsl.module
 
@@ -17,6 +19,7 @@ fun androidPlatformModule(context: Context): Module =
         single { DatabaseDriverFactory(context) }
         single<SecureStore> { AndroidSecureStore(context) }
         single<NetworkMonitor> { AndroidNetworkMonitor(context) }
+        single { ThisDevice(Device.Android) }
         single<AppFolders> { appFolders(context) }
         single<DevicePreferences> { AndroidDevicePreferences(context) }
     }

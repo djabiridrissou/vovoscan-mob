@@ -1,5 +1,6 @@
 package com.vovoscan.feature.account.domain
 
+import com.vovoscan.core.common.AppError
 import com.vovoscan.core.common.AppResult
 import com.vovoscan.core.common.i18n.t
 import kotlinx.coroutines.flow.Flow
@@ -158,6 +159,19 @@ interface ReadingSettingsRepository {
 
     /** One more guide seen, on the account (idempotent). */
     suspend fun markCoached(kind: String): AppResult<Unit> = AppResult.Ok(Unit)
+
+    /**
+     * The reading mode chosen per series on the account, `"<sourceKey>:<titleRef>"` → mode (kebab case);
+     * `Rejected(SERIES_MODES_UNSUPPORTED)` from a server without that slot.
+     */
+    suspend fun seriesModes(): AppResult<Map<String, String>> = AppResult.Err(AppError.Rejected(SERIES_MODES_UNSUPPORTED, ""))
+
+    /** One series' mode on the account (null: back to the format's default). Idempotent. */
+    suspend fun setSeriesMode(
+        sourceKey: String,
+        titleRef: String,
+        mode: String?,
+    ): AppResult<Unit> = AppResult.Err(AppError.Rejected(SERIES_MODES_UNSUPPORTED, ""))
 }
 
 interface UsageRepository {
@@ -170,3 +184,6 @@ interface UsageRepository {
 
 /** A server without the account's reader-guide slot (`coached`): nothing to read there, nothing to send. */
 const val COACHED_UNSUPPORTED = "COACHED_UNSUPPORTED"
+
+/** A server without the per-series reading modes (`seriesModes`): the device's own choices stand. */
+const val SERIES_MODES_UNSUPPORTED = "SERIES_MODES_UNSUPPORTED"

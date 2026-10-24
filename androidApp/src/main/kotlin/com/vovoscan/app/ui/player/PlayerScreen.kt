@@ -472,7 +472,7 @@ private fun Controls(
                 )
             }
             // Reader SPEC §11: dub or captions, one tap away while it plays.
-            Pill("文A  ${state.languageLabel}", selected = state.language.isNotEmpty()) {
+            Pill(state.languageLabel, selected = state.language.isNotEmpty()) {
                 onLanguages()
                 onTouch()
             }
@@ -568,7 +568,7 @@ private fun EndCard(
             PrimaryButton(state.replayLabel, { send(PlayerIntent.Replay) })
             val next = state.nextChapterId
             state.nextLabel?.let { label -> if (next != null) GhostButton(label, { onNextChapter(next) }) }
-            GhostButton("文A  ${I18n.text("player.lang.title")}", onLanguages)
+            GhostButton(I18n.text("player.lang.title"), onLanguages)
         }
     }
 }

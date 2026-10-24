@@ -3,6 +3,7 @@ package com.vovoscan.core.sources
 import com.vovoscan.core.common.AppError
 import com.vovoscan.core.common.AppResult
 import com.vovoscan.core.common.SOURCE_RULES
+import com.vovoscan.core.common.StripGenres
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.contentOrNull
@@ -20,6 +21,8 @@ data class RulesTitleSummary(
     val status: String,
     /** `safe`, `suggestive`, `erotica`, `pornographic`, or null when the source doesn't say (unknown). */
     val contentRating: String? = null,
+    /** The source said the format (its rule read one); false: [format] is the default for [kind]. */
+    val formatRead: Boolean = true,
 )
 
 data class RulesPage(
@@ -174,12 +177,14 @@ class RulesSource(
     ): RulesTitleSummary? {
         val name = str(Rules.evaluate(ctx, item["name"])) ?: return null
         val kind = str(Rules.evaluate(ctx, item["kind"])) ?: defaultKind()
+        val format = str(Rules.evaluate(ctx, item["format"]))
         return RulesTitleSummary(
             id = id,
             name = name,
             coverUrl = str(Rules.evaluate(ctx, item["cover"])),
             kind = kind,
-            format = str(Rules.evaluate(ctx, item["format"])) ?: defaultFormat(kind),
+            format = format ?: defaultFormat(kind),
+            formatRead = format != null,
             status = str(Rules.evaluate(ctx, item["status"])) ?: "ongoing",
             contentRating = rating(str(Rules.evaluate(ctx, item["contentRating"]))),
         )
@@ -336,14 +341,18 @@ class RulesSource(
                 rules {
                     val fields = section.getValue("fields").jsonObject
                     val kind = defaultKind()
-                    val head =
+                    val genres = list(Rules.evaluate(ctx, fields["genres"]))
+                    val read =
                         summary(ctx, fields, id)?.copy(kind = kind)
                             ?: throw RuleException("The title has no name.")
+                    // A page that names no format: its genres may say it is one vertical strip (the server's rule too).
+                    val hinted = formatHint(genres).takeIf { kind != "book" && str(Rules.evaluate(ctx, fields["format"])) == null }
+                    val head = hinted?.let { read.copy(format = it, formatRead = true) } ?: read
                     RulesTitle(
                         summary = head,
                         description = str(Rules.evaluate(ctx, fields["description"])).orEmpty(),
                         authors = list(Rules.evaluate(ctx, fields["authors"])),
-                        genres = list(Rules.evaluate(ctx, fields["genres"])),
+                        genres = genres,
                         units = titleUnits.value,
                     )
                 }
@@ -449,7 +458,7 @@ class RulesSource(
 
     /** A page image, fetched from the source (allowed hosts only) with its Referer when the manifest declares one. */
     suspend fun downloadImage(url: String): AppResult<ByteArray> =
-        when (val fetched = http.get(manifest, url, transfer = Transfer.Image, referer = manifest.imageReferer)) {
+        when (val fetched = http.get(manifest, url, transfer = Transfer.Image, referer = manifest.imageReferer, anyPublicHost = true)) {
             is AppResult.Err -> fetched
             is AppResult.Ok -> AppResult.Ok(fetched.value.body)
         }
@@ -457,6 +466,9 @@ class RulesSource(
     private fun <T> noContent(kind: String): AppResult<T> =
         AppResult.Err(AppError.Rejected(SOURCE_RULES, "${manifest.name} has no $kind content."))
 }
+
+/** `webtoon` when a title's genres or tags name a vertical strip (the server's `format_hint`), else null. */
+fun formatHint(genres: List<String>): String? = "webtoon".takeIf { StripGenres.named(genres) }
 
 /** `{{search}}` in a request (braces escaped: Android's ICU engine rejects a bare `}`). */
 private val SEARCH_PLACEHOLDER = Regex("\\{\\{\\s*search\\s*\\}\\}")

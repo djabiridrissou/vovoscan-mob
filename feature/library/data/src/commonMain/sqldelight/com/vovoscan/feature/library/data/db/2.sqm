@@ -1,0 +1,17 @@
+-- v2 → v3: favourites (the heart, its own sync clock) and the server's chapter counts. Entries saved before have no
+-- heart until the next sync.
+ALTER TABLE library_entry ADD COLUMN favorite INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE library_entry ADD COLUMN favorited_at INTEGER;
+ALTER TABLE library_entry ADD COLUMN favorite_updated_at INTEGER;
+ALTER TABLE library_entry ADD COLUMN chapter_count INTEGER;
+ALTER TABLE library_entry ADD COLUMN new_chapters INTEGER;
+
+CREATE TABLE favorite_outbox (
+    source_key TEXT NOT NULL,
+    title_ref TEXT NOT NULL,
+    favorite INTEGER NOT NULL,
+    title_name TEXT NOT NULL,
+    cover_url TEXT,
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY (source_key, title_ref)
+);

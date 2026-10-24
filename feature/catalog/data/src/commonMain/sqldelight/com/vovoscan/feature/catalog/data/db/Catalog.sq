@@ -14,6 +14,8 @@ CREATE TABLE title (
     genres TEXT,
     -- safe | suggestive | erotica | pornographic; null when the source doesn't say.
     content_rating TEXT,
+    -- Chapters with an episode this account can watch (the server's word; 0 when unknown).
+    episode_count INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (source_key, id)
 );
 
@@ -25,6 +27,8 @@ CREATE TABLE chapter (
     name TEXT,
     page_count INTEGER NOT NULL,
     published_at TEXT,
+    -- JSON array of the languages its episode can be watched in ("" = the original); null or [] = none.
+    episode_languages TEXT,
     PRIMARY KEY (source_key, title_id, id)
 );
 
@@ -58,6 +62,40 @@ CREATE TABLE source_category (
     PRIMARY KEY (source_key, id)
 );
 
+-- Everyone's numbers on a title as last read (each null below 3 accounts), so cards show them offline.
+CREATE TABLE title_stats (
+    source_key TEXT NOT NULL,
+    title_id TEXT NOT NULL,
+    rating_avg REAL,
+    rating_count INTEGER,
+    favorite_count INTEGER,
+    PRIMARY KEY (source_key, title_id)
+);
+
+-- The account's own ratings (1 to 5, half steps; score null = taken back). A row changed here and not sent yet is
+-- `pending` (one per title, the latest wins): the row is its own queue. `previous_score`: the score before the pending
+-- change, put back if the server refuses it.
+CREATE TABLE my_rating (
+    source_key TEXT NOT NULL,
+    title_ref TEXT NOT NULL,
+    title_name TEXT NOT NULL,
+    score REAL,
+    updated_at INTEGER NOT NULL,
+    pending INTEGER NOT NULL DEFAULT 0,
+    previous_score REAL,
+    PRIMARY KEY (source_key, title_ref)
+);
+
+-- The series a title belongs to, as the server last said (`series/resolve`): one row per title asked about that is in a
+-- series, with every member of it (JSON `[{sourceKey, titleRef, name, chapters}]`, the primary first).
+CREATE TABLE series_link (
+    source_key TEXT NOT NULL,
+    title_ref TEXT NOT NULL,
+    series_id TEXT NOT NULL,
+    members TEXT NOT NULL,
+    PRIMARY KEY (source_key, title_ref)
+);
+
 -- The catalog's filter, remembered on the device (keys `sources`, `category`).
 CREATE TABLE catalog_setting (
     key TEXT NOT NULL PRIMARY KEY,
@@ -70,11 +108,19 @@ INSERT OR IGNORE INTO title (source_key, id, name, cover_url, kind, format, stat
 updateSummary:
 UPDATE title SET name = ?, cover_url = ?, kind = ?, format = ?, status = ?, content_rating = ? WHERE source_key = ? AND id = ?;
 
+-- The server's word on a title it learned from imported pages: only over the manga default.
+learnFormat:
+UPDATE title SET format = ? WHERE source_key = ? AND id = ? AND format = 'manga';
+
+-- Only from the server (a source read on the device can't know it).
+setEpisodeCount:
+UPDATE title SET episode_count = ? WHERE source_key = ? AND id = ?;
+
 updateDetail:
 UPDATE title SET description = ?, authors = ?, genres = ? WHERE source_key = ? AND id = ?;
 
 listingTitles:
-SELECT t.source_key, t.id, t.name, t.cover_url, t.kind, t.format, t.status, t.content_rating, e.page FROM catalog_entry e
+SELECT t.source_key, t.id, t.name, t.cover_url, t.kind, t.format, t.status, t.content_rating, t.episode_count, e.page FROM catalog_entry e
 JOIN title t ON t.source_key = e.source_key AND t.id = e.title_id
 WHERE e.source_key = ? AND e.listing = ? ORDER BY e.rank;
 
@@ -94,13 +140,17 @@ cursor:
 SELECT next_page FROM listing_cursor WHERE source_key = ? AND listing = ?;
 
 searchTitles:
-SELECT source_key, id, name, cover_url, kind, format, status, content_rating FROM title
+SELECT source_key, id, name, cover_url, kind, format, status, content_rating, episode_count FROM title
 WHERE source_key = :source_key AND name LIKE '%' || :query || '%' ORDER BY name LIMIT 50;
 
 searchListing:
-SELECT t.source_key, t.id, t.name, t.cover_url, t.kind, t.format, t.status, t.content_rating FROM catalog_entry e
+SELECT t.source_key, t.id, t.name, t.cover_url, t.kind, t.format, t.status, t.content_rating, t.episode_count FROM catalog_entry e
 JOIN title t ON t.source_key = e.source_key AND t.id = e.title_id
 WHERE e.source_key = :source_key AND e.listing = :listing AND t.name LIKE '%' || :query || '%' ORDER BY t.name LIMIT 50;
+
+searchAllTitles:
+SELECT source_key, id, name, cover_url, kind, format, status, content_rating, episode_count FROM title
+WHERE name LIKE '%' || :query || '%' ORDER BY name LIMIT :limit;
 
 titleById:
 SELECT * FROM title WHERE source_key = ? AND id = ?;
@@ -108,11 +158,17 @@ SELECT * FROM title WHERE source_key = ? AND id = ?;
 chaptersOf:
 SELECT * FROM chapter WHERE source_key = ? AND title_id = ? ORDER BY number DESC;
 
+chaptersById:
+SELECT * FROM chapter WHERE source_key = ? AND id = ?;
+
 deleteChaptersOf:
 DELETE FROM chapter WHERE source_key = ? AND title_id = ?;
 
+deleteChapter:
+DELETE FROM chapter WHERE source_key = ? AND title_id = ? AND id = ?;
+
 insertChapter:
-INSERT OR REPLACE INTO chapter (source_key, title_id, id, number, name, page_count, published_at) VALUES (?, ?, ?, ?, ?, ?, ?);
+INSERT OR REPLACE INTO chapter (source_key, title_id, id, number, name, page_count, published_at, episode_languages) VALUES (?, ?, ?, ?, ?, ?, ?, ?);
 
 categoriesOf:
 SELECT id, name FROM source_category WHERE source_key = ? ORDER BY position;
@@ -164,3 +220,56 @@ DELETE FROM catalog_entry WHERE source_key = ?;
 
 clearCursorsOf:
 DELETE FROM listing_cursor WHERE source_key = ?;
+
+putStats:
+INSERT OR REPLACE INTO title_stats (source_key, title_id, rating_avg, rating_count, favorite_count) VALUES (?, ?, ?, ?, ?);
+
+allStats:
+SELECT * FROM title_stats;
+
+clearStats:
+DELETE FROM title_stats;
+
+clearStatsOf:
+DELETE FROM title_stats WHERE source_key = ?;
+
+ratings:
+SELECT source_key, title_ref, score FROM my_rating WHERE score IS NOT NULL;
+
+ratingOf:
+SELECT * FROM my_rating WHERE source_key = ? AND title_ref = ?;
+
+insertRating:
+INSERT OR IGNORE INTO my_rating (source_key, title_ref, title_name, score, updated_at, pending) VALUES (?, ?, ?, NULL, 0, 0);
+
+-- A rating given here: the score the server knows is kept aside the first time (every right-hand side reads the old row).
+rateLocal:
+UPDATE my_rating SET previous_score = CASE WHEN pending = 0 THEN score ELSE previous_score END, score = ?, title_name = ?,
+updated_at = ?, pending = 1 WHERE source_key = ? AND title_ref = ?;
+
+pendingRatings:
+SELECT * FROM my_rating WHERE pending = 1 ORDER BY updated_at;
+
+-- The server's state, unless a newer change waits here.
+serverRating:
+UPDATE my_rating SET score = ?, title_name = ?, updated_at = ?, pending = 0, previous_score = NULL
+WHERE source_key = ? AND title_ref = ? AND (pending = 0 OR updated_at <= ?);
+
+-- Refused for good: back to what the server knows, unless a newer change waits here.
+revertRating:
+UPDATE my_rating SET score = previous_score, pending = 0, previous_score = NULL WHERE source_key = ? AND title_ref = ? AND updated_at = ?;
+
+clearRatings:
+DELETE FROM my_rating;
+
+allSeries:
+SELECT * FROM series_link;
+
+forgetSeries:
+DELETE FROM series_link WHERE source_key = ? AND title_ref = ?;
+
+putSeries:
+INSERT OR REPLACE INTO series_link (source_key, title_ref, series_id, members) VALUES (?, ?, ?, ?);
+
+clearSeries:
+DELETE FROM series_link;

@@ -132,10 +132,15 @@ struct LanguageSheet: View {
             .navigationTitle(L("translation.languageTitle"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) { CreditChip() }
                 ToolbarItem(placement: .confirmationAction) { Button(L("common.done")) { dismiss() } }
             }
         }
-        .onAppear { query = state.query }
+        .onAppear {
+            query = state.query
+            // A source's chapter already on the server lists its made languages first.
+            translation.send(TranslationIntentPickerOpened.shared)
+        }
     }
 }
 
@@ -167,6 +172,7 @@ struct LanguageDock: View {
                 if content.busy { ProgressView().controlSize(.small).tint(Color.brandCyan) }
                 Text(content.title).font(.brandDisplay(17)).foregroundStyle(Color.brandPaper)
                 Spacer(minLength: 0)
+                CreditChip()
             }
             if let line = content.line {
                 Text(line).font(.brandBody(14))

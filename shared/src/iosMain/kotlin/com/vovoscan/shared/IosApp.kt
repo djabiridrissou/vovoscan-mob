@@ -24,21 +24,28 @@ import com.vovoscan.feature.auth.presentation.PreferencesViewModel
 import com.vovoscan.feature.auth.presentation.SessionViewModel
 import com.vovoscan.feature.auth.presentation.SignInViewModel
 import com.vovoscan.feature.catalog.presentation.CatalogViewModel
+import com.vovoscan.feature.catalog.presentation.SearchPrivacyViewModel
 import com.vovoscan.feature.catalog.presentation.TitleDetailViewModel
 import com.vovoscan.feature.episodes.presentation.EpisodeViewModel
 import com.vovoscan.feature.episodes.presentation.PlayerViewModel
+import com.vovoscan.feature.forum.presentation.ForumViewModel
 import com.vovoscan.feature.library.presentation.FollowViewModel
 import com.vovoscan.feature.library.presentation.LibraryViewModel
 import com.vovoscan.feature.reader.domain.DownloadActivity
 import com.vovoscan.feature.reader.domain.DownloadBlock
 import com.vovoscan.feature.reader.domain.DownloadsRepository
 import com.vovoscan.feature.reader.presentation.DownloadsViewModel
+import com.vovoscan.feature.reader.presentation.NextChapterViewModel
 import com.vovoscan.feature.reader.presentation.ReaderViewModel
 import com.vovoscan.feature.reader.presentation.TitleDownloadsViewModel
 import com.vovoscan.feature.reader.presentation.TranslationViewModel
 import com.vovoscan.feature.sources.presentation.AddSourceViewModel
 import com.vovoscan.feature.sources.presentation.SourceDetailViewModel
 import com.vovoscan.feature.sources.presentation.SourcesViewModel
+import com.vovoscan.feature.together.domain.Device
+import com.vovoscan.feature.together.domain.ThisDevice
+import com.vovoscan.feature.together.presentation.TogetherInviteViewModel
+import com.vovoscan.feature.together.presentation.TogetherViewModel
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.usePinned
@@ -77,6 +84,7 @@ fun initKoin(
                     }
                     single<AppFolders> { appFolders() }
                     single<DevicePreferences> { IosDevicePreferences() }
+                    single { ThisDevice(Device.Ios) }
                 },
             ),
         )
@@ -129,6 +137,8 @@ class ViewModels : KoinComponent {
     fun onboarding(): OnboardingViewModel = remember("onboarding") { get<OnboardingViewModel>() }
 
     fun catalog(): CatalogViewModel = remember("catalog") { get<CatalogViewModel>() }
+
+    fun searchPrivacy(): SearchPrivacyViewModel = remember("searchPrivacy") { get<SearchPrivacyViewModel>() }
 
     fun titleDetail(
         sourceKey: String,
@@ -183,6 +193,23 @@ class ViewModels : KoinComponent {
         remember("translation:$sourceKey/$chapterId~${language.orEmpty()}") {
             get<TranslationViewModel> { parametersOf(sourceKey, chapterId, titleId, language) }
         }
+
+    /** What comes after a chapter of our catalog in the language on the page (end card, balloon, toast, series setting). */
+    fun next(
+        sourceKey: String,
+        chapterId: String,
+    ): NextChapterViewModel = remember("next:$sourceKey/$chapterId") { get<NextChapterViewModel> { parametersOf(sourceKey, chapterId) } }
+
+    /** The margin of a chapter of ours (or a server copy), next to the reader. */
+    fun forum(chapterId: String): ForumViewModel = remember("forum:$chapterId") { get<ForumViewModel> { parametersOf(chapterId) } }
+
+    /** The reading circle next to a reader of a chapter of ours (or a server copy). */
+    fun together(chapterId: String): TogetherViewModel =
+        remember("together:$chapterId") { get<TogetherViewModel> { parametersOf(chapterId) } }
+
+    /** An invite link opened from outside (`vovoscan://together/CODE`): the preview card, then Join. */
+    fun togetherInvite(link: String): TogetherInviteViewModel =
+        remember("invite:$link") { get<TogetherInviteViewModel> { parametersOf(link) } }
 
     fun providerKeys(): ProviderKeysViewModel = remember("providerKeys") { get<ProviderKeysViewModel>() }
 

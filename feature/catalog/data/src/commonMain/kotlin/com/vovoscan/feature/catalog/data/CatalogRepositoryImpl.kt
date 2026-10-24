@@ -5,6 +5,7 @@ import com.vovoscan.core.common.AppResult
 import com.vovoscan.core.common.map
 import com.vovoscan.feature.catalog.domain.CatalogFilter
 import com.vovoscan.feature.catalog.domain.CatalogRepository
+import com.vovoscan.feature.catalog.domain.ChapterLoad
 import com.vovoscan.feature.catalog.domain.ListedTitle
 import com.vovoscan.feature.catalog.domain.ReadingFormat
 import com.vovoscan.feature.catalog.domain.SearchResult
@@ -13,6 +14,9 @@ import com.vovoscan.feature.catalog.domain.TitleDetail
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -25,10 +29,19 @@ class CatalogRepositoryImpl(
     override fun observeListing(
         sourceKey: String,
         categoryId: String?,
+        episodes: Boolean,
     ): Flow<List<ListedTitle>> =
-        local.observeListing(sourceKey, categoryId).combine(learned) { titles, all ->
+        local.observeListing(sourceKey, categoryId, episodes).combine(learned) { titles, all ->
             val known = all[sourceKey].orEmpty()
-            if (known.isEmpty()) titles else titles.map { t -> known[t.title.id]?.let { t.copy(title = t.title.copy(format = it)) } ?: t }
+            // Only over the default: a strip the device read from the title's genres stays one.
+            if (known.isEmpty()) {
+                titles
+            } else {
+                titles.map { t ->
+                    known[t.title.id]?.takeIf { t.title.format == ReadingFormat.Manga }?.let { t.copy(title = t.title.copy(format = it)) }
+                        ?: t
+                }
+            }
         }
 
     /** Formats learned from the server this run, per source (kept in memory: they only serve a filter). */
@@ -42,48 +55,89 @@ class CatalogRepositoryImpl(
     ): Map<String, ReadingFormat> {
         val fresh = askedLock.withLock { asked.getOrPut(sourceKey) { mutableSetOf() }.let { seen -> ids.filter(seen::add) } }
         if (fresh.isNotEmpty()) {
-            val found = remote.learnedFormats(sourceKey, fresh).map { (id, f) -> id to ReadingFormat.fromApi(f) }
-            if (found.isNotEmpty()) learned.update { all -> all + (sourceKey to all[sourceKey].orEmpty() + found) }
+            val raw = remote.learnedFormats(sourceKey, fresh)
+            val found = raw.map { (id, f) -> id to ReadingFormat.fromApi(f) }
+            if (found.isNotEmpty()) {
+                learned.update { all -> all + (sourceKey to all[sourceKey].orEmpty() + found) }
+                // Saved too: "All categories" and the next launch show what the server said.
+                local.saveLearnedFormats(sourceKey, raw.filterValues { it == WEBTOON })
+            }
         }
         val known = learned.value[sourceKey].orEmpty()
         return ids.mapNotNull { id -> known[id]?.let { id to it } }.toMap()
     }
 
+    override fun askFormatsAgain(sourceKey: String) {
+        val known = learned.value[sourceKey].orEmpty()
+        // Under the lock when it is free; a call racing an ask simply asks again next time.
+        if (askedLock.tryLock()) {
+            try {
+                asked[sourceKey]?.retainAll(known.keys)
+            } finally {
+                askedLock.unlock()
+            }
+        }
+    }
+
     override suspend fun refreshListing(
         sourceKey: String,
         categoryId: String?,
-    ): AppResult<Boolean> = fetchPage(sourceKey, 1, categoryId)
+        episodes: Boolean,
+    ): AppResult<Boolean> = fetchPage(sourceKey, 1, categoryId, episodes)
 
     override suspend fun loadMoreListing(
         sourceKey: String,
         categoryId: String?,
+        episodes: Boolean,
     ): AppResult<Boolean> {
-        val next = local.nextPage(sourceKey, categoryId) ?: return AppResult.Ok(false)
-        return fetchPage(sourceKey, next, categoryId)
+        val next = local.nextPage(sourceKey, categoryId, episodes) ?: return AppResult.Ok(false)
+        return fetchPage(sourceKey, next, categoryId, episodes)
     }
 
     override suspend fun hasMore(
         sourceKey: String,
         categoryId: String?,
-    ): Boolean = local.nextPage(sourceKey, categoryId) != null
+        episodes: Boolean,
+    ): Boolean = local.nextPage(sourceKey, categoryId, episodes) != null
 
     override suspend fun search(
         sourceKey: String,
         query: String,
         categoryId: String?,
+        episodes: Boolean,
     ): SearchResult =
-        when (val result = remote.search(sourceKey, query.trim(), categoryId)) {
+        when (val result = remote.search(sourceKey, query.trim(), categoryId, episodes)) {
             is AppResult.Ok -> {
                 val items = result.value.items
                 local.saveSummaries(sourceKey, items)
-                SearchResult(items.map { it.toDomain(sourceKey) }, offline = false)
+                // As the grid shows them: a source that names no format takes the format saved from the title page,
+                // and a webtoon the server learned (kept here and saved) beats a manga in every result.
+                val guessed = items.filter { !it.formatKnown || it.format == MANGA }.map { it.id }
+                val saved = if (guessed.isEmpty()) emptyMap() else local.savedFormats(sourceKey, guessed)
+                val known = learned.value[sourceKey].orEmpty()
+                val coverless = items.filter { it.coverUrl == null }.map { it.id }
+                val covers = if (coverless.isEmpty()) emptyMap() else local.savedCovers(sourceKey, coverless)
+                SearchResult(
+                    items.map { item ->
+                        val format =
+                            when {
+                                known[item.id] == ReadingFormat.Webtoon && item.format == MANGA -> WEBTOON
+                                !item.formatKnown -> saved[item.id]
+                                item.format == MANGA && saved[item.id] == WEBTOON -> WEBTOON
+                                else -> null
+                            }
+                        val cover = item.coverUrl ?: covers[item.id]
+                        (format?.let { item.copy(format = it) } ?: item).copy(coverUrl = cover).toDomain(sourceKey)
+                    },
+                    offline = false,
+                )
             }
             is AppResult.Err ->
                 when (val error = result.error) {
-                    AppError.Network -> SearchResult(local.searchLocal(sourceKey, query.trim(), categoryId), offline = true)
+                    AppError.Network -> SearchResult(local.searchLocal(sourceKey, query.trim(), categoryId, episodes), offline = true)
                     is AppError.SourceUnavailable ->
                         SearchResult(
-                            local.searchLocal(sourceKey, query.trim(), categoryId),
+                            local.searchLocal(sourceKey, query.trim(), categoryId, episodes),
                             offline = true,
                             unavailableSource = error.sourceName,
                         )
@@ -124,10 +178,106 @@ class CatalogRepositoryImpl(
         id: String,
     ): Flow<TitleDetail?> = local.observeDetail(sourceKey, id)
 
+    override fun observeEpisodeLanguages(
+        sourceKey: String,
+        chapterId: String,
+    ): Flow<Set<String>> = local.observeEpisodeLanguages(sourceKey, chapterId)
+
     override suspend fun refreshTitle(
         sourceKey: String,
         id: String,
-    ): AppResult<Unit> = remote.title(sourceKey, id).also { if (it is AppResult.Ok) local.saveDetail(sourceKey, it.value) }.map { }
+    ): AppResult<Unit> {
+        // Our catalog: the title alone, then its chapters by pages. A server that ignores the ask sends them all.
+        when (val head = remote.titleHead(sourceKey, id)) {
+            null -> Unit
+            is AppResult.Err -> return head
+            is AppResult.Ok ->
+                if (head.value.chapters.isEmpty() && head.value.chapterCount > 0) {
+                    return byPages(sourceKey, head.value)
+                } else {
+                    return save(sourceKey, head.value)
+                }
+        }
+        return when (val full = remote.title(sourceKey, id)) {
+            is AppResult.Err -> full
+            is AppResult.Ok -> save(sourceKey, if (full.value.episodesKnown) full.value else withServerEpisodes(sourceKey, full.value))
+        }
+    }
+
+    private suspend fun save(
+        sourceKey: String,
+        detail: TitleDetailDto,
+    ): AppResult<Unit> {
+        local.saveDetail(sourceKey, detail)
+        return AppResult.Ok(Unit)
+    }
+
+    private val chapterLoads = MutableStateFlow<Map<String, ChapterLoad>>(emptyMap())
+    private val pagedLock = Mutex()
+    private val paging = mutableMapOf<String, Mutex>()
+
+    override fun observeChapterLoad(
+        sourceKey: String,
+        id: String,
+    ): Flow<ChapterLoad?> = chapterLoads.map { it["$sourceKey/$id"] }.distinctUntilChanged()
+
+    /**
+     * A small first page in the order the list shows (its top paints at once), then large ones; each saved as it comes.
+     * One load per title at a time: a pull to refresh while it runs waits for it and reads again.
+     */
+    private suspend fun byPages(
+        sourceKey: String,
+        head: TitleDetailDto,
+    ): AppResult<Unit> {
+        val key = "$sourceKey/${head.id}"
+        val lock = pagedLock.withLock { paging.getOrPut(key) { Mutex() } }
+        return lock.withLock {
+            local.saveDetail(sourceKey, head, keepChapters = true)
+            val newestFirst = local.observeNewestFirst().first()
+            val kept = mutableSetOf<String>()
+            var after: String? = null
+            var limit = FIRST_CHAPTER_PAGE
+            chapterLoads.update { it + (key to ChapterLoad(0, head.chapterCount)) }
+            try {
+                while (true) {
+                    val page =
+                        when (val result = remote.chapterPage(sourceKey, head.id, newestFirst, after, limit)) {
+                            is AppResult.Err -> return@withLock result
+                            is AppResult.Ok -> result.value
+                        }
+                    local.saveChapters(sourceKey, head.id, page.data)
+                    kept += page.data.map { it.id }
+                    chapterLoads.update { it + (key to ChapterLoad(kept.size, maxOf(page.total, kept.size))) }
+                    // A page that brings nothing new ends it too: a cursor that never moves can't loop for ever.
+                    val next = page.nextCursor
+                    if (next == null || next == after || page.data.isEmpty()) break
+                    after = next
+                    limit = CHAPTER_PAGE
+                }
+                local.pruneChapters(sourceKey, head.id, kept)
+                AppResult.Ok(Unit)
+            } finally {
+                chapterLoads.update { it - key }
+            }
+        }
+    }
+
+    /**
+     * A title read on the device that the server said has an episode (a listing or search of the Episodes filter): its
+     * chapters' languages come from the server. Any other title asks nothing, so opening it tells the server nothing.
+     */
+    private suspend fun withServerEpisodes(
+        sourceKey: String,
+        detail: TitleDetailDto,
+    ): TitleDetailDto {
+        if (local.savedEpisodeCount(sourceKey, detail.id) <= 0) return detail
+        val episodes = remote.titleEpisodes(sourceKey, detail.id) ?: return detail
+        return detail.copy(
+            episodeCount = episodes.count,
+            chapters = detail.chapters.map { it.copy(episodeLanguages = episodes.languages[it.id].orEmpty()) },
+            episodesKnown = true,
+        )
+    }
 
     override suspend fun clearLocal() = local.clear()
 
@@ -141,10 +291,25 @@ class CatalogRepositoryImpl(
         sourceKey: String,
         page: Int,
         categoryId: String?,
+        episodes: Boolean,
     ): AppResult<Boolean> =
         remote
-            .titles(sourceKey, page, categoryId)
+            .titles(sourceKey, page, categoryId, episodes)
             .also {
-                if (it is AppResult.Ok) local.saveCatalogPage(sourceKey, it.value, categoryId)
+                if (it is AppResult.Ok) local.saveCatalogPage(sourceKey, it.value, categoryId, episodes)
             }.map { it.hasNext }
+
+    private companion object {
+        /** The one learned format kept on the device (over the manga default). */
+        const val WEBTOON = "webtoon"
+
+        /** The default a source's listing gives a comic it names no format for. */
+        const val MANGA = "manga"
+
+        /** The first page of a long series' chapters: a screen's worth and more, so its top paints at once. */
+        const val FIRST_CHAPTER_PAGE = 100
+
+        /** The pages after it: the server's largest, the fewest calls. */
+        const val CHAPTER_PAGE = 500
+    }
 }

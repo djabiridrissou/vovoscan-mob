@@ -195,3 +195,28 @@ private struct ReadableWidth: ViewModifier {
 extension View {
     func readableWidth(_ maxWidth: CGFloat = 720) -> some View { modifier(ReadableWidth(maxWidth: maxWidth)) }
 }
+
+/// The account's credit balance as a small chip ("1,240 credits"), on the reading screens: the title page, the episode
+/// card, the language pickers and docks. It reads the shared wallet, so a quote or a run anywhere updates every chip.
+/// Hidden on a server without credits; yellow on red when the wallet is empty.
+struct CreditChip: View {
+    @StateObject private var wallet = WalletModel()
+
+    var body: some View {
+        Group {
+            if wallet.state.shown && !wallet.state.badge.isEmpty {
+                Label(wallet.state.badge, systemImage: "sparkles")
+                    .font(.brandBody(12, weight: .bold))
+                    .foregroundStyle(wallet.state.empty ? Color.brandInk : Color.brandYellow)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background(wallet.state.empty ? Color.brandRed : Color.brandInk2, in: Capsule())
+                    .overlay(Capsule().stroke(wallet.state.empty ? Color.brandRed : Color.brandLine, lineWidth: 1))
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(wallet.state.badgeA11y)
+                    .accessibilityIdentifier("credits.chip")
+            }
+        }
+        .task { await wallet.observe() }
+    }
+}

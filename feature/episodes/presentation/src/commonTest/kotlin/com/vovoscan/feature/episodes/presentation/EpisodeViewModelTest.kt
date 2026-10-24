@@ -6,6 +6,7 @@ import com.vovoscan.feature.episodes.domain.EpisodeAccess
 import com.vovoscan.feature.episodes.domain.EpisodeAudio
 import com.vovoscan.feature.episodes.domain.EpisodeStatus
 import com.vovoscan.feature.episodes.domain.KeyStatus
+import com.vovoscan.feature.episodes.domain.MadeEpisodeLanguages
 import com.vovoscan.feature.episodes.domain.PipelineStage
 import com.vovoscan.feature.episodes.domain.PrepareResult
 import com.vovoscan.feature.episodes.domain.RunCost
@@ -14,6 +15,7 @@ import com.vovoscan.feature.episodes.domain.StageProgress
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
@@ -111,6 +113,27 @@ class EpisodeViewModelTest {
             )
             assertEquals(EpisodeText.KEY_WARNING, bare.state.value.keyWarning)
             assertEquals(EpisodeText.COST_NOTE, bare.state.value.costNote)
+        }
+
+    @Test
+    fun anUnfundedRunWithItsPriceSaysWhichKeyMakesItFree() =
+        runTest(dispatcher) {
+            val unfunded =
+                RunCost(
+                    30,
+                    false,
+                    false,
+                    maxCredits = 40,
+                    fundable = false,
+                    metered = emptySet(),
+                    unfunded = setOf("anthropic", "elevenlabs"),
+                )
+            val vm = EpisodeViewModel("c1", FakeEpisodes(), noKeys, EpisodeAccess.Open, RunQuotes { _, _ -> unfunded })
+            advanceUntilIdle()
+            assertEquals(
+                "About 40 credits. Add your own Anthropic and ElevenLabs keys in Settings › Keys, or ask the owner for credits.",
+                vm.state.value.costLine,
+            )
         }
 
     @Test
@@ -422,5 +445,30 @@ class EpisodeViewModelTest {
             advanceUntilIdle()
             assertEquals(listOf("Keys are turned off on this server: the episode will be unread and silent."), vm.state.value.keyLines)
             assertNull(vm.state.value.keyWarning)
+        }
+
+    @Test
+    fun languagesAlreadyMadeComeFirstMarkedFree() =
+        runTest(dispatcher) {
+            val made = MadeEpisodeLanguages { _, chapterId -> flowOf(if (chapterId == "c1") setOf("", "yo", "fr") else emptySet()) }
+            val vm = EpisodeViewModel("c1", FakeEpisodes(), bothKeys, made = made)
+            advanceUntilIdle()
+            val options = vm.state.value.languageOptions
+            assertEquals(listOf(null, "fr", "yo", "am"), options.take(4).map { it.code })
+            assertTrue(options[0].ready)
+            assertTrue(options[1].ready && options[1].detail.startsWith("Ready ✦ free ✦ "))
+            assertFalse(options[3].ready)
+        }
+
+    @Test
+    fun aWalletShortOfTheRunSaysWhatIsNeededAndHeld() =
+        runTest(dispatcher) {
+            val short = RunCost(12, false, false, maxCredits = 20, fundable = false, metered = setOf(RunCost.ANTHROPIC), balance = 4)
+            val vm = EpisodeViewModel("c1", FakeEpisodes(), noKeys, EpisodeAccess.Open, RunQuotes { _, _ -> short })
+            advanceUntilIdle()
+            assertEquals(
+                "About 20 credits; you have 4 credits. Add your own keys (no credits needed), or ask the owner for a top-up.",
+                vm.state.value.costLine,
+            )
         }
 }

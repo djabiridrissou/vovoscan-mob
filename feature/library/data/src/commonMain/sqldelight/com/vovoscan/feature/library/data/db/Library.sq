@@ -11,6 +11,24 @@ CREATE TABLE library_entry (
     updated_at INTEGER NOT NULL,
     deleted INTEGER NOT NULL DEFAULT 0,
     pending INTEGER NOT NULL DEFAULT 0,
+    -- The heart: its own clock (`favorite_updated_at`), so a progress write never undoes a heart from another device.
+    favorite INTEGER NOT NULL DEFAULT 0,
+    favorited_at INTEGER,
+    favorite_updated_at INTEGER,
+    -- Our catalog's titles: released chapters, and those after the last one read (the server's word).
+    chapter_count INTEGER,
+    new_chapters INTEGER,
+    PRIMARY KEY (source_key, title_ref)
+);
+
+-- One pending heart per title (on or off): the most recent replaces earlier ones.
+CREATE TABLE favorite_outbox (
+    source_key TEXT NOT NULL,
+    title_ref TEXT NOT NULL,
+    favorite INTEGER NOT NULL,
+    title_name TEXT NOT NULL,
+    cover_url TEXT,
+    updated_at INTEGER NOT NULL,
     PRIMARY KEY (source_key, title_ref)
 );
 
@@ -41,9 +59,32 @@ SELECT * FROM library_entry WHERE source_key = ? AND title_ref = ?;
 isFollowed:
 SELECT COUNT(*) FROM library_entry WHERE source_key = ? AND title_ref = ? AND deleted = 0;
 
-putEntry:
-INSERT OR REPLACE INTO library_entry (source_key, title_ref, title_name, cover_url, last_chapter_ref, last_page, updated_at, deleted, pending)
+-- A new row; an existing one keeps its heart and counts (`updateEntry`).
+insertEntry:
+INSERT OR IGNORE INTO library_entry (source_key, title_ref, title_name, cover_url, last_chapter_ref, last_page, updated_at, deleted, pending)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+updateEntry:
+UPDATE library_entry SET title_name = ?, cover_url = ?, last_chapter_ref = ?, last_page = ?, updated_at = ?, deleted = ?, pending = ?
+WHERE source_key = ? AND title_ref = ?;
+
+setFavorite:
+UPDATE library_entry SET favorite = ?, favorited_at = ?, favorite_updated_at = ? WHERE source_key = ? AND title_ref = ?;
+
+setCounts:
+UPDATE library_entry SET chapter_count = ?, new_chapters = ? WHERE source_key = ? AND title_ref = ?;
+
+enqueueFavorite:
+INSERT OR REPLACE INTO favorite_outbox (source_key, title_ref, favorite, title_name, cover_url, updated_at) VALUES (?, ?, ?, ?, ?, ?);
+
+pendingFavorites:
+SELECT * FROM favorite_outbox ORDER BY updated_at;
+
+dequeueFavorite:
+DELETE FROM favorite_outbox WHERE source_key = ? AND title_ref = ? AND updated_at = ?;
+
+favoriteQueuedAt:
+SELECT updated_at FROM favorite_outbox WHERE source_key = ? AND title_ref = ?;
 
 enqueue:
 INSERT OR REPLACE INTO outbox (source_key, title_ref, kind, title_name, cover_url, last_chapter_ref, last_page, updated_at)
@@ -69,6 +110,9 @@ DELETE FROM library_entry;
 
 clearOutbox:
 DELETE FROM outbox;
+
+clearFavoriteOutbox:
+DELETE FROM favorite_outbox;
 
 clearSyncState:
 DELETE FROM sync_state;

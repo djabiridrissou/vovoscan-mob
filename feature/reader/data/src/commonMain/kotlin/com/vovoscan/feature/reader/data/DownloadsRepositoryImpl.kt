@@ -5,6 +5,7 @@ import com.vovoscan.core.common.AppResult
 import com.vovoscan.core.common.Clock
 import com.vovoscan.core.common.NetworkMonitor
 import com.vovoscan.core.common.NetworkState
+import com.vovoscan.core.common.i18n.t
 import com.vovoscan.core.common.userMessage
 import com.vovoscan.feature.reader.domain.ChapterDownload
 import com.vovoscan.feature.reader.domain.DownloadActivity
@@ -301,6 +302,8 @@ class DownloadsRepositoryImpl(
                         is AppResult.Err -> return fetched.error
                         is AppResult.Ok -> fetched.value
                     }
+                // An empty body or a page of HTML would be saved as a page nobody can read: a refusal, not retried.
+                if (!isImage(bytes)) return InvalidImage
                 val kept =
                     lock.withLock {
                         if (local.download(key) == null) return@withLock false
@@ -385,6 +388,8 @@ class DownloadsRepositoryImpl(
         const val FAILED = "The download stopped. Try again."
         const val PAUSE_WAIT_MS = 2_000L
         val RETRY_DELAYS_MS = listOf(5_000L, 30_000L)
+
+        val InvalidImage: AppError get() = AppError.Rejected("INVALID_IMAGE", t("errors.INVALID_IMAGE"))
 
         val DownloadState.unfinished: Boolean
             get() = this == DownloadState.Queued || this == DownloadState.Waiting || this == DownloadState.Downloading

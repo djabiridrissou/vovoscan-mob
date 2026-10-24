@@ -10,6 +10,7 @@ import com.vovoscan.feature.library.data.LibraryRepositoryImpl
 import com.vovoscan.feature.library.data.SqlLibraryLocalDataSource
 import com.vovoscan.feature.library.data.db.LibraryDatabase
 import com.vovoscan.feature.library.domain.LibraryRepository
+import com.vovoscan.feature.library.domain.LibrarySeries
 import com.vovoscan.feature.library.presentation.FollowViewModel
 import com.vovoscan.feature.library.presentation.LibraryViewModel
 import org.koin.core.module.dsl.viewModel
@@ -27,5 +28,5 @@ val libraryModule =
         single<LibraryLocalDataSource> { SqlLibraryLocalDataSource(get(), get<AppDispatchers>().io) }
         single<LibraryRepository> { LibraryRepositoryImpl(get(), get(), SystemClock) }
         viewModelOf(::LibraryViewModel)
-        viewModel { (sourceKey: String, titleId: String) -> FollowViewModel(sourceKey, titleId, get()) }
+        viewModel { (sourceKey: String, titleId: String) -> FollowViewModel(sourceKey, titleId, get(), getOrNull() ?: LibrarySeries.None) }
     }

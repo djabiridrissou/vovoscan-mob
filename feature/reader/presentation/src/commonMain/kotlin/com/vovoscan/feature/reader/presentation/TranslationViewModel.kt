@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.vovoscan.core.common.AppError
 import com.vovoscan.core.common.AppResult
 import com.vovoscan.core.common.ChapterImports
+import com.vovoscan.core.common.ImportStatus
 import com.vovoscan.core.common.Language
 import com.vovoscan.core.common.SourceUnit
 import com.vovoscan.core.common.bringIn
@@ -202,6 +203,12 @@ sealed interface TranslationIntent {
 
     /** The screen opened [TranslationUiState.openCopy]. */
     data object CopyOpened : TranslationIntent
+
+    /**
+     * The language picker is on screen: a source's chapter already on the server (brought in before, by anyone for an
+     * official source) shows the languages it is made in, first. Asked only now, never while merely reading.
+     */
+    data object PickerOpened : TranslationIntent
 }
 
 /**
@@ -260,10 +267,15 @@ class TranslationViewModel(
             TranslationIntent.DismissMessage -> mutableState.update { it.copy(notice = null, error = null) }
             TranslationIntent.CloseDock -> closeDock()
             TranslationIntent.CopyOpened -> mutableState.update { it.copy(openCopy = null) }
+            TranslationIntent.PickerOpened -> lookUpCopy()
         }
     }
 
     private var quoteJob: Job? = null
+    private var lookupJob: Job? = null
+
+    /** The server was asked once whether this source's chapter has a copy there. */
+    private var lookedUp = false
 
     /**
      * Back to what the page shows. A run already asked for goes on on the server (made once, shared): only this reader
@@ -320,7 +332,26 @@ class TranslationViewModel(
                                     when {
                                         quote.coveredByOwnKeys -> t("translation.offer.ownKeys")
                                         quote.fundable -> t("translation.offer.credits", "credits" to quote.credits)
-                                        else -> t("translation.offer.short")
+                                        else ->
+                                            // A price of 0 on an unfundable quote is no price (a server that leaves it out):
+                                            // the balance and what to do, never "needs about 0 credits".
+                                            when {
+                                                // Nobody funds it: its price, and the key that makes it free.
+                                                quote.unfunded && quote.maxCredits > 0 ->
+                                                    t("translation.offer.unfunded", "credits" to quote.maxCredits)
+                                                else ->
+                                                    quote.balance?.let { balance ->
+                                                        if (quote.maxCredits <= 0) {
+                                                            t("translation.offer.shortNoPrice", "balance" to balance)
+                                                        } else {
+                                                            t(
+                                                                "translation.offer.shortBalance",
+                                                                "credits" to quote.maxCredits,
+                                                                "balance" to balance,
+                                                            )
+                                                        }
+                                                    } ?: t("translation.offer.short")
+                                            }
                                     },
                                 canTranslate = quote.fundable || quote.coveredByOwnKeys,
                                 translateLabel = t("translation.offer.translate"),
@@ -329,6 +360,21 @@ class TranslationViewModel(
                             ),
                     )
                 }
+            }
+    }
+
+    /** A copy of this source's chapter already on the server: adopted, so its made languages show (nothing is imported). */
+    private fun lookUpCopy() {
+        val unit = unit ?: return
+        if (chapterId.isNotEmpty() || lookedUp || lookupJob?.isActive == true) return
+        lookupJob =
+            viewModelScope.launch {
+                val found = imports.find(unit)
+                lookedUp = true
+                if (found?.status != ImportStatus.Ready || chapterId.isNotEmpty()) return@launch
+                chapterId = found.chapterId
+                copy = TranslatedCopy(found.titleId, found.chapterId, "", found.pageCount)
+                reloadLanguages()
             }
     }
 
@@ -385,12 +431,20 @@ class TranslationViewModel(
                 val current = known[code]
                 if (current?.status != TranslationStatus.Ready) {
                     when (val asked = repository.request(chapterId, code)) {
-                        is AppResult.Err -> return@launch failed(asked.error)
+                        is AppResult.Err -> {
+                            // Refused for credits: the balance on screen is read again.
+                            quotes.changed()
+                            return@launch failed(asked.error)
+                        }
                         is AppResult.Ok -> remember(asked.value)
                     }
                     if (known[code]?.status?.inProgress == true) {
+                        quotes.changed()
                         mutableState.update { it.copy(notice = TranslationText.STARTED) }
-                        if (!waitUntilDone(code)) return@launch
+                        val done = waitUntilDone(code)
+                        // Made or failed: what was held for it is settled.
+                        quotes.changed()
+                        if (!done) return@launch
                     }
                     if (known[code]?.status == TranslationStatus.Failed) return@launch failed(null)
                 }
@@ -473,8 +527,15 @@ class TranslationViewModel(
             val languages =
                 Language.ALL
                     .filter { it.matches(needle) }
-                    .sortedBy { if (known[it.code]?.status == TranslationStatus.Ready) 0 else 1 }
-                    .map { language ->
+                    // Already made first (free to read), then those being made, then the rest.
+                    .sortedBy {
+                        val status = known[it.code]?.status
+                        when {
+                            status == TranslationStatus.Ready -> 0
+                            status?.inProgress == true -> 1
+                            else -> 2
+                        }
+                    }.map { language ->
                         val translation = known[language.code]
                         LanguageOption(
                             code = language.code,
@@ -515,6 +576,7 @@ object TranslationText {
     val ORIGINAL: String get() = t("translation.original")
     val IMPORTING: String get() = t("translation.importing")
     val READY: String get() = t("translation.ready")
+    val READY_FREE: String get() = t("translation.readyFree")
     val QUEUED: String get() = t("translation.queued")
     val FAILED: String get() = t("translation.failed")
     val STARTED: String get() = t("translation.started")
@@ -534,7 +596,7 @@ object TranslationText {
 
     fun status(translation: ChapterTranslation): String? =
         when (translation.status) {
-            TranslationStatus.Ready -> READY
+            TranslationStatus.Ready -> READY_FREE
             TranslationStatus.Queued -> QUEUED
             TranslationStatus.Running ->
                 translation.progress?.let { t("translation.progress", "percent" to it.coerceIn(0, 100)) } ?: t("translation.running")

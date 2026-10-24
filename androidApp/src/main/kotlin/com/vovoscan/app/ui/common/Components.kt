@@ -114,6 +114,8 @@ fun BrandField(
     secret: Boolean = false,
     placeholder: String? = null,
     help: String? = null,
+    /** On the field itself (focus, semantics). */
+    modifier: Modifier = Modifier,
 ) {
     Column(Modifier.fillMaxWidth()) {
         Text(label, style = MaterialTheme.typography.bodySmall)
@@ -136,7 +138,7 @@ fun BrandField(
                     errorBorderColor = Brand.Danger,
                     cursorColor = Brand.Red,
                 ),
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().then(modifier),
         )
         if (help != null) Text(help, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 6.dp))
         if (error != null) ErrorText(error)

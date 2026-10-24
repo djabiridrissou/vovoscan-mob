@@ -1,5 +1,6 @@
 package com.vovoscan.core.sources
 
+import com.vovoscan.core.common.AppError
 import com.vovoscan.core.common.AppResult
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
@@ -127,9 +128,40 @@ class CategoriesAndRefererTest {
             assertEquals("https://shelf.example/", sent.last().referer)
             shelf.download("https://shelf.example/book.epub")
             assertNull(sent.last().referer)
-            // A host the source doesn't allow is never contacted, Referer or not.
-            shelf.downloadImage("https://elsewhere.example/1.webp")
-            assertEquals(2, sent.size)
+            // A page image on a host the rules produced (a per-chapter image server): fetched, without the Referer.
+            shelf.downloadImage("https://cdn7.elsewhere.example/1.webp")
+            assertEquals("https://cdn7.elsewhere.example/1.webp" to null, sent.last().url to sent.last().referer)
+            // Never the local network, never another scheme, and a book file only from the declared hosts.
+            listOf("http://192.168.1.10/1.webp", "http://localhost/1.webp", "ftp://elsewhere.example/1.webp").forEach {
+                assertEquals("HOST_NOT_ALLOWED", ((shelf.downloadImage(it) as AppResult.Err).error as AppError.Rejected).code)
+            }
+            assertTrue(shelf.download("https://elsewhere.example/book.epub") is AppResult.Err)
+            assertEquals(3, sent.size)
+        }
+
+    @Test
+    fun anImageRedirectedToADeclaredHostGetsTheRefererThere() =
+        runTest {
+            val engine =
+                MockEngine { request ->
+                    sent += Sent(request.url.toString(), request.headers[HttpHeaders.Referrer])
+                    when (request.url.host) {
+                        "img.elsewhere.example" ->
+                            respond(
+                                "",
+                                HttpStatusCode.Found,
+                                headersOf(HttpHeaders.Location, "https://img.shelf.example/1.webp"),
+                            )
+                        "img.shelf.example" -> respond("{}", HttpStatusCode.OK)
+                        else -> respond("", HttpStatusCode.Found, headersOf(HttpHeaders.Location, "http://10.0.0.2/1.webp"))
+                    }
+                }
+            val shelf = RulesSource(manifest(null, referer = "{{settings.baseUrl}}/"), RulesHttp(createRulesHttpClient(engine)))
+            assertTrue(shelf.downloadImage("https://img.elsewhere.example/1.webp") is AppResult.Ok)
+            assertEquals(listOf(null, "https://shelf.example/"), sent.map { it.referer })
+            // A public image server that redirects into the local network is refused on that hop.
+            assertTrue(shelf.downloadImage("https://other.example/1.webp") is AppResult.Err)
+            assertEquals(3, sent.size)
         }
 
     @Test

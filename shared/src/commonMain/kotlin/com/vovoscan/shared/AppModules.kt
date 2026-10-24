@@ -4,9 +4,11 @@ import com.vovoscan.core.common.AppDispatchers
 import com.vovoscan.core.common.AppError
 import com.vovoscan.core.common.AppResult
 import com.vovoscan.core.common.ChapterImports
+import com.vovoscan.core.common.INTERNAL_SOURCE_KEY
 import com.vovoscan.core.common.Language
 import com.vovoscan.core.common.NetworkMonitor
 import com.vovoscan.core.common.SystemClock
+import com.vovoscan.core.common.i18n.I18n
 import com.vovoscan.core.common.i18n.UiLanguage
 import com.vovoscan.core.network.ApiChapterImports
 import com.vovoscan.core.network.ApiConfig
@@ -34,20 +36,37 @@ import com.vovoscan.feature.auth.domain.AuthRepository
 import com.vovoscan.feature.auth.domain.OnboardingServices
 import com.vovoscan.feature.catalog.di.catalogModule
 import com.vovoscan.feature.catalog.domain.CatalogRepository
+import com.vovoscan.feature.catalog.domain.ChapterTranslationBadge
+import com.vovoscan.feature.catalog.domain.ChapterTranslations
 import com.vovoscan.feature.catalog.domain.ContentKind
 import com.vovoscan.feature.catalog.domain.ContentPolicy
+import com.vovoscan.feature.catalog.domain.EnabledSources
+import com.vovoscan.feature.catalog.domain.EpisodeFeature
+import com.vovoscan.feature.catalog.domain.Favorites
+import com.vovoscan.feature.catalog.domain.LibraryMarks
+import com.vovoscan.feature.catalog.domain.MarkedTitle
 import com.vovoscan.feature.catalog.domain.ReadingResume
 import com.vovoscan.feature.catalog.domain.ResumePoint
 import com.vovoscan.feature.catalog.domain.ResumePoints
+import com.vovoscan.feature.catalog.domain.SeriesRepository
+import com.vovoscan.feature.catalog.domain.TitleTranslationBadges
 import com.vovoscan.feature.episodes.di.episodesModule
 import com.vovoscan.feature.episodes.domain.EpisodeAccess
 import com.vovoscan.feature.episodes.domain.EpisodesRepository
 import com.vovoscan.feature.episodes.domain.KeyStatus
 import com.vovoscan.feature.episodes.domain.KeyStatusProvider
+import com.vovoscan.feature.episodes.domain.MadeEpisodeLanguages
 import com.vovoscan.feature.episodes.domain.RunCost
 import com.vovoscan.feature.episodes.domain.RunQuotes
+import com.vovoscan.feature.forum.di.forumModule
+import com.vovoscan.feature.forum.domain.ForumAccess
+import com.vovoscan.feature.forum.domain.ForumRepository
+import com.vovoscan.feature.forum.domain.WritingLanguage
 import com.vovoscan.feature.library.di.libraryModule
 import com.vovoscan.feature.library.domain.LibraryRepository
+import com.vovoscan.feature.library.domain.LibrarySeries
+import com.vovoscan.feature.library.domain.NewChapters
+import com.vovoscan.feature.library.domain.TitleRef
 import com.vovoscan.feature.reader.di.readerModule
 import com.vovoscan.feature.reader.domain.ChapterHeading
 import com.vovoscan.feature.reader.domain.ChapterHeadings
@@ -57,17 +76,29 @@ import com.vovoscan.feature.reader.domain.DownloadableChapter
 import com.vovoscan.feature.reader.domain.DownloadableTitle
 import com.vovoscan.feature.reader.domain.DownloadsRepository
 import com.vovoscan.feature.reader.domain.LastRead
+import com.vovoscan.feature.reader.domain.NextChaptersRepository
 import com.vovoscan.feature.reader.domain.ReaderRepository
 import com.vovoscan.feature.reader.domain.ReaderSettingsRepository
+import com.vovoscan.feature.reader.domain.ReadingMode
 import com.vovoscan.feature.reader.domain.ReadingProgressSink
+import com.vovoscan.feature.reader.domain.SeriesKey
+import com.vovoscan.feature.reader.domain.SeriesModeSync
 import com.vovoscan.feature.reader.domain.TitleChapters
 import com.vovoscan.feature.reader.domain.TranslationQuote
 import com.vovoscan.feature.reader.domain.TranslationQuotes
+import com.vovoscan.feature.reader.domain.TranslationStatus
 import com.vovoscan.feature.reader.domain.chapterLabel
+import com.vovoscan.feature.reader.domain.readingModeOfWire
+import com.vovoscan.feature.reader.domain.wire
 import com.vovoscan.feature.sources.di.sourcesModule
 import com.vovoscan.feature.sources.domain.SourceEngine
 import com.vovoscan.feature.sources.domain.SourceRemovedListener
 import com.vovoscan.feature.sources.domain.SourcesRepository
+import com.vovoscan.feature.together.di.togetherModule
+import com.vovoscan.feature.together.domain.MutedReaders
+import com.vovoscan.feature.together.domain.TogetherAccess
+import com.vovoscan.feature.together.domain.TogetherLanguage
+import com.vovoscan.feature.together.presentation.TogetherSession
 import io.ktor.client.HttpClient
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
@@ -134,6 +165,8 @@ fun appModules(
                     get<ProviderKeysRepository>().clearLocal()
                     get<WalletRepository>().clear()
                     get<EpisodesRepository>().clearLocal()
+                    get<ForumRepository>().clearLocal()
+                    get<TogetherSession>().clear()
                 }
             }
             // A source left the list (third-party source removed, here or on another device): its catalog and
@@ -155,6 +188,31 @@ fun appModules(
                     scope.launch {
                         history.recordRead(LastRead(sourceKey, titleId, chapterId, page, SystemClock.nowMillis()))
                         library.saveProgress(sourceKey, titleId, chapterId, page)
+                    }
+                }
+            }
+            // The series page's badges: each chapter's translation in the language our catalog was last read in.
+            single<ChapterTranslations> {
+                val settings = get<ReaderSettingsRepository>()
+                val next = get<NextChaptersRepository>()
+                ChapterTranslations { sourceKey, titleId ->
+                    val lang = settings.lastLanguage()
+                    if (sourceKey != INTERNAL_SOURCE_KEY || lang == null) return@ChapterTranslations null
+                    when (val badges = next.titleBadges(titleId, lang)) {
+                        is AppResult.Err -> null
+                        is AppResult.Ok ->
+                            TitleTranslationBadges(
+                                lang,
+                                badges.value
+                                    .filter { it.status != TranslationStatus.None && it.status != TranslationStatus.Failed }
+                                    .associate { b ->
+                                        b.chapterId to
+                                            ChapterTranslationBadge(
+                                                ready = b.status == TranslationStatus.Ready,
+                                                progress = b.progress.takeIf { b.status == TranslationStatus.Running },
+                                            )
+                                    },
+                            )
                     }
                 }
             }
@@ -232,20 +290,134 @@ fun appModules(
                 val auth = get<AuthRepository>()
                 EpisodeAccess { auth.session.map { it?.has(VIDEO_FEATURE) == true }.distinctUntilChanged() }
             }
+            // The margin shows only with the `forum` flag (gated by default; every feature for a super-admin).
+            single<ForumAccess> {
+                val auth = get<AuthRepository>()
+                ForumAccess { auth.session.map { it?.has(FORUM_FEATURE) == true }.distinctUntilChanged() }
+            }
+            // Reading circles show only with the `shared_reading` flag (gated by default).
+            single<TogetherAccess> {
+                val auth = get<AuthRepository>()
+                TogetherAccess { auth.session.map { it?.has(SHARED_READING_FEATURE) == true }.distinctUntilChanged() }
+            }
+            // The others see the language this reader chose to read in (null: the original).
+            single<TogetherLanguage> {
+                val reading = get<ReadingSettingsRepository>()
+                TogetherLanguage { reading.observeTargetLanguage().first() }
+            }
+            // A reader muted in the margin is hidden from one's circle signals too (they are not told).
+            single<MutedReaders> {
+                val forum = get<ForumRepository>()
+                MutedReaders {
+                    (forum.mutes() as? AppResult.Ok)
+                        ?.value
+                        ?.map { it.userId }
+                        ?.toSet()
+                        .orEmpty()
+                }
+            }
+            // Readers write in their reading language when they chose one, else in the app's language.
+            single<WritingLanguage> {
+                val reading = get<ReadingSettingsRepository>()
+                WritingLanguage { reading.observeTargetLanguage().first() ?: I18n.locale.value.substringBefore('-') }
+            }
+            // The same flag for the catalog: the Episodes filter and the episode badges on cards and chapter rows.
+            single<EpisodeFeature> {
+                val auth = get<AuthRepository>()
+                EpisodeFeature { auth.session.map { it?.has(VIDEO_FEATURE) == true }.distinctUntilChanged() }
+            }
             // Safe mode (the account's `showAdult`, off by default): the catalog filters titles read on the device by the
             // same rule as the server, without knowing the auth slice. Signed out = safe.
             single<ContentPolicy> {
                 val auth = get<AuthRepository>()
                 ContentPolicy { auth.session.map { it?.showAdult == true }.distinctUntilChanged() }
             }
-            // What a run would cost, from the account's credits wallet (a server without credits: no quote).
-            single<RunQuotes> {
-                val wallet = get<WalletRepository>()
-                RunQuotes { chapterId, lang ->
-                    (wallet.quote(QuoteKind.Episode, chapterId, lang.ifEmpty { null }) as? AppResult.Ok)?.value?.let {
-                        RunCost(it.credits, it.coveredByOwnKeys, it.alreadyAvailable, it.maxCredits, it.fundable, it.metered, it.unfunded)
+            // The heart on catalog cards, kept by the library (giving it follows the title), without the catalog knowing it.
+            single<Favorites> {
+                val library = get<LibraryRepository>()
+                object : Favorites {
+                    override fun observe() =
+                        library
+                            .observe()
+                            .map { entries ->
+                                LibraryMarks(
+                                    favorites = entries.filter { it.favorite }.mapTo(HashSet()) { "${it.sourceKey}/${it.titleRef}" },
+                                    followed = entries.mapTo(HashSet()) { "${it.sourceKey}/${it.titleRef}" },
+                                )
+                            }.distinctUntilChanged()
+
+                    override suspend fun set(
+                        title: MarkedTitle,
+                        name: String,
+                        coverUrl: String?,
+                        favorite: Boolean,
+                    ) = library.setFavorite(TitleRef(title.sourceKey, title.id, name, coverUrl), favorite)
+                }
+            }
+            // Series members at a source this account turned off are left out of the title page (the sources slice).
+            single<EnabledSources> {
+                val sources = get<SourcesRepository>()
+                EnabledSources {
+                    sources
+                        .observe()
+                        .map { items -> items.filter { it.enabled }.sortedBy { it.position }.associate { it.key to it.name } }
+                        .distinctUntilChanged()
+                }
+            }
+            // One library row per series: the catalog's series, asked about the library's titles (the server knows them).
+            single<LibrarySeries> {
+                val series = get<SeriesRepository>()
+                object : LibrarySeries {
+                    override fun observe() = series.observe().map { known -> known.mapValues { it.value.id } }.distinctUntilChanged()
+
+                    override suspend fun resolve(keys: List<Pair<String, String>>) {
+                        series.resolve(keys.map { (sourceKey, titleRef) -> MarkedTitle(sourceKey, titleRef) })
                     }
                 }
+            }
+            // "+3 new" in the library for a source read on the device: chapters numbered after the last one read, from
+            // the device's copy of the title page (the server counts our own catalog's).
+            single<NewChapters> {
+                val catalog = get<CatalogRepository>()
+                NewChapters { sourceKey, titleId, lastChapterRef ->
+                    val chapters = catalog.observeTitle(sourceKey, titleId).first()?.chapters ?: return@NewChapters null
+                    val last = lastChapterRef?.let { ref -> chapters.firstOrNull { it.id == ref } } ?: return@NewChapters null
+                    chapters.count { it.number > last.number }
+                }
+            }
+            // What a run would cost, from the account's credits wallet (a server without credits: no quote).
+            // The balance comes with it (read again with each quote), and every run asked for, finished or refused reads
+            // it again: the credits shown on every screen follow what this device spends.
+            single<RunQuotes> {
+                val wallet = get<WalletRepository>()
+                val scope = get<CoroutineScope>()
+                object : RunQuotes {
+                    override suspend fun episode(
+                        chapterId: String,
+                        lang: String,
+                    ): RunCost? =
+                        (wallet.quote(QuoteKind.Episode, chapterId, lang.ifEmpty { null }) as? AppResult.Ok)?.value?.let {
+                            RunCost(
+                                it.credits,
+                                it.coveredByOwnKeys,
+                                it.alreadyAvailable,
+                                it.maxCredits,
+                                it.fundable,
+                                it.metered,
+                                it.unfunded,
+                                balance = wallet.balance(),
+                            )
+                        }
+
+                    override fun changed() {
+                        scope.launch { wallet.refreshWallet() }
+                    }
+                }
+            }
+            // The languages an episode is made in, as the title page last read them: first in the card's picker.
+            single<MadeEpisodeLanguages> {
+                val catalog = get<CatalogRepository>()
+                MadeEpisodeLanguages { sourceKey, chapterId -> catalog.observeEpisodeLanguages(sourceKey, chapterId) }
             }
             // Translating or voicing a chapter of a source read on the device: its pages are copied to the server first,
             // read there in the same `{{lang}}` as on the device (a language the server doesn't take reads in English).
@@ -279,12 +451,47 @@ fun appModules(
                     }
                 }
             }
+            // The reading mode chosen per series, on the account (the reader's database keeps a copy).
+            single<SeriesModeSync> {
+                val reading = get<ReadingSettingsRepository>()
+                object : SeriesModeSync {
+                    override suspend fun pull(): Map<SeriesKey, ReadingMode>? =
+                        (reading.seriesModes() as? AppResult.Ok)
+                            ?.value
+                            ?.mapNotNull { (key, mode) ->
+                                val series = SeriesKey.of(key) ?: return@mapNotNull null
+                                readingModeOfWire(mode)?.let { series to it }
+                            }?.toMap()
+
+                    override suspend fun push(
+                        series: SeriesKey,
+                        mode: ReadingMode?,
+                    ): Boolean = reading.setSeriesMode(series.sourceKey, series.titleId, mode?.wire) is AppResult.Ok
+                }
+            }
             // What translating a chapter would cost (the reader's language picker quotes before paying).
             single<TranslationQuotes> {
                 val wallet = get<WalletRepository>()
-                TranslationQuotes { chapterId, lang ->
-                    (wallet.quote(QuoteKind.Translation, chapterId, lang) as? AppResult.Ok)?.value?.let {
-                        TranslationQuote(it.credits, it.maxCredits, it.coveredByOwnKeys, it.alreadyAvailable, it.fundable)
+                val scope = get<CoroutineScope>()
+                object : TranslationQuotes {
+                    override suspend fun quote(
+                        chapterId: String,
+                        lang: String,
+                    ): TranslationQuote? =
+                        (wallet.quote(QuoteKind.Translation, chapterId, lang) as? AppResult.Ok)?.value?.let {
+                            TranslationQuote(
+                                it.credits,
+                                it.maxCredits,
+                                it.coveredByOwnKeys,
+                                it.alreadyAvailable,
+                                it.fundable,
+                                wallet.balance(),
+                                unfunded = it.unfunded?.isNotEmpty() == true,
+                            )
+                        }
+
+                    override fun changed() {
+                        scope.launch { wallet.refreshWallet() }
                     }
                 }
             }
@@ -300,9 +507,11 @@ fun appModules(
         authModule,
         catalogModule,
         episodesModule,
+        forumModule,
         libraryModule,
         readerModule,
         sourcesModule,
+        togetherModule,
     )
 
 /**
@@ -329,6 +538,8 @@ class ImageRefererSync(
 
 /** The feature flag that opens episodes and their MP4 (the server's name for it). */
 private const val VIDEO_FEATURE = "video"
+private const val FORUM_FEATURE = "forum"
+private const val SHARED_READING_FEATURE = "shared_reading"
 
 /** The episodes' `KeyStatusProvider` port, served by the account slice's key list (hints only, never a secret). */
 private class AccountKeyStatus(
@@ -347,3 +558,6 @@ private class AccountKeyStatus(
 /** The route isn't on this server (an older one): 404 / 405 with the framework's generic code. */
 private fun AppError.isMissingRoute(): Boolean =
     (this as? AppError.Rejected)?.code in setOf("NOT_FOUND", "METHOD_NOT_ALLOWED") || (this is AppError.Unknown && detail == "HTTP 404")
+
+/** The balance read now (each quote refreshes the wallet the screens show); null on a server without credits. */
+private suspend fun WalletRepository.balance(): Long? = (refreshWallet() as? AppResult.Ok)?.value?.balanceCredits

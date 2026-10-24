@@ -11,6 +11,9 @@ import com.vovoscan.feature.reader.domain.ReaderSettingsRepository
 import com.vovoscan.feature.reader.domain.ReadingMode
 import com.vovoscan.feature.reader.domain.ReadingPosition
 import com.vovoscan.feature.reader.domain.ScrollAmount
+import com.vovoscan.feature.reader.domain.SeriesKey
+import com.vovoscan.feature.reader.domain.SeriesModeMerge
+import com.vovoscan.feature.reader.domain.SeriesModeSync
 import com.vovoscan.feature.reader.domain.TapInvert
 import com.vovoscan.feature.reader.domain.TapLayout
 import kotlinx.coroutines.CoroutineDispatcher
@@ -28,9 +31,12 @@ import kotlinx.coroutines.withContext
 class SqlReaderSettingsRepository(
     private val database: ReaderDatabase,
     private val io: CoroutineDispatcher,
+    /** The account's copy of the series modes (the device's is its cache). */
+    private val seriesSync: SeriesModeSync = SeriesModeSync.None,
 ) : ReaderSettingsRepository {
     private val queries get() = database.readerQueries
     private val writes = Mutex()
+    private val seriesLock = Mutex()
 
     override fun observePreferences(): Flow<ReaderPreferences> =
         queries
@@ -66,8 +72,60 @@ class SqlReaderSettingsRepository(
         titleId: String,
         mode: ReadingMode?,
     ) {
-        withContext(io) {
-            if (mode == null) queries.deleteSeriesMode(sourceKey, titleId) else queries.putSeriesMode(sourceKey, titleId, mode.name)
+        val series = SeriesKey(sourceKey, titleId)
+        seriesLock.withLock {
+            withContext(io) {
+                queries.transaction {
+                    writeSeries(series, mode)
+                    queries.putSetting(PENDING_PREFIX + series.wire, mode?.name ?: NONE)
+                }
+            }
+            if (seriesSync.push(series, mode)) withContext(io) { queries.deleteSetting(PENDING_PREFIX + series.wire) }
+        }
+    }
+
+    override suspend fun syncSeriesModes() {
+        seriesLock.withLock {
+            val account = seriesSync.pull() ?: return
+            val (device, pending, migrated) =
+                withContext(io) {
+                    Triple(
+                        queries
+                            .allSeriesModes()
+                            .executeAsList()
+                            .mapNotNull { row ->
+                                modeOf(row.mode)?.let { SeriesKey(row.source_key, row.title_id) to it }
+                            }.toMap(),
+                        queries
+                            .pendingSeriesModes()
+                            .executeAsList()
+                            .mapNotNull { row ->
+                                SeriesKey.of(row.name.removePrefix(PENDING_PREFIX))?.let { it to modeOf(row.setting_value) }
+                            }.toMap(),
+                        queries.setting(MIGRATED).executeAsOneOrNull() == "true",
+                    )
+                }
+            val plan = SeriesModeMerge.plan(account, device, pending, migrated)
+            withContext(io) { queries.transaction { plan.local.forEach { (series, mode) -> writeSeries(series, mode) } } }
+            val sent = plan.push.filter { (series, mode) -> seriesSync.push(series, mode) }.keys
+            withContext(io) {
+                queries.transaction {
+                    sent.forEach { queries.deleteSetting(PENDING_PREFIX + it.wire) }
+                    // Once every earlier choice is on the account, the account is the truth for the others.
+                    if (!migrated && sent.containsAll(plan.push.keys - pending.keys)) queries.putSetting(MIGRATED, "true")
+                }
+            }
+        }
+    }
+
+    private fun writeSeries(
+        series: SeriesKey,
+        mode: ReadingMode?,
+    ) {
+        if (mode == null) {
+            queries.deleteSeriesMode(series.sourceKey, series.titleId)
+        } else {
+            queries.putSeriesMode(series.sourceKey, series.titleId, mode.name)
         }
     }
 
@@ -98,8 +156,17 @@ class SqlReaderSettingsRepository(
         withContext(io) { queries.putSetting(HISTORY_PREFIX + read.key, read.encode()) }
     }
 
+    override suspend fun recordLanguage(code: String) {
+        withContext(io) { queries.putSetting(READ_LANGUAGE, code) }
+    }
+
+    override suspend fun lastLanguage(): String? = withContext(io) { queries.setting(READ_LANGUAGE).executeAsOneOrNull() }
+
     internal companion object {
         const val HISTORY_PREFIX = "last/"
+        const val READ_LANGUAGE = "readLanguage"
+        const val PENDING_PREFIX = "seriesPending/"
+        const val MIGRATED = "seriesMigrated"
 
         private const val NONE = "-"
 

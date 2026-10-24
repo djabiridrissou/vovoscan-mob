@@ -1,5 +1,6 @@
 package com.vovoscan.feature.catalog.data
 
+import com.vovoscan.core.common.AppError
 import com.vovoscan.core.common.AppResult
 import com.vovoscan.core.common.map
 import com.vovoscan.core.network.ApiData
@@ -9,7 +10,9 @@ import com.vovoscan.core.sources.ManifestProvider
 import com.vovoscan.core.sources.RulesHttp
 import com.vovoscan.core.sources.RulesSource
 import com.vovoscan.core.sources.RulesTitleSummary
-import com.vovoscan.core.sources.declaresFormat
+import com.vovoscan.core.sources.formatHint
+import com.vovoscan.core.sources.sourceLanguage
+import com.vovoscan.feature.catalog.domain.INTERNAL_SOURCE
 import com.vovoscan.feature.catalog.domain.ReadingFormat
 import com.vovoscan.feature.catalog.domain.SourceCategory
 import io.ktor.client.HttpClient
@@ -17,6 +20,7 @@ import io.ktor.client.request.get
 import io.ktor.client.request.parameter
 import io.ktor.http.encodeURLPathPart
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.Transient
 
 @Serializable
 data class TitleSummaryDto(
@@ -27,6 +31,16 @@ data class TitleSummaryDto(
     val format: String,
     val status: String,
     val contentRating: String? = null,
+    /** false: the source names no format, [format] is the default (it never replaces one the device knows). */
+    @Transient val formatKnown: Boolean = true,
+    /** Chapters with an episode the caller can watch (the server's word). */
+    val episodeCount: Int = 0,
+    /** false: listed by the device itself, which can't know [episodeCount] (the saved count stays). */
+    @Transient val episodesKnown: Boolean = true,
+    /** Everyone's numbers (our catalog's listings only; each null below 3 accounts). */
+    val ratingAvg: Double? = null,
+    val ratingCount: Int? = null,
+    val favoriteCount: Int? = null,
 )
 
 @Serializable
@@ -36,6 +50,8 @@ data class ChapterDto(
     val name: String? = null,
     val pageCount: Int = 0,
     val publishedAt: String? = null,
+    /** Languages its episode can be watched in, sorted; `""` = the original. */
+    val episodeLanguages: List<String> = emptyList(),
 )
 
 @Serializable
@@ -51,6 +67,21 @@ data class TitleDetailDto(
     val authors: List<String> = emptyList(),
     val genres: List<String> = emptyList(),
     val chapters: List<ChapterDto> = emptyList(),
+    /** As in [TitleSummaryDto]: false when neither the source nor the title's genres say how it reads. */
+    @Transient val formatKnown: Boolean = true,
+    val episodeCount: Int = 0,
+    /** false: read on the device; the chapters' episode languages saved before stay. */
+    @Transient val episodesKnown: Boolean = true,
+    /** How many chapters the caller can see (our API, sent with or without them); 0 from a server that doesn't say. */
+    val chapterCount: Int = 0,
+)
+
+/** One page of a long series' chapters (`GET …/titles/{id}/chapters`); [nextCursor] null: the last page. */
+@Serializable
+data class ChapterPageDto(
+    val data: List<ChapterDto> = emptyList(),
+    val total: Int = 0,
+    val nextCursor: String? = null,
 )
 
 @Serializable
@@ -62,6 +93,33 @@ data class CategoryDto(
     val format: String? = null,
 )
 
+/** `GET source-reader/{key}/titles`: a page of a source as the server reads it (here: its titles with an episode). */
+@Serializable
+data class SourceTitlesDto(
+    val items: List<TitleSummaryDto> = emptyList(),
+    val page: Int = 1,
+    val hasNext: Boolean = false,
+)
+
+/** `GET source-reader/{key}/title`: only what the episode badges need. */
+@Serializable
+data class SourceTitleEpisodesDto(
+    val episodeCount: Int = 0,
+    val units: List<SourceUnitEpisodesDto> = emptyList(),
+)
+
+@Serializable
+data class SourceUnitEpisodesDto(
+    val id: String,
+    val episodeLanguages: List<String> = emptyList(),
+)
+
+/** What the server says of a title's episodes: the count, and each chapter's languages (by chapter id). */
+data class TitleEpisodes(
+    val count: Int,
+    val languages: Map<String, List<String>>,
+)
+
 /** A catalog page, whatever the source. */
 data class TitlesPage(
     val page: Int,
@@ -71,17 +129,22 @@ data class TitlesPage(
 
 /** Remote source of a catalog: the vovoscan API for the internal source, the source itself for the others. */
 interface CatalogRemoteDataSource {
-    /** `categoryId`: one of the source's categories, null for everything. */
+    /**
+     * `categoryId`: one of the source's categories, null for everything. [episodes]: only titles with an episode, which
+     * the server alone knows (for a source read on the device: the titles imported from it, any category).
+     */
     suspend fun titles(
         sourceKey: String,
         page: Int,
         categoryId: String? = null,
+        episodes: Boolean = false,
     ): AppResult<TitlesPage>
 
     suspend fun search(
         sourceKey: String,
         query: String,
         categoryId: String? = null,
+        episodes: Boolean = false,
     ): AppResult<TitlesPage>
 
     suspend fun categories(sourceKey: String): AppResult<List<SourceCategory>>
@@ -92,6 +155,24 @@ interface CatalogRemoteDataSource {
     ): AppResult<TitleDetailDto>
 
     /**
+     * The title without its chapters ([TitleDetailDto.chapterCount] says how many), for a series read by pages of
+     * chapters ([chapterPage]); null: this source sends every chapter with the title (read on the device).
+     */
+    suspend fun titleHead(
+        sourceKey: String,
+        id: String,
+    ): AppResult<TitleDetailDto>? = null
+
+    /** A page of [id]'s chapters, from the oldest or the newest, after [after] (a page's `nextCursor`; null: the first). */
+    suspend fun chapterPage(
+        sourceKey: String,
+        id: String,
+        newestFirst: Boolean,
+        after: String?,
+        limit: Int,
+    ): AppResult<ChapterPageDto> = AppResult.Err(AppError.Unknown("NO_CHAPTER_PAGES"))
+
+    /**
      * Title ref → format (`manga`, `webtoon`) the server learned from imported pages, for a source read on the device
      * whose catalog names no format; empty otherwise, offline, or for refs it has not seen.
      */
@@ -99,6 +180,15 @@ interface CatalogRemoteDataSource {
         sourceKey: String,
         refs: List<String>,
     ): Map<String, String> = emptyMap()
+
+    /**
+     * The episodes the server knows for a title of a source read on the device (null: none asked, or no answer). Asked
+     * only for a title the server already said has one, so opening a title page tells it nothing new.
+     */
+    suspend fun titleEpisodes(
+        sourceKey: String,
+        ref: String,
+    ): TitleEpisodes? = null
 }
 
 /** `api/v1/catalog/…`: the internal source (our published titles). */
@@ -109,29 +199,71 @@ class ApiCatalogRemoteDataSource(
         sourceKey: String,
         page: Int,
         categoryId: String?,
+        episodes: Boolean,
     ): AppResult<TitlesPage> =
-        http
-            .apiCall<ApiPage<TitleSummaryDto>> {
-                get("api/v1/catalog/sources/$sourceKey/titles") {
-                    parameter("page", page)
-                    parameter("perPage", PAGE_SIZE)
-                    categoryId?.let { parameter("category", it) }
-                }
-            }.map { TitlesPage(it.page, it.data, it.hasNext) }
+        if (episodes && sourceKey != INTERNAL_SOURCE) {
+            sourceEpisodes(sourceKey, page, "")
+        } else {
+            http
+                .apiCall<ApiPage<TitleSummaryDto>> {
+                    get("api/v1/catalog/sources/$sourceKey/titles") {
+                        parameter("page", page)
+                        parameter("perPage", PAGE_SIZE)
+                        categoryId?.let { parameter("category", it) }
+                        if (episodes) parameter("has", HAS_EPISODE)
+                    }
+                }.map { TitlesPage(it.page, it.data, it.hasNext) }
+        }
 
     override suspend fun search(
         sourceKey: String,
         query: String,
         categoryId: String?,
+        episodes: Boolean,
+    ): AppResult<TitlesPage> =
+        if (episodes && sourceKey != INTERNAL_SOURCE) {
+            sourceEpisodes(sourceKey, 1, query)
+        } else {
+            http
+                .apiCall<ApiPage<TitleSummaryDto>> {
+                    get("api/v1/catalog/sources/$sourceKey/titles") {
+                        parameter("search", query)
+                        parameter("perPage", PAGE_SIZE)
+                        categoryId?.let { parameter("category", it) }
+                        if (episodes) parameter("has", HAS_EPISODE)
+                    }
+                }.map { TitlesPage(it.page, it.data, it.hasNext) }
+        }
+
+    /** A source read on the device: its titles imported to the server that have an episode (the server's database). */
+    private suspend fun sourceEpisodes(
+        sourceKey: String,
+        page: Int,
+        query: String,
     ): AppResult<TitlesPage> =
         http
-            .apiCall<ApiPage<TitleSummaryDto>> {
-                get("api/v1/catalog/sources/$sourceKey/titles") {
-                    parameter("search", query)
-                    parameter("perPage", PAGE_SIZE)
-                    categoryId?.let { parameter("category", it) }
+            .apiCall<ApiData<SourceTitlesDto>> {
+                get("api/v1/source-reader/${sourceKey.encodeURLPathPart()}/titles") {
+                    parameter("has", HAS_EPISODE)
+                    parameter("page", page)
+                    // The `{{lang}}` this device reads its sources in, so the refs match its own.
+                    parameter("lang", sourceLanguage())
+                    if (query.isNotBlank()) parameter("search", query)
                 }
-            }.map { TitlesPage(it.page, it.data, it.hasNext) }
+            }.map { TitlesPage(it.data.page, it.data.items, it.data.hasNext) }
+
+    override suspend fun titleEpisodes(
+        sourceKey: String,
+        ref: String,
+    ): TitleEpisodes? =
+        (
+            http.apiCall<ApiData<SourceTitleEpisodesDto>> {
+                get("api/v1/source-reader/${sourceKey.encodeURLPathPart()}/title") {
+                    parameter("ref", ref)
+                    parameter("lang", sourceLanguage())
+                }
+            } as? AppResult.Ok
+        )?.value?.data?.let { dto -> TitleEpisodes(dto.episodeCount, dto.units.associate { it.id to it.episodeLanguages }) }
 
     /** The internal catalog's categories (their `key` is the id sent back as `category`). */
     override suspend fun categories(sourceKey: String): AppResult<List<SourceCategory>> =
@@ -145,6 +277,27 @@ class ApiCatalogRemoteDataSource(
         sourceKey: String,
         id: String,
     ): AppResult<TitleDetailDto> = http.apiCall<ApiData<TitleDetailDto>> { get("api/v1/catalog/titles/$id") }.map { it.data }
+
+    override suspend fun titleHead(
+        sourceKey: String,
+        id: String,
+    ): AppResult<TitleDetailDto> =
+        http.apiCall<ApiData<TitleDetailDto>> { get("api/v1/catalog/titles/$id") { parameter("chapters", "none") } }.map { it.data }
+
+    override suspend fun chapterPage(
+        sourceKey: String,
+        id: String,
+        newestFirst: Boolean,
+        after: String?,
+        limit: Int,
+    ): AppResult<ChapterPageDto> =
+        http.apiCall<ChapterPageDto> {
+            get("api/v1/catalog/titles/$id/chapters") {
+                parameter("order", if (newestFirst) "desc" else "asc")
+                parameter("limit", limit)
+                after?.let { parameter("after", it) }
+            }
+        }
 
     override suspend fun learnedFormats(
         sourceKey: String,
@@ -160,6 +313,7 @@ class ApiCatalogRemoteDataSource(
 
     private companion object {
         const val PAGE_SIZE = 24
+        const val HAS_EPISODE = "episode"
 
         /** Refs per formats request (the server's limit). */
         const val MAX_FORMAT_REFS = 100
@@ -177,16 +331,23 @@ class OnDeviceCatalogRemoteDataSource(
         sourceKey: String,
         page: Int,
         categoryId: String?,
+        episodes: Boolean,
     ): AppResult<TitlesPage> =
-        source(sourceKey)?.catalog(page, category = categoryId.orEmpty())?.map { TitlesPage(page, it.items.map(::dto), it.hasNext) }
+        source(sourceKey)?.let { s ->
+            s.catalog(page, category = categoryId.orEmpty()).map { TitlesPage(page, it.items.map { i -> dto(s, i) }, it.hasNext) }
+        }
             ?: unknown()
 
     override suspend fun search(
         sourceKey: String,
         query: String,
         categoryId: String?,
+        episodes: Boolean,
     ): AppResult<TitlesPage> =
-        source(sourceKey)?.catalog(1, query, categoryId.orEmpty())?.map { TitlesPage(1, it.items.map(::dto), it.hasNext) } ?: unknown()
+        source(sourceKey)?.let { s ->
+            s.catalog(1, query, categoryId.orEmpty()).map { TitlesPage(1, it.items.map { i -> dto(s, i) }, it.hasNext) }
+        }
+            ?: unknown()
 
     override suspend fun categories(sourceKey: String): AppResult<List<SourceCategory>> =
         source(sourceKey)?.categories()?.map { list -> list.map { SourceCategory(it.id, it.name) } } ?: unknown()
@@ -195,25 +356,46 @@ class OnDeviceCatalogRemoteDataSource(
         sourceKey: String,
         id: String,
     ): AppResult<TitleDetailDto> =
-        source(sourceKey)?.title(id)?.map { title ->
-            TitleDetailDto(
-                id = title.summary.id,
-                name = title.summary.name,
-                coverUrl = title.summary.coverUrl,
-                kind = title.summary.kind,
-                format = title.summary.format,
-                status = title.summary.status,
-                contentRating = title.summary.contentRating,
-                description = title.description,
-                authors = title.authors,
-                genres = title.genres,
-                // Newest to oldest, like the API.
-                chapters = title.units.reversed().map { ChapterDto(it.id, it.number, it.name) },
-            )
+        source(sourceKey)?.let { s ->
+            s.title(id).map { title ->
+                TitleDetailDto(
+                    id = title.summary.id,
+                    name = title.summary.name,
+                    coverUrl = title.summary.coverUrl,
+                    kind = title.summary.kind,
+                    format = title.summary.format,
+                    status = title.summary.status,
+                    contentRating = title.summary.contentRating,
+                    description = title.description,
+                    authors = title.authors,
+                    genres = title.genres,
+                    // Newest to oldest, like the API.
+                    chapters = title.units.reversed().map { ChapterDto(it.id, it.number, it.name) },
+                    // A declared format rule that read nothing is the default too.
+                    formatKnown =
+                        title.summary.formatRead ||
+                            title.summary.kind == "book" ||
+                            title.summary.format != "manga" ||
+                            formatHint(title.genres) != null,
+                    episodesKnown = false,
+                )
+            }
         } ?: unknown()
 
-    private fun dto(item: RulesTitleSummary) =
-        TitleSummaryDto(item.id, item.name, item.coverUrl, item.kind, item.format, item.status, item.contentRating)
+    private fun dto(
+        source: RulesSource,
+        item: RulesTitleSummary,
+    ) = TitleSummaryDto(
+        item.id,
+        item.name,
+        item.coverUrl,
+        item.kind,
+        item.format,
+        item.status,
+        item.contentRating,
+        formatKnown = item.formatRead || item.kind == "book",
+        episodesKnown = false,
+    )
 
     private fun <T> unknown(): AppResult<T> =
         AppResult.Err(
@@ -230,17 +412,38 @@ class RoutingCatalogRemoteDataSource(
 ) : CatalogRemoteDataSource {
     private suspend fun pick(key: String) = if (manifests.manifest(key) != null) onDevice else api
 
+    override suspend fun titleHead(
+        sourceKey: String,
+        id: String,
+    ) = pick(sourceKey).titleHead(sourceKey, id)
+
+    override suspend fun chapterPage(
+        sourceKey: String,
+        id: String,
+        newestFirst: Boolean,
+        after: String?,
+        limit: Int,
+    ) = pick(sourceKey).chapterPage(sourceKey, id, newestFirst, after, limit)
+
+    /** With [episodes], always the server: only it knows which titles have one. */
     override suspend fun titles(
         sourceKey: String,
         page: Int,
         categoryId: String?,
-    ) = pick(sourceKey).titles(sourceKey, page, categoryId)
+        episodes: Boolean,
+    ) = (if (episodes) api else pick(sourceKey)).titles(sourceKey, page, categoryId, episodes)
 
     override suspend fun search(
         sourceKey: String,
         query: String,
         categoryId: String?,
-    ) = pick(sourceKey).search(sourceKey, query, categoryId)
+        episodes: Boolean,
+    ) = (if (episodes) api else pick(sourceKey)).search(sourceKey, query, categoryId, episodes)
+
+    override suspend fun titleEpisodes(
+        sourceKey: String,
+        ref: String,
+    ): TitleEpisodes? = if (manifests.manifest(sourceKey) != null) api.titleEpisodes(sourceKey, ref) else null
 
     override suspend fun categories(sourceKey: String) = pick(sourceKey).categories(sourceKey)
 
@@ -249,12 +452,16 @@ class RoutingCatalogRemoteDataSource(
         id: String,
     ) = pick(sourceKey).title(sourceKey, id)
 
-    /** Asked of the API for a source read on the device whose catalog names no format; nothing for the others. */
+    /**
+     * Asked of the API for a comic source read on the device, whether or not its catalog names a format: a declared
+     * rule that reads nothing for a title leaves it a manga by default, and the server's word beats that default.
+     * Nothing for a source without comics.
+     */
     override suspend fun learnedFormats(
         sourceKey: String,
         refs: List<String>,
     ): Map<String, String> {
         val manifest = manifests.manifest(sourceKey) ?: return emptyMap()
-        return if (manifest.declaresFormat || refs.isEmpty()) emptyMap() else api.learnedFormats(sourceKey, refs)
+        return if ("comic" !in manifest.kinds || refs.isEmpty()) emptyMap() else api.learnedFormats(sourceKey, refs)
     }
 }

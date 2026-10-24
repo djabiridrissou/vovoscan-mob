@@ -16,6 +16,10 @@ import io.ktor.client.request.setBody
 import io.ktor.http.ContentType
 import io.ktor.http.contentType
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 
 @Serializable
 data class ProviderKeyDto(
@@ -53,6 +57,8 @@ data class ReadingSettingsDto(
     val targetLanguage: String? = null,
     /** Read only: the reading formats whose reader guide was seen (never sent: null fields are left out). */
     val coached: List<String>? = null,
+    /** Read only: `"<sourceKey>:<titleRef>"` → reading mode (kebab case), the account's choices per series. */
+    val seriesModes: Map<String, String?>? = null,
 )
 
 @Serializable
@@ -99,6 +105,12 @@ interface AccountRemoteDataSource {
 
     suspend fun markCoached(kind: String): AppResult<ReadingSettingsDto>
 
+    suspend fun putSeriesMode(
+        sourceKey: String,
+        titleRef: String,
+        mode: String?,
+    ): AppResult<Unit>
+
     /** Any subset: a null field is left out of the request and keeps its value. */
     suspend fun setReadingSettings(
         ocrModel: String? = null,
@@ -137,6 +149,25 @@ class KtorAccountRemoteDataSource(
 
     override suspend fun markCoached(kind: String): AppResult<ReadingSettingsDto> =
         http.apiCall<ApiData<ReadingSettingsDto>> { put("api/v1/settings/reading/coached/$kind") }.map { it.data }
+
+    override suspend fun putSeriesMode(
+        sourceKey: String,
+        titleRef: String,
+        mode: String?,
+    ): AppResult<Unit> =
+        http.apiCallUnit {
+            put("api/v1/settings/reading/series-mode") {
+                contentType(ContentType.Application.Json)
+                // `mode` is always sent, null included (back to the format's default): the client leaves null fields out.
+                setBody(
+                    buildJsonObject {
+                        put("sourceKey", sourceKey)
+                        put("titleRef", titleRef)
+                        put("mode", mode?.let(::JsonPrimitive) ?: JsonNull)
+                    },
+                )
+            }
+        }
 
     override suspend fun setReadingSettings(
         ocrModel: String?,

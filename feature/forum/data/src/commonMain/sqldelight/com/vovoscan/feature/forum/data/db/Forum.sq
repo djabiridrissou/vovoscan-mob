@@ -1,0 +1,20 @@
+-- The margin (余白) is online only: nothing is queued. The last margin read per chapter is kept for display, as the
+-- server answered it to this account (its spoiler masks included), and erased on sign-out.
+-- SQLite 3.18 (Android 8, minSdk 26): no ON CONFLICT … DO UPDATE.
+CREATE TABLE margin_cache (
+    chapter_id TEXT NOT NULL PRIMARY KEY,
+    body TEXT NOT NULL,
+    saved_at INTEGER NOT NULL
+);
+
+margin:
+SELECT body FROM margin_cache WHERE chapter_id = ?;
+
+putMargin:
+INSERT OR REPLACE INTO margin_cache (chapter_id, body, saved_at) VALUES (?, ?, ?);
+
+trimMargins:
+DELETE FROM margin_cache WHERE chapter_id NOT IN (SELECT chapter_id FROM margin_cache ORDER BY saved_at DESC LIMIT ?);
+
+clearMargins:
+DELETE FROM margin_cache;

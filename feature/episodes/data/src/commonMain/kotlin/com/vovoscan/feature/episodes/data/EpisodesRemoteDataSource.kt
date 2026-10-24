@@ -5,6 +5,7 @@ import com.vovoscan.core.common.AppResult
 import com.vovoscan.core.common.map
 import com.vovoscan.core.network.ApiData
 import com.vovoscan.core.network.ApiJson
+import com.vovoscan.core.network.SseParser
 import com.vovoscan.core.network.apiCall
 import com.vovoscan.core.network.errorOf
 import com.vovoscan.core.network.isDecodingFailure

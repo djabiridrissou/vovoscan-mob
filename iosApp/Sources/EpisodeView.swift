@@ -34,12 +34,16 @@ struct EpisodeView: View {
     @State private var player: PlayerRoute?
     @State private var share: SharedVideo?
     @State private var choosingLanguage = false
+    @Environment(\.dismiss) private var dismiss
     private let route: EpisodeRoute
+    /// Presented in a sheet (a source's "Watch from here"): a Close button, since there is no stack to go back in.
+    private let inSheet: Bool
     /// The next chapter's id and the language to open it in.
     let onOpenChapter: (String, String) -> Void
 
-    init(route: EpisodeRoute, onOpenChapter: @escaping (String, String) -> Void) {
+    init(route: EpisodeRoute, inSheet: Bool = false, onOpenChapter: @escaping (String, String) -> Void) {
         self.route = route
+        self.inSheet = inSheet
         self.onOpenChapter = onOpenChapter
         _model = StateObject(
             wrappedValue: EpisodeModel(
@@ -67,6 +71,22 @@ struct EpisodeView: View {
         }
         .readableWidth()
         .background(Color.brandInk)
+        // Always a way out: the bar with its back button (and the edge swipe) when pushed, Close in a sheet. Shown
+        // explicitly, so a screen that hid it before (the reader) never leaves the card without one.
+        .toolbar(.visible, for: .navigationBar)
+        .toolbarBackground(Color.brandInk, for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
+        .toolbarColorScheme(.dark, for: .navigationBar)
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) { CreditChip() }
+            if inSheet {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(L("common.close")) { dismiss() }
+                        .foregroundStyle(Color.brandPaper)
+                        .accessibilityIdentifier("episode.close")
+                }
+            }
+        }
         .refreshable { model.send(EpisodeIntentRefresh.shared) }
         .task { await model.observe() }
         // Live progress only while the card is on screen.
@@ -271,7 +291,8 @@ struct EpisodeLanguageList: View {
                         HStack(spacing: 12) {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(option.label).font(.brandBody(16, weight: .bold)).foregroundStyle(Color.brandPaper)
-                                Text(option.detail).font(.brandBody(13)).foregroundStyle(Color.brandMuted)
+                                Text(option.detail).font(.brandBody(13))
+                                    .foregroundStyle(option.ready ? Color.brandYellow : Color.brandMuted)
                             }
                             Spacer()
                             if option.selected { Image(systemName: "checkmark").foregroundStyle(Color.brandRed) }
@@ -290,6 +311,7 @@ struct EpisodeLanguageList: View {
             .navigationTitle(L("episode.languageTitle"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) { CreditChip() }
                 ToolbarItem(placement: .confirmationAction) { Button(L("common.done")) { dismiss() } }
             }
         }
