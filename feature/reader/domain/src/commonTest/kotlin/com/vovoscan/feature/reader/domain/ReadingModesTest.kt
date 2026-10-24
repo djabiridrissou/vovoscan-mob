@@ -9,8 +9,11 @@ class ReadingModesTest {
     @Test
     fun formatRule() {
         assertEquals(ReadingMode.LongStrip, ReadingMode.from("comic", "webtoon"))
-        assertEquals(ReadingMode.LongStrip, ReadingMode.from("comic", "manga"))
-        assertEquals(ReadingMode.LongStrip, ReadingMode.from("comic", "anything"))
+        // Each format in its own style (reader/SPEC.md §1b): Korean strips scroll, Japanese pages turn right to left.
+        assertEquals(ReadingMode.LongStrip, ReadingMode.from("comic", "ko"))
+        assertEquals(ReadingMode.PagedRightToLeft, ReadingMode.from("comic", "manga"))
+        assertEquals(ReadingMode.PagedRightToLeft, ReadingMode.from("comic", "anything"))
+        assertEquals(ReadingMode.PagedLeftToRight, ReadingMode.from("comic", "bd"))
         assertEquals(ReadingMode.Book, ReadingMode.from("book", "text"))
         assertEquals(ComicFormat.Webtoon, ComicFormat.from("webtoon"))
     }
@@ -21,9 +24,16 @@ class ReadingModesTest {
         assertEquals(ReadingMode.LongStrip, ReadingModes.resolve(webtoon, ComicFormat.Webtoon, null, none))
         val prefs = none.copy(webtoonMode = ReadingMode.LongStripGaps, mangaMode = ReadingMode.PagedLeftToRight)
         assertEquals(ReadingMode.LongStripGaps, ReadingModes.resolve(webtoon, ComicFormat.Webtoon, null, prefs))
-        assertEquals(ReadingMode.PagedVertical, ReadingModes.resolve(webtoon, ComicFormat.Webtoon, ReadingMode.PagedVertical, prefs))
+        // A webtoon never turns pages, even chosen for the series; its gap is a choice.
+        assertEquals(ReadingMode.LongStripGaps, ReadingModes.resolve(webtoon, ComicFormat.Webtoon, ReadingMode.PagedVertical, prefs))
+        assertEquals(ReadingMode.LongStrip, ReadingModes.resolve(webtoon, ComicFormat.Webtoon, ReadingMode.LongStrip, prefs))
+        assertEquals(
+            ReadingMode.PagedVertical,
+            ReadingModes.resolve(ReadingMode.LongStrip, ComicFormat.Manga, ReadingMode.PagedVertical, prefs),
+        )
         assertEquals(ReadingMode.PagedLeftToRight, ReadingModes.resolve(ReadingMode.PagedRightToLeft, ComicFormat.Manga, null, prefs))
-        assertEquals(ReadingMode.LongStrip, ReadingModes.resolve(ReadingMode.LongStrip, ComicFormat.Manga, null, none))
+        assertEquals(ReadingMode.PagedRightToLeft, ReadingModes.resolve(ReadingMode.LongStrip, ComicFormat.Manga, null, none))
+        assertEquals(ReadingMode.PagedLeftToRight, ReadingModes.resolve(ReadingMode.LongStrip, ComicFormat.Comic, null, none))
     }
 
     @Test
@@ -32,7 +42,7 @@ class ReadingModesTest {
         assertEquals(ReadingMode.Book, ReadingModes.resolve(ReadingMode.Book, ComicFormat.Manga, ReadingMode.PagedVertical, prefs))
         // A comic never takes the book mode, even if stored for its series: the format rule applies.
         assertEquals(
-            ReadingMode.LongStrip,
+            ReadingMode.PagedRightToLeft,
             ReadingModes.resolve(ReadingMode.LongStrip, ComicFormat.Manga, ReadingMode.Book, none),
         )
     }

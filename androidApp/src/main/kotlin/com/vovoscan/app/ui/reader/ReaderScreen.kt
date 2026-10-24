@@ -13,6 +13,8 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.rememberSplineBasedDecay
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -24,6 +26,7 @@ import androidx.compose.foundation.gestures.calculatePan
 import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.DragInteraction
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -38,6 +41,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.VerticalPager
 import androidx.compose.foundation.pager.rememberPagerState
@@ -67,6 +71,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
@@ -93,6 +98,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.util.lerp
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
@@ -110,7 +116,9 @@ import com.vovoscan.app.MainActivity
 import com.vovoscan.app.ui.common.AppIcons
 import com.vovoscan.app.ui.common.ErrorText
 import com.vovoscan.app.ui.common.GhostButton
+import com.vovoscan.app.ui.common.LanguageDock
 import com.vovoscan.app.ui.common.PrimaryButton
+import com.vovoscan.app.ui.common.content
 import com.vovoscan.app.ui.theme.Brand
 import com.vovoscan.core.common.i18n.I18n
 import com.vovoscan.feature.reader.domain.PageZoom
@@ -119,6 +127,8 @@ import com.vovoscan.feature.reader.domain.TallPages
 import com.vovoscan.feature.reader.domain.TapAction
 import com.vovoscan.feature.reader.domain.ZoomTransform
 import com.vovoscan.feature.reader.presentation.BookText
+import com.vovoscan.feature.reader.presentation.CoachGesture
+import com.vovoscan.feature.reader.presentation.ReaderCoach
 import com.vovoscan.feature.reader.presentation.ReaderCommand
 import com.vovoscan.feature.reader.presentation.ReaderIntent
 import com.vovoscan.feature.reader.presentation.ReaderItem
@@ -126,6 +136,8 @@ import com.vovoscan.feature.reader.presentation.ReaderUiState
 import com.vovoscan.feature.reader.presentation.ReaderViewModel
 import com.vovoscan.feature.reader.presentation.TapOverlay
 import com.vovoscan.feature.reader.presentation.TransitionCard
+import com.vovoscan.feature.reader.presentation.TranslationIntent
+import com.vovoscan.feature.reader.presentation.TranslationViewModel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -157,6 +169,18 @@ fun ReaderScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val onIntent = viewModel::onIntent
     var settingsOpen by rememberSaveable { mutableStateOf(false) }
+    // The reader's language (chapters of our catalog): any time from the bar, free when already made, quoted first.
+    val translation: TranslationViewModel =
+        koinViewModel(key = "translation:$sourceKey/$chapterId") { parametersOf(sourceKey, chapterId) }
+    val translationState by translation.state.collectAsStateWithLifecycle()
+    var languagesOpen by rememberSaveable { mutableStateOf(false) }
+    var keysOpen by rememberSaveable { mutableStateOf(false) }
+    // The bottom bar's height: the language dock sits above it while the bars show.
+    var bottomBarPx by remember { mutableIntStateOf(0) }
+    val languageAction =
+        remember(translationState.available) {
+            if (translationState.available) ReaderLanguageAction(translationState.endCardLabel) { languagesOpen = true } else null
+        }
     var contentsOpen by rememberSaveable { mutableStateOf(false) }
 
     // Keep the screen awake while reading (setting, on by default).
@@ -212,7 +236,13 @@ fun ReaderScreen(
                 }
             state.isBook -> BookReader(state, onIntent) { onOpenChapter(it, 0) }
             state.items.isEmpty() -> Unit
-            else -> ComicReader(state, onIntent)
+            else ->
+                CompositionLocalProvider(
+                    LocalPageLettering provides { translationState.letteringFor(it) },
+                    LocalReaderLanguageAction provides languageAction,
+                ) {
+                    ComicReader(state, onIntent)
+                }
         }
         state.tapOverlay.let { overlay ->
             AnimatedVisibility(overlay != null, enter = fadeIn(), exit = fadeOut()) {
@@ -254,7 +284,8 @@ fun ReaderScreen(
             )
         }
         // A book keeps its bars: the web view receives the taps (text scrolling).
-        if (state.chromeVisible || state.isBook) {
+        val barsShown = state.chromeVisible || state.isBook
+        if (barsShown) {
             TopBar(
                 state,
                 onBack,
@@ -265,10 +296,54 @@ fun ReaderScreen(
                 { contentsOpen = true },
                 Modifier.align(Alignment.TopCenter),
                 onWatch = { onIntent(ReaderIntent.ReadWithVoice) },
+                onHelp = { onIntent(ReaderIntent.ShowCoach) },
+                language = {
+                    if (!state.isBook && translationState.available) LanguageButton(translationState) { languagesOpen = true }
+                },
             )
-            BottomBar(state, onIntent, { onOpenChapter(it, 0) }, Modifier.align(Alignment.BottomCenter))
+            BottomBar(
+                state,
+                onIntent,
+                { onOpenChapter(it, 0) },
+                Modifier.align(Alignment.BottomCenter).onSizeChanged { bottomBarPx = it.height },
+            )
+        }
+        // A language on its way: the page keeps its lettering, the dock shows the cost, then the progress.
+        AnimatedVisibility(
+            translationState.dock != null && !state.isBook,
+            enter = if (state.reducedMotion) EnterTransition.None else slideInVertically { it } + fadeIn(),
+            exit = if (state.reducedMotion) ExitTransition.None else slideOutVertically { it } + fadeOut(),
+            // Above the page counter and the chapter buttons while they show: its buttons are never under the bar.
+            modifier =
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = if (barsShown) with(LocalDensity.current) { bottomBarPx.toDp() } else 0.dp),
+        ) {
+            var shown by remember { mutableStateOf(translationState.dock) }
+            translationState.dock?.let { shown = it }
+            shown?.let { dock ->
+                LanguageDock(
+                    dock.content(),
+                    onConfirm = { translation.onIntent(TranslationIntent.ConfirmOffer) },
+                    onAddKey = { keysOpen = true },
+                    onRetry = { translation.onIntent(TranslationIntent.Retry) },
+                    onClose = { translation.onIntent(TranslationIntent.CloseDock) },
+                )
+            }
+        }
+        // How to read, the first time a chapter of its kind opens: any tap closes it.
+        AnimatedVisibility(
+            state.coach != null,
+            enter = if (state.reducedMotion) EnterTransition.None else fadeIn(tween(250)),
+            exit = if (state.reducedMotion) ExitTransition.None else fadeOut(tween(250)),
+        ) {
+            var shown by remember { mutableStateOf(state.coach) }
+            state.coach?.let { shown = it }
+            shown?.let { CoachOverlay(it) { onIntent(ReaderIntent.DismissCoach) } }
         }
     }
+    if (languagesOpen) TranslationSheet(translationState, translation::onIntent) { languagesOpen = false }
+    if (keysOpen) KeysSheet { keysOpen = false }
     if (settingsOpen && !state.isBook) {
         ReaderSettingsSheet(state.settings, onIntent) {
             settingsOpen = false
@@ -667,9 +742,87 @@ internal fun TransitionCardView(
                     GhostButton(label, { onIntent(ReaderIntent.OpenPreviousChapter) })
                 }
             }
+            // Reader SPEC §11: the language is one tap away here too.
+            val language = LocalReaderLanguageAction.current
+            if (card.forward && language != null) GhostButton("文A  ${language.label}", language.open)
         }
     }
 }
+
+/**
+ * "How to read": the reader's real tap zones under a card of gesture lines. Static, no timer: the first tap anywhere
+ * closes it (and is not a page turn); the "?" in the bars brings it back.
+ */
+@Composable
+private fun CoachOverlay(
+    coach: ReaderCoach,
+    onDismiss: () -> Unit,
+) {
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(Brand.Ink.copy(alpha = if (coach.zones == null) 0.82f else 0.5f))
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClickLabel = coach.dismiss,
+                onClick = onDismiss,
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
+        coach.zones?.let { TapZonesOverlay(it) }
+        Column(
+            Modifier
+                .padding(24.dp)
+                .widthIn(max = 420.dp)
+                .background(Brand.Ink.copy(alpha = 0.94f), RoundedCornerShape(14.dp))
+                .border(2.dp, Brand.Paper.copy(alpha = 0.85f), RoundedCornerShape(14.dp))
+                .padding(22.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            Text(
+                coach.kicker.uppercase(),
+                style = MaterialTheme.typography.labelMedium.copy(color = Brand.Ink, letterSpacing = 1.6.sp),
+                modifier = Modifier.background(Brand.Yellow).padding(horizontal = 8.dp, vertical = 3.dp),
+            )
+            Text(coach.title, style = MaterialTheme.typography.headlineSmall.copy(color = Brand.Paper))
+            coach.hints.forEach { hint ->
+                val help = hint.gesture == CoachGesture.Help
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(
+                        coachGlyph(hint.gesture),
+                        style = MaterialTheme.typography.titleMedium.copy(color = if (help) Brand.Muted else Brand.Red),
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.width(26.dp),
+                    )
+                    Text(hint.text, style = MaterialTheme.typography.bodyMedium.copy(color = if (help) Brand.Muted else Brand.Paper))
+                }
+            }
+            Text(
+                coach.dismiss,
+                style = MaterialTheme.typography.labelLarge.copy(color = Brand.Ink),
+                modifier =
+                    Modifier
+                        .padding(top = 4.dp)
+                        .drawBehind {
+                            val shift = 3.dp.toPx()
+                            drawRect(Brand.Paper, topLeft = Offset(shift, shift), size = size)
+                            drawRect(Brand.Red, size = size)
+                        }.padding(horizontal = 16.dp, vertical = 10.dp),
+            )
+        }
+    }
+}
+
+/** A text pictogram per gesture (no icon library on Android). */
+private fun coachGlyph(gesture: CoachGesture): String =
+    when (gesture) {
+        CoachGesture.Tap -> "●"
+        CoachGesture.Swipe -> "⇆"
+        CoachGesture.DoubleTap -> "⊕"
+        CoachGesture.Pull -> "↧"
+        CoachGesture.Help -> "?"
+    }
 
 /** The tap zones for a moment: red goes forward, cyan goes back, ink opens the menu. */
 @Composable
@@ -837,6 +990,9 @@ internal fun PageImage(
         }
         return
     }
+    // The reader's language: the translated lettering over the page, in a box of the page's own shape (the image
+    // may be fitted inside a larger area).
+    val lettering = LocalPageLettering.current(page.index)
     // A page fitted to the screen keeps the reader's black around it once loaded (as on iOS), not the placeholder's grey.
     Box(sized.background(if (loading || reserve) Brand.Ink2 else Color.Transparent)) {
         AsyncImage(
@@ -860,6 +1016,11 @@ internal fun PageImage(
             },
             modifier = Modifier.matchParentSize(),
         )
+        if (lettering.isNotEmpty()) {
+            Box(Modifier.matchParentSize(), contentAlignment = Alignment.Center) {
+                LetteringOverlay(lettering, Modifier.aspectRatio(ratio))
+            }
+        }
         // Still loading: says so (a slow source left a blank page). Near the top of a tall page, where it is seen.
         if (loading) {
             CircularProgressIndicator(
@@ -883,6 +1044,8 @@ private fun TopBar(
     onContents: () -> Unit,
     modifier: Modifier,
     onWatch: () -> Unit = {},
+    onHelp: () -> Unit = {},
+    language: @Composable () -> Unit = {},
 ) {
     Row(
         modifier.fillMaxWidth().background(Brand.Ink.copy(alpha = 0.92f)).padding(horizontal = 16.dp, vertical = 12.dp),
@@ -913,6 +1076,17 @@ private fun TopBar(
                         .padding(start = 16.dp, top = 4.dp, bottom = 4.dp),
             )
         }
+        language()
+        val help = I18n.text("reader.coach.show")
+        Text(
+            "?",
+            style = MaterialTheme.typography.titleMedium.copy(color = Brand.Muted),
+            modifier =
+                Modifier
+                    .clickable(onClickLabel = help, onClick = onHelp)
+                    .semantics { contentDescription = help }
+                    .padding(start = 16.dp, top = 4.dp, bottom = 4.dp),
+        )
         if (state.isBook && state.book.contents.isNotEmpty()) {
             Icon(
                 AppIcons.Contents,
@@ -1041,22 +1215,18 @@ private fun BottomBarRow(
             )
             return@Row
         }
-        state.previousChapterId?.let { previous ->
+        // Chapters, not pages (pages turn with taps and swipes); right to left puts the next one on the left.
+        state.chapterButtons.forEachIndexed { index, button ->
+            if (index > 0) Spacer(Modifier.width(20.dp))
             Text(
-                I18n.text("reader.previousArrow"),
-                style = MaterialTheme.typography.bodySmall,
-                modifier =
-                    Modifier.clickable {
-                        onOpenChapter(previous)
+                button.label,
+                style =
+                    if (button.forward) {
+                        MaterialTheme.typography.labelLarge.copy(color = Brand.Red)
+                    } else {
+                        MaterialTheme.typography.bodySmall
                     },
-            )
-            Spacer(Modifier.width(20.dp))
-        }
-        state.nextChapterId?.let { next ->
-            Text(
-                I18n.text("reader.nextArrow"),
-                style = MaterialTheme.typography.labelLarge.copy(color = Brand.Red),
-                modifier = Modifier.clickable { onOpenChapter(next) },
+                modifier = Modifier.clickable { onOpenChapter(button.chapterId) },
             )
         }
     }

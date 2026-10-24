@@ -2,7 +2,7 @@ package com.vovoscan.core.sources
 
 /**
  * Test manifests: Gutenberg 1.0.0 (Gutendex JSON API with required settings, the backend's `gutendex.json`) and the
- * fake HTML site from the backend tests (`inkwell.json`).
+ * fake HTML site from the backend tests (`inkwell.json`, with its ratings).
  */
 internal object Fixtures {
     val gutenberg =
@@ -101,12 +101,14 @@ internal object Fixtures {
   "langs": ["en"],
   "rights": {"basis": "licensed", "notes": "Test fixture: an HTML comic site under licence."},
   "hosts": ["comics.inkwell.example"],
+  "ratings": {"default": "safe", "map": {"18+": "erotica", "mature": "suggestive"}},
   "catalog": {
     "request": {"url": "https://comics.inkwell.example/browse", "type": "html", "query": {"p": "{{page}}", "q": "{{search}}"}},
     "list": {"css": "div.card"},
     "item": {
       "id": {"css": "a", "attr": "href", "then": [{"regex": "/series/([a-z0-9-]+)"}]},
       "name": {"css": "h3", "then": ["trim"]},
+      "contentRating": {"css": ".rating", "then": ["trim"]},
       "cover": {"css": "img", "attr": "src", "then": ["absUrl"]},
       "format": {"css": ".tag", "then": ["trim", "lower", {"map": {"vertical": "webtoon"}, "default": "manga"}]}
     },
@@ -116,6 +118,7 @@ internal object Fixtures {
     "request": {"url": "https://comics.inkwell.example/series/{{id}}", "type": "html"},
     "fields": {
       "name": {"css": "h1", "then": ["trim"]},
+      "contentRating": {"css": ".rating", "then": ["trim"]},
       "description": {"css": ".synopsis", "then": ["collapseSpaces"]},
       "authors": {"css": ".author", "all": true, "then": ["trim"]}
     },

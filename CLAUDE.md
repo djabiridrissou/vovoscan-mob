@@ -113,7 +113,10 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
 - Third-party sources (user plugins, spec v1): added from a link (single manifest or `repo.json`, GitHub pages
   resolved to raw files) or a `.vovo` file, private to the user, not reviewed by vovoscan. `core/sources` has the
   pure parts (`PluginLinks`, `PluginFetcher`: https only, no session, ≤ 3 redirects, byte limits; `RepositoryIndex`,
-  `ManifestCheck`, `Semver`, `VovoPackageReader`, `sha256Hex`). `feature/sources` stores them in the same `source`
+  `ManifestCheck`, `Semver`, `VovoPackageReader`, `sha256Hex`). A repository entry is reviewed before anything is installed
+  (`AddSourceUiState.review`: hosts, `rateLimit.requestsPerMinute`, rights, the third-party warning; `ConfirmReview` /
+  `CancelReview`; an update's review names its new hosts and stands for their confirmation), like a link's or a file's
+  preview; every source's details show its request cap. `feature/sources` stores them in the same `source`
   table (so `ManifestProvider` serves them), queues writes in `plugin_outbox` (`PUT/DELETE api/v1/plugins`,
   `api/v1/plugin-repositories`), keeps verified updates in `plugin_extra`. Removal goes through the
   `SourceRemovedListener` port, wired in `shared` to the catalog and reader caches.
@@ -346,7 +349,8 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
 - Modes (`ReadingMode`): `PagedRightToLeft`, `PagedLeftToRight`, `PagedVertical` (one page at a time), `LongStrip`
   (continuous, no gap: webtoons), `LongStripGaps` (16 dp/pt between pages); `Book` for books. `ReadingModes.resolve`:
   the mode chosen for the series (`series_mode`, per `(sourceKey, titleId)`), else the user's default for the format
-  (manga / webtoon), else `LongStrip` for every format ("Continuous", reader/SPEC.md shared with the web reader).
+  (manga / webtoon), else the format's own style (reader/SPEC.md §1b, shared with the web reader): a webtoon
+  `LongStrip` ("Continuous"), a manga `PagedRightToLeft`, a comic `PagedLeftToRight`.
   Switching keeps the page.
 - Format recognition (`ComicFormat`: `Manga` right to left, `Webtoon`, `Comic` left to right when paged): the source's
   word first (our API's `format`; a plugin's own labels "Long Strip", "Web Comic", manhwa, manhua, BD; an original
@@ -424,8 +428,15 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   that page at once, its top at the top of the screen, in every mode (a tall page from its top); the zoom goes back to
   1× and the bars stay. A strip counts the jump as moved (its next reports follow from there). TalkBack / VoiceOver
   adjustments jump at once.
-- Overlay (red next, cyan previous, ink menu, ~1.5 s): on the reader's first opening on the device, then when the
-  zones change (layout, invert, or a mode that changes them), after the settings sheet closes; "Show tap zones" off
+- "How to read" guide (reader SPEC §10, `ReaderCoach`, `CoachKind` Manga / Webtoon / Comic / Book): the first chapter
+  of each format the account opens shows a static card (the real tap zones, one line per gesture for the mode it
+  reads in); the first tap anywhere closes it and is not a page turn; the "?" in the top bar (`ShowCoach`) brings it
+  back. Seen once per format per account (`CoachSync`, wired in `shared` to `GET /settings/reading` `coached` and
+  `PUT /settings/reading/coached/{kind}`; books stay on the device), kept on the device too (`ReaderPreferences.
+  coachSeen`, `reader_setting` "coachSeen") so it never flashes while the account's list loads; seen offline is told
+  to the account when a reader next opens.
+- Overlay (red next, cyan previous, ink menu, ~1.5 s): on the first chapter of a kind whose coach was already seen,
+  then when the zones change (layout, invert, or a mode that changes them), after the settings sheet closes; "Show tap zones" off
   never shows it.
 - Settings sheet (gear in the top bar), kept on the device in the reader's database (`reader_setting` key-value
   table, `series_mode`; migration `2.sqm`), no backend: mode for this series (+ Reset to default; "Default for this
@@ -567,6 +578,15 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
 - `/auth/me` (`UserDto`) reads both server generations: `displayName`/`roleName` (v1) and `name`/`role` (unified API),
   plus `isSuperAdmin`, `permissions`, `features`, `emailVerified`. `Session.has(feature)`: a super-admin has every
   feature. `Session.isCreator` = `titles:create`.
+- Safe mode (per account, on by default): `showAdult` on `/auth/me`, switched in Settings › Preferences (`PreferencesViewModel`:
+  on applies at once; off asks "I'm 18 or older" first, then `PUT api/v1/settings/content {showAdult, confirmAdult}`;
+  online only, never queued). Ratings: `ContentRating` (`core/common`: `safe | suggestive | erotica | pornographic`,
+  null = unknown); the rule `ContentRating.shown`: safe mode shows only `safe` (unknown hidden too). The server filters
+  what it serves; the device applies the same rule to titles read on the device: `RulesSource` reads
+  `catalog.item.contentRating` (mapped by the manifest's `ratings.map`, a value off the scale and unmapped = unknown;
+  nothing read = `ratings.default`), stored in `title.content_rating` (catalog `3.sqm`), and `CatalogViewModel` filters
+  listings and search through the `ContentPolicy` port (wired in `shared` to the session; signed out = safe) with one
+  line when titles were hidden (`safeNote`). A manifest without ratings has every title unknown, so hidden in safe mode.
 - `video` gates episodes: the `EpisodeAccess` port (episodes domain, wired in `shared` to the session) turns the
   episode card into "Episodes are coming soon." with no action (`EpisodeUiState.comingSoon`); a server answer
   `FEATURE_DISABLED` / `FEATURE_COMING_SOON` does the same. The server checks every call again.
@@ -598,7 +618,7 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   `SpeedLines` (deterministic, drawn with `Canvas`). Ink tab and navigation bars, red selection, a selection haptic per
   tab. Every animation is skipped under Reduce Motion.
 
-## Translated reader (`TranslationViewModel`, `iosApp/Sources/TranslationViews.swift`)
+## Translated reader (`TranslationViewModel`, iOS `TranslationViews.swift`, Android `ui/reader/{Lettering,TranslationSheet}.kt`)
 
 - Chapters of our catalog only (`sourceKey == "vovoscan"`): a language button in the reader's top bar opens a
   searchable picker (own name, English name or code), languages already made first ("Ready": shared, free).
@@ -611,6 +631,13 @@ could); `adb reverse tcp:8000 tcp:8000` with `-Pvovoscan.apiBaseUrl=http://local
   balloon's interior when known, ellipse for round balloons) and the rectangle the translation is fitted in, as
   fractions of the page. iOS draws them in `LetteringOverlay` over each `PageImage` (any mode, any zoom). `Language.ALL`
   (`core/common`) mirrors the server's `LANGUAGES` (48 entries).
+
+- Any time, from the reader's bar: a language already made switches at once (free); one nobody made yet is quoted first
+  (`TranslationQuotes` port, wired in `shared` to `POST api/v1/quotes` kind `translation`): `TranslationOffer` "Translate
+  into Yorùbá?" with "Your own key pays for it", "About 12 credits", or, when nobody can pay, "Add a key" (the keys open
+  inside the sheet, the reader stays); nothing is asked before "Translate". Then progress, and the page swaps its
+  lettering. Android draws it with `LetteringOverlay` over every page (`LocalPageLettering`, in a box of the page's
+  shape).
 
 ## Screens (account and episodes)
 

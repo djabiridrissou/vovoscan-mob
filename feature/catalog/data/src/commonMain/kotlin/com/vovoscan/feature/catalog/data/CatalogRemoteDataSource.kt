@@ -23,6 +23,7 @@ data class TitleSummaryDto(
     val kind: String = "comic",
     val format: String,
     val status: String,
+    val contentRating: String? = null,
 )
 
 @Serializable
@@ -42,6 +43,7 @@ data class TitleDetailDto(
     val kind: String = "comic",
     val format: String,
     val status: String,
+    val contentRating: String? = null,
     val description: String = "",
     val authors: List<String> = emptyList(),
     val genres: List<String> = emptyList(),
@@ -170,6 +172,7 @@ class OnDeviceCatalogRemoteDataSource(
                 kind = title.summary.kind,
                 format = title.summary.format,
                 status = title.summary.status,
+                contentRating = title.summary.contentRating,
                 description = title.description,
                 authors = title.authors,
                 genres = title.genres,
@@ -178,7 +181,8 @@ class OnDeviceCatalogRemoteDataSource(
             )
         } ?: unknown()
 
-    private fun dto(item: RulesTitleSummary) = TitleSummaryDto(item.id, item.name, item.coverUrl, item.kind, item.format, item.status)
+    private fun dto(item: RulesTitleSummary) =
+        TitleSummaryDto(item.id, item.name, item.coverUrl, item.kind, item.format, item.status, item.contentRating)
 
     private fun <T> unknown(): AppResult<T> =
         AppResult.Err(

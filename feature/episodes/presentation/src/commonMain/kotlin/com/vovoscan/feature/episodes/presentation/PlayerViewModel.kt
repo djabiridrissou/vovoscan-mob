@@ -4,14 +4,22 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.vovoscan.core.common.AppResult
 import com.vovoscan.core.common.Clock
+import com.vovoscan.core.common.Language
 import com.vovoscan.core.common.SystemClock
 import com.vovoscan.core.common.i18n.t
+import com.vovoscan.feature.episodes.domain.Episode
+import com.vovoscan.feature.episodes.domain.EpisodeStatus
 import com.vovoscan.feature.episodes.domain.EpisodesRepository
+import com.vovoscan.feature.episodes.domain.PipelineStage
+import com.vovoscan.feature.episodes.domain.PrepareResult
+import com.vovoscan.feature.episodes.domain.RunCost
+import com.vovoscan.feature.episodes.domain.RunQuotes
 import com.vovoscan.feature.episodes.domain.Watch
 import com.vovoscan.feature.episodes.domain.player.CaptionPlacement
 import com.vovoscan.feature.episodes.domain.player.PlaybackPlan
 import com.vovoscan.feature.episodes.domain.player.PlayerFrame
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -26,6 +34,29 @@ data class SpeedOption(
     /** "1.25×". */
     val label: String,
     val selected: Boolean,
+)
+
+/**
+ * The panel docked over a playing episode while another language is not ready (reader SPEC §11): its cost first, then
+ * its progress while the episode keeps playing; once ready the player switches to it at the same page. Never a dead
+ * end: Make it, Add your own key, Try again, or back to the language playing.
+ */
+data class PlayerLanguageDock(
+    val code: String,
+    val title: String,
+    val line: String?,
+    /** 0..1 for the bar while it is made; null: no bar. */
+    val progress: Float?,
+    /** A spinner: the cost is being checked, the run waits in the queue, or the switch loads. */
+    val busy: Boolean,
+    /** "Make it", when the run can be paid. */
+    val startLabel: String?,
+    /** "Add your own key" when the account's key would pay (always when nothing else can). */
+    val addKeyLabel: String?,
+    val retryLabel: String?,
+    /** "Not now" / "Cancel" / "Close" ([PlayerIntent.CloseLanguageDock]). */
+    val closeLabel: String,
+    val failed: Boolean,
 )
 
 data class PlayerUiState(
@@ -52,6 +83,16 @@ data class PlayerUiState(
     val nextChapterId: String? = null,
     /** Page images to warm in the image cache. */
     val pageUrls: List<String> = emptyList(),
+    /** The language playing ("" = the original). */
+    val language: String = "",
+    /** The language button: "Original", "Français". */
+    val languageLabel: String = EpisodeText.ORIGINAL,
+    /** "Dubbed" / "Subtitled" for another language; null for the original. */
+    val languageMode: String? = null,
+    /** The picker's rows, filtered by [languageQuery]. */
+    val languageOptions: List<EpisodeLanguageOption> = emptyList(),
+    val languageQuery: String = "",
+    val languageDock: PlayerLanguageDock? = null,
 ) {
     val speeds: List<SpeedOption> get() = PlayerViewModel.SPEEDS.map { SpeedOption(it, EpisodeText.speed(it), it == speed) }
 
@@ -127,6 +168,24 @@ sealed interface PlayerIntent {
     ) : PlayerIntent
 
     data object Retry : PlayerIntent
+
+    /** Another language (null: the original): at once when it exists, else quoted in the dock first. */
+    data class ChooseLanguage(
+        val code: String?,
+    ) : PlayerIntent
+
+    data class LanguageQuery(
+        val text: String,
+    ) : PlayerIntent
+
+    /** The dock's "Make it". */
+    data object StartLanguage : PlayerIntent
+
+    /** The dock's "Try again". */
+    data object RetryLanguage : PlayerIntent
+
+    /** The dock's "Not now" / "Cancel" / "Close": the episode goes on in the language playing. */
+    data object CloseLanguageDock : PlayerIntent
 }
 
 /**
@@ -141,11 +200,17 @@ class PlayerViewModel(
     private val repository: EpisodesRepository,
     private val clock: Clock = SystemClock,
     /** The episode's language, from the card that opened the player ("" = the original). */
-    private val lang: String = "",
+    language: String = "",
     /** Opened from the reader ("Watch the episode from here"): start on the first beat of this chapter page. */
     private val startPage: Int? = null,
+    /** What another language would cost this account (wired in `shared` to the wallet). */
+    private val quotes: RunQuotes = RunQuotes.None,
 ) : ViewModel() {
     private val mutableState = MutableStateFlow(PlayerUiState(nextChapterId = nextChapterId))
+
+    /** The language playing; changes when another one is ready ([switchTo]). */
+    private var lang = language.takeIf { Language.of(it) != null }.orEmpty()
+    private var languageJob: Job? = null
     val state: StateFlow<PlayerUiState> = mutableState.asStateFlow()
 
     /** The loaded plan; null until the watch is there. */
@@ -160,6 +225,7 @@ class PlayerViewModel(
     private var lastMediaRefresh: Long? = null
 
     init {
+        renderLanguages()
         load(force = false)
     }
 
@@ -187,6 +253,214 @@ class PlayerViewModel(
                 load(force = true)
             }
             PlayerIntent.Retry -> load(force = true)
+            is PlayerIntent.ChooseLanguage -> chooseLanguage(intent.code?.takeIf { Language.of(it) != null }.orEmpty())
+            is PlayerIntent.LanguageQuery -> {
+                mutableState.update { it.copy(languageQuery = intent.text) }
+                renderLanguages()
+            }
+            PlayerIntent.StartLanguage ->
+                state.value.languageDock
+                    ?.takeIf { it.startLabel != null }
+                    ?.let { start(it.code) }
+            PlayerIntent.RetryLanguage -> state.value.languageDock?.let { chooseLanguage(it.code, retry = true) }
+            PlayerIntent.CloseLanguageDock -> {
+                languageJob?.cancel()
+                mutableState.update { it.copy(languageDock = null) }
+            }
+        }
+    }
+
+    /**
+     * Reader SPEC §11 in the player. A language already made switches at once, at the same page; one being made is
+     * followed; one nobody made yet is quoted in the dock first (nothing is paid before "Make it"). The episode plays on
+     * meanwhile.
+     */
+    private fun chooseLanguage(
+        code: String,
+        retry: Boolean = false,
+    ) {
+        if (!retry &&
+            (
+                code == lang ||
+                    state.value.languageDock
+                        ?.takeIf { !it.failed }
+                        ?.code == code
+            )
+        ) {
+            return
+        }
+        languageJob?.cancel()
+        dock(code, title = EpisodeText.switching(code), busy = true)
+        languageJob =
+            viewModelScope.launch {
+                when (val known = repository.refresh(chapterId, code)) {
+                    is AppResult.Err -> failed(code, EpisodeText.runError(known.error))
+                    is AppResult.Ok -> {
+                        val episode = known.value
+                        when {
+                            episode != null && episode.status == EpisodeStatus.Ready && !episode.outdated -> switchTo(code)
+                            episode != null && episode.status.active -> follow(code)
+                            else -> offer(code)
+                        }
+                    }
+                }
+            }
+    }
+
+    private suspend fun offer(code: String) {
+        dock(code, title = EpisodeText.CHECKING, busy = true)
+        val cost = quotes.episode(chapterId, code)
+        if (cost?.alreadyAvailable == true) return start(code)
+        val payable = cost == null || cost.coveredByOwnKeys || cost.fundable
+        dock(
+            code,
+            title = t("player.lang.offer", "language" to native(code)),
+            line = if (payable) offerLine(cost) else t("player.lang.unfunded"),
+            startLabel = t("player.lang.start").takeIf { payable },
+            addKeyLabel = t("player.lang.addKey").takeIf { cost != null && !cost.coveredByOwnKeys },
+            closeLabel = EpisodeText.NOT_NOW,
+        )
+    }
+
+    private fun offerLine(cost: RunCost?): String? =
+        when {
+            cost == null -> null
+            cost.coveredByOwnKeys -> EpisodeText.cost(cost)
+            !cost.meteredRun -> t("player.lang.free")
+            else -> EpisodeText.cost(cost)
+        }
+
+    private fun start(code: String) {
+        languageJob?.cancel()
+        dock(code, title = making(code), line = EpisodeText.KEEP_WATCHING, busy = true)
+        languageJob =
+            viewModelScope.launch {
+                when (val asked = repository.prepare(chapterId, code)) {
+                    is AppResult.Err ->
+                        failed(code, EpisodeText.runError(asked.error), addKey = EpisodeText.creditError(asked.error) != null)
+                    is AppResult.Ok ->
+                        when (asked.value) {
+                            is PrepareResult.AlreadyReady -> switchTo(code)
+                            is PrepareResult.Queued, is PrepareResult.Busy -> follow(code)
+                        }
+                }
+            }
+    }
+
+    /** Follows the run (its progress in the dock) while the episode plays, then switches. */
+    private suspend fun follow(code: String) {
+        dock(code, title = making(code), line = EpisodeText.KEEP_WATCHING, busy = true)
+        val result =
+            coroutineScope {
+                // A child of the follow: closing the dock stops both.
+                val progress =
+                    launch {
+                        repository.observe(chapterId, code).collect { episode ->
+                            if (episode != null && episode.status.active) {
+                                val share = overall(episode)
+                                dock(
+                                    code,
+                                    title = making(code),
+                                    line =
+                                        listOfNotNull(
+                                            share?.let { t("player.lang.percent", "percent" to (it * 100).toInt()) },
+                                            EpisodeText.KEEP_WATCHING,
+                                        ).joinToString(" ✦ "),
+                                    progress = share,
+                                    busy = share == null,
+                                )
+                            }
+                        }
+                    }
+                repository.follow(chapterId, code).also { progress.cancel() }
+            }
+        when {
+            result is AppResult.Err -> failed(code, EpisodeText.runError(result.error))
+            (result as AppResult.Ok).value?.status == EpisodeStatus.Ready -> switchTo(code)
+            else -> failed(code, result.value?.error ?: t("player.lang.failed"))
+        }
+    }
+
+    /** The new language's watch, at the page playing now; playback goes on as it was (playing or paused). */
+    private suspend fun switchTo(code: String) {
+        dock(code, title = EpisodeText.switching(code), busy = true)
+        when (val watch = repository.watch(chapterId, lang = code)) {
+            is AppResult.Err -> failed(code, EpisodeText.watchError(watch.error))
+            is AppResult.Ok -> {
+                val page =
+                    plan?.let { p ->
+                        p.watch.timeline.bubbles
+                            .getOrNull(p.beatAt(position))
+                            ?.page
+                    }
+                lang = code
+                plan = null
+                show(watch.value, atPage = page)
+                mutableState.update { it.copy(languageDock = null) }
+                renderLanguages()
+            }
+        }
+    }
+
+    private fun failed(
+        code: String,
+        message: String,
+        addKey: Boolean = false,
+    ) = dock(
+        code,
+        title = native(code),
+        line = message,
+        addKeyLabel = t("player.lang.addKey").takeIf { addKey },
+        retryLabel = EpisodeText.TRY_AGAIN,
+        closeLabel = EpisodeText.CLOSE,
+        failed = true,
+    )
+
+    private fun dock(
+        code: String,
+        title: String,
+        line: String? = null,
+        progress: Float? = null,
+        busy: Boolean = false,
+        startLabel: String? = null,
+        addKeyLabel: String? = null,
+        retryLabel: String? = null,
+        closeLabel: String = if (busy || progress != null) EpisodeText.CANCEL else EpisodeText.NOT_NOW,
+        failed: Boolean = false,
+    ) = mutableState.update {
+        it.copy(
+            languageDock = PlayerLanguageDock(code, title, line, progress, busy, startLabel, addKeyLabel, retryLabel, closeLabel, failed),
+        )
+    }
+
+    private fun making(code: String) = t("player.lang.making", "language" to native(code))
+
+    private fun native(code: String) = Language.of(code)?.native ?: EpisodeText.ORIGINAL
+
+    private fun renderLanguages() {
+        val chosen = Language.of(lang)
+        val needle =
+            state.value.languageQuery
+                .trim()
+                .lowercase()
+        val original = EpisodeLanguageOption(null, EpisodeText.ORIGINAL, EpisodeText.ORIGINAL_DETAIL, chosen == null)
+        val languages =
+            Language.ALL
+                .sortedBy { it.name }
+                .filter {
+                    needle.isEmpty() ||
+                        it.native.lowercase().contains(needle) ||
+                        it.name.lowercase().contains(needle) ||
+                        it.code == needle
+                }.map { EpisodeLanguageOption(it.code, it.native, EpisodeText.languageDetail(it), it.code == lang) }
+        val showOriginal = needle.isEmpty() || EpisodeText.ORIGINAL.lowercase().contains(needle)
+        mutableState.update {
+            it.copy(
+                language = lang,
+                languageLabel = chosen?.native ?: EpisodeText.ORIGINAL,
+                languageMode = chosen?.let { language -> if (language.dub) EpisodeText.DUBBED else EpisodeText.SUBTITLED },
+                languageOptions = (if (showOriginal) listOf(original) else emptyList()) + languages,
+            )
         }
     }
 
@@ -279,13 +553,18 @@ class PlayerViewModel(
             }
     }
 
-    private fun show(watch: Watch) {
+    private fun show(
+        watch: Watch,
+        atPage: Int? = startPage,
+    ) {
         val before = plan
         val next = PlaybackPlan(watch)
         plan = next
         // Same render with fresh URLs: playback goes on where it was; another render (rerun): from its start.
         if (before != null && before.watch.renderKey != watch.renderKey) position = 0.0
-        if (before == null && startPage != null) next.firstBeatFrom(startPage)?.let { position = next.beatStartMs(it) }
+        // First load from "Watch from here", or another language: the first beat of that chapter page.
+        if (before == null && atPage != null) next.firstBeatFrom(atPage)?.let { position = next.beatStartMs(it) }
+        lastTick = Double.NaN
         position = position.coerceIn(0.0, next.durationMs)
         mutableState.update {
             it.copy(
@@ -318,6 +597,18 @@ class PlayerViewModel(
     }
 
     companion object {
+        /** A run's share done (0..1) from its stage and the stage's own count; null while queued or unknown. */
+        fun overall(episode: Episode): Float? {
+            val stages = PipelineStage.entries.filter { it != PipelineStage.Translate || episode.language.isNotEmpty() }
+            val stage = episode.stage ?: return null
+            if (episode.status == EpisodeStatus.Queued) return null
+            val index = stages.indexOf(stage).takeIf { it >= 0 } ?: return null
+            val done = episode.progress?.done
+            val total = episode.progress?.total
+            val within = if (done != null && total != null && total > 0) (done.toFloat() / total).coerceIn(0f, 1f) else 0f
+            return ((index + within) / stages.size).coerceIn(0f, 1f)
+        }
+
         val SPEEDS = listOf(0.75, 1.0, 1.25, 1.5)
         private const val MAX_STEP_MS = 250.0
         private const val MEDIA_RETRY_MS = 30_000L

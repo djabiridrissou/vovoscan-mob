@@ -12,9 +12,11 @@ import com.vovoscan.feature.reader.domain.BookSection
 import com.vovoscan.feature.reader.domain.BookTheme
 import com.vovoscan.feature.reader.domain.BookTypography
 import com.vovoscan.feature.reader.domain.ChapterHeadings
+import com.vovoscan.feature.reader.domain.CoachKind
 import com.vovoscan.feature.reader.domain.DownloadableChapter
 import com.vovoscan.feature.reader.domain.DownloadableTitle
 import com.vovoscan.feature.reader.domain.ReaderChapter
+import com.vovoscan.feature.reader.domain.ReaderPreferences
 import com.vovoscan.feature.reader.domain.ReaderRepository
 import com.vovoscan.feature.reader.domain.ReadingMode
 import com.vovoscan.feature.reader.domain.TitleChapters
@@ -119,6 +121,9 @@ class BookReaderTest {
     @AfterTest
     fun tearDown() = Dispatchers.resetMain()
 
+    // The first-open coach already closed for every kind (`ReaderCoachTest`).
+    private val coached = ReaderPreferences(coachSeen = CoachKind.entries.toSet())
+
     private fun TestScope.reader(
         startPage: Int = 0,
         books: BookReadingRepository = BookReadingRepository.InMemory(),
@@ -132,7 +137,7 @@ class BookReaderTest {
                 "b1",
                 startPage,
                 reader,
-                FakeSettings(),
+                FakeSettings(coached),
                 noHeadings,
                 books = books,
                 parts = parts,
@@ -240,7 +245,7 @@ class BookReaderTest {
     fun theSectionReadIsSavedInTheLibraryWhenLeavingBeforeThePause() =
         runTest(dispatcher) {
             val saved = mutableListOf<Int>()
-            val vm = ReaderViewModel("rules", "t1", "b1", 0, Reader(), FakeSettings(), noHeadings) { _, _, _, page -> saved += page }
+            val vm = ReaderViewModel("rules", "t1", "b1", 0, Reader(), FakeSettings(coached), noHeadings) { _, _, _, page -> saved += page }
             advanceUntilIdle()
             vm.onIntent(ReaderIntent.Next)
             ViewModelStore().apply { put("reader", vm) }.clear()

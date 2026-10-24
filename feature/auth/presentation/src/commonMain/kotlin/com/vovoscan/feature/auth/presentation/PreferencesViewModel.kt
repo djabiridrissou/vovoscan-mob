@@ -10,6 +10,7 @@ import com.vovoscan.core.common.i18n.UiLanguage
 import com.vovoscan.core.common.i18n.UiLocales
 import com.vovoscan.core.common.i18n.t
 import com.vovoscan.core.common.userMessage
+import com.vovoscan.feature.auth.domain.AccountRepository
 import com.vovoscan.feature.auth.domain.AuthRepository
 import com.vovoscan.feature.auth.domain.Change
 import com.vovoscan.feature.auth.domain.ProfileChange
@@ -24,7 +25,18 @@ import kotlinx.coroutines.launch
 data class PreferencesUiState(
     val language: LanguageChoiceUi = LanguageChoiceUi(),
     val error: String? = null,
+    /** Safe mode: only titles rated for all audiences (unrated ones hidden too). On by default. */
+    val safeMode: Boolean = true,
+    /** Turning safe mode off asks first ("I'm 18 or older"). */
+    val confirmingAdult: Boolean = false,
+    val savingSafeMode: Boolean = false,
 ) {
+    val safeModeTitle: String get() = t("prefs.safe.title")
+    val safeModeHelp: String get() = t("prefs.safe.help")
+    val adultTitle: String get() = t("prefs.safe.confirmTitle")
+    val adultBody: String get() = t("prefs.safe.confirmBody")
+    val adultAction: String get() = t("prefs.safe.confirmAction")
+
     val lead: String get() = t("prefs.lead")
     val tourTitle: String get() = t("prefs.tour.title")
     val tourLead: String get() = t("prefs.tour.lead")
@@ -47,6 +59,15 @@ sealed interface PreferencesIntent {
         val code: String?,
     ) : PreferencesIntent
 
+    /** The switch: on applies at once; off asks first ([ConfirmAdult] / [CancelAdult]). */
+    data class SetSafeMode(
+        val on: Boolean,
+    ) : PreferencesIntent
+
+    data object ConfirmAdult : PreferencesIntent
+
+    data object CancelAdult : PreferencesIntent
+
     data object DismissMessage : PreferencesIntent
 }
 
@@ -57,6 +78,7 @@ sealed interface PreferencesIntent {
  */
 class PreferencesViewModel(
     private val auth: AuthRepository,
+    private val account: AccountRepository,
     private val uiLanguage: UiLanguage,
     private val clock: Clock = SystemClock,
 ) : ViewModel() {
@@ -80,7 +102,31 @@ class PreferencesViewModel(
                 query = ""
                 save(ProfileChange(region = Change.Set(intent.code))) { uiLanguage.choose(I18n.locale.value, intent.code) }
             }
+            is PreferencesIntent.SetSafeMode ->
+                if (intent.on) {
+                    showAdult(false)
+                } else if (state.value.safeMode) {
+                    mutableState.update { it.copy(confirmingAdult = true) }
+                }
+            PreferencesIntent.ConfirmAdult -> {
+                mutableState.update { it.copy(confirmingAdult = false) }
+                showAdult(true)
+            }
+            PreferencesIntent.CancelAdult -> mutableState.update { it.copy(confirmingAdult = false) }
             PreferencesIntent.DismissMessage -> mutableState.update { it.copy(error = null) }
+        }
+    }
+
+    /** Online only, never queued: what can be shown changes only once the server agrees. */
+    private fun showAdult(on: Boolean) {
+        if (state.value.savingSafeMode) return
+        mutableState.update { it.copy(savingSafeMode = true, error = null) }
+        viewModelScope.launch {
+            val result = account.setShowAdult(on)
+            mutableState.update {
+                it.copy(savingSafeMode = false, error = (result as? AppResult.Err)?.error?.userMessage())
+            }
+            render()
         }
     }
 
@@ -100,6 +146,11 @@ class PreferencesViewModel(
 
     private fun render() {
         val session = auth.session.value
-        mutableState.update { it.copy(language = LanguageChoice.build(I18n.region, query, clock, session?.timeZone)) }
+        mutableState.update {
+            it.copy(
+                language = LanguageChoice.build(I18n.region, query, clock, session?.timeZone),
+                safeMode = session?.showAdult != true,
+            )
+        }
     }
 }

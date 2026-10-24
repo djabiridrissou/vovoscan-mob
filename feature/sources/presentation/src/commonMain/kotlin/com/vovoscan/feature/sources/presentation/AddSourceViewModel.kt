@@ -100,6 +100,11 @@ data class AddSourceUiState(
     val repository: RepositoryListingUi? = null,
     /** Step 1 of an update that reaches new hosts: "This version also connects to: …" (ConfirmHosts / CancelHosts). */
     val hostsConfirmation: String? = null,
+    /**
+     * A repository entry about to be installed or updated: what it is, the hosts it connects to, its request cap and
+     * its rights, confirmed before anything is installed (`ConfirmReview` / `CancelReview`).
+     */
+    val review: SourcePreviewUi? = null,
     /** Settings to fill before the source is enabled (ConfirmSettings / CancelSettings); empty: no form. */
     val settingsForm: List<SettingFieldUi> = emptyList(),
     /** "Settings for Project Gutenberg". */
@@ -148,6 +153,10 @@ sealed interface AddSourceIntent {
     data class InstallEntry(
         val key: String,
     ) : AddSourceIntent
+
+    data object ConfirmReview : AddSourceIntent
+
+    data object CancelReview : AddSourceIntent
 
     data object ConfirmHosts : AddSourceIntent
 
@@ -217,6 +226,13 @@ class AddSourceViewModel(
                 )
             is AddSourceIntent.InstallEntry -> installEntry(intent.key)
             is AddSourceIntent.EnableOfficial -> enableOfficial(intent.key)
+            AddSourceIntent.ConfirmReview -> {
+                val candidate = pending?.takeIf { state.value.review != null } ?: return
+                // The review showed the new hosts of an update: no second confirmation.
+                mutableState.update { it.copy(review = null) }
+                askSettingsOrInstall(candidate)
+            }
+            AddSourceIntent.CancelReview -> cancelPending()
             AddSourceIntent.ConfirmHosts -> {
                 val candidate = pending ?: return
                 mutableState.update { it.copy(hostsConfirmation = null) }
@@ -321,9 +337,21 @@ class AddSourceViewModel(
                     refreshListing()
                     mutableState.update { it.copy(error = result.error.userMessage()) }
                 }
-                is AppResult.Ok -> start(result.value)
+                is AppResult.Ok -> review(result.value)
             }
         }
+    }
+
+    /** A repository entry: reviewed first (hosts, request cap, rights), like a link or a file's preview. */
+    private fun review(candidate: PluginCandidate) {
+        candidate.blocker?.let { blocker ->
+            finishBusy()
+            mutableState.update { it.copy(error = blocker) }
+            return
+        }
+        pending = candidate
+        edits = emptyMap()
+        mutableState.update { it.copy(review = preview(candidate)) }
     }
 
     /** First step of an install: blockers, then the new hosts of an update, then the settings form. */
@@ -417,7 +445,7 @@ class AddSourceViewModel(
         pending = null
         edits = emptyMap()
         finishBusy()
-        mutableState.update { it.copy(hostsConfirmation = null, settingsForm = emptyList(), settingsTitle = null) }
+        mutableState.update { it.copy(hostsConfirmation = null, review = null, settingsForm = emptyList(), settingsTitle = null) }
     }
 
     private fun finishBusy() {

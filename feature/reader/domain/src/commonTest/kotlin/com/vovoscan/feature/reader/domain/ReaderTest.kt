@@ -7,7 +7,8 @@ class ReaderTest {
     @Test
     fun readingMode() {
         assertEquals(ReadingMode.LongStrip, ReadingMode.from("comic", "webtoon"))
-        assertEquals(ReadingMode.LongStrip, ReadingMode.from("comic", "manga"))
+        assertEquals(ReadingMode.PagedRightToLeft, ReadingMode.from("comic", "manga"))
+        assertEquals(ReadingMode.PagedLeftToRight, ReadingMode.from("comic", "comic"))
         assertEquals(ReadingMode.Book, ReadingMode.from("book", "text"))
     }
 

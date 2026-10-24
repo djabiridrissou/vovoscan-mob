@@ -226,6 +226,7 @@ class SqlSourcesLocalDataSource(
             rightsBasis = info?.rightsBasis,
             rightsNotes = info?.rightsNotes,
             hosts = source.manifest?.let { SourceManifest(source.key, it, settings).allowedHosts.sorted() }.orEmpty(),
+            requestsPerMinute = source.manifest?.let { SourceManifest(source.key, it, settings).requestsPerMinute },
             settingsSpec = info?.settings?.map { it.toField() }.orEmpty(),
             settings = settings,
             originUrl = source.originUrl,

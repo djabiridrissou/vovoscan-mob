@@ -149,6 +149,15 @@ interface ReadingSettingsRepository {
 
     /** Needs the network, like the model. */
     suspend fun setTargetLanguage(code: String): AppResult<String>
+
+    /**
+     * The reading formats (`manga`, `webtoon`, `comic`) whose reader guide this account has seen (reader SPEC §10);
+     * `Rejected(COACHED_UNSUPPORTED)` from a server without that slot (the device keeps its own copy meanwhile).
+     */
+    suspend fun coached(): AppResult<Set<String>> = AppResult.Ok(emptySet())
+
+    /** One more guide seen, on the account (idempotent). */
+    suspend fun markCoached(kind: String): AppResult<Unit> = AppResult.Ok(Unit)
 }
 
 interface UsageRepository {
@@ -158,3 +167,6 @@ interface UsageRepository {
         toMillis: Long?,
     ): AppResult<Usage>
 }
+
+/** A server without the account's reader-guide slot (`coached`): nothing to read there, nothing to send. */
+const val COACHED_UNSUPPORTED = "COACHED_UNSUPPORTED"

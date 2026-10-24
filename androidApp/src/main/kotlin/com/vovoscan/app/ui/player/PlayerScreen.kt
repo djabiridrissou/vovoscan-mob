@@ -4,8 +4,12 @@ import android.app.Activity
 import android.os.SystemClock
 import android.provider.Settings
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -40,6 +44,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
@@ -85,7 +90,11 @@ import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.vovoscan.app.ui.common.ErrorText
 import com.vovoscan.app.ui.common.GhostButton
+import com.vovoscan.app.ui.common.LanguageDock
 import com.vovoscan.app.ui.common.PrimaryButton
+import com.vovoscan.app.ui.common.content
+import com.vovoscan.app.ui.episode.EpisodeLanguageSheet
+import com.vovoscan.app.ui.reader.KeysSheet
 import com.vovoscan.app.ui.theme.Brand
 import com.vovoscan.core.common.i18n.I18n
 import com.vovoscan.feature.episodes.domain.player.CaptionFrame
@@ -113,7 +122,8 @@ fun PlayerScreen(
     chapterId: String,
     nextChapterId: String?,
     onClose: () -> Unit,
-    onNextChapter: (String) -> Unit,
+    /** The next chapter and the language now playing (it may have changed in the player). */
+    onNextChapter: (String, String) -> Unit,
     /** The episode's language ("" = the original). */
     language: String = "",
     /** Opened from the reader: start on this chapter page. */
@@ -165,6 +175,8 @@ fun PlayerScreen(
         }
     }
 
+    var languagesOpen by rememberSaveable { mutableStateOf(false) }
+    var keysOpen by rememberSaveable { mutableStateOf(false) }
     var controlsShown by remember { mutableStateOf(true) }
     var touches by remember { mutableIntStateOf(0) }
     LaunchedEffect(controlsShown, state.playing, touches) {
@@ -204,11 +216,45 @@ fun PlayerScreen(
                 exit = fadeOut(),
                 modifier = Modifier.fillMaxSize(),
             ) {
-                Controls(state, viewModel::onIntent, onClose) { touches += 1 }
+                Controls(state, viewModel::onIntent, onClose, { languagesOpen = true }) { touches += 1 }
             }
-            if (state.ended) EndCard(state, viewModel::onIntent, onNextChapter)
+            if (state.ended) EndCard(state, viewModel::onIntent, { languagesOpen = true }) { onNextChapter(it, state.language) }
+        }
+        // Another language on its way: the episode plays on under the dock, and switches once it is ready.
+        AnimatedVisibility(
+            state.languageDock != null,
+            enter = if (reducedMotion) EnterTransition.None else slideInVertically { it } + fadeIn(),
+            exit = if (reducedMotion) ExitTransition.None else slideOutVertically { it } + fadeOut(),
+            modifier = Modifier.align(Alignment.BottomCenter),
+        ) {
+            var shown by remember { mutableStateOf(state.languageDock) }
+            state.languageDock?.let { shown = it }
+            shown?.let { dock ->
+                LanguageDock(
+                    dock.content(),
+                    onConfirm = { viewModel.onIntent(PlayerIntent.StartLanguage) },
+                    onAddKey = {
+                        viewModel.onIntent(PlayerIntent.Pause)
+                        keysOpen = true
+                    },
+                    onRetry = { viewModel.onIntent(PlayerIntent.RetryLanguage) },
+                    onClose = { viewModel.onIntent(PlayerIntent.CloseLanguageDock) },
+                )
+            }
         }
     }
+    if (languagesOpen) {
+        EpisodeLanguageSheet(
+            state.languageOptions,
+            state.languageQuery,
+            onQuery = { viewModel.onIntent(PlayerIntent.LanguageQuery(it)) },
+            onChoose = { viewModel.onIntent(PlayerIntent.ChooseLanguage(it)) },
+        ) {
+            languagesOpen = false
+            viewModel.onIntent(PlayerIntent.LanguageQuery(""))
+        }
+    }
+    if (keysOpen) KeysSheet { keysOpen = false }
 }
 
 /** The 9:16 stage, centred and letterboxed, redrawn on every display frame. */
@@ -402,6 +448,7 @@ private fun Controls(
     state: PlayerUiState,
     send: (PlayerIntent) -> Unit,
     onClose: () -> Unit,
+    onLanguages: () -> Unit,
     onTouch: () -> Unit,
 ) {
     Box(Modifier.fillMaxSize()) {
@@ -424,6 +471,12 @@ private fun Controls(
                     modifier = Modifier.padding(end = 10.dp),
                 )
             }
+            // Reader SPEC §11: dub or captions, one tap away while it plays.
+            Pill("文A  ${state.languageLabel}", selected = state.language.isNotEmpty()) {
+                onLanguages()
+                onTouch()
+            }
+            Spacer(Modifier.width(8.dp))
             Pill(state.soundLabel, selected = !state.muted && !state.silent) {
                 if (!state.silent) send(PlayerIntent.ToggleMute)
                 onTouch()
@@ -498,6 +551,7 @@ private fun Controls(
 private fun EndCard(
     state: PlayerUiState,
     send: (PlayerIntent) -> Unit,
+    onLanguages: () -> Unit,
     onNextChapter: (String) -> Unit,
 ) {
     Centered {
@@ -514,6 +568,7 @@ private fun EndCard(
             PrimaryButton(state.replayLabel, { send(PlayerIntent.Replay) })
             val next = state.nextChapterId
             state.nextLabel?.let { label -> if (next != null) GhostButton(label, { onNextChapter(next) }) }
+            GhostButton("文A  ${I18n.text("player.lang.title")}", onLanguages)
         }
     }
 }

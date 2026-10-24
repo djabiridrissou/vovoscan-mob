@@ -29,9 +29,12 @@ struct PlayerView: View {
     @State private var touches = 0
     @State private var started = false
     @State private var scrub: Double?
-    let onNextChapter: (String) -> Void
+    @State private var languagesOpen = false
+    @State private var keysOpen = false
+    /// The next chapter's id and the language now playing (it may have changed in the player).
+    let onNextChapter: (String, String) -> Void
 
-    init(route: PlayerRoute, onNextChapter: @escaping (String) -> Void) {
+    init(route: PlayerRoute, onNextChapter: @escaping (String, String) -> Void) {
         _model = StateObject(wrappedValue: PlayerModel(chapterId: route.chapterId, nextChapterId: route.nextChapterId, language: route.language, startPage: route.startPage))
         self.onNextChapter = onNextChapter
     }
@@ -57,6 +60,35 @@ struct PlayerView: View {
                 }
                 if model.state.ended { endCard }
             }
+            // Another language on its way: the episode plays on under the dock, and switches once it is ready.
+            if let dock = model.state.languageDock {
+                LanguageDock(
+                    content: dock.content,
+                    confirm: { model.send(PlayerIntentStartLanguage.shared) },
+                    addKey: {
+                        model.send(PlayerIntentPause.shared)
+                        keysOpen = true
+                    },
+                    retry: { model.send(PlayerIntentRetryLanguage.shared) },
+                    close: { model.send(PlayerIntentCloseLanguageDock.shared) }
+                )
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .animation(reduceMotion ? nil : .spring(response: 0.35, dampingFraction: 0.85), value: model.state.languageDock == nil)
+        .sheet(isPresented: $languagesOpen) {
+            EpisodeLanguageList(
+                options: model.state.languageOptions,
+                initialQuery: model.state.languageQuery,
+                onQuery: { model.send(PlayerIntentLanguageQuery(text: $0)) },
+                onChoose: { model.send(PlayerIntentChooseLanguage(code: $0)) }
+            )
+            .presentationDetents([.medium, .large])
+            .presentationBackground(Color.brandInk2)
+        }
+        .sheet(isPresented: $keysOpen) {
+            NavigationStack { KeysScreen() }
+                .presentationBackground(Color.brandInk2)
         }
         .contentShape(Rectangle())
         .onTapGesture {
@@ -113,6 +145,12 @@ struct PlayerView: View {
                 Text(model.state.pageLabel).font(.brandBody(13)).foregroundStyle(Color.brandPaper)
                 Spacer()
                 if model.state.offline { Text(L("common.offlineShort")).font(.brandBody(13)).foregroundStyle(Color.brandMuted) }
+                // Reader SPEC §11: dub or captions, one tap away while it plays.
+                Pill(label: model.state.languageLabel, selected: !model.state.language.isEmpty) {
+                    languagesOpen = true
+                    touches += 1
+                }
+                .accessibilityLabel(L("translation.languageA11y", ["language": model.state.languageLabel]))
                 Pill(label: model.state.soundLabel, selected: !model.state.muted && !model.state.silent) {
                     if !model.state.silent { model.send(PlayerIntentToggleMute.shared) }
                     touches += 1
@@ -177,8 +215,14 @@ struct PlayerView: View {
             Text(model.state.endTitle).font(.brandDisplay(18)).foregroundStyle(Color.brandPaper)
             Button(model.state.replayLabel) { model.send(PlayerIntentReplay.shared) }.buttonStyle(PrimaryButtonStyle())
             if let label = model.state.nextLabel, let next = model.state.nextChapterId {
-                Button(label) { onNextChapter(next) }.buttonStyle(GhostButtonStyle())
+                Button(label) { onNextChapter(next, model.state.language) }.buttonStyle(GhostButtonStyle())
             }
+            Button {
+                languagesOpen = true
+            } label: {
+                Label(L("player.lang.title"), systemImage: "character.bubble")
+            }
+            .buttonStyle(GhostButtonStyle())
         }
         .padding(24)
         .background(Color.brandInk2, in: RoundedRectangle(cornerRadius: 12))

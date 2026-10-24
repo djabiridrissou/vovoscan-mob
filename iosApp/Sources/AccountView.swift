@@ -232,6 +232,20 @@ struct PreferencesView: View {
                     if let error = reading.state.error { ErrorText(text: error) }
                 }
                 Card {
+                    HStack(alignment: .center, spacing: 12) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            SectionTitle(text: state.safeModeTitle)
+                            Text(state.safeModeHelp).font(.brandBody(13)).foregroundStyle(Color.brandMuted)
+                        }
+                        Spacer(minLength: 0)
+                        // Off asks first (age confirmation); on applies at once. Saved on the account, online only.
+                        BrandSwitch(isOn: state.safeMode, label: state.safeModeTitle) {
+                            model.send(PreferencesIntentSetSafeMode(on: !state.safeMode))
+                        }
+                        .disabled(state.savingSafeMode)
+                    }
+                }
+                Card {
                     SectionTitle(text: state.tourTitle)
                     Text(state.tourLead).font(.brandBody(13)).foregroundStyle(Color.brandMuted)
                     Button(state.tourAction) {
@@ -244,6 +258,12 @@ struct PreferencesView: View {
             .padding(20)
         }
         .background(Color.brandInk)
+        .alert(state.adultTitle, isPresented: Binding(get: { model.state.confirmingAdult }, set: { _ in })) {
+            Button(state.adultAction, role: .destructive) { model.send(PreferencesIntentConfirmAdult.shared) }
+            Button(L("common.cancel"), role: .cancel) { model.send(PreferencesIntentCancelAdult.shared) }
+        } message: {
+            Text(state.adultBody)
+        }
         .sheet(isPresented: $regionsOpen) {
             RegionSheet(choice: state.language,
                         query: { model.send(PreferencesIntentRegionQuery(text: $0)) },

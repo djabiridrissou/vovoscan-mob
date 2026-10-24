@@ -1,6 +1,7 @@
 package com.vovoscan.shared
 
 import com.vovoscan.core.common.AppDispatchers
+import com.vovoscan.core.common.AppError
 import com.vovoscan.core.common.AppResult
 import com.vovoscan.core.common.NetworkMonitor
 import com.vovoscan.core.common.SystemClock
@@ -17,9 +18,11 @@ import com.vovoscan.core.sources.PluginLinkPolicy
 import com.vovoscan.core.sources.RulesHttp
 import com.vovoscan.core.sources.createRulesHttpClient
 import com.vovoscan.feature.account.di.accountModule
+import com.vovoscan.feature.account.domain.COACHED_UNSUPPORTED
 import com.vovoscan.feature.account.domain.Provider
 import com.vovoscan.feature.account.domain.ProviderKeysRepository
 import com.vovoscan.feature.account.domain.QuoteKind
+import com.vovoscan.feature.account.domain.ReadingSettingsRepository
 import com.vovoscan.feature.account.domain.WalletRepository
 import com.vovoscan.feature.auth.di.SignOutCleanup
 import com.vovoscan.feature.auth.di.authModule
@@ -28,6 +31,7 @@ import com.vovoscan.feature.auth.domain.OnboardingServices
 import com.vovoscan.feature.catalog.di.catalogModule
 import com.vovoscan.feature.catalog.domain.CatalogRepository
 import com.vovoscan.feature.catalog.domain.ContentKind
+import com.vovoscan.feature.catalog.domain.ContentPolicy
 import com.vovoscan.feature.catalog.domain.ReadingResume
 import com.vovoscan.feature.catalog.domain.ResumePoint
 import com.vovoscan.feature.catalog.domain.ResumePoints
@@ -43,6 +47,8 @@ import com.vovoscan.feature.library.domain.LibraryRepository
 import com.vovoscan.feature.reader.di.readerModule
 import com.vovoscan.feature.reader.domain.ChapterHeading
 import com.vovoscan.feature.reader.domain.ChapterHeadings
+import com.vovoscan.feature.reader.domain.CoachKind
+import com.vovoscan.feature.reader.domain.CoachSync
 import com.vovoscan.feature.reader.domain.DownloadableChapter
 import com.vovoscan.feature.reader.domain.DownloadableTitle
 import com.vovoscan.feature.reader.domain.DownloadsRepository
@@ -51,6 +57,8 @@ import com.vovoscan.feature.reader.domain.ReaderRepository
 import com.vovoscan.feature.reader.domain.ReaderSettingsRepository
 import com.vovoscan.feature.reader.domain.ReadingProgressSink
 import com.vovoscan.feature.reader.domain.TitleChapters
+import com.vovoscan.feature.reader.domain.TranslationQuote
+import com.vovoscan.feature.reader.domain.TranslationQuotes
 import com.vovoscan.feature.reader.domain.chapterLabel
 import com.vovoscan.feature.sources.di.sourcesModule
 import com.vovoscan.feature.sources.domain.SourceEngine
@@ -220,12 +228,54 @@ fun appModules(
                 val auth = get<AuthRepository>()
                 EpisodeAccess { auth.session.map { it?.has(VIDEO_FEATURE) == true }.distinctUntilChanged() }
             }
+            // Safe mode (the account's `showAdult`, off by default): the catalog filters titles read on the device by the
+            // same rule as the server, without knowing the auth slice. Signed out = safe.
+            single<ContentPolicy> {
+                val auth = get<AuthRepository>()
+                ContentPolicy { auth.session.map { it?.showAdult == true }.distinctUntilChanged() }
+            }
             // What a run would cost, from the account's credits wallet (a server without credits: no quote).
             single<RunQuotes> {
                 val wallet = get<WalletRepository>()
                 RunQuotes { chapterId, lang ->
                     (wallet.quote(QuoteKind.Episode, chapterId, lang.ifEmpty { null }) as? AppResult.Ok)?.value?.let {
                         RunCost(it.credits, it.coveredByOwnKeys, it.alreadyAvailable, it.maxCredits, it.fundable, it.metered, it.unfunded)
+                    }
+                }
+            }
+            // The reader guide seen per format, on the account (the device keeps its own list too).
+            single<CoachSync> {
+                val reading = get<ReadingSettingsRepository>()
+                object : CoachSync {
+                    // A server without the slot (no `coached`, or 404 on a mark): the device copy is the truth until
+                    // the app runs against one that has it; nothing is sent meanwhile and nothing shows.
+                    private var slotMissing = false
+
+                    override suspend fun seen(): Set<CoachKind>? =
+                        when (val result = reading.coached()) {
+                            is AppResult.Ok -> {
+                                slotMissing = false
+                                result.value.mapNotNull(CoachKind::fromWire).toSet()
+                            }
+                            is AppResult.Err -> {
+                                if ((result.error as? AppError.Rejected)?.code == COACHED_UNSUPPORTED) slotMissing = true
+                                null
+                            }
+                        }
+
+                    override suspend fun mark(kind: CoachKind) {
+                        if (slotMissing) return
+                        val result = reading.markCoached(kind.wire)
+                        if (result is AppResult.Err && result.error.isMissingRoute()) slotMissing = true
+                    }
+                }
+            }
+            // What translating a chapter would cost (the reader's language picker quotes before paying).
+            single<TranslationQuotes> {
+                val wallet = get<WalletRepository>()
+                TranslationQuotes { chapterId, lang ->
+                    (wallet.quote(QuoteKind.Translation, chapterId, lang) as? AppResult.Ok)?.value?.let {
+                        TranslationQuote(it.credits, it.maxCredits, it.coveredByOwnKeys, it.alreadyAvailable, it.fundable)
                     }
                 }
             }
@@ -284,3 +334,7 @@ private class AccountKeyStatus(
         keys.refreshKeys()
     }
 }
+
+/** The route isn't on this server (an older one): 404 / 405 with the framework's generic code. */
+private fun AppError.isMissingRoute(): Boolean =
+    (this as? AppError.Rejected)?.code in setOf("NOT_FOUND", "METHOD_NOT_ALLOWED") || (this is AppError.Unknown && detail == "HTTP 404")

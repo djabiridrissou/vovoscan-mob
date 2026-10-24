@@ -119,13 +119,64 @@ class ReaderViewModelTest {
                     "c1",
                     startPage = 3,
                     FakeReader(comic, AppResult.Ok(Unit)),
-                    FakeSettings(ReaderPreferences(mangaMode = ReadingMode.PagedRightToLeft)),
+                    FakeSettings(ReaderPreferences(coachSeen = ALL_COACHES, mangaMode = ReadingMode.PagedRightToLeft)),
                     noHeadings,
                 ) { _, _, _, _ -> }
             advanceUntilIdle()
             assertEquals("4 / 5", vm.state.value.positionLabel)
             assertTrue(vm.state.value.rightToLeft)
             assertEquals("Next chapter →", vm.state.value.nextLabel)
+            // The bar's buttons open chapters: right to left, the next one on the left, its arrow pointing left.
+            assertEquals(
+                listOf("← Next chapter"),
+                vm.state.value.chapterButtons
+                    .map { it.label },
+            )
+        }
+
+    @Test
+    fun chapterButtonsFollowTheReadingDirection() =
+        runTest(dispatcher) {
+            val middle = comic.copy(previousChapterId = "c0")
+            val rtl =
+                ReaderViewModel(
+                    "vovoscan",
+                    "t1",
+                    "c1",
+                    0,
+                    FakeReader(middle, AppResult.Ok(Unit)),
+                    FakeSettings(ReaderPreferences(coachSeen = ALL_COACHES, mangaMode = ReadingMode.PagedRightToLeft)),
+                    noHeadings,
+                ) { _, _, _, _ -> }
+            advanceUntilIdle()
+            assertEquals(
+                listOf("c2" to "← Next chapter", "c0" to "Previous chapter →"),
+                rtl.state.value.chapterButtons.map {
+                    it.chapterId to
+                        it.label
+                },
+            )
+            val ltr =
+                ReaderViewModel(
+                    "vovoscan",
+                    "t1",
+                    "c1",
+                    0,
+                    FakeReader(middle, AppResult.Ok(Unit)),
+                    FakeSettings(ReaderPreferences(coachSeen = ALL_COACHES, mangaMode = ReadingMode.PagedLeftToRight)),
+                    noHeadings,
+                ) { _, _, _, _ -> }
+            advanceUntilIdle()
+            assertEquals(
+                listOf("← Previous chapter", "Next chapter →"),
+                ltr.state.value.chapterButtons
+                    .map { it.label },
+            )
+            assertEquals(
+                listOf(false, true),
+                ltr.state.value.chapterButtons
+                    .map { it.forward },
+            )
         }
 
     /**
@@ -188,7 +239,7 @@ class ReaderViewModelTest {
                     "c1",
                     0,
                     FakeReader(comic, AppResult.Ok(Unit)),
-                    FakeSettings(),
+                    FakeSettings(ReaderPreferences(coachSeen = ALL_COACHES)),
                     noHeadings,
                 ) { source, _, _, page ->
                     saved +=
@@ -207,7 +258,7 @@ class ReaderViewModelTest {
     fun openingAChapterRecordsItOnceEvenWhenTheModeChanges() =
         runTest(dispatcher) {
             val saved = mutableListOf<Int>()
-            val settings = FakeSettings()
+            val settings = FakeSettings(ReaderPreferences(coachSeen = ALL_COACHES))
             val vm =
                 ReaderViewModel("vovoscan", "t1", "c1", 3, FakeReader(comic, AppResult.Ok(Unit)), settings, noHeadings) { _, _, _, page ->
                     saved +=
@@ -223,7 +274,16 @@ class ReaderViewModelTest {
     fun bookOpensAndReadsBySection() =
         runTest(dispatcher) {
             val reader = FakeReader(book, AppResult.Ok(Unit))
-            val vm = ReaderViewModel("vovoscan", "t9", "b1", startPage = 1, reader, FakeSettings(), noHeadings) { _, _, _, _ -> }
+            val vm =
+                ReaderViewModel(
+                    "vovoscan",
+                    "t9",
+                    "b1",
+                    startPage = 1,
+                    reader,
+                    FakeSettings(ReaderPreferences(coachSeen = ALL_COACHES)),
+                    noHeadings,
+                ) { _, _, _, _ -> }
             advanceUntilIdle()
             assertEquals(1, reader.loads)
             assertEquals("Section 2 / 2", vm.state.value.positionLabel)
@@ -257,7 +317,7 @@ class ReaderViewModelTest {
                     "b1",
                     startPage = 0,
                     FakeReader(book, AppResult.Ok(Unit)),
-                    FakeSettings(),
+                    FakeSettings(ReaderPreferences(coachSeen = ALL_COACHES)),
                     noHeadings,
                 ) { _, _, _, _ -> }
             advanceUntilIdle()
@@ -328,7 +388,7 @@ class ReaderViewModelTest {
                     "b1",
                     startPage = 1,
                     FakeReader(single, AppResult.Ok(Unit)),
-                    FakeSettings(),
+                    FakeSettings(ReaderPreferences(coachSeen = ALL_COACHES)),
                     noHeadings,
                 ) { _, _, _, _ -> }
             advanceUntilIdle()
@@ -364,7 +424,7 @@ class ReaderViewModelTest {
                     "b1",
                     startPage = ReaderViewModel.START_AT_END,
                     FakeReader(book, AppResult.Ok(Unit)),
-                    FakeSettings(),
+                    FakeSettings(ReaderPreferences(coachSeen = ALL_COACHES)),
                     noHeadings,
                 ) { _, _, _, _ -> }
             advanceUntilIdle()
@@ -378,7 +438,7 @@ class ReaderViewModelTest {
                     "c1",
                     0,
                     FakeReader(comic, AppResult.Ok(Unit)),
-                    FakeSettings(),
+                    FakeSettings(ReaderPreferences(coachSeen = ALL_COACHES)),
                     noHeadings,
                 ) { _, _, _, _ -> }
             advanceUntilIdle()
@@ -395,7 +455,7 @@ class ReaderViewModelTest {
                     "c1",
                     0,
                     FakeReader(null, AppResult.Err(AppError.Network)),
-                    FakeSettings(),
+                    FakeSettings(ReaderPreferences(coachSeen = ALL_COACHES)),
                     noHeadings,
                 ) { _, _, _, _ -> }
             advanceUntilIdle()

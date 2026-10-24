@@ -61,13 +61,20 @@ data class ReaderSettingsSheet(
         ): ReaderSettingsSheet {
             val formatDefault = preferences.defaultFor(format) ?: format.defaultMode
 
-            fun modes(selected: ReadingMode) = ReadingMode.comicModes.map { ModeOption(it, ReaderText.mode(it), it == selected) }
+            fun modes(
+                selected: ReadingMode,
+                stripOnly: Boolean = false,
+            ) = ReadingMode.comicModes
+                .filter { !stripOnly || it.isStrip }
+                .map { ModeOption(it, ReaderText.mode(it), it == selected) }
+            // A webtoon only scrolls (reader/SPEC.md §1b): its choices are with or without gaps.
+            val webtoon = format == ComicFormat.Webtoon
             return ReaderSettingsSheet(
-                seriesModes = modes(mode),
+                seriesModes = modes(mode, stripOnly = webtoon),
                 seriesHint = t("reader.seriesHint", "mode" to ReaderText.mode(formatDefault)),
                 canResetSeries = seriesMode != null,
                 mangaModes = modes(preferences.mangaMode ?: ComicFormat.Manga.defaultMode),
-                webtoonModes = modes(preferences.webtoonMode ?: ComicFormat.Webtoon.defaultMode),
+                webtoonModes = modes(preferences.webtoonMode ?: ComicFormat.Webtoon.defaultMode, stripOnly = true),
                 layouts = TapLayout.entries.map { LayoutOption(it, ReaderText.layout(it), it == preferences.tapLayout) },
                 inverts = TapInvert.entries.map { InvertOption(it, ReaderText.invert(it), it == preferences.tapInvert) },
                 scrollAmounts = ScrollAmount.entries.map { ScrollOption(it, ReaderText.scroll(it), it == preferences.scrollAmount) },

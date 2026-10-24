@@ -2,23 +2,31 @@ package com.vovoscan.app.ui.account
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.vovoscan.app.ui.common.ErrorText
 import com.vovoscan.app.ui.common.GhostButton
 import com.vovoscan.app.ui.common.Kicker
+import com.vovoscan.app.ui.theme.Brand
 import com.vovoscan.core.common.i18n.I18n
 import com.vovoscan.feature.account.presentation.ReadingSettingsIntent
 import com.vovoscan.feature.account.presentation.ReadingSettingsViewModel
@@ -61,10 +69,39 @@ fun PreferencesScreen(
             readingState.notice?.let { Notice(it) }
             readingState.error?.let { ErrorText(it) }
         }
+        Card(state.safeModeTitle) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(state.safeModeHelp, Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
+                Switch(
+                    checked = state.safeMode,
+                    onCheckedChange = { viewModel.onIntent(PreferencesIntent.SetSafeMode(it)) },
+                    enabled = !state.savingSafeMode,
+                    colors = SwitchDefaults.colors(checkedTrackColor = Brand.Red, checkedThumbColor = Brand.Ink),
+                )
+            }
+        }
         Card(state.tourTitle) {
             Text(state.tourLead, style = MaterialTheme.typography.bodySmall)
             GhostButton(state.tourAction, onReplayTutorial)
         }
+    }
+    if (state.confirmingAdult) {
+        AlertDialog(
+            onDismissRequest = { viewModel.onIntent(PreferencesIntent.CancelAdult) },
+            containerColor = Brand.Ink2,
+            title = { Text(state.adultTitle, style = MaterialTheme.typography.titleMedium) },
+            text = { Text(state.adultBody, style = MaterialTheme.typography.bodySmall) },
+            confirmButton = {
+                TextButton({ viewModel.onIntent(PreferencesIntent.ConfirmAdult) }) {
+                    Text(state.adultAction, style = MaterialTheme.typography.labelLarge.copy(color = Brand.Danger))
+                }
+            },
+            dismissButton = {
+                TextButton({ viewModel.onIntent(PreferencesIntent.CancelAdult) }) {
+                    Text(I18n.text("common.cancel"), style = MaterialTheme.typography.labelLarge)
+                }
+            },
+        )
     }
     if (readingOpen) {
         ContentLanguageSheet(

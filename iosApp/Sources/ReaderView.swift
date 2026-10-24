@@ -34,6 +34,9 @@ struct ReaderView: View {
     @State private var settingsOpen = false
     @State private var contentsOpen = false
     @State private var languagesOpen = false
+    @State private var keysOpen = false
+    /// The bottom bar's height: the language dock sits above it while the bars show.
+    @State private var bottomBarHeight: CGFloat = 0
     @State private var player: PlayerRoute?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// The page under the slider's thumb while it is dragged.
@@ -65,6 +68,23 @@ struct ReaderView: View {
                     .accessibilityLabel(model.state.chapterLabel)
                     .accessibilityHint(model.state.tapsHint)
                     .environment(\.pageLettering, { [state = translation.state] index in state.letteringFor(index: Int32(index)) })
+                    .environment(\.readerLanguageAction, translation.state.available
+                        ? ReaderLanguageAction(label: translation.state.endCardLabel) { languagesOpen = true }
+                        : nil)
+            }
+            // A language on its way: the page keeps its lettering, the dock shows the cost, then the progress.
+            if let dock = translation.state.dock, !model.state.isBook {
+                LanguageDock(
+                    content: dock.content,
+                    confirm: { translation.send(TranslationIntentConfirmOffer.shared) },
+                    addKey: { keysOpen = true },
+                    retry: { translation.send(TranslationIntentRetry.shared) },
+                    close: { translation.send(TranslationIntentCloseDock.shared) }
+                )
+                // Above the page counter and the chapter buttons while they show: its buttons are never under the bar.
+                .padding(.bottom, model.state.chromeVisible || model.state.isBook ? bottomBarHeight : 0)
+                .zIndex(0.5)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
             }
             if let overlay = model.state.tapOverlay {
                 TapZonesOverlay(overlay: overlay).transition(.opacity)
@@ -74,8 +94,15 @@ struct ReaderView: View {
             if let card = model.state.titleCard { titleCard(card) }
             // A book keeps its bars: the web view receives the taps (text scrolling).
             if model.state.chromeVisible || model.state.isBook { chrome.transition(.opacity) }
+            // How to read, the first time a chapter of its kind opens: any tap closes it.
+            if let coach = model.state.coach {
+                ReaderCoachOverlay(coach: coach) { model.send(ReaderIntentDismissCoach.shared) }
+                    .transition(.opacity)
+                    .zIndex(1)
+            }
         }
         .animation(.easeInOut(duration: 0.2), value: model.state.tapOverlay == nil)
+        .animation(model.state.reducedMotion ? nil : .easeOut(duration: 0.25), value: model.state.coach == nil)
         .animation(model.state.reducedMotion ? nil : .easeInOut(duration: 0.25), value: model.state.chromeVisible)
         .animation(model.state.reducedMotion ? nil : .easeInOut(duration: 0.4), value: model.state.titleCard)
         .toolbar(.hidden, for: .navigationBar)
@@ -84,6 +111,7 @@ struct ReaderView: View {
         .task { await model.observe() }
         .task { await translation.observe() }
         .animation(.easeInOut(duration: 0.25), value: translation.state.translated)
+        .animation(model.state.reducedMotion ? nil : .spring(response: 0.35, dampingFraction: 0.85), value: translation.state.dock == nil)
         // Opening another chapter (a chapter card, or a tap past the end), whatever the mode.
         .onChange(of: model.state.command?.seq) { _, _ in
             if let open = model.state.command as? ReaderCommandOpenChapter {
@@ -96,7 +124,7 @@ struct ReaderView: View {
                 player = PlayerRoute(chapterId: episode.chapterId, nextChapterId: nil, startPage: Int(episode.page))
             }
         }
-        .fullScreenCover(item: $player) { route in PlayerView(route: route) { _ in player = nil } }
+        .fullScreenCover(item: $player) { route in PlayerView(route: route) { _, _ in player = nil } }
         // Reduce Motion: jumps instead of the spring, no spotlight glide, no fades.
         .onChange(of: reduceMotion, initial: true) { _, on in model.send(ReaderIntentReducedMotion(on: on)) }
         // VoiceOver: "Page 5 of 19" when the page changes, never on every frame.
@@ -111,6 +139,11 @@ struct ReaderView: View {
         .sheet(isPresented: $languagesOpen) {
             LanguageSheet(translation: translation)
                 .presentationDetents([.medium, .large])
+                .presentationBackground(Color.brandInk2)
+        }
+        // "Add a key" from the dock: the keys over the reader, which stays where it was.
+        .sheet(isPresented: $keysOpen) {
+            NavigationStack { KeysScreen() }
                 .presentationBackground(Color.brandInk2)
         }
         .sheet(isPresented: $settingsOpen, onDismiss: { model.send(ReaderIntentSettingsClosed.shared) }) {
@@ -176,6 +209,10 @@ struct ReaderView: View {
                 if !model.state.isBook && translation.state.available {
                     LanguageButton(translation: translation) { languagesOpen = true }
                 }
+                Button { model.send(ReaderIntentShowCoach.shared) } label: {
+                    Image(systemName: "questionmark.circle").font(.system(size: 18)).foregroundStyle(Color.brandMuted)
+                }
+                .accessibilityLabel(L("reader.coach.show"))
                 if model.state.isBook && !model.state.book.contents.isEmpty {
                     Button { contentsOpen = true } label: {
                         Image(systemName: "list.bullet").font(.system(size: 18)).foregroundStyle(Color.brandPaper)
@@ -229,17 +266,18 @@ struct ReaderView: View {
                     Button(L("reader.nextSection")) { model.send(ReaderIntentNext.shared) }
                         .font(.brandBody(16, weight: .bold)).foregroundStyle(Color.brandRed)
                 } else {
-                    if let previous = model.state.previousChapterId {
-                        Button(L("reader.previousArrow")) { onOpenChapter(previous, 0) }.font(.brandBody(13)).foregroundStyle(Color.brandMuted)
-                    }
-                    if let next = model.state.nextChapterId {
-                        Button(L("reader.nextArrow")) { onOpenChapter(next, 0) }.font(.brandBody(16, weight: .bold)).foregroundStyle(Color.brandRed)
+                    // Chapters, not pages (pages turn with taps and swipes); right to left puts the next one on the left.
+                    ForEach(model.state.chapterButtons, id: \.chapterId) { button in
+                        Button(button.label) { onOpenChapter(button.chapterId, 0) }
+                            .font(.brandBody(button.forward ? 16 : 13, weight: button.forward ? .bold : .regular))
+                            .foregroundStyle(button.forward ? Color.brandRed : Color.brandMuted)
                     }
                 }
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
             .background(Color.brandInk.opacity(0.92))
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { bottomBarHeight = $0 }
         }
     }
 }
@@ -501,7 +539,7 @@ private struct HorizontalPages: View {
                             if ratios.isTall(page.page, in: size) {
                                 TallPageView(model: model, page: page.page, index: index, size: size, scroller: scroller, detail: detail)
                             } else {
-                                PageImage(page: page.page, fit: true, detail: detail) { ratios.set(page.page.url, $0) }
+                                PageImage(page: page.page, fit: true, detail: detail, onLoaded: { ratios.set(page.page.url, $0) })
                             }
                         } else if let transition = item as? ReaderItemTransition {
                             TransitionCardView(card: transition.card, model: model)
@@ -672,7 +710,7 @@ private struct VerticalPages: View {
                             if ratios.isTall(page.page, in: size), let ratio = ratios.ratio(page.page) {
                                 PageImage(page: page.page, active: active, detail: detail).frame(width: size.width, height: size.width / ratio)
                             } else {
-                                PageImage(page: page.page, fit: true, active: active, detail: detail) { ratios.set(page.page.url, $0) }
+                                PageImage(page: page.page, fit: true, active: active, detail: detail, onLoaded: { ratios.set(page.page.url, $0) })
                                     .frame(width: size.width, height: size.height)
                             }
                         } else if let transition = item as? ReaderItemTransition {
@@ -1299,6 +1337,7 @@ private enum Luminance {
 private struct TransitionCardView: View {
     let card: TransitionCard
     @ObservedObject var model: ReaderModel
+    @Environment(\.readerLanguageAction) private var language
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -1311,6 +1350,16 @@ private struct TransitionCardView: View {
                     Button(label) { model.send(ReaderIntentOpenPreviousChapter.shared) }.buttonStyle(GhostButtonStyle()).padding(.top, 4)
                 }
             }
+            // Reader SPEC §11: the language is one tap away here too.
+            if card.forward, let language {
+                Button {
+                    Haptics.select()
+                    language.open()
+                } label: {
+                    Label(language.label, systemImage: "character.bubble")
+                }
+                .buttonStyle(GhostButtonStyle())
+            }
         }
         .padding(20)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -1318,6 +1367,70 @@ private struct TransitionCardView: View {
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.brandLine, lineWidth: 1))
         .padding(24)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+/// "How to read": the reader's real tap zones under a card of gesture lines. Static, no timer: the first tap anywhere
+/// closes it (and is not a page turn); the "?" in the bars brings it back.
+private struct ReaderCoachOverlay: View {
+    let coach: ReaderCoach
+    let dismiss: () -> Void
+
+    var body: some View {
+        ZStack {
+            Color.brandInk.opacity(coach.zones == nil ? 0.82 : 0.5).ignoresSafeArea()
+            if let zones = coach.zones { TapZonesOverlay(overlay: zones) }
+            VStack(alignment: .leading, spacing: 14) {
+                Text(coach.kicker.uppercased())
+                    .font(.brandBody(12, weight: .bold))
+                    .tracking(1.6)
+                    .foregroundStyle(Color.brandInk)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(Color.brandYellow)
+                Text(coach.title).font(.brandDisplay(24)).foregroundStyle(Color.brandPaper)
+                ForEach(Array(coach.hints.enumerated()), id: \.offset) { _, hint in
+                    HStack(alignment: .top, spacing: 12) {
+                        Image(systemName: symbol(hint.gesture))
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundStyle(hint.gesture == .help ? Color.brandMuted : Color.brandRed)
+                            .frame(width: 26)
+                        Text(hint.text)
+                            .font(.brandBody(15))
+                            .foregroundStyle(hint.gesture == .help ? Color.brandMuted : Color.brandPaper)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                Text(coach.dismiss)
+                    .font(.brandBody(15, weight: .bold))
+                    .foregroundStyle(Color.brandInk)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(Color.brandRed)
+                    .background(Rectangle().fill(Color.brandPaper).offset(x: 3, y: 3))
+                    .padding(.top, 4)
+            }
+            .padding(22)
+            .frame(maxWidth: 420, alignment: .leading)
+            .background(Color.brandInk.opacity(0.94), in: RoundedRectangle(cornerRadius: 14))
+            .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.brandPaper.opacity(0.85), lineWidth: 2))
+            .padding(24)
+        }
+        .contentShape(Rectangle())
+        .onTapGesture { dismiss() }
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isButton)
+        .accessibilityAction { dismiss() }
+    }
+
+    private func symbol(_ gesture: CoachGesture) -> String {
+        switch gesture {
+        case .tap: return "hand.tap"
+        case .swipe: return "hand.draw"
+        case .doubleTap: return "plus.magnifyingglass"
+        case .pull: return "arrow.down.to.line"
+        default: return "questionmark.circle"
+        }
     }
 }
 

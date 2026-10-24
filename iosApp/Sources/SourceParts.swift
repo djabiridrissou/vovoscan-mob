@@ -145,6 +145,7 @@ struct SourceInfoBlock: View {
                     ForEach(info.hosts, id: \.self) { host in
                         Text("✦ \(host)").font(.brandBody(13)).foregroundStyle(Color.brandPaper.opacity(0.76))
                     }
+                    if let rate = info.rateLabel { Text(rate).font(.brandBody(13)).foregroundStyle(Color.brandMuted) }
                 }
             }
         }

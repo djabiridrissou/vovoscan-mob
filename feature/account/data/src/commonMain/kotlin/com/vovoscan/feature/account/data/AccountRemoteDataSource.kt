@@ -51,6 +51,8 @@ data class ReadingSettingsDto(
     val ocrModel: String? = null,
     /** The content language chapters are translated into; null until chosen (any subset is sent). */
     val targetLanguage: String? = null,
+    /** Read only: the reading formats whose reader guide was seen (never sent: null fields are left out). */
+    val coached: List<String>? = null,
 )
 
 @Serializable
@@ -95,6 +97,8 @@ interface AccountRemoteDataSource {
 
     suspend fun readingSettings(): AppResult<ReadingSettingsDto>
 
+    suspend fun markCoached(kind: String): AppResult<ReadingSettingsDto>
+
     /** Any subset: a null field is left out of the request and keeps its value. */
     suspend fun setReadingSettings(
         ocrModel: String? = null,
@@ -130,6 +134,9 @@ class KtorAccountRemoteDataSource(
 
     override suspend fun readingSettings(): AppResult<ReadingSettingsDto> =
         http.apiCall<ApiData<ReadingSettingsDto>> { get("api/v1/settings/reading") }.map { it.data }
+
+    override suspend fun markCoached(kind: String): AppResult<ReadingSettingsDto> =
+        http.apiCall<ApiData<ReadingSettingsDto>> { put("api/v1/settings/reading/coached/$kind") }.map { it.data }
 
     override suspend fun setReadingSettings(
         ocrModel: String?,

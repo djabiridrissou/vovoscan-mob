@@ -1,6 +1,7 @@
 package com.vovoscan.feature.catalog.presentation
 
 import com.vovoscan.core.common.AppError
+import com.vovoscan.core.common.ContentRating
 import com.vovoscan.core.common.Freshness
 import com.vovoscan.feature.catalog.domain.CatalogFilter
 import com.vovoscan.feature.catalog.domain.ListedTitle
@@ -8,6 +9,7 @@ import com.vovoscan.feature.catalog.domain.ReadingFormat
 import com.vovoscan.feature.catalog.domain.SourceCategory
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
@@ -96,6 +98,40 @@ class CatalogViewModelTest {
             vm.onIntent(CatalogIntent.Refresh)
             advanceUntilIdle()
             assertEquals(firstRound.toSet(), ids(vm).toSet())
+        }
+
+    @Test
+    fun safeModeShowsOnlyTitlesRatedForEveryone() =
+        runTest(dispatcher) {
+            val repository =
+                FakeCatalog().apply {
+                    remote["gutenberg" to null] =
+                        listOf(
+                            listOf(
+                                title("gutenberg", "safe").copy(contentRating = ContentRating.Safe),
+                                title("gutenberg", "suggestive").copy(contentRating = ContentRating.Suggestive),
+                                title("gutenberg", "unrated"),
+                            ),
+                        )
+                }
+            val adult = MutableStateFlow(false)
+            val vm = CatalogViewModel(repository) { adult }
+            vm.onIntent(CatalogIntent.SourcesChanged(listOf(gutenberg)))
+            advanceUntilIdle()
+            assertEquals(listOf("safe"), ids(vm))
+            assertEquals("Safe mode hides titles not rated for all audiences.", vm.state.value.safeNote)
+            // Search follows the same rule.
+            vm.onIntent(CatalogIntent.Query("gutenberg"))
+            advanceUntilIdle()
+            assertEquals(listOf("safe"), ids(vm))
+            // Turned off in Settings: everything, the note gone.
+            adult.value = true
+            advanceUntilIdle()
+            assertEquals(setOf("safe", "suggestive", "unrated"), ids(vm).toSet())
+            vm.onIntent(CatalogIntent.Query(""))
+            advanceUntilIdle()
+            assertEquals(3, ids(vm).size)
+            assertNull(vm.state.value.safeNote)
         }
 
     @Test

@@ -3,6 +3,7 @@ package com.vovoscan.feature.catalog.presentation
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.vovoscan.core.common.AppResult
+import com.vovoscan.core.common.ContentRating
 import com.vovoscan.core.common.Freshness
 import com.vovoscan.core.common.StaleReason
 import com.vovoscan.core.common.i18n.t
@@ -13,6 +14,7 @@ import com.vovoscan.feature.catalog.domain.CatalogRepository
 import com.vovoscan.feature.catalog.domain.CategoryOption
 import com.vovoscan.feature.catalog.domain.CategoryUnion
 import com.vovoscan.feature.catalog.domain.ContentKind
+import com.vovoscan.feature.catalog.domain.ContentPolicy
 import com.vovoscan.feature.catalog.domain.ReadingFormat
 import com.vovoscan.feature.catalog.domain.ReadingResume
 import com.vovoscan.feature.catalog.domain.ResumePoint
@@ -113,6 +115,8 @@ data class CatalogUiState(
     val startedKeys: Set<String> = emptySet(),
     /** The last title read, on top of the catalog (not while searching). */
     val resume: ResumeCard? = null,
+    /** Safe mode left titles out of what shows: one quiet line says so (the switch is in Settings). */
+    val safeNote: String? = null,
 ) {
     val visible: List<TitleCard>
         get() = (results ?: cards).map { if ("${it.sourceKey}/${it.id}" in startedKeys) it.copy(started = true) else it }
@@ -193,7 +197,11 @@ sealed interface CatalogIntent {
 class CatalogViewModel(
     private val repository: CatalogRepository,
     private val resume: ReadingResume = ReadingResume { flowOf(emptyList()) },
+    private val content: ContentPolicy = ContentPolicy.ShowAll,
 ) : ViewModel() {
+    /** Safe mode off: every title shows. Follows the account (`content`). */
+    private var showAdult = true
+    private var hiddenInListing = false
     private val mutableState = MutableStateFlow(CatalogUiState())
     val state: StateFlow<CatalogUiState> = mutableState.asStateFlow()
 
@@ -250,6 +258,15 @@ class CatalogViewModel(
                 }
             }.onEach { (points, card) ->
                 mutableState.update { it.copy(startedKeys = points.mapTo(HashSet()) { p -> "${p.sourceKey}/${p.titleId}" }, resume = card) }
+            }.launchIn(viewModelScope)
+        // Safe mode switched in Settings: search results follow too (the listings combine it themselves).
+        content
+            .showAdult()
+            .distinctUntilChanged()
+            .onEach { adult ->
+                val changed = adult != showAdult
+                showAdult = adult
+                if (changed && state.value.query.isNotBlank()) search(state.value.query)
             }.launchIn(viewModelScope)
         viewModelScope.launch { filter.value = repository.observeFilter().first() }
         val selection =
@@ -343,12 +360,20 @@ class CatalogViewModel(
         listingsJob?.cancel()
         listingsJob =
             mergedListings(nextReadings)
-                .onEach { titles -> mutableState.update { it.copy(cards = titles.map { t -> card(t, names) }) } }
-                .launchIn(viewModelScope)
+                .combine(content.showAdult()) { titles, adult -> titles to adult }
+                .onEach { (titles, adult) ->
+                    val shown = titles.filter { t -> ContentRating.shown(t.contentRating, adult) }
+                    hiddenInListing = shown.size < titles.size
+                    mutableState.update {
+                        it.copy(cards = shown.map { t -> card(t, names) }, safeNote = safeNote(hiddenInListing))
+                    }
+                }.launchIn(viewModelScope)
         mutableState.update { it.copy(sourcesRead = nextReadings.size, problems = emptyList(), canLoadMore = false) }
         refresh(categoriesToo = false)
         if (state.value.query.isNotBlank()) search(state.value.query)
     }
+
+    private fun safeNote(hidden: Boolean) = if (hidden) t("catalog.safeHidden") else null
 
     private fun mergedListings(list: List<Reading>): Flow<List<TitleSummary>> =
         if (list.isEmpty()) {
@@ -417,10 +442,12 @@ class CatalogViewModel(
                         .map { reading ->
                             async { repository.search(reading.source.key, query.trim(), reading.categoryId) }
                         }.awaitAll()
-                val titles = CatalogMerge.mix(found.map { it.titles }, Random(seed.value))
+                val all = CatalogMerge.mix(found.map { it.titles }, Random(seed.value))
+                val titles = all.filter { t -> ContentRating.shown(t.contentRating, showAdult) }
                 mutableState.update {
                     it.copy(
                         results = titles.map { t -> card(t, names) },
+                        safeNote = safeNote(hiddenInListing || titles.size < all.size),
                         searchNotice =
                             CatalogNotices.search(
                                 offline = found.any { r -> r.offline && r.unavailableSource == null },

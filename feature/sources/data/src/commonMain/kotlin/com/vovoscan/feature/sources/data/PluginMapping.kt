@@ -17,6 +17,7 @@ internal fun ManifestSetting.toField() = SettingField(name, label, SettingType.f
 /** What the manifest says, for the preview; hosts include those of the url settings' default values. */
 internal fun ManifestInfo.toInfo(): PluginInfo {
     val defaults = settings.mapNotNull { s -> s.default?.let { s.name to it } }.toMap()
+    val manifest = SourceManifest(key, json, defaults)
     return PluginInfo(
         key = key,
         name = name,
@@ -26,8 +27,9 @@ internal fun ManifestInfo.toInfo(): PluginInfo {
         langs = langs,
         rightsBasis = rightsBasis,
         rightsNotes = rightsNotes,
-        hosts = SourceManifest(key, json, defaults).allowedHosts.sorted(),
+        hosts = manifest.allowedHosts.sorted(),
         settings = settings.map { it.toField() },
+        requestsPerMinute = manifest.requestsPerMinute,
     )
 }
 

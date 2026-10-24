@@ -14,6 +14,8 @@ import com.vovoscan.feature.reader.domain.BookTypography
 import com.vovoscan.feature.reader.domain.ChapterHeading
 import com.vovoscan.feature.reader.domain.ChapterHeadings
 import com.vovoscan.feature.reader.domain.ChapterPanels
+import com.vovoscan.feature.reader.domain.CoachKind
+import com.vovoscan.feature.reader.domain.CoachSync
 import com.vovoscan.feature.reader.domain.ComicFormat
 import com.vovoscan.feature.reader.domain.DownloadableChapter
 import com.vovoscan.feature.reader.domain.Glide
@@ -47,6 +49,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
@@ -187,6 +190,13 @@ sealed interface ReaderCommand {
     ) : ReaderCommand
 }
 
+/** A chapter button of the reader's bar; [forward]: the next chapter (the red one). */
+data class ChapterButton(
+    val chapterId: String,
+    val label: String,
+    val forward: Boolean,
+)
+
 data class ReaderUiState(
     val titleName: String = "",
     /** "Chapter 2 · The last gate" or "Full text". */
@@ -219,6 +229,8 @@ data class ReaderUiState(
         ReaderSettingsSheet.of(ReadingMode.LongStrip, ComicFormat.Webtoon, null, ReaderPreferences()),
     /** The overlay to draw for a moment (first opening, after a change of zones), else null. */
     val tapOverlay: TapOverlay? = null,
+    /** "How to read", over the page until a tap: the first chapter of its kind, or asked again with "?". */
+    val coach: ReaderCoach? = null,
     val command: ReaderCommand? = null,
     /** Comics: pinched or double-tapped above 1× (as the native side reports it). Taps then only toggle the bars. */
     val zoomed: Boolean = false,
@@ -325,6 +337,28 @@ data class ReaderUiState(
 
     /** The slider's label for a page being dragged to ("12 / 19"), as [positionLabel] says it. */
     fun sliderLabel(page: Int): String = if (pages.isEmpty()) "" else "${page.coerceIn(0, pages.lastIndex) + 1} / ${pages.size}"
+
+    /**
+     * The bar's chapter buttons, in screen order. They open another chapter (pages turn with taps and swipes), so they
+     * say "chapter"; pages read right to left put the next chapter on the left, its arrow pointing that way.
+     */
+    val chapterButtons: List<ChapterButton>
+        get() {
+            if (isBook) return emptyList()
+            val previous =
+                previousChapterId?.let {
+                    ChapterButton(it, t(if (rightToLeft) "reader.previousChapterRtl" else "reader.previousChapter"), forward = false)
+                }
+            val next =
+                nextChapterId?.let {
+                    ChapterButton(
+                        it,
+                        t(if (rightToLeft) "reader.nextChapterRtl" else "reader.nextChapter"),
+                        forward = true,
+                    )
+                }
+            return if (rightToLeft) listOfNotNull(next, previous) else listOfNotNull(previous, next)
+        }
 
     /**
      * Book: the hint for a pull past an edge of the section. [overscroll]: how far past the edge, as a fraction of
@@ -452,6 +486,12 @@ sealed interface ReaderIntent {
         val on: Boolean,
     ) : ReaderIntent
 
+    /** The "?" in the bars: "How to read" again. */
+    data object ShowCoach : ReaderIntent
+
+    /** A tap anywhere while the coach is up: it closes, and reading starts. */
+    data object DismissCoach : ReaderIntent
+
     data object ToggleFocus : ReaderIntent
 
     data object ReadWithVoice : ReaderIntent
@@ -544,6 +584,7 @@ class ReaderViewModel(
     private val headings: ChapterHeadings,
     // Before `progress`, so callers can still pass the progress sink as a trailing lambda.
     private val panels: ChapterPanels = ChapterPanels.None,
+    private val coachSync: CoachSync = CoachSync.None,
     /** Book: typography and the position inside a section, on this device. */
     private val books: BookReadingRepository = BookReadingRepository.InMemory(),
     /** Book: the title's parts (its chapters), for the contents of a book in several parts. */
@@ -622,6 +663,7 @@ class ReaderViewModel(
             }.launchIn(viewModelScope)
         books.observeTypography().onEach(::typographyChanged).launchIn(viewModelScope)
         refresh()
+        viewModelScope.launch { syncCoach() }
         viewModelScope.launch {
             analysis = panels.panels(sourceKey, chapterId)
             rebuildStops()
@@ -647,7 +689,9 @@ class ReaderViewModel(
             }
             is ReaderIntent.PageScroll -> pageScroll = intent
             is ReaderIntent.PullReleased -> pullReleased(intent.overscroll)
-            is ReaderIntent.Tap -> tap(intent.x, intent.y)
+            is ReaderIntent.Tap -> if (state.value.coach != null) dismissCoach() else tap(intent.x, intent.y)
+            ReaderIntent.ShowCoach -> showCoach()
+            ReaderIntent.DismissCoach -> dismissCoach()
             is ReaderIntent.CommandHandled -> mutableState.update { if (it.command?.seq == intent.seq) it.copy(command = null) else it }
             is ReaderIntent.StripMeasured -> measured(intent.width, intent.viewport)
             is ReaderIntent.StripScrolled -> scrolled(intent.offset, intent.byUser, intent.settled)
@@ -661,10 +705,20 @@ class ReaderViewModel(
             }
             ReaderIntent.ReadWithVoice ->
                 if (state.value.voiceAvailable) command { ReaderCommand.OpenEpisode(it, chapterId, state.value.currentIndex) }
+            ReaderIntent.Next ->
+                when {
+                    state.value.coach != null -> dismissCoach()
+                    state.value.isBook -> moveTo(state.value.currentIndex + 1)
+                    else -> forward()
+                }
+            ReaderIntent.Previous ->
+                when {
+                    state.value.coach != null -> dismissCoach()
+                    state.value.isBook -> moveTo(state.value.currentIndex - 1)
+                    else -> backward()
+                }
             is ReaderIntent.ZoomChanged -> mutableState.update { it.copy(zoomed = intent.zoomed) }
             is ReaderIntent.SeekTo -> seekTo(intent.page)
-            ReaderIntent.Next -> if (state.value.isBook) moveTo(state.value.currentIndex + 1) else forward()
-            ReaderIntent.Previous -> if (state.value.isBook) moveTo(state.value.currentIndex - 1) else backward()
             ReaderIntent.ToggleChrome -> mutableState.update { it.copy(chromeVisible = !it.chromeVisible) }
             ReaderIntent.Retry -> refresh()
             ReaderIntent.OpenNextChapter -> openNext()
@@ -720,6 +774,10 @@ class ReaderViewModel(
     fun onVolumeKey(up: Boolean): Boolean {
         val current = state.value
         if (!current.volumeKeys || current.items.isEmpty()) return false
+        if (current.coach != null) {
+            dismissCoach()
+            return true
+        }
         if (up xor current.preferences.volumeKeysInverted) backward() else forward()
         return true
     }
@@ -1095,10 +1153,12 @@ class ReaderViewModel(
         }
         if (isBook) {
             if (!bookStarted) prepareBook()
+            coachIfNew(mode, preferences)
             return
         }
         loadHeadings(chapter)
         updateZones(mode, preferences)
+        coachIfNew(mode, preferences)
         mutableState.update {
             it.copy(voiceAvailable = sourceKey == INTERNAL_SOURCE && chapter.pages.isNotEmpty(), prefetch = prefetch(it))
         }
@@ -1183,7 +1243,8 @@ class ReaderViewModel(
         zonesShown = map
         if (!preferences.showTapZones || map == before) return
         if (before == null) {
-            if (!preferences.tapZonesSeen) {
+            // The first chapter of its kind opens with the coach, which draws the zones itself.
+            if (!preferences.tapZonesSeen && coachKind() in preferences.coachSeen) {
                 flashOverlay(map)
                 updatePreferences { it.copy(tapZonesSeen = true) }
             }
@@ -1192,6 +1253,59 @@ class ReaderViewModel(
         } else {
             flashOverlay(map)
         }
+    }
+
+    /** The first chapter of each kind opens with "How to read" (once per kind on this device). */
+    private fun coachIfNew(
+        mode: ReadingMode,
+        preferences: ReaderPreferences,
+    ) {
+        if (coachChecked) return
+        val current = state.value
+        // Decided once there is something to read: a chapter still loading must not use up its first open.
+        if (current.unavailable || (current.items.isEmpty() && !current.isBook)) return
+        coachChecked = true
+        if (coachKind() !in preferences.coachSeen + accountGuides) showCoach()
+    }
+
+    private var coachChecked = false
+
+    private fun showCoach() {
+        val current = state.value
+        if (current.unavailable || (current.items.isEmpty() && !current.isBook)) return
+        val kind = coachKind()
+        val zones = if (current.isBook) null else TapZones.map(current.preferences.tapLayout, current.preferences.tapInvert, current.mode)
+        val title = current.formatLabel ?: ReaderText.mode(current.mode)
+        hideOverlay()
+        mutableState.update {
+            it.copy(coach = ReaderCoach.of(kind, current.mode, title, zones, it.preferences.doubleTapZoom), chromeVisible = true)
+        }
+    }
+
+    private fun dismissCoach() {
+        val coach = state.value.coach ?: return
+        mutableState.update { it.copy(coach = null) }
+        updatePreferences { it.copy(coachSeen = it.coachSeen + coach.kind, tapZonesSeen = true) }
+        if (coach.kind != CoachKind.Book) viewModelScope.launch { coachSync.mark(coach.kind) }
+    }
+
+    /** The guides the account has seen (on any device), once known. */
+    private var accountGuides: Set<CoachKind> = emptySet()
+
+    private fun coachKind(): CoachKind = CoachKind.of(state.value.format, state.value.isBook)
+
+    /**
+     * The account's guides: seen on another device → seen here (and a guide up for one goes away); seen here while
+     * offline → told to the account now.
+     */
+    private suspend fun syncCoach() {
+        val account = coachSync.seen() ?: return
+        accountGuides = account
+        val local = settings.observePreferences().first().coachSeen
+        (local - account - CoachKind.Book).forEach { coachSync.mark(it) }
+        if (!local.containsAll(account)) updatePreferences { it.copy(coachSeen = it.coachSeen + account) }
+        val shown = state.value.coach
+        if (shown != null && shown.kind in account) mutableState.update { it.copy(coach = null) }
     }
 
     private fun flashOverlay(map: TapZoneMap) {

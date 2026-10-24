@@ -53,6 +53,7 @@ import com.vovoscan.app.ui.common.PrimaryButton
 import com.vovoscan.app.ui.theme.Brand
 import com.vovoscan.core.common.i18n.I18n
 import com.vovoscan.feature.episodes.presentation.EpisodeIntent
+import com.vovoscan.feature.episodes.presentation.EpisodeLanguageOption
 import com.vovoscan.feature.episodes.presentation.EpisodePhase
 import com.vovoscan.feature.episodes.presentation.EpisodeUiState
 import com.vovoscan.feature.episodes.presentation.EpisodeViewModel
@@ -198,18 +199,26 @@ private fun LanguageButton(
         Text("▾", style = MaterialTheme.typography.bodyMedium.copy(color = Brand.Muted))
     }
     if (open) {
-        LanguageSheet(state, send) {
+        EpisodeLanguageSheet(
+            state.languageOptions,
+            state.languageQuery,
+            onQuery = { send(EpisodeIntent.LanguageQuery(it)) },
+            onChoose = { send(EpisodeIntent.ChooseLanguage(it)) },
+        ) {
             open = false
             send(EpisodeIntent.LanguageQuery(""))
         }
     }
 }
 
+/** An episode's languages, searchable (the card's picker and the player's): a pick closes it. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun LanguageSheet(
-    state: EpisodeUiState,
-    send: (EpisodeIntent) -> Unit,
+fun EpisodeLanguageSheet(
+    options: List<EpisodeLanguageOption>,
+    query: String,
+    onQuery: (String) -> Unit,
+    onChoose: (String?) -> Unit,
     onDismiss: () -> Unit,
 ) {
     ModalBottomSheet(
@@ -225,19 +234,19 @@ private fun LanguageSheet(
             )
             BrandField(
                 label = I18n.text("common.search"),
-                value = state.languageQuery,
-                onValueChange = { send(EpisodeIntent.LanguageQuery(it)) },
+                value = query,
+                onValueChange = onQuery,
                 placeholder = I18n.text("common.searchLanguage"),
             )
             LazyColumn(Modifier.fillMaxWidth().padding(top = 8.dp)) {
-                items(state.languageOptions, key = { it.code ?: "" }) { option ->
+                items(options, key = { it.code ?: "" }) { option ->
                     Row(
                         Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(10.dp))
                             .background(if (option.selected) Brand.Line else Color.Transparent)
                             .clickable {
-                                send(EpisodeIntent.ChooseLanguage(option.code))
+                                onChoose(option.code)
                                 onDismiss()
                             }.padding(horizontal = 8.dp, vertical = 10.dp),
                         verticalAlignment = Alignment.CenterVertically,

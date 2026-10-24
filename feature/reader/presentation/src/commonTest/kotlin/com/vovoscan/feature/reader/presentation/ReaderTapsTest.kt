@@ -4,6 +4,7 @@ import com.vovoscan.core.common.AppResult
 import com.vovoscan.feature.reader.domain.Book
 import com.vovoscan.feature.reader.domain.ChapterHeading
 import com.vovoscan.feature.reader.domain.ChapterHeadings
+import com.vovoscan.feature.reader.domain.CoachKind
 import com.vovoscan.feature.reader.domain.ComicFormat
 import com.vovoscan.feature.reader.domain.ReaderChapter
 import com.vovoscan.feature.reader.domain.ReaderPage
@@ -102,7 +103,8 @@ class ReaderTapsTest {
 
     // Overlay already seen: the tests that are not about it start without it. Manga read as right-to-left pages (the
     // default is now the continuous strip, `ImmersiveReaderTest`).
-    private val paged = ReaderPreferences(mangaMode = ReadingMode.PagedRightToLeft)
+    // The first-open coach already closed for every kind (`ReaderCoachTest`).
+    private val paged = ReaderPreferences(mangaMode = ReadingMode.PagedRightToLeft, coachSeen = CoachKind.entries.toSet())
     private val seen = paged.copy(tapZonesSeen = true)
 
     // Vertical pages, where a tall page scrolls inside its page (`TallPages`).
@@ -312,21 +314,27 @@ class ReaderTapsTest {
             // A webtoon reads continuously by default (reader/SPEC.md §1b).
             assertEquals(ReadingMode.LongStrip, vm.state.value.mode)
             assertEquals(4, vm.state.value.currentItem)
+            assertEquals(0, vm.state.value.pageGap)
+            // A webtoon only scrolls (reader/SPEC.md §1b): its sheet offers the strip modes, a paged choice is ignored.
+            assertEquals(
+                listOf(ReadingMode.LongStrip, ReadingMode.LongStripGaps),
+                vm.state.value.settings.seriesModes
+                    .map { it.mode },
+            )
             vm.onIntent(ReaderIntent.SetMode(ReadingMode.PagedVertical))
             advanceUntilIdle()
-            assertEquals(ReadingMode.PagedVertical, vm.state.value.mode)
-            vm.onIntent(ReaderIntent.SetMode(ReadingMode.LongStrip))
-            advanceUntilIdle()
             assertEquals(ReadingMode.LongStrip, vm.state.value.mode)
-            assertEquals(0, vm.state.value.pageGap)
-            assertEquals(ReadingMode.LongStrip, settings.series.value["vovoscan/t1"])
+            vm.onIntent(ReaderIntent.SetMode(ReadingMode.LongStripGaps))
+            advanceUntilIdle()
+            assertEquals(ReadingMode.LongStripGaps, vm.state.value.mode)
+            assertEquals(ReadingMode.LongStripGaps, settings.series.value["vovoscan/t1"])
             assertEquals(3, vm.state.value.currentIndex)
             assertEquals(4, vm.state.value.currentItem)
             assertTrue(vm.state.value.settings.canResetSeries)
             assertTrue(
                 vm.state.value.settings.seriesModes
                     .single { it.selected }
-                    .mode == ReadingMode.LongStrip,
+                    .mode == ReadingMode.LongStripGaps,
             )
             assertEquals("Default for this series: Continuous.", vm.state.value.settings.seriesHint)
             // The format default applies once the series goes back to it.
@@ -446,11 +454,11 @@ class ReaderTapsTest {
             settings.setSeriesMode("vovoscan", "t1", null)
             settings.updatePreferences { it.copy(webtoonMode = ReadingMode.LongStripGaps) }
             assertEquals(ReadingMode.LongStripGaps, reader(webtoon, settings = settings).state.value.mode)
-            // Manga: continuous by the format rule (reader/SPEC.md §1b), right to left once chosen as the manga default.
+            // Manga: pages right to left by the format rule (reader/SPEC.md §1b), continuous once chosen as the manga default.
             settings.updatePreferences { it.copy(mangaMode = null) }
-            assertEquals(ReadingMode.LongStrip, reader(manga, settings = settings).state.value.mode)
-            settings.updatePreferences { it.copy(mangaMode = ReadingMode.PagedRightToLeft) }
             assertEquals(ReadingMode.PagedRightToLeft, reader(manga, settings = settings).state.value.mode)
+            settings.updatePreferences { it.copy(mangaMode = ReadingMode.LongStrip) }
+            assertEquals(ReadingMode.LongStrip, reader(manga, settings = settings).state.value.mode)
         }
 
     @Test

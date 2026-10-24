@@ -1,7 +1,9 @@
 package com.vovoscan.feature.catalog.domain
 
 import com.vovoscan.core.common.AppResult
+import com.vovoscan.core.common.ContentRating
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
 
 /** The internal source, read through the vovoscan API; the others are read on the device. */
 const val INTERNAL_SOURCE = "vovoscan"
@@ -48,6 +50,8 @@ data class TitleSummary(
     val kind: ContentKind,
     val format: ReadingFormat,
     val status: String,
+    /** null: the source doesn't say (hidden in safe mode, like an adult title). */
+    val contentRating: ContentRating? = null,
 )
 
 data class Chapter(
@@ -193,3 +197,16 @@ data class SearchResult(
     /** The source that didn't answer (its name), when that is why the local copy was searched. */
     val unavailableSource: String? = null,
 )
+
+/**
+ * Port: safe mode, the account's choice (wired in `shared` to the session). Off (`showAdult` true) shows every title;
+ * on shows `safe` titles only, an unrated one hidden too. The server applies the same rule to what it serves; the
+ * device applies it to the sources it reads itself.
+ */
+fun interface ContentPolicy {
+    fun showAdult(): Flow<Boolean>
+
+    companion object {
+        val ShowAll = ContentPolicy { flowOf(true) }
+    }
+}

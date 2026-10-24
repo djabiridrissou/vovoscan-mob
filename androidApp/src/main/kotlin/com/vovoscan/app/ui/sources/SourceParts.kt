@@ -189,6 +189,7 @@ fun SourceInfoBlock(info: SourceInfoUi) {
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(I18n.text("sources.connectsTo"), style = MaterialTheme.typography.labelLarge)
                 info.hosts.forEach { Text("✦ $it", style = MaterialTheme.typography.bodySmall.copy(color = Brand.TextSoft)) }
+                info.rateLabel?.let { Text(it, style = MaterialTheme.typography.bodySmall.copy(color = Brand.Muted)) }
             }
         }
     }

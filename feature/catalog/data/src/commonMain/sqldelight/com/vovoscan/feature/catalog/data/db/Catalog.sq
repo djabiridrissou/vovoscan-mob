@@ -12,6 +12,8 @@ CREATE TABLE title (
     description TEXT,
     authors TEXT,
     genres TEXT,
+    -- safe | suggestive | erotica | pornographic; null when the source doesn't say.
+    content_rating TEXT,
     PRIMARY KEY (source_key, id)
 );
 
@@ -63,16 +65,16 @@ CREATE TABLE catalog_setting (
 );
 
 insertSummary:
-INSERT OR IGNORE INTO title (source_key, id, name, cover_url, kind, format, status) VALUES (?, ?, ?, ?, ?, ?, ?);
+INSERT OR IGNORE INTO title (source_key, id, name, cover_url, kind, format, status, content_rating) VALUES (?, ?, ?, ?, ?, ?, ?, ?);
 
 updateSummary:
-UPDATE title SET name = ?, cover_url = ?, kind = ?, format = ?, status = ? WHERE source_key = ? AND id = ?;
+UPDATE title SET name = ?, cover_url = ?, kind = ?, format = ?, status = ?, content_rating = ? WHERE source_key = ? AND id = ?;
 
 updateDetail:
 UPDATE title SET description = ?, authors = ?, genres = ? WHERE source_key = ? AND id = ?;
 
 listingTitles:
-SELECT t.source_key, t.id, t.name, t.cover_url, t.kind, t.format, t.status, e.page FROM catalog_entry e
+SELECT t.source_key, t.id, t.name, t.cover_url, t.kind, t.format, t.status, t.content_rating, e.page FROM catalog_entry e
 JOIN title t ON t.source_key = e.source_key AND t.id = e.title_id
 WHERE e.source_key = ? AND e.listing = ? ORDER BY e.rank;
 
@@ -92,11 +94,11 @@ cursor:
 SELECT next_page FROM listing_cursor WHERE source_key = ? AND listing = ?;
 
 searchTitles:
-SELECT source_key, id, name, cover_url, kind, format, status FROM title
+SELECT source_key, id, name, cover_url, kind, format, status, content_rating FROM title
 WHERE source_key = :source_key AND name LIKE '%' || :query || '%' ORDER BY name LIMIT 50;
 
 searchListing:
-SELECT t.source_key, t.id, t.name, t.cover_url, t.kind, t.format, t.status FROM catalog_entry e
+SELECT t.source_key, t.id, t.name, t.cover_url, t.kind, t.format, t.status, t.content_rating FROM catalog_entry e
 JOIN title t ON t.source_key = e.source_key AND t.id = e.title_id
 WHERE e.source_key = :source_key AND e.listing = :listing AND t.name LIKE '%' || :query || '%' ORDER BY t.name LIMIT 50;
 

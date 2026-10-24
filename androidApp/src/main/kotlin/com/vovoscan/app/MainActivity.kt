@@ -218,10 +218,10 @@ private fun Root(session: SessionViewModel = koinViewModel()) {
             language = language,
             startPage = player.getOrNull(3)?.toIntOrNull(),
             onClose = { openPlayer = null },
-            onNextChapter = {
+            onNextChapter = { next, watched ->
                 // The next chapter's episode card, in the language just watched: watch it from there, or prepare it.
                 openPlayer = null
-                openEpisode = "$it|$language"
+                openEpisode = "$next|$watched"
             },
         )
         return
