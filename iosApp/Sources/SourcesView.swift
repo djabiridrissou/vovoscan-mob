@@ -59,6 +59,21 @@ struct SourcesView: View {
         .task { await model.observe() }
     }
 
+    @ViewBuilder
+    private func version(_ row: SourceRow) -> some View {
+        if !row.versionLabel.isEmpty {
+            Text(row.versionLabel).font(.brandBody(13)).foregroundStyle(Color.brandMuted).lineLimit(1).fixedSize()
+        }
+    }
+
+    @ViewBuilder
+    private func chips(_ row: SourceRow) -> some View {
+        OriginChip(label: row.originLabel, thirdParty: row.thirdParty)
+        if row.updateAvailable { UpdateBadge() }
+        // Cyan: change waiting to be sent (the brand reserves cyan for work in progress).
+        if row.pendingSync { Circle().fill(Color.brandCyan).frame(width: 8, height: 8) }
+    }
+
     private func sourceRow(_ row: SourceRow) -> some View {
         HStack(spacing: 8) {
             NavigationLink(value: SourceDetailRoute(key: row.key)) {
@@ -66,14 +81,16 @@ struct SourcesView: View {
                     SourceIcon(iconUrl: row.iconUrl, initial: row.initial)
                     VStack(alignment: .leading, spacing: 4) {
                         Text(row.name).font(.brandBody(15)).foregroundStyle(Color.brandPaper)
-                        HStack(spacing: 6) {
-                            if !row.versionLabel.isEmpty {
-                                Text(row.versionLabel).font(.brandBody(13)).foregroundStyle(Color.brandMuted)
+                        // Chips never break inside a word ("Upda/te"): on a narrow row they go under the version.
+                        ViewThatFits(in: .horizontal) {
+                            HStack(spacing: 6) {
+                                version(row)
+                                chips(row)
                             }
-                            OriginChip(label: row.originLabel, thirdParty: row.thirdParty)
-                            if row.updateAvailable { UpdateBadge() }
-                            // Cyan: change waiting to be sent (the brand reserves cyan for work in progress).
-                            if row.pendingSync { Circle().fill(Color.brandCyan).frame(width: 8, height: 8) }
+                            VStack(alignment: .leading, spacing: 4) {
+                                version(row)
+                                HStack(spacing: 6) { chips(row) }
+                            }
                         }
                         // Kinds and engine on their own lines: a narrow row never breaks "Read on your device" in two.
                         Text(row.kindsLabel).font(.brandBody(13)).foregroundStyle(Color.brandMuted).lineLimit(1)
